@@ -2,6 +2,9 @@ import datetime
 from lunar_python import Solar
 from chinese_calendar import get_holiday_detail
 
+# 模块版本号
+VERSION = "ver 0.13"
+
 # 时辰映射
 SHI_CHEN = [
     (23, 1, "子时"),
