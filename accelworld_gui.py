@@ -1,13 +1,13 @@
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QSlider, QLineEdit, QPushButton, QFrame, QMessageBox,
-    QGridLayout
+    QGridLayout, QProgressBar
 )
 from PyQt6.QtCore import Qt, QTimer, QSize
 from PyQt6.QtGui import QFont, QDoubleValidator
 
 # 程序版本号
-VERSION = "ver 0.11"
+VERSION = "ver 0.12"
 
 
 class AcceleratedWorldGUI(QMainWindow):
@@ -47,17 +47,40 @@ class AcceleratedWorldGUI(QMainWindow):
         # ------------------- 时钟显示区域 -------------------
         clock_frame = QFrame()
         clock_frame.setFrameShape(QFrame.Shape.StyledPanel)
-        clock_layout = QHBoxLayout(clock_frame)
+        clock_layout = QVBoxLayout(clock_frame)
+
+        # 时间标签行
+        time_label_layout = QHBoxLayout()
 
         # 标准时间标签
         self.standard_time_label = QLabel("标准时间: 00:00:00")
         self.standard_time_label.setFont(QFont("Arial", 16))
-        clock_layout.addWidget(self.standard_time_label)
+        time_label_layout.addWidget(self.standard_time_label)
 
         # 加速时间标签
         self.accelerated_time_label = QLabel("加速时间: 00:00:00")
         self.accelerated_time_label.setFont(QFont("Arial", 16))
-        clock_layout.addWidget(self.accelerated_time_label)
+        time_label_layout.addWidget(self.accelerated_time_label)
+
+        clock_layout.addLayout(time_label_layout)
+
+        # 加速时间进度条
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setFont(QFont("Arial", 10))
+        self.progress_bar.setFixedHeight(25)
+        self.progress_bar.setFormat("%v / %m 小时")
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #aaa;
+                border-radius: 4px;
+                text-align: center;
+            }
+            QProgressBar::chunk {
+                background-color: #4CAF50;
+                border-radius: 2px;
+            }
+        """)
+        clock_layout.addWidget(self.progress_bar)
 
         self.main_layout.addWidget(clock_frame)
 
@@ -159,36 +182,45 @@ class AcceleratedWorldGUI(QMainWindow):
         self.main_layout.addWidget(input_frame)
 
     def on_slider_change(self, value: int) -> None:
-        """滑杆值变化时的回调函数"""
+        """滑杆值变化时的回调函数 - 实时更新加速倍率"""
         slider_value = value / 10.0
         self.slider_value_label.setText(f"{slider_value:.1f}x")
 
-    def apply_acceleration(self) -> None:
-        """应用加速倍率"""
-        # 延迟导入，避免循环导入问题
+        # 实时更新加速倍率，无需点击应用按钮
+        self._update_acceleration_rate(slider_value)
+
+    def _update_acceleration_rate(self, rate: float) -> None:
+        """更新加速倍率（内部方法）"""
         from accelworld_calc import AcceleratedWorld
+        # 验证倍率是否在有效范围内
+        if not (1.0 <= rate <= 20.0):
+            return
+        # 更新加速世界实例
+        self.accel_world = AcceleratedWorld(time_dilation_rate=rate)
+
+    def apply_acceleration(self) -> None:
+        """应用加速倍率 - 仅响应文字输入框"""
+        rate_text = self.rate_entry.text().strip()
+        if not rate_text:
+            # 如果输入框为空，使用滑杆当前值
+            rate_text = str(self.slider.value() / 10.0)
 
         try:
-            # 优先使用输入框的值，如果输入框为空或无效，则使用滑杆的值
-            rate_text = self.rate_entry.text().strip()
-            if rate_text:
-                rate = float(rate_text)
-                # 精确到小数点后2位
-                rate = round(rate, 2)
-            else:
-                rate = self.slider.value() / 10.0
+            rate = float(rate_text)
+            # 精确到小数点后2位
+            rate = round(rate, 2)
 
             # 验证倍率是否在有效范围内
             if not (1.0 <= rate <= 20.0):
                 raise ValueError("加速倍率必须在1.0到20.0之间")
 
             # 更新加速世界实例
-            self.accel_world = AcceleratedWorld(time_dilation_rate=rate)
+            self._update_acceleration_rate(rate)
 
-            # 同步输入框和滑杆的值
-            self.rate_entry.setText("")
+            # 同步滑杆的值（清空输入框）
             self.slider.setValue(int(rate * 10))
             self.slider_value_label.setText(f"{rate:.1f}x")
+            self.rate_entry.setText("")
 
         except ValueError as e:
             QMessageBox.critical(self, "错误", str(e))
@@ -205,6 +237,12 @@ class AcceleratedWorldGUI(QMainWindow):
             self.hours_per_day_value_label.setText(f"{expanded_hours_per_day:.2f}小时")
             self.rate_value_label.setText(f"{dilation_percentage:.0f}%")
             self.remaining_hours_value_label.setText(f"{remaining_hours:.2f}小时")
+
+            # 计算进度并更新进度条
+            total_hours = int(expanded_hours_per_day)
+            current_hour = int(custom_time.split(":")[0])
+            self.progress_bar.setMaximum(total_hours)
+            self.progress_bar.setValue(current_hour)
 
             # 更新日期显示
             self.date_label.setText(chinese_date)

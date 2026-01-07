@@ -10,7 +10,7 @@
   python accelworld.py
     运行图形界面
 
-版本：ver 0.11
+版本：ver 0.12
 """
 
 import sys
