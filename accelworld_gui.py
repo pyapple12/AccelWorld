@@ -1,13 +1,233 @@
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QSlider, QLineEdit, QPushButton, QFrame, QMessageBox,
-    QGridLayout, QProgressBar
+    QGridLayout, QProgressBar, QComboBox, QButtonGroup, QRadioButton
 )
 from PyQt6.QtCore import Qt, QTimer, QSize
 from PyQt6.QtGui import QFont, QDoubleValidator
 
 # 程序版本号
-VERSION = "ver 0.12"
+VERSION = "ver 0.20"
+
+# ------------------- 主题样式定义 -------------------
+LIGHT_THEME = """
+QMainWindow, QWidget {
+    background-color: #f5f5f5;
+    color: #333333;
+}
+
+QFrame {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+}
+
+QLabel {
+    color: #333333;
+}
+
+QComboBox {
+    background-color: #ffffff;
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: #333333;
+}
+
+QComboBox::drop-down {
+    border: none;
+}
+
+QLineEdit {
+    background-color: #ffffff;
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: #333333;
+}
+
+QSlider::groove:horizontal {
+    background-color: #e0e0e0;
+    height: 8px;
+    border-radius: 4px;
+}
+
+QSlider::handle:horizontal {
+    background-color: #4CAF50;
+    width: 20px;
+    margin: -6px 0;
+    border-radius: 10px;
+}
+
+QSlider::sub-page:horizontal {
+    background-color: #81C784;
+    border-radius: 4px;
+}
+
+QProgressBar {
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+    text-align: center;
+    background-color: #ffffff;
+    color: #333333;
+}
+
+QProgressBar::chunk {
+    background-color: #4CAF50;
+    border-radius: 2px;
+}
+
+QPushButton {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+}
+
+QPushButton:hover {
+    background-color: #45a049;
+}
+
+QPushButton:pressed {
+    background-color: #3d8b40;
+}
+"""
+
+DARK_THEME = """
+QMainWindow, QWidget {
+    background-color: #1e1e1e;
+    color: #e0e0e0;
+}
+
+QFrame {
+    background-color: #2d2d2d;
+    border: 1px solid #3d3d3d;
+    border-radius: 8px;
+}
+
+QLabel {
+    color: #e0e0e0;
+}
+
+QComboBox {
+    background-color: #3d3d3d;
+    border: 1px solid #4d4d4d;
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: #e0e0e0;
+}
+
+QComboBox::drop-down {
+    border: none;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #3d3d3d;
+    color: #e0e0e0;
+    selection-background-color: #4CAF50;
+}
+
+QLineEdit {
+    background-color: #3d3d3d;
+    border: 1px solid #4d4d4d;
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: #e0e0e0;
+}
+
+QSlider::groove:horizontal {
+    background-color: #4d4d4d;
+    height: 8px;
+    border-radius: 4px;
+}
+
+QSlider::handle:horizontal {
+    background-color: #4CAF50;
+    width: 20px;
+    margin: -6px 0;
+    border-radius: 10px;
+}
+
+QSlider::sub-page:horizontal {
+    background-color: #81C784;
+    border-radius: 4px;
+}
+
+QProgressBar {
+    border: 1px solid #4d4d4d;
+    border-radius: 4px;
+    text-align: center;
+    background-color: #3d3d3d;
+    color: #e0e0e0;
+}
+
+QProgressBar::chunk {
+    background-color: #4CAF50;
+    border-radius: 2px;
+}
+
+QPushButton {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+}
+
+QPushButton:hover {
+    background-color: #5CBF60;
+}
+
+QPushButton:pressed {
+    background-color: #3d8b40;
+}
+
+QPushButton:disabled {
+    background-color: #888888;
+}
+"""
+
+# 进度条动画样式
+LIGHT_THEME_PROGRESS = """
+QProgressBar {
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+    text-align: center;
+    background-color: #ffffff;
+    color: #333333;
+}
+
+QProgressBar::chunk {
+    background-color: qlineargradient(
+        x1:0, y1:0, x2:1, y2:0,
+        stop:0 #4CAF50,
+        stop:0.5 #81C784,
+        stop:1 #4CAF50
+    );
+    border-radius: 2px;
+}
+"""
+
+DARK_THEME_PROGRESS = """
+QProgressBar {
+    border: 1px solid #4d4d4d;
+    border-radius: 4px;
+    text-align: center;
+    background-color: #3d3d3d;
+    color: #e0e0e0;
+}
+
+QProgressBar::chunk {
+    background-color: qlineargradient(
+        x1:0, y1:0, x2:1, y2:0,
+        stop:0 #4CAF50,
+        stop:0.5 #81C784,
+        stop:1 #4CAF50
+    );
+    border-radius: 2px;
+}
+"""
 
 
 class AcceleratedWorldGUI(QMainWindow):
@@ -41,6 +261,19 @@ class AcceleratedWorldGUI(QMainWindow):
         self.timer.timeout.connect(self.update_clock)
         self.timer.start(100)
 
+        # 启动天气更新定时器（每30分钟更新一次）
+        self.weather_timer = QTimer(self)
+        self.weather_timer.timeout.connect(self.update_weather)
+        self.weather_timer.start(30 * 60 * 1000)  # 30分钟
+
+        # 初始化天气数据
+        self.current_city = "北京"
+        self.update_weather()
+
+        # 初始化主题（默认浅色）
+        self.is_dark_theme = False
+        self.apply_theme()
+
     def setup_ui(self) -> None:
         """设置UI界面布局和组件"""
 
@@ -69,17 +302,7 @@ class AcceleratedWorldGUI(QMainWindow):
         self.progress_bar.setFont(QFont("Arial", 10))
         self.progress_bar.setFixedHeight(25)
         self.progress_bar.setFormat("%v / %m 小时")
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #aaa;
-                border-radius: 4px;
-                text-align: center;
-            }
-            QProgressBar::chunk {
-                background-color: #4CAF50;
-                border-radius: 2px;
-            }
-        """)
+        self.progress_bar.setStyleSheet(LIGHT_THEME_PROGRESS)
         clock_layout.addWidget(self.progress_bar)
 
         self.main_layout.addWidget(clock_frame)
@@ -134,6 +357,54 @@ class AcceleratedWorldGUI(QMainWindow):
         date_layout.addWidget(self.lunar_info_label)
 
         self.main_layout.addWidget(date_frame)
+
+        # ------------------- 天气显示区域 -------------------
+        weather_frame = QFrame()
+        weather_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        weather_layout = QHBoxLayout(weather_frame)
+
+        # 城市选择
+        city_label = QLabel("城市:")
+        city_label.setFont(QFont("Arial", 12))
+        weather_layout.addWidget(city_label)
+
+        self.city_combo = QComboBox()
+        self.city_combo.setFont(QFont("Arial", 12))
+        self.city_combo.setFixedWidth(120)
+        # 添加城市列表
+        from accelworld_weather import CITIES
+        self.city_combo.addItems(sorted(CITIES.keys()))
+        self.city_combo.setCurrentText("北京")
+        self.city_combo.currentTextChanged.connect(self.on_city_changed)
+        weather_layout.addWidget(self.city_combo)
+
+        # 天气图标
+        self.weather_icon_label = QLabel("☀️")
+        self.weather_icon_label.setFont(QFont("Arial", 24))
+        weather_layout.addWidget(self.weather_icon_label)
+
+        # 天气信息
+        self.weather_info_label = QLabel("获取天气中...")
+        self.weather_info_label.setFont(QFont("Arial", 12))
+        weather_layout.addWidget(self.weather_info_label)
+
+        weather_layout.addStretch()
+
+        # 主题切换
+        self.theme_button = QPushButton("🌙")
+        self.theme_button.setFont(QFont("Arial", 14))
+        self.theme_button.setFixedSize(40, 35)
+        self.theme_button.setToolTip("切换主题")
+        self.theme_button.clicked.connect(self.toggle_theme)
+        weather_layout.addWidget(self.theme_button)
+
+        # 刷新天气按钮
+        self.refresh_weather_button = QPushButton("刷新")
+        self.refresh_weather_button.setFont(QFont("Arial", 10))
+        self.refresh_weather_button.clicked.connect(self.update_weather)
+        weather_layout.addWidget(self.refresh_weather_button)
+
+        self.main_layout.addWidget(weather_frame)
 
         # ------------------- 用户交互区域 -------------------
         input_frame = QFrame()
@@ -224,6 +495,45 @@ class AcceleratedWorldGUI(QMainWindow):
 
         except ValueError as e:
             QMessageBox.critical(self, "错误", str(e))
+
+    def on_city_changed(self, city_name: str) -> None:
+        """城市选择变更时的回调函数"""
+        self.current_city = city_name
+        self.update_weather()
+
+    def update_weather(self) -> None:
+        """更新天气信息"""
+        try:
+            from accelworld_weather import get_weather_by_city, format_weather_info
+            weather = get_weather_by_city(self.current_city)
+            if weather:
+                self.weather_info_label.setText(format_weather_info(weather, self.current_city))
+                self.weather_icon_label.setText(weather["icon"])
+            else:
+                self.weather_info_label.setText("天气获取失败")
+                self.weather_icon_label.setText("❓")
+        except Exception as e:
+            print(f"更新天气时出错: {e}")
+            self.weather_info_label.setText("天气获取失败")
+            self.weather_icon_label.setText("❓")
+
+    def toggle_theme(self) -> None:
+        """切换主题"""
+        self.is_dark_theme = not self.is_dark_theme
+        self.apply_theme()
+
+    def apply_theme(self) -> None:
+        """应用当前主题"""
+        if self.is_dark_theme:
+            self.setStyleSheet(DARK_THEME)
+            self.progress_bar.setStyleSheet(DARK_THEME_PROGRESS)
+            self.theme_button.setText("☀️")
+            self.theme_button.setToolTip("切换到浅色主题")
+        else:
+            self.setStyleSheet(LIGHT_THEME)
+            self.progress_bar.setStyleSheet(LIGHT_THEME_PROGRESS)
+            self.theme_button.setText("🌙")
+            self.theme_button.setToolTip("切换到深色主题")
 
     def update_clock(self) -> None:
         """更新时钟显示"""
