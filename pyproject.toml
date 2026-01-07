@@ -1,0 +1,4 @@
+[tool.basedpyright]
+reportMissingImports = "warning"
+reportMissingTypeStubs = "warning"
+reportImportCycles = "warning"

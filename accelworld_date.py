@@ -1,6 +1,6 @@
 import datetime
-from lunar_python import Solar
-from chinese_calendar import get_holiday_detail
+from lunar_python import Solar  # type: ignore
+from chinese_calendar import get_holiday_detail  # type: ignore
 
 # 时辰映射
 SHI_CHEN = [
@@ -52,7 +52,7 @@ CUSTOM_HOLIDAYS = {
 }
 
 # 农历计算核心函数
-def get_chinese_lunar_calendar(year: int, month: int, day: int, hour: int) -> tuple:
+def get_chinese_lunar_calendar(year: int, month: int, day: int, hour: int) -> tuple[str, str, str, str, str, str, str, str, str, str]:
     """
     计算农历信息
     :param year: 公历年
@@ -91,6 +91,8 @@ def get_chinese_lunar_calendar(year: int, month: int, day: int, hour: int) -> tu
     if not jieqi:
         # 如果当天不是节气日，获取当前节气（如果有的话）
         jieqi = lunar.getCurrentJieQi()
+    # 确保节气值是字符串类型
+    jieqi = str(jieqi) if jieqi else ""
     
     # 获取公历节日
     # 先检查lunar-python的节日

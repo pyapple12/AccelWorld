@@ -7,7 +7,7 @@ import argparse
 from accelworld_date import get_chinese_date, get_lunar_info
 
 # 程序版本号
-VERSION = "ver 1.1"
+VERSION = "ver 0.11"
 
 class AcceleratedWorld:
     """加速世界 - 基于时间膨胀倍率的自定义小时制时间显示核心类"""
@@ -159,12 +159,11 @@ def main_cli() -> None:
 
 # ------------------- 主程序入口 -------------------
 if __name__ == "__main__":
-    # 默认运行图形界面
     import sys
     if len(sys.argv) > 1:
         # 如果有命令行参数，运行命令行界面
         main_cli()
     else:
-        # 否则运行图形界面
+        # 运行图形界面
         from accelworld_gui import main_gui
         main_gui()
