@@ -1,6 +1,6 @@
 # AccelWorld
 
-[![Version](https://img.shields.io/badge/Version-ver%200.20-blue.svg)](accelworld_calc.py)
+[![Version](https://img.shields.io/badge/Version-ver%200.40-blue.svg)](accelworld_calc.py)
 [![Python](https://img.shields.io/badge/Python-3.8+-green.svg)](https://www.python.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 

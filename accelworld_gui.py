@@ -1,13 +1,14 @@
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QSlider, QLineEdit, QPushButton, QFrame, QMessageBox,
-    QGridLayout, QProgressBar, QComboBox, QButtonGroup, QRadioButton
+    QGridLayout, QProgressBar, QComboBox, QButtonGroup, QRadioButton,
+    QSystemTrayIcon, QMenu
 )
 from PyQt6.QtCore import Qt, QTimer, QSize
 from PyQt6.QtGui import QFont, QDoubleValidator
 
 # 程序版本号
-VERSION = "ver 0.20"
+VERSION = "ver 0.40"
 
 # ------------------- 主题样式定义 -------------------
 LIGHT_THEME = """
@@ -239,12 +240,24 @@ class AcceleratedWorldGUI(QMainWindow):
 
         # 延迟导入，避免循环导入问题
         from accelworld_calc import AcceleratedWorld
+        from accelworld_config import load_config, get_setting
+
+        # 加载配置
+        config = load_config()
+        saved_rate = get_setting("time_dilation_rate", 2.0)
 
         self.setWindowTitle(f"加速世界 - 时间膨胀时钟 {VERSION}")
-        self.setGeometry(100, 100, 900, 500)
+
+        # 恢复窗口位置和大小
+        from accelworld_config import load_window_geometry
+        geometry = load_window_geometry()
+        if geometry:
+            self.restoreGeometry(geometry)
+        else:
+            self.setGeometry(100, 100, 900, 500)
 
         # 创建加速世界核心实例
-        self.accel_world = AcceleratedWorld(time_dilation_rate=2.0)
+        self.accel_world = AcceleratedWorld(time_dilation_rate=saved_rate)
 
         # 设置中心部件和主布局
         central_widget = QWidget()
@@ -273,6 +286,9 @@ class AcceleratedWorldGUI(QMainWindow):
         # 初始化主题（默认浅色）
         self.is_dark_theme = False
         self.apply_theme()
+
+        # 初始化系统托盘
+        self.setup_system_tray()
 
     def setup_ui(self) -> None:
         """设置UI界面布局和组件"""
@@ -358,6 +374,86 @@ class AcceleratedWorldGUI(QMainWindow):
 
         self.main_layout.addWidget(date_frame)
 
+        # ------------------- 倒计时区域 -------------------
+        countdown_frame = QFrame()
+        countdown_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        countdown_layout = QHBoxLayout(countdown_frame)
+
+        # 倒计时标签
+        countdown_title_label = QLabel("倒计时:")
+        countdown_title_label.setFont(QFont("Arial", 12))
+        countdown_layout.addWidget(countdown_title_label)
+
+        # 目标时间输入
+        self.countdown_target = QLineEdit()
+        self.countdown_target.setPlaceholderText("YYYY-MM-DD HH:MM:SS")
+        self.countdown_target.setFont(QFont("Arial", 11))
+        self.countdown_target.setFixedWidth(180)
+        countdown_layout.addWidget(self.countdown_target)
+
+        # 倒计时显示
+        self.countdown_label = QLabel("--天 --:--:--:--")
+        self.countdown_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        self.countdown_label.setStyleSheet("color: #4CAF50;")
+        countdown_layout.addWidget(self.countdown_label)
+
+        countdown_layout.addStretch()
+
+        # 设置倒计时按钮
+        self.set_countdown_button = QPushButton("设置")
+        self.set_countdown_button.setFont(QFont("Arial", 10))
+        self.set_countdown_button.clicked.connect(self.set_countdown)
+        countdown_layout.addWidget(self.set_countdown_button)
+
+        # 清除倒计时按钮
+        self.clear_countdown_button = QPushButton("清除")
+        self.clear_countdown_button.setFont(QFont("Arial", 10))
+        self.clear_countdown_button.clicked.connect(self.clear_countdown)
+        countdown_layout.addWidget(self.clear_countdown_button)
+
+        self.main_layout.addWidget(countdown_frame)
+        self.countdown_target_date = None  # 倒计时目标时间
+
+        # ------------------- 世界时钟区域 -------------------
+        world_clock_frame = QFrame()
+        world_clock_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        world_clock_layout = QHBoxLayout(world_clock_frame)
+
+        # 世界时钟标题
+        world_clock_title = QLabel("世界时钟:")
+        world_clock_title.setFont(QFont("Arial", 12))
+        world_clock_layout.addWidget(world_clock_title)
+
+        # 时区选择
+        self.timezone_combo = QComboBox()
+        self.timezone_combo.setFont(QFont("Arial", 11))
+        self.timezone_combo.setFixedWidth(150)
+        # 添加常用时区
+        timezones = [
+            ("北京 (UTC+8)", "Asia/Shanghai"),
+            ("东京 (UTC+9)", "Asia/Tokyo"),
+            ("首尔 (UTC+9)", "Asia/Seoul"),
+            ("伦敦 (UTC+0)", "Europe/London"),
+            ("巴黎 (UTC+1)", "Europe/Paris"),
+            ("纽约 (UTC-5)", "America/New_York"),
+            ("洛杉矶 (UTC-8)", "America/Los_Angeles"),
+            ("悉尼 (UTC+11)", "Australia/Sydney"),
+        ]
+        for name, tz in timezones:
+            self.timezone_combo.addItem(name, tz)
+        self.timezone_combo.currentIndexChanged.connect(self.update_world_clock)
+        world_clock_layout.addWidget(self.timezone_combo)
+
+        # 世界时钟显示
+        self.world_clock_label = QLabel("00:00:00")
+        self.world_clock_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        self.world_clock_label.setStyleSheet("color: #2196F3;")
+        world_clock_layout.addWidget(self.world_clock_label)
+
+        world_clock_layout.addStretch()
+
+        self.main_layout.addWidget(world_clock_frame)
+
         # ------------------- 天气显示区域 -------------------
         weather_frame = QFrame()
         weather_frame.setFrameShape(QFrame.Shape.StyledPanel)
@@ -433,13 +529,14 @@ class AcceleratedWorldGUI(QMainWindow):
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setMinimum(10)  # 1.0 * 10
         self.slider.setMaximum(200)  # 20.0 * 10
-        self.slider.setValue(20)  # 2.0 * 10
+        initial_value = int(self.accel_world.time_dilation_rate * 10)
+        self.slider.setValue(initial_value)
         self.slider.setFixedHeight(30)
         self.slider.valueChanged.connect(self.on_slider_change)
         input_layout.addWidget(self.slider, 1, 0, 1, 3)
 
         # 滑杆值显示
-        self.slider_value_label = QLabel("2.0x")
+        self.slider_value_label = QLabel(f"{self.accel_world.time_dilation_rate:.1f}x")
         self.slider_value_label.setFont(QFont("Arial", 12))
         input_layout.addWidget(self.slider_value_label, 2, 1, Qt.AlignmentFlag.AlignLeft)
 
@@ -495,6 +592,85 @@ class AcceleratedWorldGUI(QMainWindow):
 
         except ValueError as e:
             QMessageBox.critical(self, "错误", str(e))
+
+    def set_countdown(self) -> None:
+        """设置倒计时目标时间"""
+        import datetime
+
+        target_text = self.countdown_target.text().strip()
+        if not target_text:
+            QMessageBox.warning(self, "警告", "请输入目标时间")
+            return
+
+        try:
+            # 尝试解析时间格式
+            if len(target_text) == 19:  # YYYY-MM-DD HH:MM:SS
+                self.countdown_target_date = datetime.datetime.strptime(target_text, "%Y-%m-%d %H:%M:%S")
+            elif len(target_text) == 16:  # YYYY-MM-DD HH:MM
+                self.countdown_target_date = datetime.datetime.strptime(target_text, "%Y-%m-%d %H:%M")
+            elif len(target_text) == 10:  # YYYY-MM-DD
+                self.countdown_target_date = datetime.datetime.strptime(target_text, "%Y-%m-%d")
+                # 如果只有日期，设置时间为当天23:59:59
+                self.countdown_target_date = self.countdown_target_date.replace(hour=23, minute=59, second=59)
+            else:
+                raise ValueError("时间格式不正确")
+        except ValueError as e:
+            QMessageBox.critical(self, "错误", f"时间格式不正确，请使用 YYYY-MM-DD HH:MM:SS 格式\n{e}")
+            return
+
+        # 检查时间是否已过期
+        if self.countdown_target_date <= datetime.datetime.now():
+            QMessageBox.warning(self, "警告", "目标时间已过期，请选择未来时间")
+            self.countdown_target_date = None
+            return
+
+        self.update_countdown()
+
+    def clear_countdown(self) -> None:
+        """清除倒计时"""
+        self.countdown_target_date = None
+        self.countdown_label.setText("--天 --:--:--:--")
+        self.countdown_target.clear()
+
+    def update_countdown(self) -> None:
+        """更新倒计时显示"""
+        import datetime
+
+        if not self.countdown_target_date:
+            return
+
+        now = datetime.datetime.now()
+        remaining = self.countdown_target_date - now
+
+        if remaining.total_seconds() <= 0:
+            self.countdown_label.setText("00天 00:00:00")
+            self.countdown_label.setStyleSheet("color: #f44336;")  # 红色表示倒计时结束
+            return
+
+        days = remaining.days
+        hours = remaining.seconds // 3600
+        minutes = (remaining.seconds % 3600) // 60
+        seconds = remaining.seconds % 60
+
+        self.countdown_label.setText(f"{days}天 {hours:02d}:{minutes:02d}:{seconds:02d}")
+        self.countdown_label.setStyleSheet("color: #4CAF50;")
+
+    def update_world_clock(self) -> None:
+        """更新世界时钟显示"""
+        import datetime
+        import pytz
+
+        tz_name = self.timezone_combo.currentData()
+        if not tz_name:
+            return
+
+        try:
+            tz = pytz.timezone(tz_name)
+            world_time = datetime.datetime.now(tz).strftime("%H:%M:%S")
+            self.world_clock_label.setText(world_time)
+        except Exception as e:
+            print(f"更新世界时钟时出错: {e}")
+            self.world_clock_label.setText("00:00:00")
 
     def on_city_changed(self, city_name: str) -> None:
         """城市选择变更时的回调函数"""
@@ -560,17 +736,146 @@ class AcceleratedWorldGUI(QMainWindow):
             # 更新农历信息显示
             self.lunar_info_label.setText(lunar_info)
 
+            # 更新倒计时显示
+            self.update_countdown()
+
+            # 更新世界时钟显示
+            self.update_world_clock()
+
         except Exception as e:
             print(f"更新时钟时出错: {e}")
             import traceback
             traceback.print_exc()
 
+    def setup_system_tray(self) -> None:
+        """设置系统托盘"""
+        from PyQt6.QtGui import QIcon, QAction
 
-def main_gui() -> None:
-    """图形界面主函数"""
+        # 创建托盘图标
+        self.tray_icon = QSystemTrayIcon(self)
+        self.tray_icon.setToolTip(f"加速世界 - {VERSION}")
+
+        # 创建托盘菜单
+        self.tray_menu = QMenu()
+
+        # 显示窗口动作
+        self.show_action = QAction("显示窗口", self)
+        self.show_action.triggered.connect(self.show_normal)
+        self.tray_menu.addAction(self.show_action)
+
+        # 隐藏窗口动作
+        self.hide_action = QAction("隐藏到托盘", self)
+        self.hide_action.triggered.connect(self.hide_to_tray)
+        self.tray_menu.addAction(self.hide_action)
+
+        self.tray_menu.addSeparator()
+
+        # 当前倍率显示
+        self.rate_action = QAction(f"当前倍率: {self.accel_world.time_dilation_rate:.1f}x", self)
+        self.rate_action.setEnabled(False)
+        self.tray_menu.addAction(self.rate_action)
+
+        self.tray_menu.addSeparator()
+
+        # 退出动作
+        self.quit_action = QAction("退出", self)
+        self.quit_action.triggered.connect(QApplication.quit)
+        self.tray_menu.addAction(self.quit_action)
+
+        # 设置托盘菜单
+        self.tray_icon.setContextMenu(self.tray_menu)
+
+        # 双击托盘图标显示窗口
+        self.tray_icon.activated.connect(self.on_tray_activated)
+
+        # 显示托盘图标
+        self.tray_icon.show()
+
+        # 初始隐藏到托盘的标志
+        self.is_hidden_to_tray = False
+
+    def on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
+        """托盘图标被点击"""
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            self.show_normal()
+
+    def hide_to_tray(self) -> None:
+        """隐藏到系统托盘"""
+        self.hide()
+        self.is_hidden_to_tray = True
+        self.tray_icon.showMessage(
+            "加速世界",
+            "程序已隐藏到系统托盘，点击托盘图标可重新显示",
+            QSystemTrayIcon.MessageIcon.Information,
+            2000
+        )
+
+    def show_normal(self) -> None:
+        """显示窗口"""
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        self.is_hidden_to_tray = False
+
+    def closeEvent(self, event) -> None:
+        """关闭窗口事件 - 最小化到托盘而非退出"""
+        if self.tray_icon.isVisible():
+            self.hide_to_tray()
+            event.ignore()
+        else:
+            # 保存配置
+            self.save_settings()
+            event.accept()
+
+    def save_settings(self) -> None:
+        """保存当前设置"""
+        from accelworld_config import set_setting, save_window_geometry
+        set_setting("time_dilation_rate", self.accel_world.time_dilation_rate)
+        set_setting("last_city", self.current_city)
+        set_setting("last_timezone", self.timezone_combo.currentData())
+        if self.countdown_target_date:
+            set_setting("countdown_target", self.countdown_target.text())
+        else:
+            set_setting("countdown_target", "")
+        save_window_geometry(self.saveGeometry())
+
+    def update_tray_info(self) -> None:
+        """更新托盘信息"""
+        # 更新托盘中显示的倍率
+        for action in self.tray_menu.actions():
+            if action.text().startswith("当前倍率"):
+                action.setText(f"当前倍率: {self.accel_world.time_dilation_rate:.1f}x")
+                break
+
+    def show_notification(self, title: str, message: str, icon: QSystemTrayIcon.MessageIcon = QSystemTrayIcon.MessageIcon.Information) -> None:
+        """显示系统通知"""
+        if self.tray_icon.isVisible():
+            self.tray_icon.showMessage(title, message, icon, 3000)
+
+
+def main_gui(**kwargs) -> None:
+    """
+    图形界面主函数
+
+    :param kwargs: 可选参数
+        - rate: 时间膨胀倍率
+        - theme: 主题 ("light" 或 "dark")
+        - city: 默认城市
+        - hidden: 是否隐藏到托盘
+    """
     app = QApplication([])
     window = AcceleratedWorldGUI()
-    window.show()
+
+    # 应用启动参数
+    if kwargs.get("theme") == "dark":
+        window.is_dark_theme = False
+        window.toggle_theme()  # 切换到暗色
+
+    if kwargs.get("hidden"):
+        window.hide_to_tray()
+    else:
+        window.show()
+
     app.exec()
 
 
