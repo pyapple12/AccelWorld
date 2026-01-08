@@ -34,3 +34,11 @@ dist/
 
 # Claude Code
 .claude/
+CLAUDE.md
+
+# openspec
+openspec/
+AGENTS.md
+
+# My Own WorkingBoard
+workingboard/
