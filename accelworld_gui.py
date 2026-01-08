@@ -755,6 +755,27 @@ class AcceleratedWorldGUI(QMainWindow):
         self.tray_icon = QSystemTrayIcon(self)
         self.tray_icon.setToolTip(f"加速世界 - {VERSION}")
 
+        # 创建自定义图标 (32x32 蓝色圆形时钟图标)
+        from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor, QBrush
+        from PyQt6.QtCore import Qt
+
+        pixmap = QPixmap(32, 32)
+        pixmap.fill(Qt.GlobalColor.transparent)  # 透明背景
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(QColor("#4A90D9"), 2))  # 蓝色边框
+        painter.setBrush(QBrush(QColor("#4A90D9")))
+        painter.drawEllipse(2, 2, 28, 28)  # 圆形背景
+
+        # 时钟指针
+        painter.setPen(QPen(QColor("white"), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        painter.drawLine(16, 16, 16, 8)   # 分针
+        painter.drawLine(16, 16, 22, 16)  # 时针
+        painter.end()
+
+        self.tray_icon.setIcon(QIcon(pixmap))
+
         # 创建托盘菜单
         self.tray_menu = QMenu()
 
