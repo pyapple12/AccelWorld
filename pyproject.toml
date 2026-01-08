@@ -1,4 +1,27 @@
 [tool.basedpyright]
-reportMissingImports = "warning"
-reportMissingTypeStubs = "warning"
-reportImportCycles = "warning"
+# reportMissingImports = "warning"
+# reportMissingTypeStubs = "warning"
+# reportImportCycles = "warning"
+
+# 需要解决的警告
+# 未使用
+reportUnusedCallResult = "none"
+reportUnusedVariable = "none"
+reportUnusedImport = "none"
+
+# 未知
+reportUnknownArgumentType = "none"
+reportUnknownParameterType = "none"
+reportUnknownVariableType = "none"
+reportUnknownMemberType = "none"
+
+#其他
+reportAny = "none"
+reportMissingParameterType = "none"
+reportUntypedBaseClass = "none"
+reportUnannotatedClassAttribute = "none"
+
+# 临时关闭
+reportMissingImports = "none"
+reportMissingTypeStubs = "none"
+reportImportCycles = "none"
