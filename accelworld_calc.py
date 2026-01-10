@@ -7,7 +7,7 @@ import argparse
 from accelworld_date import get_chinese_date, get_lunar_info
 
 # 程序版本号
-VERSION = "ver 0.40"
+VERSION = "ver 0.41"
 
 class AcceleratedWorld:
     """加速世界 - 基于时间膨胀倍率的自定义小时制时间显示核心类"""

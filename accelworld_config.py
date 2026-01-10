@@ -6,7 +6,7 @@
 
 import json
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union, List
 
 # 配置文件路径
 CONFIG_DIR = os.path.expanduser("~/.config/accelworld")
@@ -20,6 +20,7 @@ DEFAULT_CONFIG = {
     "last_timezone": "Asia/Shanghai",  # 上次选择的时区
     "countdown_target": "",  # 上次设置的倒计时目标
     "window_geometry": None,  # 窗口位置和大小
+    "alarms": [],  # 闹钟列表
 }
 
 
@@ -98,14 +99,20 @@ def set_setting(key: str, value: Any) -> bool:
     return save_config(config)
 
 
-def save_window_geometry(geometry: bytes) -> bool:
+def save_window_geometry(geometry: Union[bytes, bytearray]) -> bool:
     """
     保存窗口位置和大小
 
     :param geometry: 窗口几何数据
     :return: 是否保存成功
     """
-    return set_setting("window_geometry", geometry.decode('latin1') if isinstance(geometry, bytes) else geometry)
+    # 处理 bytes/bytearray 或其他类型（如 QByteArray）
+    try:
+        decoded = geometry.decode('latin1')
+    except (AttributeError, TypeError):
+        # 非 bytes 类型，直接存储
+        decoded = geometry
+    return set_setting("window_geometry", decoded)
 
 
 def load_window_geometry() -> Optional[bytes]:
@@ -118,6 +125,70 @@ def load_window_geometry() -> Optional[bytes]:
     if geometry_str:
         return geometry_str.encode('latin1')
     return None
+
+
+# ------------------- 闹钟配置管理 -------------------
+
+def get_alarms() -> List[Any]:
+    """
+    获取保存的闹钟列表
+
+    :return: 闹钟字典列表
+    """
+    return get_setting("alarms", [])
+
+
+def save_alarms(alarms: List[Any]) -> bool:
+    """
+    保存闹钟列表
+
+    :param alarms: 闹钟字典列表
+    :return: 是否保存成功
+    """
+    return set_setting("alarms", alarms)
+
+
+def add_alarm(alarm_data: Dict[str, Any]) -> bool:
+    """
+    添加单个闹钟
+
+    :param alarm_data: 闹钟数据字典
+    :return: 是否添加成功
+    """
+    alarms = get_alarms()
+    alarms.append(alarm_data)
+    return save_alarms(alarms)
+
+
+def remove_alarm(alarm_id: str) -> bool:
+    """
+    移除指定 ID 的闹钟
+
+    :param alarm_id: 闹钟 ID
+    :return: 是否移除成功
+    """
+    alarms = get_alarms()
+    for i, alarm in enumerate(alarms):
+        if alarm.get("id") == alarm_id:
+            alarms.pop(i)
+            return save_alarms(alarms)
+    return False
+
+
+def update_alarm(alarm_id: str, alarm_data: Dict[str, Any]) -> bool:
+    """
+    更新指定 ID 的闹钟
+
+    :param alarm_id: 闹钟 ID
+    :param alarm_data: 新的闹钟数据
+    :return: 是否更新成功
+    """
+    alarms = get_alarms()
+    for i, alarm in enumerate(alarms):
+        if alarm.get("id") == alarm_id:
+            alarms[i] = alarm_data
+            return save_alarms(alarms)
+    return False
 
 
 # ------------------- 测试 -------------------

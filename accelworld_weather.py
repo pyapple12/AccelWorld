@@ -8,7 +8,7 @@ API 文档: https://open-meteo.com/
 import urllib.request
 import json
 import re
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, Any
 
 # 默认城市（可配置）
 DEFAULT_CITY = {
@@ -103,7 +103,7 @@ WEATHER_DESCRIPTIONS = {
 }
 
 
-def get_weather_by_coords(lat: float, lon: float) -> Optional[dict]:
+def get_weather_by_coords(lat: float, lon: float) -> Optional[Dict[str, Any]]:
     """
     根据经纬度获取天气信息
 
@@ -142,7 +142,7 @@ def get_weather_by_coords(lat: float, lon: float) -> Optional[dict]:
         return None
 
 
-def get_weather_by_city(city_name: str) -> Optional[dict]:
+def get_weather_by_city(city_name: str) -> Optional[Dict[str, Any]]:
     """
     根据城市名获取天气信息
 
@@ -156,7 +156,7 @@ def get_weather_by_city(city_name: str) -> Optional[dict]:
     return None
 
 
-def format_weather_info(weather: dict, city_name: str = "") -> str:
+def format_weather_info(weather: Dict[str, Any], city_name: str = "") -> str:
     """
     格式化天气信息为字符串
 
@@ -177,7 +177,7 @@ def format_weather_info(weather: dict, city_name: str = "") -> str:
     )
 
 
-def get_simple_weather(weather: dict) -> str:
+def get_simple_weather(weather: Dict[str, Any]) -> str:
     """
     获取简洁天气信息
 

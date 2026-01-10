@@ -1,8 +1,8 @@
 # AccelWorld —— 加速世界世界钟
 
-[![Version](https://img.shields.io/badge/Version-ver%200.40-blue.svg)](accelworld_calc.py)
+[![Version](https://img.shields.io/badge/Version-ver%200.41-blue.svg)](accelworld_calc.py)
 [![Python](https://img.shields.io/badge/Python-3.8+-green.svg)](https://www.python.org)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
 ---
 
@@ -38,9 +38,10 @@
 - **世界时钟**：支持查看北京、东京、首尔、伦敦、巴黎、纽约、洛杉矶、悉尼等城市时间
 - **倒计时功能**：支持设置目标时间倒计时显示
 - **天气显示**：支持北京、上海、广州、深圳等 18 个主要城市天气（使用 Open-Meteo API）
+- **闹钟功能**：支持设置多个闹钟，预设/自定义铃声，系统通知提醒
 - **主题切换**：支持浅色和深色主题一键切换
 - **系统托盘**：支持隐藏到托盘后台运行，关闭按钮最小化到托盘而非退出
-- **配置持久化**：自动保存加速倍率、主题、城市、时区等设置
+- **配置持久化**：自动保存加速倍率、主题、城市、时区、闹钟等设置
 
 ## 快速开始
 
@@ -126,9 +127,10 @@ AccelWorld/
 ├── accelworld_gui.py        # PyQt6图形界面，主窗口和组件
 ├── accelworld_config.py     # 配置文件管理，JSON格式持久化
 ├── accelworld_weather.py    # 天气服务，Open-Meteo API集成
+├── accelworld_alarm.py      # 闹钟管理，多闹钟/自定义铃声/系统通知
 ├── requirements.txt         # Python依赖列表
 ├── pyproject.toml           # 项目配置
-├── LICENSE                  # MIT许可证
+├── LICENSE                  # GPL-3.0 许可证
 └── README.md                # 本文件
 ```
 
@@ -195,4 +197,4 @@ A：显示天干地支年、生肖、当前时辰、月相、节气（如有）�
 
 ## 许可证
 
-本项目基于 [MIT 许可证](./LICENSE) 开源，允许自由使用、修改及分发。
+本项目基于 [GNU GPL v3 许可证](./LICENSE) 开源，允许自由使用、修改及分发，但必须保留源代码并以相同许可证发布。

@@ -1,14 +1,18 @@
+from typing import List, Dict, Any
+
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QSlider, QLineEdit, QPushButton, QFrame, QMessageBox,
     QGridLayout, QProgressBar, QComboBox, QButtonGroup, QRadioButton,
-    QSystemTrayIcon, QMenu
+    QSystemTrayIcon, QMenu, QListWidget, QListWidgetItem, QCheckBox,
+    QDialog, QDialogButtonBox, QFormLayout, QTimeEdit, QFileDialog,
+    QGroupBox
 )
-from PyQt6.QtCore import Qt, QTimer, QSize
-from PyQt6.QtGui import QFont, QDoubleValidator
+from PyQt6.QtCore import Qt, QTimer, QSize, QTime
+from PyQt6.QtGui import QFont, QDoubleValidator, QIcon
 
 # 程序版本号
-VERSION = "ver 0.40"
+VERSION = "ver 0.41"
 
 # ------------------- 主题样式定义 -------------------
 LIGHT_THEME = """
@@ -285,6 +289,9 @@ class AcceleratedWorldGUI(QMainWindow):
 
         # 初始化主题（默认浅色）
         self.is_dark_theme = False
+
+        # 闹钟管理器占位符（在 init_alarms 中初始化）
+        self.alarm_manager = None
         self.apply_theme()
 
         # 初始化系统托盘
@@ -502,6 +509,39 @@ class AcceleratedWorldGUI(QMainWindow):
 
         self.main_layout.addWidget(weather_frame)
 
+        # ------------------- 闹钟区域 -------------------
+        alarm_frame = QFrame()
+        alarm_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        alarm_layout = QVBoxLayout(alarm_frame)
+
+        # 闹钟标题行
+        alarm_title_layout = QHBoxLayout()
+
+        alarm_title = QLabel("闹钟:")
+        alarm_title.setFont(QFont("Arial", 12))
+        alarm_title_layout.addWidget(alarm_title)
+
+        alarm_title_layout.addStretch()
+
+        # 添加闹钟按钮
+        self.add_alarm_button = QPushButton("+ 添加闹钟")
+        self.add_alarm_button.setFont(QFont("Arial", 10))
+        self.add_alarm_button.clicked.connect(self.show_add_alarm_dialog)
+        alarm_title_layout.addWidget(self.add_alarm_button)
+
+        alarm_layout.addLayout(alarm_title_layout)
+
+        # 闹钟列表
+        self.alarm_list = QListWidget()
+        self.alarm_list.setFont(QFont("Arial", 11))
+        self.alarm_list.setFixedHeight(120)
+        alarm_layout.addWidget(self.alarm_list)
+
+        self.main_layout.addWidget(alarm_frame)
+
+        # 初始化闹钟管理器
+        self.init_alarms()
+
         # ------------------- 用户交互区域 -------------------
         input_frame = QFrame()
         input_frame.setFrameShape(QFrame.Shape.StyledPanel)
@@ -632,6 +672,191 @@ class AcceleratedWorldGUI(QMainWindow):
         self.countdown_label.setText("--天 --:--:--:--")
         self.countdown_target.clear()
 
+    # ------------------- 闹钟相关方法 -------------------
+
+    def init_alarms(self) -> None:
+        """初始化闹钟管理器并加载保存的闹钟"""
+        from accelworld_alarm import AlarmManager
+        from accelworld_config import get_alarms
+
+        self.alarm_manager = AlarmManager()
+
+        # 从配置加载闹钟
+        saved_alarms = get_alarms()
+        if saved_alarms:
+            self.alarm_manager.from_dict_list(saved_alarms)
+
+        # 更新闹钟列表显示
+        self.refresh_alarm_list()
+
+    def refresh_alarm_list(self) -> None:
+        """刷新闹钟列表显示"""
+        self.alarm_list.clear()
+
+        for alarm in self.alarm_manager.alarms:
+            item = QListWidgetItem()
+            item.setData(Qt.ItemDataRole.UserRole, alarm.id)
+
+            # 创建自定义 widget 来显示闹钟信息
+            widget = QWidget()
+            layout = QHBoxLayout(widget)
+            layout.setContentsMargins(5, 2, 5, 2)
+
+            # 启用开关
+            checkbox = QCheckBox()
+            checkbox.setChecked(alarm.enabled)
+            checkbox.setFixedWidth(30)
+            checkbox.toggled.connect(lambda checked, a_id=alarm.id: self.toggle_alarm(a_id))
+            layout.addWidget(checkbox)
+
+            # 时间
+            time_label = QLabel(alarm.time)
+            time_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+            time_label.setFixedWidth(60)
+            layout.addWidget(time_label)
+
+            # 标签
+            label_label = QLabel(alarm.label)
+            label_label.setFont(QFont("Arial", 11))
+            label_label.setFixedWidth(150)
+            layout.addWidget(label_label)
+
+            # 重复信息
+            repeat_str = self.get_repeat_display(alarm.repeat_days)
+            repeat_label = QLabel(repeat_str)
+            repeat_label.setFont(QFont("Arial", 10))
+            repeat_label.setStyleSheet("color: #888888")
+            layout.addWidget(repeat_label)
+
+            # 声音信息
+            sound_str = self.get_sound_display(alarm)
+            sound_label = QLabel(sound_str)
+            sound_label.setFont(QFont("Arial", 10))
+            sound_label.setStyleSheet("color: #666666")
+            layout.addWidget(sound_label)
+
+            layout.addStretch()
+
+            # 编辑按钮
+            edit_btn = QPushButton("编辑")
+            edit_btn.setFixedSize(50, 25)
+            edit_btn.clicked.connect(lambda checked, a_id=alarm.id: self.show_edit_alarm_dialog(a_id))
+            layout.addWidget(edit_btn)
+
+            # 删除按钮
+            delete_btn = QPushButton("删除")
+            delete_btn.setFixedSize(50, 25)
+            delete_btn.clicked.connect(lambda checked, a_id=alarm.id: self.delete_alarm(a_id))
+            layout.addWidget(delete_btn)
+
+            widget.setLayout(layout)
+            item.setSizeHint(widget.sizeHint())
+
+            self.alarm_list.addItem(item)
+            self.alarm_list.setItemWidget(item, widget)
+
+    def get_repeat_display(self, repeat_days: List[int]) -> str:
+        """获取重复显示文本"""
+        if not repeat_days:
+            return "一次"
+        days = ["一", "二", "三", "四", "五", "六", "日"]
+        return "周" + "".join([days[d] for d in repeat_days])
+
+    def get_sound_display(self, alarm) -> str:
+        """获取声音显示文本"""
+        from accelworld_alarm import PresetSound
+        if alarm.sound_type == "preset":
+            preset = PresetSound.from_value(alarm.sound_value)
+            return f"🔔 {preset.display_names()[list(PresetSound).index(preset)]}"
+        else:
+            # 显示文件名
+            import os
+            return f"📁 {os.path.basename(alarm.sound_value)[:15]}"
+
+    def show_add_alarm_dialog(self) -> None:
+        """显示添加闹钟对话框"""
+        dialog = AlarmEditDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            alarm_data = dialog.get_alarm_data()
+            from accelworld_alarm import Alarm
+            alarm = Alarm(**alarm_data)
+            if self.alarm_manager.add_alarm(alarm):
+                self.save_alarms()
+                self.refresh_alarm_list()
+
+    def show_edit_alarm_dialog(self, alarm_id: str) -> None:
+        """显示编辑闹钟对话框"""
+        alarm = self.alarm_manager.get_alarm(alarm_id)
+        if not alarm:
+            return
+
+        dialog = AlarmEditDialog(self, alarm)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            alarm_data = dialog.get_alarm_data()
+            self.alarm_manager.update_alarm(alarm_id, **alarm_data)
+            self.save_alarms()
+            self.refresh_alarm_list()
+
+    def toggle_alarm(self, alarm_id: str) -> bool:
+        """切换闹钟启用状态"""
+        result = self.alarm_manager.toggle_alarm(alarm_id)
+        if result:
+            self.save_alarms()
+            self.refresh_alarm_list()
+        return result
+
+    def delete_alarm(self, alarm_id: str) -> None:
+        """删除闹钟"""
+        from PyQt6.QtWidgets import QMessageBox
+        alarm = self.alarm_manager.get_alarm(alarm_id)
+        if not alarm:
+            return
+
+        reply = QMessageBox.question(
+            self, "确认删除",
+            f"确定要删除闹钟「{alarm.label}」吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            if self.alarm_manager.remove_alarm(alarm_id):
+                self.save_alarms()
+                self.refresh_alarm_list()
+
+    def save_alarms(self) -> None:
+        """保存闹钟列表到配置"""
+        from accelworld_config import save_alarms
+        save_alarms(self.alarm_manager.to_dict_list())
+
+    def check_alarms(self) -> None:
+        """检查是否需要触发闹钟"""
+        import datetime
+        now = datetime.datetime.now()
+        triggered = self.alarm_manager.check_alarms(now)
+
+        for alarm in triggered:
+            self.trigger_alarm(alarm)
+
+    def trigger_alarm(self, alarm) -> None:
+        """触发闹钟"""
+        from accelworld_alarm import play_alarm_sound
+
+        # 播放声音
+        play_alarm_sound(alarm)
+
+        # 显示通知（使用 emoji 装饰避免 Windows 通知栏兼容问题）
+        self.show_notification(
+            "Alarm",
+            f" ⏰ {alarm.label} @ {alarm.time} ",
+            QSystemTrayIcon.MessageIcon.Warning
+        )
+
+        # 如果是一次性闹钟，自动禁用
+        if alarm.is_one_time():
+            alarm.enabled = False
+            self.save_alarms()
+            self.refresh_alarm_list()
+
     def update_countdown(self) -> None:
         """更新倒计时显示"""
         import datetime
@@ -742,6 +967,10 @@ class AcceleratedWorldGUI(QMainWindow):
             # 更新世界时钟显示
             self.update_world_clock()
 
+            # 检查闹钟（每秒检查一次，在分钟变化时触发）
+            if hasattr(self, 'alarm_manager'):
+                self.check_alarms()
+
         except Exception as e:
             print(f"更新时钟时出错: {e}")
             import traceback
@@ -838,15 +1067,15 @@ class AcceleratedWorldGUI(QMainWindow):
         self.activateWindow()
         self.is_hidden_to_tray = False
 
-    def closeEvent(self, event) -> None:
+    def closeEvent(self, a0) -> None:
         """关闭窗口事件 - 最小化到托盘而非退出"""
         if self.tray_icon.isVisible():
             self.hide_to_tray()
-            event.ignore()
+            a0.ignore()
         else:
             # 保存配置
             self.save_settings()
-            event.accept()
+            a0.accept()
 
     def save_settings(self) -> None:
         """保存当前设置"""
@@ -858,7 +1087,7 @@ class AcceleratedWorldGUI(QMainWindow):
             set_setting("countdown_target", self.countdown_target.text())
         else:
             set_setting("countdown_target", "")
-        save_window_geometry(self.saveGeometry())
+        save_window_geometry(self.saveGeometry()) 
 
     def update_tray_info(self) -> None:
         """更新托盘信息"""
@@ -872,6 +1101,137 @@ class AcceleratedWorldGUI(QMainWindow):
         """显示系统通知"""
         if self.tray_icon.isVisible():
             self.tray_icon.showMessage(title, message, icon, 3000)
+
+
+# ------------------- 闹钟编辑对话框 -------------------
+
+class AlarmEditDialog(QDialog):
+    """闹钟编辑对话框"""
+
+    def __init__(self, parent=None, alarm=None):
+        """
+        初始化对话框
+
+        :param parent: 父窗口
+        :param alarm: 要编辑的闹钟（None 表示新建）
+        """
+        super().__init__(parent)
+        self.alarm = alarm
+        self.setWindowTitle("编辑闹钟" if alarm else "添加闹钟")
+        self.setFixedWidth(400)
+
+        layout = QFormLayout(self)
+
+        # 标签
+        self.label_edit = QLineEdit()
+        self.label_edit.setPlaceholderText("闹钟名称")
+        self.label_edit.setText(alarm.label if alarm else "Alarm")
+        layout.addRow("标签:", self.label_edit)
+
+        # 时间
+        self.time_edit = QTimeEdit()
+        self.time_edit.setDisplayFormat("HH:mm")
+        if alarm:
+            time_parts = alarm.time.split(":")
+            self.time_edit.setTime(QTime(int(time_parts[0]), int(time_parts[1])))
+        else:
+            self.time_edit.setTime(QTime.currentTime().addSecs(3600))  # 默认1小时后
+        layout.addRow("时间:", self.time_edit)
+
+        # 声音选择
+        sound_layout = QHBoxLayout()
+        self.sound_combo = QComboBox()
+        from accelworld_alarm import PresetSound
+        self.sound_combo.addItems(PresetSound.display_names())
+        sound_layout.addWidget(self.sound_combo)
+
+        self.custom_sound_button = QPushButton("自定义...")
+        self.custom_sound_button.clicked.connect(self.select_custom_sound)
+        sound_layout.addWidget(self.custom_sound_button)
+
+        # 根据已有闹钟初始化声音设置
+        self.sound_type = "preset"
+        self.sound_value = "classic"
+
+        if alarm:
+            if alarm.sound_type == "custom":
+                self.sound_type = "custom"
+                self.sound_value = alarm.sound_value
+            else:
+                # 预设声音：根据 sound_value 找到对应索引
+                self.sound_value = alarm.sound_value
+                preset_list = list(PresetSound)
+                for idx, preset in enumerate(preset_list):
+                    if preset.value == alarm.sound_value:
+                        self.sound_combo.setCurrentIndex(idx)
+                        break
+
+        sound_widget = QWidget()
+        sound_widget.setLayout(sound_layout)
+        layout.addRow("声音:", sound_widget)
+
+        # 重复设置
+        repeat_layout = QHBoxLayout()
+        repeat_layout.setSpacing(5)
+        self.repeat_checkboxes = []
+        days = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+        for i, day in enumerate(days):
+            checkbox = QCheckBox(day)
+            checkbox.setFixedWidth(45)
+            checkbox.setToolTip(days[i])
+            if alarm and i in alarm.repeat_days:
+                checkbox.setChecked(True)
+            repeat_layout.addWidget(checkbox)
+            self.repeat_checkboxes.append(checkbox)
+
+        repeat_widget = QWidget()
+        repeat_widget.setLayout(repeat_layout)
+        layout.addRow("重复:", repeat_widget)
+
+        # 按钮
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+
+    def select_custom_sound(self) -> None:
+        """选择自定义音频文件"""
+        from accelworld_alarm import SUPPORTED_AUDIO_FORMATS
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "选择闹钟声音", "", SUPPORTED_AUDIO_FORMATS
+        )
+        if file_path:
+            self.sound_type = "custom"
+            self.sound_value = file_path
+            import os
+            self.custom_sound_button.setText(f"📁 {os.path.basename(file_path)[:15]}")
+
+    def get_alarm_data(self) -> Dict[str, Any]:
+        """获取闹钟数据"""
+        # 获取时间
+        time_obj = self.time_edit.time()
+        time_str = f"{time_obj.hour():02d}:{time_obj.minute():02d}"
+
+        # 获取重复天数
+        repeat_days = [i for i, cb in enumerate(self.repeat_checkboxes) if cb.isChecked()]
+
+        # 获取声音值
+        from accelworld_alarm import PresetSound
+        if self.sound_type == "preset":
+            sound_value = list(PresetSound)[self.sound_combo.currentIndex()].value
+        else:
+            sound_value = self.sound_value
+
+        return {
+            "label": self.label_edit.text().strip() or "新闹钟",
+            "time": time_str,
+            "sound_type": self.sound_type,
+            "sound_value": sound_value,
+            "repeat_days": repeat_days,
+            "enabled": True,
+        }
 
 
 def main_gui(**kwargs) -> None:
