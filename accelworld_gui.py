@@ -830,6 +830,8 @@ class AcceleratedWorldGUI(QMainWindow):
 
     def check_alarms(self) -> None:
         """检查是否需要触发闹钟"""
+        if self.alarm_manager is None:
+            return
         import datetime
         now = datetime.datetime.now()
         triggered = self.alarm_manager.check_alarms(now)
