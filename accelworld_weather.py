@@ -8,7 +8,11 @@ API 文档: https://open-meteo.com/
 import urllib.request
 import json
 import re
+import logging
 from typing import Optional, Tuple, Dict, Any
+
+# 配置日志
+logger = logging.getLogger(__name__)
 
 # 默认城市（可配置）
 DEFAULT_CITY = {
@@ -138,7 +142,7 @@ def get_weather_by_coords(lat: float, lon: float) -> Optional[Dict[str, Any]]:
             "icon": WEATHER_CODES.get(weather_code, ("未知", "Unknown", "🌡️"))[2],
         }
     except Exception as e:
-        print(f"获取天气信息失败: {e}")
+        logger.error(f"获取天气信息失败: {e}")
         return None
 
 

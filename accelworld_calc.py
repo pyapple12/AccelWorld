@@ -7,7 +7,7 @@ import argparse
 from accelworld_date import get_chinese_date, get_lunar_info
 
 # 程序版本号
-VERSION = "ver 0.41"
+VERSION = "ver 0.42"
 
 class AcceleratedWorld:
     """加速世界 - 基于时间膨胀倍率的自定义小时制时间显示核心类"""
@@ -146,7 +146,13 @@ def main_cli() -> None:
     )
     
     args = parser.parse_args()
-    
+
+    # 验证 --rate 参数
+    if args.rate < 1.0:
+        print("错误: --rate 参数必须大于或等于 1.0")
+        print("例如: python accelworld.py --cli --rate 2.0")
+        sys.exit(1)
+
     try:
         # 初始化时间膨胀倍率
         accel_world = AcceleratedWorld(time_dilation_rate=args.rate)

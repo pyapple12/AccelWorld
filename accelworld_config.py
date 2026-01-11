@@ -6,7 +6,11 @@
 
 import json
 import os
+import logging
 from typing import Any, Dict, Optional, Union, List
+
+# 配置日志
+logger = logging.getLogger(__name__)
 
 # 配置文件路径
 CONFIG_DIR = os.path.expanduser("~/.config/accelworld")
@@ -51,7 +55,7 @@ def load_config() -> Dict[str, Any]:
             merged.update(config)
             return merged
     except (json.JSONDecodeError, IOError) as e:
-        print(f"加载配置文件失败: {e}")
+        logger.error(f"加载配置文件失败: {e}")
         return DEFAULT_CONFIG.copy()
 
 
@@ -70,7 +74,7 @@ def save_config(config: Dict[str, Any]) -> bool:
             json.dump(config, f, ensure_ascii=False, indent=4)
         return True
     except IOError as e:
-        print(f"保存配置文件失败: {e}")
+        logger.error(f"保存配置文件失败: {e}")
         return False
 
 

@@ -11,7 +11,7 @@
   python accelworld.py --hidden             # 启动后隐藏到托盘
   python accelworld.py --theme dark         # 使用暗色主题
 
-版本：ver 0.40
+版本：ver 0.42
 """
 
 import sys
@@ -79,6 +79,12 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # 验证 --rate 参数
+    if args.rate is not None and args.rate < 1.0:
+        print("错误: --rate 参数必须大于或等于 1.0")
+        print("例如: python accelworld.py --rate 2.0")
+        sys.exit(1)
 
     # 判断运行模式
     run_cli = args.cli or any(arg in sys.argv for arg in ["--cli", "-c"])

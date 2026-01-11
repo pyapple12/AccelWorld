@@ -1,4 +1,8 @@
 from typing import List, Dict, Any
+import logging
+
+# 配置日志
+logger = logging.getLogger(__name__)
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -12,7 +16,7 @@ from PyQt6.QtCore import Qt, QTimer, QSize, QTime
 from PyQt6.QtGui import QFont, QDoubleValidator, QIcon
 
 # 程序版本号
-VERSION = "ver 0.41"
+VERSION = "ver 0.42"
 
 # ------------------- 主题样式定义 -------------------
 LIGHT_THEME = """
@@ -896,7 +900,7 @@ class AcceleratedWorldGUI(QMainWindow):
             world_time = datetime.datetime.now(tz).strftime("%H:%M:%S")
             self.world_clock_label.setText(world_time)
         except Exception as e:
-            print(f"更新世界时钟时出错: {e}")
+            logger.error(f"更新世界时钟时出错: {e}")
             self.world_clock_label.setText("00:00:00")
 
     def on_city_changed(self, city_name: str) -> None:
@@ -916,7 +920,7 @@ class AcceleratedWorldGUI(QMainWindow):
                 self.weather_info_label.setText("天气获取失败")
                 self.weather_icon_label.setText("❓")
         except Exception as e:
-            print(f"更新天气时出错: {e}")
+            logger.error(f"更新天气时出错: {e}")
             self.weather_info_label.setText("天气获取失败")
             self.weather_icon_label.setText("❓")
 
@@ -974,7 +978,7 @@ class AcceleratedWorldGUI(QMainWindow):
                 self.check_alarms()
 
         except Exception as e:
-            print(f"更新时钟时出错: {e}")
+            logger.error(f"更新时钟时出错: {e}")
             import traceback
             traceback.print_exc()
 
