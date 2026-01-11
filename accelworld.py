@@ -11,7 +11,7 @@
   python accelworld.py --hidden             # 启动后隐藏到托盘
   python accelworld.py --theme dark         # 使用暗色主题
 
-版本：ver 0.42
+版本：ver 0.43
 """
 
 import sys
