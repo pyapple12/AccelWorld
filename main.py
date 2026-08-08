@@ -1,23 +1,20 @@
 #!/usr/bin/env python3
-"""
-加速世界 - 主程序入口文件（CLI/GUI 统一分发，用法示例见 --help epilog，S10.12 F3 去重）
-"""
-
+# 加速世界 - 主程序入口文件（CLI/GUI 统一分发，用法示例见 --help epilog，S10.12 F3 去重）
 import argparse
 import sys
 
 from config.static.static_config import get_static_config
 from utils.file_utils import get_project_root
+from utils.logger import setup_logging
+from modules.time_dilation import main_cli
+from ui.main_window import main_gui
 
 
 def main() -> None:
-    """主程序入口函数：初始化日志、解析参数、分发 CLI/GUI"""
     # 静态配置（倍率范围/默认值/日志路径等参数来源）
     base = get_static_config().base
 
     # 初始化统一日志（日志目录/保留天数从静态配置传入，utils 层零业务依赖 S10.4 D1）
-    from utils.logger import setup_logging
-
     setup_logging(
         log_dir=get_project_root() / base["logs_dir"],
         backup_days=int(base["log_backup_days"]),
@@ -79,17 +76,13 @@ def main() -> None:
 
     # 判断运行模式（run_cli 一行别名已内联，S10.11 C4）
     if args.cli:
-        # 运行命令行界面
-        from modules.time_dilation import main_cli
-
+        # 运行命令行界面（顶层 import，无模块会 import main，按需加载收益不存在）
         if args.rate is not None:
             main_cli(rate=args.rate)
         else:
             main_cli()
     else:
         # 运行图形界面
-        from ui.main_window import main_gui
-
         # 构建启动参数（可选参数推导式过滤 None，hidden 布尔单独处理）
         gui_args = {
             k: v

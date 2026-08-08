@@ -11,14 +11,11 @@ _UI = get_static_config().ui
 
 
 class SystemTray(QSystemTrayIcon):
-    """系统托盘：图标绘制、菜单（显示/隐藏/倍率/退出）与通知"""
-
     show_requested = pyqtSignal()  # 请求显示窗口
     hide_requested = pyqtSignal()  # 请求隐藏到托盘
     quit_requested = pyqtSignal()  # 请求退出程序
 
     def __init__(self, parent=None):
-        """创建托盘图标与菜单"""
         # 初始化图标/菜单/双击监听后显示托盘（版本来自静态配置，单一来源）
         super().__init__(parent)
         self.setToolTip(f"加速世界 - {get_static_config().base['version']}")
@@ -28,7 +25,6 @@ class SystemTray(QSystemTrayIcon):
         self.show()
 
     def _create_icon(self) -> None:
-        """绘制 32x32 蓝色圆形时钟图标"""
         # QPainter 画圆底+指针，透明背景（颜色来自静态配置）
         pixmap = QPixmap(32, 32)
         pixmap.fill(Qt.GlobalColor.transparent)  # 透明背景
@@ -51,7 +47,6 @@ class SystemTray(QSystemTrayIcon):
         self.setIcon(QIcon(pixmap))
 
     def _create_menu(self) -> None:
-        """创建托盘右键菜单"""
         # 菜单动作经信号转发给主窗口处理
         self.tray_menu = QMenu()
 
@@ -79,20 +74,17 @@ class SystemTray(QSystemTrayIcon):
         self.setContextMenu(self.tray_menu)
 
     def _on_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
-        """托盘图标激活回调：双击显示窗口"""
         # 仅响应 DoubleClick，其他激活原因忽略
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
             self.show_requested.emit()
 
     def update_rate(self, rate: float) -> None:
-        """更新菜单中显示的当前倍率"""
         # 倍率变化时同步只读菜单项文本
         self.rate_action.setText(f"当前倍率: {rate:.1f}x")
 
     def show_notification(
         self, title: str, message: str, icon_kind: str = "info"
     ) -> None:
-        """显示系统通知（icon_kind: info/warning）"""
         # 图标类型映射后展示，时长来自静态配置（E13 参数化）
         icon_map = {
             "info": QSystemTrayIcon.MessageIcon.Information,

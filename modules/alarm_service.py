@@ -21,8 +21,6 @@ logger = logging.getLogger(__name__)
 
 
 class PresetSound(Enum):
-    """预设铃声枚举"""
-
     CLASSIC = "classic"
     GENTLE = "gentle"
     BEEP = "beep"
@@ -30,13 +28,11 @@ class PresetSound(Enum):
 
     @classmethod
     def display_names(cls) -> List[str]:
-        """获取显示名称列表"""
         # 按枚举顺序自动生成（value.title()），避免硬编码列表与枚举顺序错位（E3）
         return [m.value.title() for m in cls]
 
     @classmethod
     def from_value(cls, value: str) -> "PresetSound":
-        """根据值获取枚举成员（未知值兜底 CLASSIC）"""
         # 忽略大小写匹配枚举值，未命中返回默认铃声
         for member in cls:
             if member.value == value.lower():
@@ -75,20 +71,6 @@ SUPPORTED_AUDIO_FORMATS = (
 
 @dataclass
 class Alarm:
-    """
-    闹钟数据类
-
-    属性:
-        id: 唯一标识符
-        label: 闹钟标签
-        time: 触发时间 (HH:MM 格式)
-        enabled: 是否启用
-        sound_type: 声音类型 ("preset" 或 "custom")
-        sound_value: 声音值 (预设音效名或自定义文件路径)
-        repeat_days: 重复天数列表 (0=周一, 6=周日, 空列表表示不重复)
-        created_at: 创建时间
-    """
-
     label: str
     time: str  # HH:MM 格式
     sound_type: Literal["preset", "custom"] = "preset"
@@ -99,14 +81,12 @@ class Alarm:
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
     def __post_init__(self) -> None:
-        """验证和规范化数据"""
         # 时间格式非法直接拒绝构造，保证后续匹配逻辑安全
         if not self._validate_time(self.time):
             raise ValueError(f"Invalid time format: {self.time}, expected HH:MM")
 
     @staticmethod
     def _validate_time(t: str) -> bool:
-        """验证时间格式"""
         # 无冒号时补 :00 再走 fromisoformat 校验
         try:
             time.fromisoformat(t if ":" in t else t + ":00")
@@ -115,12 +95,6 @@ class Alarm:
             return False
 
     def should_trigger_on(self, check_time: datetime) -> bool:
-        """
-        检查是否应该在指定时间触发
-
-        :param check_time: 要检查的时间
-        :return: 是否应该触发
-        """
         # 启用检查 → 时分匹配 → 重复规则：一次性仅创建当天触发，重复闹钟按星期
         if not self.enabled:
             return False
@@ -150,18 +124,15 @@ class Alarm:
         return check_time.weekday() in self.repeat_days
 
     def to_dict(self) -> Dict[str, Any]:
-        """转换为字典（用于 JSON 序列化）"""
         # asdict 递归转 dict（标准库一行调用，无需包装层）
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> Optional["Alarm"]:
-        """从字典创建（用于 JSON 反序列化），未知键过滤，非法数据返回 None"""
         # 委托通用工具（容错模式）：非法 time 返回 None 由调用方跳过
         return dataclass_from_dict(cls, data, tolerant=True)
 
     def is_one_time(self) -> bool:
-        """是否为一次性闹钟（不重复）"""
         # 无重复天数即为一次性
         return len(self.repeat_days) == 0
 
@@ -171,7 +142,6 @@ class Alarm:
 
 
 def play_preset_sound(preset: PresetSound) -> None:
-    """播放预设铃声（winsound 蜂鸣组合，阻塞式）"""
     # 按预设频率/次数/间隔循环 Beep，调用方应经 audio_player 的 async 入口后台化
     try:
         frequency, repeat_count, interval = _PRESET_SOUND_CONFIG.get(
@@ -197,8 +167,6 @@ def _trigger_key(check_time: datetime) -> str:
 
 
 class AlarmManager:
-    """闹钟管理器"""
-
     def __init__(self) -> None:
         # 空列表启动；上限来自静态配置；_last_triggered 存"日期+分钟"触发去重记录
         self.alarms: List[Alarm] = []
@@ -208,12 +176,6 @@ class AlarmManager:
         ] = {}  # alarm_id -> "YYYY-MM-DD HH:MM"（含日期维度，S8.1）
 
     def add_alarm(self, alarm: Alarm) -> bool:
-        """
-        添加闹钟
-
-        :param alarm: 闹钟对象
-        :return: 是否添加成功
-        """
         # 上限校验 + 同时间同标签去重（失败经日志记录，GUI 弹窗提示由面板层负责）
         if len(self.alarms) >= self.max_alarms:
             logger.warning(f"已达到最大闹钟数量限制 ({self.max_alarms})")
@@ -229,7 +191,6 @@ class AlarmManager:
         return True
 
     def remove_alarm(self, alarm_id: str) -> bool:
-        """按 ID 移除闹钟（同步清理触发去重记录）"""
         # 线性查找并 remove，同时清理 _last_triggered 防止残留
         for alarm in self.alarms:
             if alarm.id == alarm_id:
@@ -239,7 +200,6 @@ class AlarmManager:
         return False
 
     def get_alarm(self, alarm_id: str) -> Optional[Alarm]:
-        """按 ID 获取闹钟"""
         # 线性查找，未命中返回 None
         for alarm in self.alarms:
             if alarm.id == alarm_id:
@@ -247,7 +207,6 @@ class AlarmManager:
         return None
 
     def replace_alarm(self, alarm: Alarm) -> bool:
-        """整体替换闹钟（编辑场景，按 ID 定位）"""
         # 编辑对话框保留原 ID 构造新对象，此处原位替换
         for i, existing in enumerate(self.alarms):
             if existing.id == alarm.id:
@@ -256,7 +215,6 @@ class AlarmManager:
         return False
 
     def toggle_alarm(self, alarm_id: str) -> bool:
-        """切换闹钟启用状态"""
         # 取到对象后翻转 enabled
         alarm = self.get_alarm(alarm_id)
         if alarm:
@@ -265,12 +223,6 @@ class AlarmManager:
         return False
 
     def check_alarms(self, check_time: datetime) -> List[Alarm]:
-        """
-        检查指定时间应该触发的闹钟
-
-        :param check_time: 要检查的时间
-        :return: 应该触发的闹钟列表
-        """
         # 去重键含日期维度（经 _trigger_key），跨天不误判；命中即标记
         time_str = _trigger_key(check_time)
         triggered = []
@@ -292,12 +244,10 @@ class AlarmManager:
         return triggered
 
     def to_dict_list(self) -> List[Dict[str, Any]]:
-        """转换为字典列表（供 JSON 序列化）"""
         # 逐闹钟 to_dict 收集
         return [alarm.to_dict() for alarm in self.alarms]
 
     def from_dict_list(self, data: List[Dict[str, Any] | None]) -> None:
-        """从字典列表加载（供 JSON 反序列化），非法条目跳过不阻断整体加载"""
         # 空条目与构造失败（from_dict 返回 None）的闹钟过滤后加载
         loaded: List[Alarm] = []
         for item in data:

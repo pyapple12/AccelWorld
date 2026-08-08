@@ -19,8 +19,6 @@ from config.static.static_config import get_static_config
 
 @dataclass
 class TimeInfo:
-    """时间信息数据类（聚合 get_custom_time 的 7 个返回字段）"""
-
     standard_datetime: str  # 标准日期时间字符串
     custom_time: str  # 自定义时间字符串
     chinese_date: str  # 中文日期字符串（YYYY年MM月DD日 星期X）
@@ -46,8 +44,6 @@ class TimeInfo:
 
 
 class AcceleratedWorld:
-    """加速世界 - 基于时间膨胀倍率的自定义小时制时间显示核心类"""
-
     time_dilation_rate: float
     """时间膨胀倍率（下限来自静态配置 rate_min，默认 default_rate）"""
 
@@ -55,7 +51,6 @@ class AcceleratedWorld:
     """基于膨胀率计算的一天总小时数"""
 
     def __init__(self, time_dilation_rate: float | None = None):
-        """初始化时间膨胀倍率（默认值与下限校验均来自静态配置）"""
         # None 哨兵避免默认参数在定义时求值硬编码；下限读 base.rate_min（消除与配置的 1.0 边界矛盾）
         base = get_static_config().base
         if time_dilation_rate is None:
@@ -72,7 +67,6 @@ class AcceleratedWorld:
         )
 
     def get_custom_time(self) -> TimeInfo:
-        """计算当前自定义时间与标准时间，聚合为 TimeInfo 返回（秒级缓存）"""
         # 同秒内直接返回缓存，避免 GUI 10Hz tick 重复农历全量计算（S9.3）
         # 基于当前时刻秒数 × 倍率得到自定义秒数，再拆分时分秒
         # 获取当前系统时间（带毫秒精度）
@@ -140,7 +134,6 @@ class AcceleratedWorld:
         return info
 
     def run_live_clock(self) -> None:
-        """运行 CLI 实时时钟：循环刷新标准/自定义时间，Ctrl+C 退出"""
         # 秒数变化时整行覆写输出，10ms 轮询平衡精度与 CPU
         print(
             f"=== 加速世界 | 时间膨胀倍率{self.time_dilation_rate}倍 | "
@@ -196,7 +189,6 @@ class AcceleratedWorld:
 
 # ------------------- 命令行界面 -------------------
 def main_cli(rate: float | None = None) -> None:
-    """命令行主函数：校验倍率并启动实时时钟（倍率直接传参）"""
     # 倍率默认值来自静态配置，下限校验非法则退出
     if rate is None:
         rate = float(get_static_config().base["default_rate"])

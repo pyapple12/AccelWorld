@@ -19,8 +19,6 @@ _setup_done = False
 
 
 class _DailyFileHandler(logging.FileHandler):
-    """每日独立文件 handler：写日志时检查日期，跨天自动切换到新日期文件"""
-
     def __init__(self, log_dir: Path):
         # 初始化当日文件路径（文件名含日期戳）
         self.log_dir = Path(log_dir)

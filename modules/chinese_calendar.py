@@ -73,8 +73,6 @@ _WEEKDAY_NAMES = {
 
 @dataclass
 class LunarInfo:
-    """农历信息数据类（聚合农历计算的 10 个字段）"""
-
     lunar_year: str  # 天干地支年（如"丙午年"）
     shengxiao: str  # 生肖
     lunar_month: str  # 农历月（中文）
@@ -89,7 +87,6 @@ class LunarInfo:
 
 # 农历计算核心函数
 def get_chinese_lunar_calendar(year: int, month: int, day: int, hour: int) -> LunarInfo:
-    """计算农历信息：干支/生肖/月日/时辰/月相/节气/节日/财神方位"""
     # lunar-python 提供干支生肖月日，chinese-calendar 兜底节假日，自定义表兜底
     # 使用lunar-python获取农历信息
     solar = Solar.fromYmdHms(year, month, day, hour, 0, 0)
@@ -164,13 +161,11 @@ def get_chinese_lunar_calendar(year: int, month: int, day: int, hour: int) -> Lu
 
 
 def get_chinese_date(now: datetime.datetime) -> str:
-    """将 datetime 转为中文日期字符串（YYYY年MM月DD日 星期X）"""
     # 星期映射后经 strftime 格式化
     return now.strftime(f"%Y年%m月%d日 {_WEEKDAY_NAMES[now.weekday()]}")
 
 
 def get_lunar_info(now: datetime.datetime) -> str:
-    """获取农历信息展示字符串（干支/生肖/月日/时辰/月相/节气/节日/财神）"""
     # 委托 get_chinese_lunar_calendar 后按固定格式拼接，空字段跳过
     year = now.year
     month = now.month

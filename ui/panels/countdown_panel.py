@@ -26,10 +26,7 @@ _UI = get_static_config().ui
 
 
 class CountdownPanel(QWidget):
-    """倒计时面板：目标时间输入、日期/时间选择器、倒计时显示"""
-
     def __init__(self, parent: QWidget | None = None):
-        """初始化倒计时控件与内部状态"""
         # 目标时间内部态初始为 None；选择器只改写输入框文本
         super().__init__(parent)
 
@@ -96,7 +93,6 @@ class CountdownPanel(QWidget):
         outer.addWidget(countdown_frame)
 
     def set_countdown(self) -> None:
-        """解析输入框并设置倒计时目标时间"""
         # 三种长度格式解析；过期目标拒绝并置 None
         target_text = self.countdown_target.text().strip()
         if not target_text:
@@ -138,14 +134,12 @@ class CountdownPanel(QWidget):
         self.update_countdown()
 
     def clear_countdown(self) -> None:
-        """清除倒计时"""
         # 目标置 None、标签复位、输入框清空
         self.countdown_target_date = None
         self.countdown_label.setText("--天 --:--:--:--")
         self.countdown_target.clear()
 
     def update_countdown(self) -> None:
-        """刷新倒计时显示（由主窗口时钟 tick 调用）"""
         # 剩余拆天/时/分/秒；结束红色、进行绿色
         if not self.countdown_target_date:
             return
@@ -171,14 +165,12 @@ class CountdownPanel(QWidget):
         self.countdown_label.setStyleSheet("color: " + _UI["colors"]["primary"] + ";")
 
     def get_target_text(self) -> str:
-        """获取当前倒计时目标文本（供配置保存，未设置时返回空串）"""
         # 仅在目标已设置时返回输入框文本
         if self.countdown_target_date:
             return self.countdown_target.text().strip()
         return ""
 
     def show_date_picker(self) -> None:
-        """显示日期选择器对话框（仅更新输入框日期部分）"""
         # 弹窗选日期，保留输入框已有时间部分
         dialog = QDialog(self)
         dialog.setWindowTitle("选择日期")
@@ -241,7 +233,6 @@ class CountdownPanel(QWidget):
                 )
 
     def show_time_picker(self) -> None:
-        """显示时间选择器对话框（仅更新输入框时间部分）"""
         # 弹窗选时间，日期取输入框或今天
         # 使用输入框中的日期，为空则使用今天
         current_text = self.countdown_target.text().strip()

@@ -61,12 +61,12 @@
 > 2026-08-08 AGENTS.md 更新规则：**禁止 docstring（三引号）写注释**，函数/类/模块文档统一走 `#` 注释体系（docstring 不承担注释职责，单行 docstring 当注释用属违规，`.temp/verify_s11.py` 自动检测）
 > AST 全量扫描（排除 .venv/.history）：**127 处 docstring 违规 / 19 个文件**，全部需删除 docstring（其内容并入函数下 `#` 注释或文件末尾 `# =====` 说明区）
 
-- [ ] S10.13 modules 层 35 处：`alarm_service.py`（20：PresetSound/Alarm/AlarmManager 类 + display_names/from_value/**post_init**/_validate_time/should_trigger_on/to_dict/from_dict/is_one_time/play_preset_sound/add_alarm/remove_alarm/get_alarm/replace_alarm/toggle_alarm/check_alarms/to_dict_list/from_dict_list）、`time_dilation.py`（6：TimeInfo/AcceleratedWorld 类 + **init**/get_custom_time/run_live_clock/main_cli）、`chinese_calendar.py`（4：LunarInfo 类 + 3 函数）、`weather_service.py`（5：WeatherData 类 + 4 函数）
-- [ ] S10.14 ui 层 30 处：`main_window.py`（16：类 + 15 函数）、`alarm_dialog.py`（4）、`audio_player.py`（3）、`system_tray.py`（7）
-- [ ] S10.15 ui/panels 层 46 处：`alarm_panel.py`（13）、`clock_panel.py`（7）、`countdown_panel.py`（8）、`date_panel.py`（3）、`weather_panel.py`（10）、`world_clock_panel.py`（5）
-- [ ] S10.16 config/data/utils 层 14 处：`settings.py`（11）、`static_config.py`（1）、`weather_codes.py`（1）、`logger.py`（1）
-- [ ] S10.17 main.py 2 处：模块级 docstring（文件头三引号）+ `main()`
-- [ ] S10.18 验证：AST docstring 扫描 0 处 + `.temp/verify_s11.py`（若创建）0 违规 + pytest 全量 + 全模块导入
+- [x] S10.13 modules 层 35 处：`alarm_service.py`（20：PresetSound/Alarm/AlarmManager 类 + display_names/from_value/**post_init**/_validate_time/should_trigger_on/to_dict/from_dict/is_one_time/play_preset_sound/add_alarm/remove_alarm/get_alarm/replace_alarm/toggle_alarm/check_alarms/to_dict_list/from_dict_list）、`time_dilation.py`（6：TimeInfo/AcceleratedWorld 类 + **init**/get_custom_time/run_live_clock/main_cli）、`chinese_calendar.py`（4：LunarInfo 类 + 3 函数）、`weather_service.py`（5：WeatherData 类 + 4 函数）
+- [x] S10.14 ui 层 30 处：`main_window.py`（16：类 + 15 函数）、`alarm_dialog.py`（4）、`audio_player.py`（3）、`system_tray.py`（7）
+- [x] S10.15 ui/panels 层 46 处：`alarm_panel.py`（13）、`clock_panel.py`（7）、`countdown_panel.py`（8）、`date_panel.py`（3）、`weather_panel.py`（10）、`world_clock_panel.py`（5）
+- [x] S10.16 config/data/utils 层 14 处：`settings.py`（11）、`static_config.py`（1）、`weather_codes.py`（1）、`logger.py`（1）
+- [x] S10.17 main.py 2 处：模块级 docstring（文件头三引号）+ `main()`
+- [x] S10.18 验证：AST docstring 扫描 0 处 + `.temp/verify_s11.py`（若创建）0 违规 + pytest 全量 + 全模块导入
 
 ### 验证（每项完成后执行）
 

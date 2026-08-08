@@ -26,12 +26,9 @@ _UI = get_static_config().ui
 
 
 class ClockPanel(QWidget):
-    """时钟面板：显示标准/加速时间、进度条、参数标签，并提供倍率设置入口"""
-
     rate_changed = pyqtSignal(float)  # 倍率变化信号（滑杆/输入框共用）
 
     def __init__(self, parent: QWidget | None = None):
-        """初始化面板布局与控件"""
         # 构建显示区（时间/进度/参数）与设置区（滑杆/输入/按钮）
         super().__init__(parent)
 
@@ -137,7 +134,6 @@ class ClockPanel(QWidget):
         layout.addWidget(input_frame)
 
     def update_time(self, info: TimeInfo) -> None:
-        """刷新时钟显示（标准/加速时间、参数标签、进度条）"""
         # 由主窗口 tick 传入 TimeInfo，经计算属性取值更新标签与进度条
         self.standard_time_label.setText(f"标准时间: {info.standard_time}")
         self.accelerated_time_label.setText(f"加速时间: {info.custom_time}")
@@ -152,18 +148,15 @@ class ClockPanel(QWidget):
         self.progress_bar.setValue(current_hour)
 
     def set_progress_style(self, qss: str) -> None:
-        """设置进度条样式（主题切换时由主窗口调用）"""
         # 直接应用传入的 QSS 常量
         self.progress_bar.setStyleSheet(qss)
 
     def set_rate(self, rate: float) -> None:
-        """同步设置倍率（启动参数/外部调用），经滑杆触发 rate_changed"""
         # 滑杆 setValue 触发 on_slider_change → 信号链自动生效（标签由信号链统一更新）
         self.slider.setValue(int(round(rate * 10)))
         self.rate_entry.setText("")
 
     def on_slider_change(self, value: int) -> None:
-        """滑杆值变化回调：同步标签并发出倍率变化信号"""
         # 值÷10 还原倍率，输入框同步显示两位小数
         slider_value = value / 10.0
         self.slider_value_label.setText(f"{slider_value:.1f}x")
@@ -171,7 +164,6 @@ class ClockPanel(QWidget):
         self.rate_changed.emit(slider_value)
 
     def apply_acceleration(self) -> None:
-        """应用输入框倍率：解析验证后发出信号并同步滑杆"""
         # 输入框优先，为空时取滑杆值；非法输入弹窗提示
         rate_text = self.rate_entry.text().strip()
         if not rate_text:

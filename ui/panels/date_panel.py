@@ -11,10 +11,7 @@ _UI = get_static_config().ui
 
 
 class DatePanel(QWidget):
-    """日期面板：显示中文日期与农历信息"""
-
     def __init__(self, parent: QWidget | None = None):
-        """初始化日期与农历标签"""
         # 构建日期/农历显示 frame，初始为占位文案
         super().__init__(parent)
 
@@ -39,7 +36,6 @@ class DatePanel(QWidget):
         outer.addWidget(date_frame)
 
     def update_time(self, info: TimeInfo) -> None:
-        """刷新日期与农历显示"""
         # 由主窗口 tick 传入 TimeInfo，直接更新两个标签
         self.date_label.setText(info.chinese_date)
         self.lunar_info_label.setText(info.lunar_info)

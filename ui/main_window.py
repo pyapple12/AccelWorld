@@ -36,10 +36,7 @@ from ui.panels.alarm_panel import AlarmPanel
 
 
 class AcceleratedWorldGUI(QMainWindow):
-    """加速世界图形界面主窗口 - 面板装配器"""
-
     def __init__(self):
-        """初始化窗口：加载配置、装配面板、连接信号、启动定时器与托盘"""
         # 配置→面板装配→信号→闹钟/天气/倒计时恢复→定时器→主题→托盘
         super().__init__()
 
@@ -129,7 +126,6 @@ class AcceleratedWorldGUI(QMainWindow):
     # ------------------- 时钟调度 -------------------
 
     def update_clock(self) -> None:
-        """时钟 tick：获取时间信息并分发到各面板刷新"""
         # 100ms 定时器驱动，异常不外抛仅记录日志
         try:
             info = self.accel_world.get_custom_time()
@@ -144,13 +140,11 @@ class AcceleratedWorldGUI(QMainWindow):
     # ------------------- 倍率处理 -------------------
 
     def _on_rate_changed(self, rate: float) -> None:
-        """倍率变化信号处理：重建核心实例并更新托盘显示"""
         # 面板信号触发，统一走 _update_acceleration_rate 校验保存
         self._update_acceleration_rate(rate)
         self.tray.update_rate(self.accel_world.time_dilation_rate)
 
     def _update_acceleration_rate(self, rate: float) -> None:
-        """更新加速倍率（内部方法，同步持久化到配置）"""
         # 验证倍率是否在有效范围内（范围来自静态配置）
         base = get_static_config().base
         if not (base["rate_min"] <= rate <= base["rate_max"]):
@@ -163,12 +157,10 @@ class AcceleratedWorldGUI(QMainWindow):
     # ------------------- 闹钟处理 -------------------
 
     def _save_alarms(self) -> None:
-        """闹钟列表变更持久化"""
         # alarm_saved 信号回调，导出管理器列表写入配置
         save_alarms(self.alarm_panel.to_dict_list())
 
     def _on_alarm_triggered(self, alarm: Alarm) -> None:
-        """闹钟触发处理：异步播放声音、通知、一次性闹钟自动禁用"""
         # 异步播放（预设铃声在后台线程，UI 不冻结）
         play_alarm_sound_async(alarm)
 
@@ -185,13 +177,11 @@ class AcceleratedWorldGUI(QMainWindow):
     # ------------------- 主题 -------------------
 
     def toggle_theme(self) -> None:
-        """切换主题"""
         # 翻转状态后应用样式
         self.is_dark_theme = not self.is_dark_theme
         self.apply_theme()
 
     def apply_theme(self) -> None:
-        """应用当前主题（主窗口 QSS + 进度条样式 + 主题按钮图标）"""
         # 深浅主题三处联动：窗口样式、进度条、按钮图标
         if self.is_dark_theme:
             self.setStyleSheet(DARK_THEME)
@@ -204,7 +194,6 @@ class AcceleratedWorldGUI(QMainWindow):
     # ------------------- 托盘/窗口 -------------------
 
     def hide_to_tray(self) -> None:
-        """隐藏到系统托盘"""
         # 隐藏窗口并弹托盘通知提示
         self.hide()
         self.tray.show_notification(
@@ -214,20 +203,19 @@ class AcceleratedWorldGUI(QMainWindow):
         )
 
     def show_normal(self) -> None:
-        """显示窗口"""
         # 显示并置顶激活
         self.show()
         self.raise_()
         self.activateWindow()
 
     def quit_app(self) -> None:
-        """退出程序（先保存设置）"""
         # 保存后退出事件循环
         self.save_settings()
         QApplication.quit()
 
-    def closeEvent(self, a0: QCloseEvent) -> None:
-        """关闭窗口事件 - 最小化到托盘而非退出"""
+    def closeEvent(self, a0: QCloseEvent) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
+        # 行级忽略说明：PyQt6 stub 将参数标为 QCloseEvent|None，Qt 运行时恒传有效对象，
+        # 改签名会引发函数体内 Optional 成员访问连锁报错，故局部压制（收紧检查策略）
         # 托盘可见时拦截为隐藏；否则保存设置放行退出
         if self.tray.isVisible():
             self.hide_to_tray()
@@ -238,7 +226,6 @@ class AcceleratedWorldGUI(QMainWindow):
             a0.accept()
 
     def save_settings(self) -> None:
-        """保存当前设置"""
         # 合并字段单次写盘（E11：原 4 次 set_setting 各写一次，现 load 后改字段一次 save_config）
         config = load_config()
         config.time_dilation_rate = self.accel_world.time_dilation_rate
@@ -246,8 +233,8 @@ class AcceleratedWorldGUI(QMainWindow):
         config.last_timezone = self.world_clock_panel.current_timezone()
         config.countdown_target = self.countdown_panel.get_target_text()
         save_config(config)
-        # 窗口几何经既有 base64 封装单独落盘（保持编码/异常处理内聚）
-        save_window_geometry(self.saveGeometry())
+        # 窗口几何经既有 base64 封装单独落盘（QByteArray 运行时支持 bytes()，stub 未标注 Buffer 协议）
+        save_window_geometry(bytes(self.saveGeometry()))  # pyright: ignore[reportArgumentType]
 
     def apply_startup_args(
         self,
@@ -255,13 +242,6 @@ class AcceleratedWorldGUI(QMainWindow):
         theme: str | None = None,
         city: str | None = None,
     ) -> None:
-        """
-        应用启动参数（rate/theme/city）
-
-        :param rate: 时间膨胀倍率
-        :param theme: 主题 ("light" 或 "dark")
-        :param city: 默认城市
-        """
         # 应用倍率（面板 set_rate 触发 rate_changed → 重建+保存+托盘更新，无需重复 update_rate，F1）
         if rate is not None:
             self.clock_panel.set_rate(rate)
@@ -277,15 +257,6 @@ class AcceleratedWorldGUI(QMainWindow):
 
 
 def main_gui(**kwargs: Any) -> None:
-    """
-    图形界面主函数
-
-    :param kwargs: 可选参数
-        - rate: 时间膨胀倍率
-        - theme: 主题 ("light" 或 "dark")
-        - city: 默认城市
-        - hidden: 是否隐藏到托盘
-    """
     # 创建应用与窗口，应用启动参数后进入事件循环
     app = QApplication([])
     window = AcceleratedWorldGUI()

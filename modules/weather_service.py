@@ -34,8 +34,6 @@ CACHE_TTL_SECONDS = int(get_static_config().base["weather_cache_ttl"])
 
 @dataclass
 class WeatherData:
-    """天气信息数据类（聚合 Open-Meteo 返回的天气字段）"""
-
     temperature: float  # 温度（℃）
     humidity: float  # 相对湿度（%）
     wind_speed: float  # 风速（km/h）
@@ -53,13 +51,6 @@ def _fetch_weather_data(url: str) -> dict:
 
 
 def get_weather_by_coords(lat: float, lon: float) -> Optional[WeatherData]:
-    """
-    根据经纬度获取天气信息（网络请求带重试）
-
-    :param lat: 纬度
-    :param lon: 经度
-    :return: WeatherData 天气信息数据类，失败返回 None
-    """
     # 拼接 API URL，重试耗尽后统一返回 None；仅捕获网络/解析类异常，编程错误上抛
     try:
         # 使用 Open-Meteo API
@@ -101,12 +92,6 @@ def get_weather_by_coords(lat: float, lon: float) -> Optional[WeatherData]:
 
 
 def get_weather_by_city(city_name: str) -> Optional[WeatherData]:
-    """
-    根据城市名获取天气信息（带 30 分钟内存缓存，仅缓存成功结果）
-
-    :param city_name: 城市名
-    :return: WeatherData 天气信息数据类，失败返回 None
-    """
     # 命中缓存直接返回
     cached = _weather_cache.get(city_name)
     if cached and time.time() - cached[0] < CACHE_TTL_SECONDS:
@@ -124,19 +109,11 @@ def get_weather_by_city(city_name: str) -> Optional[WeatherData]:
 
 
 def clear_weather_cache() -> None:
-    """清空天气缓存（供测试与手动刷新使用）"""
     # 直接清空模块级缓存字典
     _weather_cache.clear()
 
 
 def format_weather_info(weather: Optional[WeatherData], city_name: str = "") -> str:
-    """
-    格式化天气信息为字符串
-
-    :param weather: WeatherData 天气信息数据类
-    :param city_name: 城市名
-    :return: 格式化的天气字符串
-    """
     # 空数据返回失败文案；否则拼装完整展示文本
     if not weather:
         return "天气信息获取失败"

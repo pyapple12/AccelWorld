@@ -26,8 +26,6 @@ CONFIG_FILE = get_project_root() / get_static_config().base["user_config"]
 
 @dataclass
 class UserConfig:
-    """用户配置数据类（可读写，默认值经 default_factory 从静态配置现取，零硬编码）"""
-
     time_dilation_rate: float = field(
         default_factory=lambda: get_static_config().base["default_rate"]
     )  # 时间膨胀倍率
@@ -45,13 +43,11 @@ class UserConfig:
     alarms: List[Any] = field(default_factory=list)  # 闹钟列表（结构默认：空）
 
     def to_dict(self) -> Dict[str, Any]:
-        """转换为字典（用于 JSON 序列化）"""
         # asdict 递归转 dict（标准库一行调用，无需包装层）
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "UserConfig":
-        """从字典创建（用于 JSON 反序列化），仅取有效字段并兜底默认值"""
         # 委托通用工具：字段白名单过滤，缺省字段由 dataclass 默认值兜底（非容错模式，必不为 None）
         result = dataclass_from_dict(cls, data)
         assert result is not None
@@ -59,11 +55,6 @@ class UserConfig:
 
 
 def load_config() -> UserConfig:
-    """
-    加载配置文件（缓存单例，仅首次读取磁盘）
-
-    :return: UserConfig 配置数据类
-    """
     # 经 file_utils 缓存单例读取，仅成功解析才入缓存
     data = read_json_cached(CONFIG_FILE, None)
     if data is None:
@@ -72,12 +63,6 @@ def load_config() -> UserConfig:
 
 
 def save_config(config: UserConfig) -> bool:
-    """
-    保存配置文件
-
-    :param config: UserConfig 配置数据类
-    :return: 是否保存成功
-    """
     # 写入后自动清理缓存，保证下次读取一致
     result = write_json(CONFIG_FILE, config.to_dict())
     if not result:
@@ -86,26 +71,12 @@ def save_config(config: UserConfig) -> bool:
 
 
 def get_setting(key: str, default: Any = None) -> Any:
-    """
-    获取单个设置
-
-    :param key: 设置键
-    :param default: 默认值
-    :return: 设置值
-    """
     # 经 AppConfig 字段反射取值，未知键返回 default
     config = load_config()
     return getattr(config, key, default)
 
 
 def set_setting(key: str, value: Any) -> bool:
-    """
-    设置单个设置
-
-    :param key: 设置键
-    :param value: 设置值
-    :return: 是否保存成功
-    """
     # 未知键拒绝写入并记日志；修改后立即落盘
     config = load_config()
     if not hasattr(config, key):
@@ -116,12 +87,6 @@ def set_setting(key: str, value: Any) -> bool:
 
 
 def save_window_geometry(geometry: bytes) -> bool:
-    """
-    保存窗口位置和大小（base64 编码存储）
-
-    :param geometry: 窗口几何数据（bytes/QByteArray）
-    :return: 是否保存成功
-    """
     # QByteArray/bytes 统一转 base64 ASCII 串，JSON 友好且可移植
     try:
         encoded = base64.b64encode(bytes(geometry)).decode("ascii")
@@ -132,11 +97,6 @@ def save_window_geometry(geometry: bytes) -> bool:
 
 
 def load_window_geometry() -> Optional[bytes]:
-    """
-    加载窗口位置和大小（兼容旧版 latin1 存储格式）
-
-    :return: 窗口几何数据 bytes，无则返回 None
-    """
     # base64 解码失败时回退旧格式 latin1，双重兼容
     encoded = get_setting("window_geometry")
     if not encoded:
@@ -156,22 +116,11 @@ def load_window_geometry() -> Optional[bytes]:
 
 
 def get_alarms() -> List[Any]:
-    """
-    获取保存的闹钟列表（返回副本，避免外部修改污染缓存）
-
-    :return: 闹钟字典列表
-    """
     # list() 浅拷贝隔离缓存共享引用
     return list(load_config().alarms)
 
 
 def save_alarms(alarms: List[Any]) -> bool:
-    """
-    保存闹钟列表
-
-    :param alarms: 闹钟字典列表
-    :return: 是否保存成功
-    """
     # 委托 set_setting 统一写盘
     return set_setting("alarms", alarms)
 

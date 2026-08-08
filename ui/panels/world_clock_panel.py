@@ -20,10 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class WorldClockPanel(QWidget):
-    """世界时钟面板：时区选择与对应时区时间显示"""
-
     def __init__(self, parent: QWidget | None = None):
-        """初始化时区下拉框与世界时间标签"""
         # 用 data/timezones 常量填充下拉框，显示名+IANA 标识
         super().__init__(parent)
 
@@ -61,7 +58,6 @@ class WorldClockPanel(QWidget):
         self._last_tz_name: str | None = None
 
     def update_world_clock(self) -> None:
-        """刷新当前时区时间显示（时区对象缓存 + 秒级刷新）"""
         # 同秒跳过刷新（时区切换时强制），pytz 对象按名缓存；失败降级 00:00:00
         tz_name = self.timezone_combo.currentData()
         if not tz_name:
@@ -88,7 +84,6 @@ class WorldClockPanel(QWidget):
             self.world_clock_label.setText("00:00:00")
 
     def set_timezone(self, tz_name: str) -> None:
-        """设置当前时区（启动参数/配置恢复）：按 IANA 标识定位下拉项"""
         # 线性查找 itemData，未命中保持默认（不重建 tz 缓存，切换时自动重建）
         for i in range(self.timezone_combo.count()):
             if self.timezone_combo.itemData(i) == tz_name:
@@ -96,7 +91,6 @@ class WorldClockPanel(QWidget):
                 return
 
     def current_timezone(self) -> str:
-        """获取当前选择的时区标识（供配置保存）"""
         # 下拉框 currentData 为空时回退静态配置默认时区
         return (
             self.timezone_combo.currentData()

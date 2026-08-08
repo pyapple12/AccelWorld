@@ -32,6 +32,7 @@ def test_cache_hit(monkeypatch):
     calls = {"n": 0}
 
     def fake(url):
+        # 模拟成功响应并计数调用次数（验证缓存只发一次请求）
         calls["n"] += 1
         return {
             "current": {
@@ -55,6 +56,7 @@ def test_cache_expiry(monkeypatch):
     calls = {"n": 0}
 
     def fake(url):
+        # 模拟成功响应并计数调用次数（验证过期后重新请求）
         calls["n"] += 1
         return {
             "current": {
@@ -83,6 +85,7 @@ def test_retry_success(monkeypatch):
     attempts = {"n": 0}
 
     def flaky(url):
+        # 前 2 次抛超时、第 3 次返回成功（验证重试机制）
         attempts["n"] += 1
         if attempts["n"] < 3:
             raise TimeoutError("暂时失败")
@@ -105,6 +108,7 @@ def test_retry_success(monkeypatch):
 def test_retry_exhausted(monkeypatch):
     # 重试耗尽返回 None
     def always_fail(url):
+        # 恒定抛超时异常（验证重试耗尽返回 None）
         raise TimeoutError("一直失败")
 
     _set_fetch(monkeypatch, always_fail)
@@ -114,12 +118,14 @@ def test_retry_exhausted(monkeypatch):
 def test_narrow_exception(monkeypatch):
     # 网络/解析类异常窄捕获降级（S9.1 回归）
     def timeout_fail(url):
+        # 抛超时异常（验证窄捕获降级）
         raise TimeoutError("超时")
 
     _set_fetch(monkeypatch, timeout_fail)
     assert weather_service.get_weather_by_coords(39.9, 116.4) is None
 
     def json_fail(url):
+        # 抛 JSON 解析异常（验证窄捕获降级）
         raise json.JSONDecodeError("bad", "doc", 0)
 
     _set_fetch(monkeypatch, json_fail)
@@ -129,7 +135,8 @@ def test_narrow_exception(monkeypatch):
 def test_programming_error_raised(monkeypatch):
     # 编程错误（非网络类）上抛而非被吞（S9.1 回归）
     def bad_data(url):
-        return "not-a-dict"  # 后续 .get 触发 AttributeError
+        # 返回非 dict 数据（后续 .get 触发 AttributeError，验证编程错误上抛）
+        return "not-a-dict"
 
     _set_fetch(monkeypatch, bad_data)
     try:
@@ -144,6 +151,7 @@ def test_unknown_city(monkeypatch):
     calls = {"n": 0}
 
     def fake(url):
+        # 模拟响应（未知城市实际不发请求，验证计数为 0）
         calls["n"] += 1
         return {"current": {}}
 

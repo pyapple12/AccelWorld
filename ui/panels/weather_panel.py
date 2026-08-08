@@ -32,14 +32,10 @@ logger = logging.getLogger(__name__)
 
 
 class _WeatherTaskSignals(QObject):
-    """后台天气任务信号（跨线程回调）"""
-
     finished = pyqtSignal(object, object)  # (city_name, WeatherData | None)
 
 
 class _WeatherTask(QRunnable):
-    """后台天气查询任务（QThreadPool 执行，避免阻塞 GUI 线程）"""
-
     def __init__(self, city_name: str):
         # 记录目标城市并创建信号载体
         super().__init__()
@@ -57,12 +53,9 @@ class _WeatherTask(QRunnable):
 
 
 class WeatherPanel(QWidget):
-    """天气面板：城市选择、天气信息显示、主题切换与天气刷新（后台查询）"""
-
     theme_toggled = pyqtSignal()  # 主题切换请求信号
 
     def __init__(self, parent: QWidget | None = None):
-        """初始化城市下拉、天气显示与 30 分钟自动刷新定时器"""
         # 构建城市下拉/天气标签/主题与刷新按钮，并启动 30 分钟定时器
         super().__init__(parent)
 
@@ -116,23 +109,22 @@ class WeatherPanel(QWidget):
         outer.addWidget(weather_frame)
 
         # 每 30 分钟自动刷新天气（周期由缓存 TTL 派生，单源配置避免双键漂移，E15）
-        self.weather_timer = QTimer(self)
+        self.weather_timer: QTimer = QTimer(self)
         self.weather_timer.timeout.connect(self.update_weather)
         self.weather_timer.start(int(_BASE["weather_cache_ttl"]) * 1000)
 
     def update_weather(self) -> None:
-        """发起后台天气查询（立即返回，结果经信号回调更新）"""
         # 置过渡态后提交 QThreadPool 任务，UI 不阻塞
         self.weather_info_label.setText("获取天气中...")
         self.weather_icon_label.setText("⏳")
         task = _WeatherTask(self.current_city)
         task.signals.finished.connect(self._on_weather_result)
-        self._weather_pool.start(task)
+        # globalInstance 运行时恒非 None（stub 标注 Optional，行级压制）
+        self._weather_pool.start(task)  # pyright: ignore[reportOptionalMemberAccess]
 
     def _on_weather_result(
         self, city_name: str, weather: Optional[WeatherData]
     ) -> None:
-        """后台查询结果回调（乱序结果丢弃，异常不外泄）"""
         # 城市已切换时丢弃过期结果，避免旧数据覆盖新城市显示
         if city_name != self.current_city:
             return
@@ -149,7 +141,6 @@ class WeatherPanel(QWidget):
             self.weather_icon_label.setText("❓")
 
     def set_city(self, city_name: str) -> None:
-        """设置当前城市（启动参数）：列表内走下拉联动，列表外直接设置"""
         # 列表内 setCurrentText 触发联动查询；列表外直设并发起查询
         if city_name in CITIES:
             self.city_combo.setCurrentText(city_name)
@@ -158,7 +149,6 @@ class WeatherPanel(QWidget):
             self.update_weather()
 
     def set_theme_button(self, is_dark: bool) -> None:
-        """同步主题按钮图标与提示（主题切换时由主窗口调用）"""
         # 深色显示☀️（切换至浅色），浅色显示🌙（切换至深色）
         if is_dark:
             self.theme_button.setText("☀️")
@@ -168,13 +158,11 @@ class WeatherPanel(QWidget):
             self.theme_button.setToolTip("切换到深色主题")
 
     def on_city_changed(self, city_name: str) -> None:
-        """城市选择变更回调"""
         # 记录当前城市并发起查询
         self.current_city = city_name
         self.update_weather()
 
     def current_city_name(self) -> str:
-        """获取当前城市名（供配置保存）"""
         # 直接返回内部城市状态
         return self.current_city
 

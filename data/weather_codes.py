@@ -6,8 +6,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class WeatherCodeInfo:
-    """天气代码信息（WMO 代码 → 中英文名称/图标/描述）"""
-
     name: str  # 中文短名（如"晴"）
     english: str  # 英文名（API 原始语义）
     icon: str  # emoji 图标

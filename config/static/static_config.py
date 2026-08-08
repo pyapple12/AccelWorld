@@ -12,8 +12,6 @@ STATIC_DIR = Path(__file__).resolve().parent
 
 @dataclass
 class StaticConfig:
-    """应用静态配置聚合（base/ui 各为 dict，只读，供全项目引用）"""
-
     base: Dict[str, Any]
     ui: Dict[str, Any]
 

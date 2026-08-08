@@ -6,6 +6,9 @@ import logging
 import threading
 from typing import Any, List
 
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PyQt6.QtCore import QUrl
+
 from modules.alarm_service import Alarm, PresetSound, play_preset_sound
 
 # 配置日志
@@ -17,8 +20,6 @@ _active_players: List[Any] = []
 
 def _release_player(player: Any, status: Any) -> None:
     # 播放结束/媒体无效后从持有集合移除引用（允许 GC 回收）
-    from PyQt6.QtMultimedia import QMediaPlayer
-
     if status in (
         QMediaPlayer.MediaStatus.EndOfMedia,
         QMediaPlayer.MediaStatus.InvalidMedia,
@@ -28,17 +29,8 @@ def _release_player(player: Any, status: Any) -> None:
 
 
 def play_custom_sound(file_path: str) -> bool:
-    """
-    播放自定义音频文件（QMediaPlayer 异步播放，不阻塞）
-
-    :param file_path: 音频文件路径
-    :return: 是否播放成功
-    """
-    # 须在主线程创建（QObject 线程绑定），由 audio_player 统一承载
+    # QMediaPlayer 须在主线程创建（QObject 线程绑定），由 audio_player 统一承载
     try:
-        from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
-        from PyQt6.QtCore import QUrl
-
         player = QMediaPlayer()
         audio_output = QAudioOutput()
         player.setAudioOutput(audio_output)
@@ -49,17 +41,12 @@ def play_custom_sound(file_path: str) -> bool:
         player.play()
 
         return True
-    except ImportError:
-        # PyQt6.Multimedia 缺失属环境问题，记录日志返回 False
-        logger.exception("PyQt6.Multimedia 不可用，无法播放自定义音频")
-        return False
     except Exception as e:
         logger.exception(f"播放自定义音频失败: {e}")
         return False
 
 
 def play_alarm_sound(alarm: Alarm) -> None:
-    """播放闹钟声音（按 sound_type 分发到预设/自定义播放）"""
     # 同步版本供后台线程与测试复用；自定义铃声走本层 QMediaPlayer
     if alarm.sound_type == "preset":
         preset = PresetSound.from_value(alarm.sound_value)
@@ -69,14 +56,6 @@ def play_alarm_sound(alarm: Alarm) -> None:
 
 
 def play_alarm_sound_async(alarm: Alarm) -> None:
-    """
-    异步播放闹钟声音（UI 不冻结）
-
-    预设铃声（winsound 阻塞+sleep）移入后台 daemon 线程；
-    自定义铃声（QMediaPlayer 异步播放）保持主线程执行。
-
-    :param alarm: 闹钟对象
-    """
     # 预设铃声走后台线程，自定义铃声保持主线程（QMediaPlayer 线程绑定）
     if alarm.sound_type == "preset":
         threading.Thread(target=play_alarm_sound, args=(alarm,), daemon=True).start()
@@ -88,8 +67,9 @@ def play_alarm_sound_async(alarm: Alarm) -> None:
 # _active_players: List，持有播放中 QMediaPlayer 引用（防 GC 中断，E4）
 # _release_player(player, status): 播放结束/媒体无效后移除引用
 # play_custom_sound(file_path) -> bool: QMediaPlayer 异步播放（须主线程）
-#   异常处理：ImportError（QtMultimedia 缺失）/其他异常记录日志返回 False
+#   异常处理：播放异常记录日志返回 False（QtMultimedia 顶层 import，缺失时模块加载失败即暴露）
 # play_alarm_sound(alarm): 按 sound_type 分发（preset→winsound 阻塞；custom→本层）
 # play_alarm_sound_async(alarm): preset 走 daemon 后台线程，custom 保持主线程（S5 修复 D6）
 #   设计理由：S10.5 D2 将 UI 库依赖从 modules 层迁出，业务层保持纯逻辑；
+#   顶层 import 符合规范（禁止函数内延迟 import，原 try 内 import 已清理）；
 #   关联配置：预设铃声枚举/播放来自 modules/alarm_service.py；由 ui/main_window.py 调用

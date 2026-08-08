@@ -22,15 +22,7 @@ from modules.alarm_service import PresetSound, SUPPORTED_AUDIO_FORMATS, Alarm
 
 
 class AlarmEditDialog(QDialog):
-    """闹钟编辑对话框"""
-
     def __init__(self, parent: Optional[QWidget] = None, alarm: Optional[Alarm] = None):
-        """
-        初始化对话框
-
-        :param parent: 父窗口
-        :param alarm: 要编辑的闹钟（None 表示新建）
-        """
         # 构建表单并预填数据；编辑模式回填时间/声音/重复
         super().__init__(parent)
         self.alarm = alarm
@@ -110,7 +102,6 @@ class AlarmEditDialog(QDialog):
         layout.addRow(buttons)
 
     def select_custom_sound(self) -> None:
-        """选择自定义音频文件"""
         # 文件选择器成功后切换声音类型并更新按钮文案
         file_path, _ = QFileDialog.getOpenFileName(
             self, "选择闹钟声音", "", SUPPORTED_AUDIO_FORMATS
@@ -121,7 +112,6 @@ class AlarmEditDialog(QDialog):
             self.custom_sound_button.setText(f"📁 {os.path.basename(file_path)[:15]}")
 
     def get_alarm(self) -> Alarm:
-        """获取对话框内容构造的 Alarm 对象（编辑模式保留原 ID/创建时间/启用状态）"""
         # 获取时间
         time_obj = self.time_edit.time()
         time_str = f"{time_obj.hour():02d}:{time_obj.minute():02d}"
