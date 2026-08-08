@@ -31,6 +31,7 @@ class AlarmEditDialog(QDialog):
         :param parent: 父窗口
         :param alarm: 要编辑的闹钟（None 表示新建）
         """
+        # 构建表单并预填数据；编辑模式回填时间/声音/重复
         super().__init__(parent)
         self.alarm = alarm
         self.sound_type: Literal["preset", "custom"] = "preset"
@@ -112,6 +113,7 @@ class AlarmEditDialog(QDialog):
 
     def select_custom_sound(self) -> None:
         """选择自定义音频文件"""
+        # 文件选择器成功后切换声音类型并更新按钮文案
         file_path, _ = QFileDialog.getOpenFileName(
             self, "选择闹钟声音", "", SUPPORTED_AUDIO_FORMATS
         )

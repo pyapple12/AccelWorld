@@ -2,16 +2,17 @@
 
 import logging
 import traceback
+from typing import Any
 
 # 配置日志
 logger = logging.getLogger(__name__)
 
-# 程序版本号（单一来源：main.py）
-from main import VERSION
-
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QCloseEvent
+
+# 程序版本号（单一来源：main.py）
+from main import VERSION
 
 from config.settings import (
     load_config,
@@ -40,6 +41,7 @@ class AcceleratedWorldGUI(QMainWindow):
 
     def __init__(self):
         """初始化窗口：加载配置、装配面板、连接信号、启动定时器与托盘"""
+        # 配置→面板装配→信号→闹钟/天气/倒计时恢复→定时器→主题→托盘
         super().__init__()
 
         # 加载配置
@@ -88,6 +90,14 @@ class AcceleratedWorldGUI(QMainWindow):
         self.alarm_panel.alarm_saved.connect(self._save_alarms)
         self.alarm_panel.alarm_triggered.connect(self._on_alarm_triggered)
 
+        # 触发首次天气查询（S8.3：启动即加载，后台线程执行不阻塞）
+        self.weather_panel.update_weather()
+
+        # 恢复倒计时目标（S8.5：仅填充输入框显示，不自动启动计时）
+        saved_countdown = get_setting("countdown_target", "")
+        if saved_countdown:
+            self.countdown_panel.countdown_target.setText(saved_countdown)
+
         # 从配置加载闹钟
         self.alarm_panel.load_alarms(get_alarms())
 
@@ -110,6 +120,7 @@ class AcceleratedWorldGUI(QMainWindow):
 
     def update_clock(self) -> None:
         """时钟 tick：获取时间信息并分发到各面板刷新"""
+        # 100ms 定时器驱动，异常不外抛仅记录日志
         try:
             info = self.accel_world.get_custom_time()
             self.clock_panel.update_time(info)
@@ -124,6 +135,7 @@ class AcceleratedWorldGUI(QMainWindow):
 
     def _on_rate_changed(self, rate: float) -> None:
         """倍率变化信号处理：重建核心实例并更新托盘显示"""
+        # 面板信号触发，统一走 _update_acceleration_rate 校验保存
         self._update_acceleration_rate(rate)
         self.tray.update_rate(self.accel_world.time_dilation_rate)
 
@@ -141,6 +153,7 @@ class AcceleratedWorldGUI(QMainWindow):
 
     def _save_alarms(self) -> None:
         """闹钟列表变更持久化"""
+        # alarm_saved 信号回调，导出管理器列表写入配置
         save_alarms(self.alarm_panel.to_dict_list())
 
     def _on_alarm_triggered(self, alarm: Alarm) -> None:
@@ -162,11 +175,13 @@ class AcceleratedWorldGUI(QMainWindow):
 
     def toggle_theme(self) -> None:
         """切换主题"""
+        # 翻转状态后应用样式
         self.is_dark_theme = not self.is_dark_theme
         self.apply_theme()
 
     def apply_theme(self) -> None:
         """应用当前主题（主窗口 QSS + 进度条样式 + 主题按钮图标）"""
+        # 深浅主题三处联动：窗口样式、进度条、按钮图标
         if self.is_dark_theme:
             self.setStyleSheet(DARK_THEME)
             self.clock_panel.set_progress_style(DARK_THEME_PROGRESS)
@@ -179,27 +194,30 @@ class AcceleratedWorldGUI(QMainWindow):
 
     def hide_to_tray(self) -> None:
         """隐藏到系统托盘"""
+        # 隐藏窗口并弹托盘通知提示
         self.hide()
-        self.tray.showMessage(
+        self.tray.show_notification(
             "加速世界",
             "程序已隐藏到系统托盘，点击托盘图标可重新显示",
-            self.tray.MessageIcon.Information,
-            2000,
+            "info",
         )
 
     def show_normal(self) -> None:
         """显示窗口"""
+        # 显示并置顶激活
         self.show()
         self.raise_()
         self.activateWindow()
 
     def quit_app(self) -> None:
         """退出程序（先保存设置）"""
+        # 保存后退出事件循环
         self.save_settings()
         QApplication.quit()
 
     def closeEvent(self, a0: QCloseEvent) -> None:
         """关闭窗口事件 - 最小化到托盘而非退出"""
+        # 托盘可见时拦截为隐藏；否则保存设置放行退出
         if self.tray.isVisible():
             self.hide_to_tray()
             a0.ignore()
@@ -210,6 +228,7 @@ class AcceleratedWorldGUI(QMainWindow):
 
     def save_settings(self) -> None:
         """保存当前设置"""
+        # 汇总倍率/城市/时区/倒计时/窗口几何逐项落盘
         set_setting("time_dilation_rate", self.accel_world.time_dilation_rate)
         set_setting("last_city", self.weather_panel.current_city_name())
         set_setting("last_timezone", self.world_clock_panel.current_timezone())
@@ -244,7 +263,7 @@ class AcceleratedWorldGUI(QMainWindow):
             self.apply_theme()
 
 
-def main_gui(**kwargs) -> None:
+def main_gui(**kwargs: Any) -> None:
     """
     图形界面主函数
 
@@ -254,6 +273,7 @@ def main_gui(**kwargs) -> None:
         - city: 默认城市
         - hidden: 是否隐藏到托盘
     """
+    # 创建应用与窗口，应用启动参数后进入事件循环
     app = QApplication([])
     window = AcceleratedWorldGUI()
 

@@ -2,6 +2,7 @@
 
 import datetime
 import os
+from typing import List, Dict, Any
 
 from PyQt6.QtCore import pyqtSignal, QTimer, Qt
 from PyQt6.QtWidgets import (
@@ -31,6 +32,7 @@ class AlarmPanel(QWidget):
 
     def __init__(self, parent: QWidget | None = None):
         """初始化闹钟列表、管理器与每秒检查定时器"""
+        # 构建列表 UI 并启动每秒触发检查定时器
         super().__init__(parent)
 
         self.alarm_manager = AlarmManager()
@@ -68,15 +70,18 @@ class AlarmPanel(QWidget):
 
     def load_alarms(self, data: list) -> None:
         """从配置数据加载闹钟并刷新列表"""
+        # 委托管理器反序列化（容错）后重建列表
         self.alarm_manager.from_dict_list(data)
         self.refresh_list()
 
-    def to_dict_list(self) -> list:
+    def to_dict_list(self) -> List[Dict[str, Any]]:
         """导出闹钟字典列表（供配置持久化）"""
+        # 委托管理器逐闹钟转字典
         return self.alarm_manager.to_dict_list()
 
     def refresh_list(self) -> None:
         """刷新闹钟列表显示"""
+        # 清空后逐闹钟构建行（开关/时间/标签/重复/声音/编辑/删除）
         self.alarm_list.clear()
 
         for alarm in self.alarm_manager.alarms:
@@ -146,17 +151,20 @@ class AlarmPanel(QWidget):
 
     def check_alarms(self) -> None:
         """每秒检查闹钟触发，命中后发出 alarm_triggered 信号"""
+        # 由 QTimer 驱动，命中闹钟逐一发信号给主窗口处理
         now = datetime.datetime.now()
         for alarm in self.alarm_manager.check_alarms(now):
             self.alarm_triggered.emit(alarm)
 
     def save_and_refresh(self) -> None:
         """列表变更后通知主窗口持久化并刷新显示"""
+        # 先发 alarm_saved 信号持久化，再重建列表
         self.alarm_saved.emit()
         self.refresh_list()
 
     def show_add_alarm_dialog(self) -> None:
         """显示添加闹钟对话框"""
+        # 确认后构造 Alarm 加入管理器，成功则保存刷新
         dialog = AlarmEditDialog(self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             if self.alarm_manager.add_alarm(dialog.get_alarm()):
@@ -164,6 +172,7 @@ class AlarmPanel(QWidget):
 
     def show_edit_alarm_dialog(self, alarm_id: str) -> None:
         """显示编辑闹钟对话框"""
+        # 确认后用保留 ID 的新对象整体替换
         alarm = self.alarm_manager.get_alarm(alarm_id)
         if not alarm:
             return
@@ -175,6 +184,7 @@ class AlarmPanel(QWidget):
 
     def toggle_alarm(self, alarm_id: str) -> bool:
         """切换闹钟启用状态"""
+        # 成功切换后保存刷新
         result = self.alarm_manager.toggle_alarm(alarm_id)
         if result:
             self.save_and_refresh()
@@ -182,6 +192,7 @@ class AlarmPanel(QWidget):
 
     def delete_alarm(self, alarm_id: str) -> None:
         """删除闹钟（带确认弹窗）"""
+        # 二次确认后删除并保存刷新
         alarm = self.alarm_manager.get_alarm(alarm_id)
         if not alarm:
             return
@@ -199,6 +210,7 @@ class AlarmPanel(QWidget):
 
     def _get_repeat_display(self, repeat_days: list) -> str:
         """获取重复天数的显示文本（内部辅助）"""
+        # 空列表显示"一次"，否则按星期数字映射拼接
         if not repeat_days:
             return "一次"
         days = ["一", "二", "三", "四", "五", "六", "日"]
@@ -206,6 +218,7 @@ class AlarmPanel(QWidget):
 
     def _get_sound_display(self, alarm: Alarm) -> str:
         """获取声音的显示文本（内部辅助）"""
+        # 预设铃声显示名称，自定义显示文件名（截断 15 字符）
         if alarm.sound_type == "preset":
             preset = PresetSound.from_value(alarm.sound_value)
             return f"🔔 {preset.display_names()[list(PresetSound).index(preset)]}"

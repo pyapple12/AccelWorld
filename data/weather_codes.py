@@ -1,5 +1,5 @@
 # 天气代码映射表（Open-Meteo WMO Weather interpretation codes）
-# 迁移自 accelworld_weather.py；S2 将 WEATHER_CODES/WEATHER_DESCRIPTIONS 合并为单表
+# WEATHER_CODES/WEATHER_DESCRIPTIONS 已合并为单表
 
 from dataclasses import dataclass
 

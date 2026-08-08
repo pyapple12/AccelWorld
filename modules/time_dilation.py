@@ -1,4 +1,4 @@
-# 时间膨胀核心模块（迁移自 accelworld_calc.py，S1 结构骨架阶段）
+# 时间膨胀核心模块
 # 提供 AcceleratedWorld 类与 CLI 实时钟入口
 
 import datetime

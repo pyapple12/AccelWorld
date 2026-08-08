@@ -29,6 +29,9 @@ Thumbs.db
 build/
 dist/
 
+# Ruff cache
+.ruff_cache/
+
 # Temporary scripts
 .temp/
 

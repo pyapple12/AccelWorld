@@ -1,5 +1,4 @@
 # 世界时钟时区表（GUI 时区下拉框使用）
-# 迁移自 accelworld_gui.py setup_ui 内的局部列表，S1 结构骨架阶段外置为常量
 
 # 常用时区列表（显示名, IANA 时区标识）
 TIMEZONES = [

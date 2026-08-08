@@ -77,14 +77,14 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # 验证 --rate 参数
-    if args.rate is not None and args.rate < 1.0:
-        print("错误: --rate 参数必须大于或等于 1.0")
+    # 验证 --rate 参数（范围 1.0-20.0，与 GUI 滑杆/CLI 一致）
+    if args.rate is not None and not (1.0 <= args.rate <= 20.0):
+        print("错误: --rate 参数必须在 1.0 到 20.0 之间")
         print("例如: python main.py --rate 2.0")
         sys.exit(1)
 
     # 判断运行模式
-    run_cli = args.cli or any(arg in sys.argv for arg in ["--cli", "-c"])
+    run_cli = args.cli
 
     if run_cli:
         # 运行命令行界面

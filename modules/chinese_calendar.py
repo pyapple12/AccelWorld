@@ -1,4 +1,4 @@
-# 农历/干支/节气/节日模块（迁移自 accelworld_date.py，S1 结构骨架阶段）
+# 农历/干支/节气/节日模块
 
 import datetime
 from dataclasses import dataclass
@@ -120,9 +120,13 @@ def get_chinese_lunar_calendar(year: int, month: int, day: int, hour: int) -> Lu
 
     # 如果lunar-python没有找到节日，检查chinese-calendar
     if not public_holiday:
-        holiday_detail = get_holiday_detail(datetime.datetime(year, month, day))
-        # get_holiday_detail返回(Boolean, String)元组，第二个元素是节日名称
-        public_holiday = holiday_detail[1] if holiday_detail[0] else ""
+        try:
+            holiday_detail = get_holiday_detail(datetime.datetime(year, month, day))
+            # get_holiday_detail返回(Boolean, String)元组，第二个元素是节日名称
+            public_holiday = holiday_detail[1] if holiday_detail[0] else ""
+        except NotImplementedError:
+            # 年份超出 chinese-calendar 支持范围（2004-2026）时降级跳过
+            public_holiday = ""
 
     # 如果chinese-calendar没有找到节日，检查自定义节日列表
     if not public_holiday:

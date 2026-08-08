@@ -19,6 +19,7 @@ class WorldClockPanel(QWidget):
 
     def __init__(self, parent: QWidget | None = None):
         """初始化时区下拉框与世界时间标签"""
+        # 用 data/timezones 常量填充下拉框，显示名+IANA 标识
         super().__init__(parent)
 
         world_clock_frame = QFrame()
@@ -51,6 +52,7 @@ class WorldClockPanel(QWidget):
 
     def update_world_clock(self) -> None:
         """刷新当前时区时间显示"""
+        # pytz 按当前选择的时区换算本地时间，失败降级 00:00:00
         tz_name = self.timezone_combo.currentData()
         if not tz_name:
             return
@@ -65,6 +67,7 @@ class WorldClockPanel(QWidget):
 
     def current_timezone(self) -> str:
         """获取当前选择的时区标识（供配置保存）"""
+        # 下拉框 currentData 为空时回退上海时区
         return self.timezone_combo.currentData() or "Asia/Shanghai"
 
 

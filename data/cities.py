@@ -1,5 +1,4 @@
 # 城市经纬度配置表（天气功能使用）
-# 迁移自 accelworld_weather.py，S3 清理 DEFAULT_CITY 死常量
 
 # 城市配置表（经纬度）
 CITIES = {

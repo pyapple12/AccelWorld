@@ -5,7 +5,7 @@ import threading
 import time as time_module
 import uuid
 import winsound
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, fields
 from datetime import datetime, time
 from typing import List, Optional, Literal, Dict, Any
 from enum import Enum
@@ -22,6 +22,7 @@ class PresetSound(Enum):
     @classmethod
     def display_names(cls) -> List[str]:
         """获取显示名称列表"""
+        # 供 GUI 下拉框固定顺序展示
         return ["Classic", "Gentle", "Beep", "Chime"]
 
     @classmethod
@@ -88,7 +89,7 @@ class Alarm:
         :param check_time: 要检查的时间
         :return: 是否应该触发
         """
-        # 启用检查 → 时分匹配 → 重复规则（空列表=不限制星期）
+        # 启用检查 → 时分匹配 → 重复规则：一次性仅创建当天触发，重复闹钟按星期
         if not self.enabled:
             return False
 
@@ -104,24 +105,37 @@ class Alarm:
         ):
             return False
 
-        # 如果没有设置重复天数，则只在创建当天触发（简化处理：检查分钟对齐）
+        # 一次性闹钟（无重复天数）：仅在创建当天触发（S8.4 语义澄清，与注释一致）
         if not self.repeat_days:
-            return True
+            try:
+                created_date = datetime.fromisoformat(self.created_at).date()
+            except ValueError:
+                # created_at 数据异常时保守不触发，避免意外每天响
+                return False
+            return check_time.date() == created_date
 
-        # 检查当前星期是否在重复设置中
+        # 重复闹钟：检查当前星期是否在重复设置中
         return check_time.weekday() in self.repeat_days
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典（用于 JSON 序列化）"""
+        # asdict 递归转 dict 结构
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Alarm":
-        """从字典创建（用于 JSON 反序列化）"""
-        return cls(**data)
+    def from_dict(cls, data: Dict[str, Any]) -> Optional["Alarm"]:
+        """从字典创建（用于 JSON 反序列化），未知键过滤，非法数据返回 None"""
+        # 仅取有效字段，构造失败（如非法 time）返回 None 由调用方跳过
+        valid_fields = {f.name for f in fields(cls)}
+        filtered = {k: v for k, v in data.items() if k in valid_fields}
+        try:
+            return cls(**filtered)
+        except ValueError:
+            return None
 
     def is_one_time(self) -> bool:
         """是否为一次性闹钟（不重复）"""
+        # 无重复天数即为一次性
         return len(self.repeat_days) == 0
 
 
@@ -198,6 +212,7 @@ def play_alarm_sound_async(alarm: Alarm) -> None:
 
     :param alarm: 闹钟对象
     """
+    # 预设铃声走后台线程，自定义铃声保持主线程（QMediaPlayer 线程绑定）
     if alarm.sound_type == "preset":
         threading.Thread(target=play_alarm_sound, args=(alarm,), daemon=True).start()
     else:
@@ -211,6 +226,7 @@ class AlarmManager:
     """闹钟管理器"""
 
     def __init__(self) -> None:
+        # 空列表启动；_last_triggered 存"日期+分钟"触发去重记录
         self.alarms: List[Alarm] = []
         self.max_alarms = 10
         self._last_triggered: Dict[str, str] = {}  # alarm_id -> "HH:MM"
@@ -237,11 +253,12 @@ class AlarmManager:
         return True
 
     def remove_alarm(self, alarm_id: str) -> bool:
-        """按 ID 移除闹钟"""
-        # 线性查找并 remove
+        """按 ID 移除闹钟（同步清理触发去重记录）"""
+        # 线性查找并 remove，同时清理 _last_triggered 防止残留
         for alarm in self.alarms:
             if alarm.id == alarm_id:
                 self.alarms.remove(alarm)
+                self._last_triggered.pop(alarm_id, None)
                 return True
         return False
 
@@ -254,15 +271,18 @@ class AlarmManager:
         return None
 
     def update_alarm(self, alarm_id: str, **kwargs) -> bool:
-        """按字段更新闹钟"""
-        # kwargs 字段 setattr，仅接受已存在属性
+        """按字段更新闹钟（time 字段复用构造校验，非法值拒绝写入）"""
+        # kwargs 字段 setattr，仅接受已存在属性；time 非法返回 False 保持原值
         alarm = self.get_alarm(alarm_id)
         if not alarm:
             return False
 
         for key, value in kwargs.items():
-            if hasattr(alarm, key):
-                setattr(alarm, key, value)
+            if not hasattr(alarm, key):
+                continue
+            if key == "time" and not Alarm._validate_time(value):
+                return False
+            setattr(alarm, key, value)
 
         return True
 
@@ -296,8 +316,8 @@ class AlarmManager:
         :param check_time: 要检查的时间
         :return: 应该触发的闹钟列表
         """
-        # 启用过滤 + 同分钟去重（_last_triggered 记录），命中即标记
-        time_str = f"{check_time.hour:02d}:{check_time.minute:02d}"
+        # 去重键含日期维度（"YYYY-MM-DD HH:MM"），跨天不误判；命中即标记
+        time_str = check_time.strftime("%Y-%m-%d %H:%M")
         triggered = []
 
         for alarm in self.alarms:
@@ -318,8 +338,8 @@ class AlarmManager:
 
     def mark_triggered(self, alarm_id: str, check_time: datetime) -> None:
         """标记闹钟已触发（供外部手动记录）"""
-        # 与 check_alarms 共享同一分钟去重表
-        time_str = f"{check_time.hour:02d}:{check_time.minute:02d}"
+        # 与 check_alarms 共享同一"日期+分钟"去重键格式，保证外部标记后不再重复触发
+        time_str = check_time.strftime("%Y-%m-%d %H:%M")
         self._last_triggered[alarm_id] = time_str
 
     def to_dict_list(self) -> List[Dict[str, Any]]:
@@ -328,17 +348,24 @@ class AlarmManager:
         return [alarm.to_dict() for alarm in self.alarms]
 
     def from_dict_list(self, data: List[Dict[str, Any]]) -> None:
-        """从字典列表加载（供 JSON 反序列化）"""
-        # 空条目过滤后逐个构造 Alarm
-        self.alarms = [Alarm.from_dict(item) for item in data if item]
+        """从字典列表加载（供 JSON 反序列化），非法条目跳过不阻断整体加载"""
+        # 空条目与构造失败（from_dict 返回 None）的闹钟过滤后加载
+        self.alarms = [
+            alarm
+            for item in data
+            if item
+            if (alarm := Alarm.from_dict(item)) is not None
+        ]
 
 
 # ===== modules/alarm_service.py 函数/类说明 =====
 # PresetSound(Enum): 预设铃声枚举；display_names 供下拉框，from_value 大小写不敏感匹配兜底 CLASSIC
 # Alarm(dataclass): 闹钟数据模型
 #   __post_init__: 时间格式校验（非法抛 ValueError 拒绝构造）
-#   should_trigger_on(check_time): 启用 → 时分匹配 → 重复规则三级判断
-#   to_dict/from_dict: JSON 序列化往返；is_one_time: 无重复天数即一次性
+#   should_trigger_on(check_time): 启用 → 时分匹配 → 重复规则
+#     （一次性仅创建当天触发，依据 created_at 日期；重复闹钟按星期）
+#   to_dict/from_dict: JSON 序列化往返；from_dict 容错（未知键过滤，非法数据返回 None）
+#   is_one_time: 无重复天数即一次性
 # play_preset_sound(preset): winsound.Beep 组合（阻塞，由 async 入口后台化）
 # play_custom_sound(path): QMediaPlayer 异步播放（须主线程，因 QObject 绑定线程）
 # play_alarm_sound(alarm): 按 sound_type 分发；play_alarm_sound_async(alarm):

@@ -61,6 +61,7 @@ def get_weather_by_coords(lat: float, lon: float) -> Optional[WeatherData]:
     :param lon: 经度
     :return: WeatherData 天气信息数据类，失败返回 None
     """
+    # 拼接 API URL，重试耗尽后统一返回 None
     try:
         # 使用 Open-Meteo API
         url = (
@@ -124,6 +125,7 @@ def get_weather_by_city(city_name: str) -> Optional[WeatherData]:
 
 def clear_weather_cache() -> None:
     """清空天气缓存（供测试与手动刷新使用）"""
+    # 直接清空模块级缓存字典
     _weather_cache.clear()
 
 
@@ -135,6 +137,7 @@ def format_weather_info(weather: Optional[WeatherData], city_name: str = "") -> 
     :param city_name: 城市名
     :return: 格式化的天气字符串
     """
+    # 空数据返回失败文案；否则拼装完整展示文本
     if not weather:
         return "天气信息获取失败"
 
@@ -155,6 +158,7 @@ def get_simple_weather(weather: Optional[WeatherData]) -> str:
     :param weather: WeatherData 天气信息数据类
     :return: 简洁天气字符串
     """
+    # 委托 WeatherData.to_display，空值返回"天气未知"
     if not weather:
         return "天气未知"
     return weather.to_display()

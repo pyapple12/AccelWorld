@@ -1,6 +1,6 @@
 # AccelWorld —— 加速世界世界钟
 
-[![Version](https://img.shields.io/badge/Version-ver%200.41-blue.svg)](accelworld_calc.py)
+[![Version](https://img.shields.io/badge/Version-ver%200.44-blue.svg)](main.py)
 [![Python](https://img.shields.io/badge/Python-3.8+-green.svg)](https://www.python.org)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
@@ -67,32 +67,34 @@ pip install -r requirements.txt
 
 ```bash
 # 默认启动（图形界面）
-python accelworld.py
+python main.py
 
 # 指定加速倍率启动
-python accelworld.py --rate 3.0
+python main.py --rate 3.0
 
 # 启动后隐藏到托盘
-python accelworld.py --hidden
+python main.py --hidden
 
 # 启动后最小化到托盘
-python accelworld.py --minimized
+python main.py --minimized
 
 # 深色主题启动
-python accelworld.py --theme dark
+python main.py --theme dark
 
 # 指定城市启动
-python accelworld.py --city 上海
+python main.py --city 上海
 ```
+
+> 兼容旧入口：`python accelworld.py` 仍可用（转发至 main.py）
 
 ### 命令行模式
 
 ```bash
 # 进入命令行交互模式
-python accelworld.py --cli
+python main.py --cli
 
 # 命令行模式指定倍率
-python accelworld.py --cli --rate 2.0
+python main.py --cli --rate 2.0
 ```
 
 ### 命令行参数
@@ -121,17 +123,33 @@ python accelworld.py --cli --rate 2.0
 
 ```
 AccelWorld/
-├── accelworld.py            # 主入口文件，命令行参数解析
-├── accelworld_calc.py       # 核心计算逻辑，时间膨胀算法
-├── accelworld_date.py       # 日期和农历工具，天干地支、生肖、节气
-├── accelworld_gui.py        # PyQt6图形界面，主窗口和组件
-├── accelworld_config.py     # 配置文件管理，JSON格式持久化
-├── accelworld_weather.py    # 天气服务，Open-Meteo API集成
-├── accelworld_alarm.py      # 闹钟管理，多闹钟/自定义铃声/系统通知
-├── requirements.txt         # Python依赖列表
-├── pyproject.toml           # 项目配置
-├── LICENSE                  # GPL-3.0 许可证
-└── README.md                # 本文件
+├── main.py                    # 主入口：CLI/GUI 分发，版本号 VERSION 单一来源
+├── accelworld.py              # 兼容转发壳（转发至 main.py，保持旧启动方式）
+├── modules/                   # 业务核心层（无 GUI 依赖，可独立测试）
+│   ├── time_dilation.py       # 时间膨胀算法与 CLI 实时钟
+│   ├── chinese_calendar.py    # 农历、干支、生肖、节气、节日
+│   ├── weather_service.py     # 天气服务（Open-Meteo API，30 分钟缓存 + 重试）
+│   └── alarm_service.py       # 闹钟模型、匹配逻辑与音频播放
+├── config/
+│   └── settings.py            # AppConfig 配置管理（JSON 持久化 + 缓存单例）
+├── ui/                        # GUI 层
+│   ├── main_window.py         # 主窗口装配器（面板 + 信号 + 托盘）
+│   ├── system_tray.py         # 系统托盘（图标/菜单/通知）
+│   ├── alarm_dialog.py        # 闹钟编辑对话框
+│   ├── themes.py              # 浅色/深色主题 QSS
+│   └── panels/                # 6 个功能面板（时钟/日期/倒计时/世界时钟/天气/闹钟）
+├── data/                      # 静态数据
+│   ├── cities.py              # 城市经纬度表
+│   ├── timezones.py           # 时区表
+│   └── weather_codes.py       # WMO 天气代码映射表
+├── utils/                     # 通用工具
+│   ├── logger.py              # 统一日志配置
+│   ├── file_utils.py          # JSON 读写 + 缓存单例
+│   └── retry.py               # 泛型重试函数
+├── requirements.txt           # Python 依赖列表
+├── pyproject.toml             # 项目配置
+├── LICENSE                    # GPL-3.0 许可证
+└── README.md                  # 本文件
 ```
 
 ## 依赖

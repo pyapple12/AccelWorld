@@ -32,11 +32,13 @@ class AppConfig:
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典（用于 JSON 序列化）"""
+        # asdict 递归转 dict 结构
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "AppConfig":
         """从字典创建（用于 JSON 反序列化），仅取有效字段并兜底默认值"""
+        # 字段白名单过滤，缺省字段由 dataclass 默认值兜底
         valid_fields = {f.name for f in fields(cls)}
         filtered = {k: v for k, v in data.items() if k in valid_fields}
         return cls(**filtered)
@@ -141,11 +143,12 @@ def load_window_geometry() -> Optional[bytes]:
 
 def get_alarms() -> List[Any]:
     """
-    获取保存的闹钟列表
+    获取保存的闹钟列表（返回副本，避免外部修改污染缓存）
 
     :return: 闹钟字典列表
     """
-    return load_config().alarms
+    # list() 浅拷贝隔离缓存共享引用
+    return list(load_config().alarms)
 
 
 def save_alarms(alarms: List[Any]) -> bool:
@@ -155,6 +158,7 @@ def save_alarms(alarms: List[Any]) -> bool:
     :param alarms: 闹钟字典列表
     :return: 是否保存成功
     """
+    # 委托 set_setting 统一写盘
     return set_setting("alarms", alarms)
 
 
@@ -165,6 +169,7 @@ def add_alarm(alarm_data: Dict[str, Any]) -> bool:
     :param alarm_data: 闹钟数据字典
     :return: 是否添加成功
     """
+    # 副本上追加后整体保存
     alarms = get_alarms()
     alarms.append(alarm_data)
     return save_alarms(alarms)
@@ -177,6 +182,7 @@ def remove_alarm(alarm_id: str) -> bool:
     :param alarm_id: 闹钟 ID
     :return: 是否移除成功
     """
+    # 按 ID 定位弹出后保存，未找到返回 False
     alarms = get_alarms()
     for i, alarm in enumerate(alarms):
         if alarm.get("id") == alarm_id:
