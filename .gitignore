@@ -29,6 +29,9 @@ Thumbs.db
 build/
 dist/
 
+# Temporary scripts
+.temp/
+
 # Log files
 *.log
 
@@ -38,7 +41,9 @@ CLAUDE.md
 
 # openspec
 openspec/
-AGENTS.md
+
+# Archived
+archived/
 
 # My Own WorkingBoard
 # workingboard/
