@@ -1,14 +1,14 @@
 # AccelWorld —— 加速世界世界钟
 
-[![Version](https://img.shields.io/badge/Version-ver%200.45-blue.svg)](main.py)
-[![Python](https://img.shields.io/badge/Python-3.8+-green.svg)](https://www.python.org)
+[![Version](https://img.shields.io/badge/Version-ver%200.46-blue.svg)](main.py)
+[![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
 ---
 
 ## 项目简介
 
-基于时间膨胀倍率的自定义小时制时钟应用。根据设定的加速倍率（1.0x - 20.0x），实时显示加速后的时间，同时保留标准时间对照。灵感来自《加速世界》，界面支持中英文双语显示（GUI 以中文为主），提供农历、生肖、节气等中华传统文化元素。
+基于时间膨胀倍率的自定义小时制时钟应用。根据设定的加速倍率（1.0x - 20.0x），实时显示加速后的时间，同时保留标准时间对照。灵感来自《加速世界》，界面以中文为主，提供农历、生肖、节气等中华传统文化元素。
 
 ## 目录
 
@@ -47,7 +47,7 @@
 
 ### 环境要求
 
-- Python 3.8 或更高版本
+- Python 3.10 或更高版本
 - pip（Python 包管理器）
 
 ### 安装
@@ -117,12 +117,12 @@ python main.py --cli --rate 2.0
 
 ```
 AccelWorld/
-├── main.py                    # 主入口：CLI/GUI 分发，版本号 VERSION 单一来源
+├── main.py                    # 主入口：CLI/GUI 分发，版本号从 config/static/base.json 读取
 ├── modules/                   # 业务核心层（无 GUI 依赖，可独立测试）
 │   ├── time_dilation.py       # 时间膨胀算法与 CLI 实时钟
 │   ├── chinese_calendar.py    # 农历、干支、生肖、节气、节日
 │   ├── weather_service.py     # 天气服务（Open-Meteo API，30 分钟缓存 + 重试）
-│   └── alarm_service.py       # 闹钟模型、匹配逻辑与音频播放
+│   └── alarm_service.py       # 闹钟模型与匹配逻辑（音频播放已迁 ui/audio_player.py）
 ├── config/
 │   ├── settings.py            # 用户配置读写（UserConfig）
 │   ├── user_config.json       # 用户配置（生成于项目内）
@@ -136,16 +136,19 @@ AccelWorld/
 │   ├── main_window.py         # 主窗口装配器（面板 + 信号 + 托盘）
 │   ├── system_tray.py         # 系统托盘（图标/菜单/通知）
 │   ├── alarm_dialog.py        # 闹钟编辑对话框
+│   ├── audio_player.py        # 闹钟音频播放（自定义铃声/异步分发）
 │   ├── themes.py              # 浅色/深色主题 QSS
 │   └── panels/                # 6 个功能面板（时钟/日期/倒计时/世界时钟/天气/闹钟）
 ├── data/                      # 静态数据
 │   ├── cities.py              # 城市经纬度表
-│   ├── timezones.py           # 时区表
+│   ├── timezones.py           # 时区表（含夏令时标注）
 │   └── weather_codes.py       # WMO 天气代码映射表
 ├── utils/                     # 通用工具
-│   ├── logger.py              # 统一日志配置
-│   ├── file_utils.py          # JSON 读写 + 缓存单例
+│   ├── logger.py              # 统一日志配置（每日独立文件）
+│   ├── file_utils.py          # JSON 读写 + 缓存单例 + 项目根定位
+│   ├── dataclass_utils.py     # dataclass 反序列化通用工具
 │   └── retry.py               # 泛型重试函数
+├── tests/                     # pytest 单元测试（44 用例）
 ├── requirements.txt           # Python 依赖列表
 ├── pyproject.toml             # 项目配置
 ├── LICENSE                    # GPL-3.0 许可证
@@ -191,7 +194,7 @@ A：支持北京、上海、广州、深圳、杭州、成都、武汉、南京�
 
 ### Q4：如何让程序在后台运行？
 
-A：启动时使用 `--hidden` 或 `--minimized` 参数，程序将直接隐藏到系统托盘运行。点击托盘图标可重新显示窗口，关闭窗口会最小化到托盘而非退出程序。
+A：启动时使用 `--hidden` 参数，程序将直接隐藏到系统托盘运行。点击托盘图标可重新显示窗口，关闭窗口会最小化到托盘而非退出程序。
 
 ### Q5：倒计时功能支持哪些时间格式？
 
@@ -217,15 +220,3 @@ A：显示天干地支年、生肖、当前时辰、月相、节气（如有）�
 ## 许可证
 
 本项目基于 [GNU GPL v3 许可证](./LICENSE) 开源，允许自由使用、修改及分发，但必须保留源代码并以相同许可证发布。
-
-## 贡献指南
-
-欢迎各类贡献（Bug 修复、功能开发、文档优化），流程如下：
-
-1. Fork 本仓库
-2. 创建特性分支（`git checkout -b feature/xxx`）
-3. 提交修改（`git commit -m "feat: 新增xxx功能"`）
-4. 推送分支（`git push origin feature/xxx`）
-5. 发起 Pull Request
-
-详细规范见 [CONTRIBUTING.md]（待创建）

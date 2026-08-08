@@ -87,16 +87,27 @@ class WorldClockPanel(QWidget):
             logger.error(f"更新世界时钟时出错: {e}")
             self.world_clock_label.setText("00:00:00")
 
+    def set_timezone(self, tz_name: str) -> None:
+        """设置当前时区（启动参数/配置恢复）：按 IANA 标识定位下拉项"""
+        # 线性查找 itemData，未命中保持默认（不重建 tz 缓存，切换时自动重建）
+        for i in range(self.timezone_combo.count()):
+            if self.timezone_combo.itemData(i) == tz_name:
+                self.timezone_combo.setCurrentIndex(i)
+                return
+
     def current_timezone(self) -> str:
         """获取当前选择的时区标识（供配置保存）"""
-        # 下拉框 currentData 为空时回退上海时区
-        return self.timezone_combo.currentData() or "Asia/Shanghai"
+        # 下拉框 currentData 为空时回退静态配置默认时区
+        return (
+            self.timezone_combo.currentData()
+            or get_static_config().base["default_timezone"]
+        )
 
 
 # ===== ui/panels/world_clock_panel.py 函数/类说明 =====
 # WorldClockPanel(QWidget): 世界时钟面板
 #   update_world_clock(): 由主窗口时钟 tick 调用，pytz 换算当前时区时间
-#   current_timezone(): 供主窗口 save_settings 持久化时区选择
+#   set_timezone(tz_name): 按 IANA 标识定位下拉项（配置恢复用，S10.3 B1）
+#   current_timezone(): 供主窗口 save_settings 持久化时区选择（回退默认时区来自静态配置）
 #   异常处理：pytz 转换失败降级显示 00:00:00 并记录日志
 #   关联配置：时区表来自 data/timezones.py
-

@@ -33,7 +33,7 @@ class CountdownPanel(QWidget):
         # 目标时间内部态初始为 None；选择器只改写输入框文本
         super().__init__(parent)
 
-        self.countdown_target_date = None  # 倒计时目标时间
+        self.countdown_target_date: datetime.datetime | None = None  # 倒计时目标时间
 
         countdown_frame = QFrame()
         countdown_frame.setFrameShape(QFrame.Shape.StyledPanel)
@@ -78,11 +78,6 @@ class CountdownPanel(QWidget):
         self.countdown_label.setFont(QFont(_UI["font_family"], 14, QFont.Weight.Bold))
         self.countdown_label.setStyleSheet("color: " + _UI["colors"]["primary"] + ";")
         countdown_layout.addWidget(self.countdown_label)
-
-        countdown_hint_label = QLabel("YYYY-MM-DD HH:MM:SS")
-        countdown_hint_label.setFont(QFont(_UI["font_family"], 9))
-        countdown_hint_label.setStyleSheet("color: " + _UI["colors"]["text_secondary"])
-        countdown_layout.addWidget(countdown_hint_label)
 
         countdown_layout.addStretch()
 
@@ -160,7 +155,9 @@ class CountdownPanel(QWidget):
 
         if remaining.total_seconds() <= 0:
             self.countdown_label.setText("00天 00:00:00")
-            self.countdown_label.setStyleSheet("color: " + _UI["colors"]["danger"] + ";")  # 红色表示倒计时结束
+            self.countdown_label.setStyleSheet(
+                "color: " + _UI["colors"]["danger"] + ";"
+            )  # 红色表示倒计时结束
             return
 
         days = remaining.days
@@ -253,14 +250,12 @@ class CountdownPanel(QWidget):
         else:
             date_str = QDate.currentDate().toString("yyyy-MM-dd")
 
-        # 解析当前时间（如果有）
+        # 解析当前时间（如果有）：fromString 不抛异常，无效值回退当前时间（E10 去无意义 try）
         current_time = QTime.currentTime()
         if current_text and len(current_text) >= 16:
-            try:
-                time_str = current_text[11:16]
-                current_time = QTime.fromString(time_str, "HH:mm")
-            except (ValueError, TypeError):
-                pass
+            parsed = QTime.fromString(current_text[11:16], "HH:mm")
+            if parsed.isValid():
+                current_time = parsed
 
         dialog = QDialog(self)
         dialog.setWindowTitle("选择时间")
@@ -310,4 +305,3 @@ class CountdownPanel(QWidget):
 #   设计理由：倒计时状态（目标时间）内聚在面板，主窗口只做 tick 驱动
 #   异常处理：格式解析 ValueError 弹窗提示；过期目标置 None
 #   关联配置：countdown_target 配置项由主窗口经 get_target_text 持久化
-

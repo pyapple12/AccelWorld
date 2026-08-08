@@ -1,4 +1,5 @@
 {
+  "version": "ver 0.46",
   "rate_min": 1.0,
   "rate_max": 20.0,
   "default_rate": 2.0,
@@ -12,7 +13,7 @@
   "window_height": 500,
   "clock_tick_ms": 100,
   "alarm_check_ms": 1000,
-  "weather_refresh_ms": 1800000,
+  "notification_duration_ms": 3000,
   "weather_cache_ttl": 1800,
   "user_config": "config/user_config.json",
   "logs_dir": "logs",

@@ -16,9 +16,10 @@ def dataclass_from_dict(
     filtered = {k: v for k, v in data.items() if k in valid_fields}
     try:
         return cls(**filtered)
-    except ValueError:
+    except (ValueError, TypeError):
+        # 容错模式：非法数据（时间格式错误/字段类型不匹配如 None）由调用方跳过该条目
+        # （捕获 TypeError：修复 S10.2 A2——time 为 null 时 ":" in None 抛 TypeError 而非 ValueError）
         if tolerant:
-            # 容错模式：非法数据（如时间格式）由调用方跳过该条目
             return None
         raise
 
@@ -28,7 +29,8 @@ def dataclass_from_dict(
 #   输入：目标类、数据字典、是否容错；输出：实例或 None（tolerant 且构造失败）
 #   逻辑步骤：字段白名单过滤 → cls(**filtered) 构造
 #   设计理由：未知键过滤 + 缺省字段默认值兜底，消除各 dataclass 重复的反序列化实现
-#   异常处理：tolerant=False 时构造 ValueError 原样上抛；tolerant=True 时返回 None
+#   异常处理：tolerant=False 时构造 (ValueError, TypeError) 原样上抛；
+#     tolerant=True 时返回 None（S10.2 A2 补捕获 TypeError，防 null 字段崩溃）
 #   关联配置：供 config/settings.py 与 modules/alarm_service.py 使用
 # 注：dataclass_to_dict 已删除（S9.6）——纯转发 asdict 无额外逻辑，to_dict 由各 dataclass
 #   直接调用标准库 asdict，避免冗余抽象层

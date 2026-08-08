@@ -1,40 +1,30 @@
 #!/usr/bin/env python3
 """
-加速世界 - 主程序入口文件
-
-这是加速世界程序的统一入口点，允许用户选择运行命令行界面或图形界面。
-
-使用方法：
-  python main.py                          # 运行图形界面（默认）
-  python main.py --gui                    # 运行图形界面
-  python main.py --cli --rate 2.0         # 运行命令行界面，指定加速倍率
-  python main.py --hidden                 # 启动后隐藏到托盘
-  python main.py --theme dark             # 使用暗色主题
-
-版本：ver 0.45
+加速世界 - 主程序入口文件（CLI/GUI 统一分发，用法示例见 --help epilog，S10.12 F3 去重）
 """
 
 import argparse
 import sys
 
 from config.static.static_config import get_static_config
-
-# 程序版本号（单一来源，所有模块从此处引用）
-VERSION = "ver 0.45"
+from utils.file_utils import get_project_root
 
 
 def main() -> None:
     """主程序入口函数：初始化日志、解析参数、分发 CLI/GUI"""
-    # 初始化统一日志
-    from utils.logger import setup_logging
-
-    setup_logging()
-
-    # 静态配置（倍率范围/默认值等参数来源）
+    # 静态配置（倍率范围/默认值/日志路径等参数来源）
     base = get_static_config().base
 
+    # 初始化统一日志（日志目录/保留天数从静态配置传入，utils 层零业务依赖 S10.4 D1）
+    from utils.logger import setup_logging
+
+    setup_logging(
+        log_dir=get_project_root() / base["logs_dir"],
+        backup_days=int(base["log_backup_days"]),
+    )
+
     parser = argparse.ArgumentParser(
-        description=f"加速世界 - 时间膨胀时钟工具 {VERSION}",
+        description=f"加速世界 - 时间膨胀时钟工具 {base['version']}",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
@@ -74,7 +64,7 @@ def main() -> None:
 
     # 其他参数
     parser.add_argument(
-        "--version", "-V", action="version", version=f"%(prog)s {VERSION}"
+        "--version", "-V", action="version", version=f"%(prog)s {base['version']}"
     )
 
     args = parser.parse_args()
@@ -87,10 +77,8 @@ def main() -> None:
         print("例如: python main.py --rate 2.0")
         sys.exit(1)
 
-    # 判断运行模式
-    run_cli = args.cli
-
-    if run_cli:
+    # 判断运行模式（run_cli 一行别名已内联，S10.11 C4）
+    if args.cli:
         # 运行命令行界面
         from modules.time_dilation import main_cli
 
@@ -123,11 +111,12 @@ if __name__ == "__main__":
 
 
 # ===== main.py 函数/常量说明 =====
-# VERSION: str，程序版本号单一来源（当前 ver 0.45），其他模块经 `from main import VERSION` 引用
+# 版本号：单一来源在 config/static/base.json（base["version"]），main.py 的 --version/description
+#   及各 UI 显示均从静态配置读取（版本迁移方案，代码零硬编码版本字符串）
 # main() -> None: 主程序入口
 #   输入：命令行参数（argparse）
-#   逻辑步骤：初始化日志 → 解析参数（--gui/--cli/--rate/--theme/--city/--hidden/--version）
-#            → 验证 --rate >= 1.0 → 分发 CLI（main_cli(rate=...)）或 GUI（main_gui(**gui_args)）
-#   设计理由：入口收编 CLI/GUI 分发与 VERSION，模块间顶层 import 避免延迟导入
+#   逻辑步骤：读取静态配置 → 初始化日志 → 解析参数（--gui/--cli/--rate/--theme/--city/--hidden/--version）
+#            → 验证 --rate 范围 → 分发 CLI（main_cli(rate=...)）或 GUI（main_gui(**gui_args)）
+#   设计理由：入口收编 CLI/GUI 分发；版本号从 base.json 读取（单一来源，代码零硬编码）
 #   异常处理：rate 越界打印错误并 sys.exit(1)
 #   关联配置：utils/logger.py 日志初始化；modules/time_dilation.py CLI；ui/main_window.py GUI

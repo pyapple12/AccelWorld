@@ -158,9 +158,8 @@ class ClockPanel(QWidget):
 
     def set_rate(self, rate: float) -> None:
         """同步设置倍率（启动参数/外部调用），经滑杆触发 rate_changed"""
-        # 滑杆 setValue 会触发 on_slider_change → 信号链自动生效
-        self.slider.setValue(int(rate * 10))
-        self.slider_value_label.setText(f"{rate:.1f}x")
+        # 滑杆 setValue 触发 on_slider_change → 信号链自动生效（标签由信号链统一更新）
+        self.slider.setValue(int(round(rate * 10)))
         self.rate_entry.setText("")
 
     def on_slider_change(self, value: int) -> None:
@@ -181,16 +180,16 @@ class ClockPanel(QWidget):
 
         try:
             rate = float(rate_text)
-            rate = round(rate, 2)
+            # 对齐滑杆 0.1 粒度（round 后除回，避免浮点 2.05*10=20.4999 截断歧义，F2）
+            rate = round(rate * 10) / 10
             if not (_BASE["rate_min"] <= rate <= _BASE["rate_max"]):
                 raise ValueError(
                     f"加速倍率必须在{_BASE['rate_min']}到{_BASE['rate_max']}之间"
                 )
 
             self.rate_changed.emit(rate)
-            # 同步滑杆的值（清空输入框）
+            # 同步滑杆（setValue 触发 on_slider_change 统一更新标签，界面与核心一致）
             self.slider.setValue(int(rate * 10))
-            self.slider_value_label.setText(f"{rate:.1f}x")
             self.rate_entry.setText("")
         except ValueError as e:
             QMessageBox.critical(self, "错误", str(e))

@@ -10,20 +10,20 @@ from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QCloseEvent
 
-# 程序版本号（单一来源：main.py）
-from main import VERSION
-
 from config.settings import (
+    load_config,
+    save_config,
     get_setting,
+    set_setting,
     load_window_geometry,
     save_window_geometry,
-    set_setting,
     get_alarms,
     save_alarms,
 )
 from config.static.static_config import get_static_config
 from modules.time_dilation import AcceleratedWorld
-from modules.alarm_service import play_alarm_sound_async, Alarm
+from modules.alarm_service import Alarm
+from ui.audio_player import play_alarm_sound_async
 from data.cities import CITIES
 from ui.themes import LIGHT_THEME, DARK_THEME, LIGHT_THEME_PROGRESS, DARK_THEME_PROGRESS
 from ui.system_tray import SystemTray
@@ -49,7 +49,7 @@ class AcceleratedWorldGUI(QMainWindow):
         # 加载配置
         saved_rate = get_setting("time_dilation_rate", base["default_rate"])
 
-        self.setWindowTitle(f"加速世界 - 时间膨胀时钟 {VERSION}")
+        self.setWindowTitle(f"加速世界 - 时间膨胀时钟 {base['version']}")
 
         # 恢复窗口位置和大小（默认几何来自静态配置）
         geometry = load_window_geometry()
@@ -97,8 +97,11 @@ class AcceleratedWorldGUI(QMainWindow):
         self.alarm_panel.alarm_saved.connect(self._save_alarms)
         self.alarm_panel.alarm_triggered.connect(self._on_alarm_triggered)
 
-        # 触发首次天气查询（S8.3：启动即加载，后台线程执行不阻塞）
-        self.weather_panel.update_weather()
+        # 恢复上次城市/时区（S10.3 B1：修复只存不读；set_city 自带联动查询）
+        self.weather_panel.set_city(get_setting("last_city", base["default_city"]))
+        self.world_clock_panel.set_timezone(
+            get_setting("last_timezone", base["default_timezone"])
+        )
 
         # 恢复倒计时目标（S8.5：仅填充输入框显示，不自动启动计时）
         saved_countdown = get_setting("countdown_target", "")
@@ -118,7 +121,7 @@ class AcceleratedWorldGUI(QMainWindow):
         self.apply_theme()
 
         # ------------------- 系统托盘 -------------------
-        self.tray = SystemTray(version=VERSION, parent=self)
+        self.tray = SystemTray(parent=self)
         self.tray.show_requested.connect(self.show_normal)
         self.tray.hide_requested.connect(self.hide_to_tray)
         self.tray.quit_requested.connect(self.quit_app)
@@ -236,11 +239,14 @@ class AcceleratedWorldGUI(QMainWindow):
 
     def save_settings(self) -> None:
         """保存当前设置"""
-        # 汇总倍率/城市/时区/倒计时/窗口几何逐项落盘
-        set_setting("time_dilation_rate", self.accel_world.time_dilation_rate)
-        set_setting("last_city", self.weather_panel.current_city_name())
-        set_setting("last_timezone", self.world_clock_panel.current_timezone())
-        set_setting("countdown_target", self.countdown_panel.get_target_text())
+        # 合并字段单次写盘（E11：原 4 次 set_setting 各写一次，现 load 后改字段一次 save_config）
+        config = load_config()
+        config.time_dilation_rate = self.accel_world.time_dilation_rate
+        config.last_city = self.weather_panel.current_city_name()
+        config.last_timezone = self.world_clock_panel.current_timezone()
+        config.countdown_target = self.countdown_panel.get_target_text()
+        save_config(config)
+        # 窗口几何经既有 base64 封装单独落盘（保持编码/异常处理内聚）
         save_window_geometry(self.saveGeometry())
 
     def apply_startup_args(
@@ -256,10 +262,9 @@ class AcceleratedWorldGUI(QMainWindow):
         :param theme: 主题 ("light" 或 "dark")
         :param city: 默认城市
         """
-        # 应用倍率（面板 set_rate 触发 rate_changed → 重建+保存+托盘更新）
+        # 应用倍率（面板 set_rate 触发 rate_changed → 重建+保存+托盘更新，无需重复 update_rate，F1）
         if rate is not None:
             self.clock_panel.set_rate(rate)
-            self.tray.update_rate(self.accel_world.time_dilation_rate)
 
         # 应用默认城市
         if city:
@@ -315,4 +320,5 @@ def main_gui(**kwargs: Any) -> None:
 #   apply_startup_args(rate/theme/city): 启动参数应用
 # main_gui(**kwargs): 创建应用/窗口/启动参数/显示/事件循环
 #   设计理由：主窗口只做装配与调度，业务 UI 全部内聚在面板（signal/slot 解耦）
-#   关联配置：config/settings.py 配置读写；ui/system_tray.py 托盘；ui/themes.py 样式
+#   关联配置：config/settings.py 配置读写；ui/audio_player.py 闹钟播放；
+#     ui/system_tray.py 托盘；ui/themes.py 样式

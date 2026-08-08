@@ -45,10 +45,6 @@ class WeatherData:
     description: str  # 中文完整描述
     icon: str  # emoji 图标
 
-    def to_display(self) -> str:
-        # 生成简洁展示文本（图标 + 温度 + 天气名）
-        return f"{self.icon} {self.temperature:.1f}°C {self.weather}"
-
 
 def _fetch_weather_data(url: str) -> dict:
     # 请求 Open-Meteo API 并解析 JSON（独立函数供 retry_call 重试）
@@ -156,7 +152,7 @@ def format_weather_info(weather: Optional[WeatherData], city_name: str = "") -> 
 
 
 # ===== modules/weather_service.py 函数/常量说明 =====
-# WeatherData: dataclass，天气信息聚合类，to_display() 生成简洁文本
+# WeatherData: dataclass，天气信息聚合类（S10.11 C1：to_display 已删，展示统一走 format_weather_info）
 # _fetch_weather_data(url): 请求 API 并解析 JSON（供 retry_call 重试的可调用对象）
 # get_weather_by_coords(lat, lon): 经纬度查询，URLError/TimeoutError 自动重试 2 次
 # get_weather_by_city(city_name): 城市查询，30 分钟缓存（仅缓存成功，失败可立即重试）

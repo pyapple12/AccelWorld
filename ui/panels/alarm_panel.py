@@ -28,6 +28,9 @@ from config.static.static_config import get_static_config
 _BASE = get_static_config().base
 _UI = get_static_config().ui
 
+# 星期字符表（重复闹钟显示用，模块级常量避免每次调用重建，E6）
+_WEEKDAY_CHARS = ["一", "二", "三", "四", "五", "六", "日"]
+
 
 class AlarmPanel(QWidget):
     """闹钟面板：闹钟列表展示与增删改，内部每秒检查触发"""
@@ -226,8 +229,7 @@ class AlarmPanel(QWidget):
         # 空列表显示"一次"，否则按星期数字映射拼接
         if not repeat_days:
             return "一次"
-        days = ["一", "二", "三", "四", "五", "六", "日"]
-        return "周" + "".join(days[d] for d in repeat_days)
+        return "周" + "".join(_WEEKDAY_CHARS[d] for d in repeat_days)
 
     def _get_sound_display(self, alarm: Alarm) -> str:
         """获取声音的显示文本（内部辅助）"""

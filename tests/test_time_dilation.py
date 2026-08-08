@@ -6,6 +6,7 @@ from unittest import mock
 
 import modules.time_dilation as td
 from modules.time_dilation import AcceleratedWorld, TimeInfo
+from config.static.static_config import get_static_config
 
 
 def test_init_valid_rates():
@@ -17,13 +18,28 @@ def test_init_valid_rates():
 
 
 def test_init_invalid_rate():
-    # 倍率 <=1.0 拒绝构造（抛 ValueError）
-    for rate in (1.0, 0.5, 0, -1):
+    # 倍率 < rate_min 拒绝构造（下限来自静态配置，S10.1 A1 回归）
+    rate_min = float(get_static_config().base["rate_min"])
+    for rate in (rate_min - 0.01, 0.5, 0, -1):
         try:
             AcceleratedWorld(rate)
             raise AssertionError(f"倍率 {rate} 未拒绝")
         except ValueError:
             pass
+
+
+def test_init_rate_min_boundary():
+    # rate_min 边界值可构造（S10.1 A1 回归：修复前 rate=1.0 抛 ValueError）
+    rate_min = float(get_static_config().base["rate_min"])
+    w = AcceleratedWorld(rate_min)
+    assert w.time_dilation_rate == rate_min
+    assert w.custom_hours_per_day == int(24 * rate_min)
+
+
+def test_init_default_rate():
+    # 不传参使用静态配置默认倍率（None 哨兵，S10.1 A1 回归）
+    default = float(get_static_config().base["default_rate"])
+    assert AcceleratedWorld().time_dilation_rate == default
 
 
 def test_custom_time_fields():
@@ -47,16 +63,14 @@ def test_custom_hour_bounds():
 
 
 def test_timeinfo_properties():
-    # TimeInfo 计算属性与手工 split 结果一致
+    # TimeInfo 计算属性与手工 split 结果一致（S10.11 C2：standard_second 已删，其检测路径用 now.second）
     info = AcceleratedWorld(2.0).get_custom_time()
     assert info.standard_time == info.standard_datetime.split()[1]
-    assert info.standard_second == int(info.standard_datetime.split(":")[-1])
     assert info.custom_hour == int(info.custom_time.split(":")[0])
     assert info.custom_second == int(info.custom_time.split(":")[-1])
     # 手工构造验证固定值
     t = TimeInfo("2026-08-08 12:34:56", "24:12:34", "d", "l", 200.0, 48.0, 24.0)
     assert t.standard_time == "12:34:56"
-    assert t.standard_second == 56
     assert t.custom_hour == 24
     assert t.custom_second == 34
 

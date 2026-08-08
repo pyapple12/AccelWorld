@@ -32,6 +32,9 @@ dist/
 # Ruff cache
 .ruff_cache/
 
+# pytest cache
+.pytest_cache/
+
 # Temporary scripts
 .temp/
 

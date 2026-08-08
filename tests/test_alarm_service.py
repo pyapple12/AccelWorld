@@ -82,6 +82,23 @@ def test_from_dict_tolerant():
     assert len(m.alarms) == 1
 
 
+def test_from_dict_null_time_skipped():
+    # null 字段条目跳过不崩溃（S10.2 A2 回归：修复前 TypeError 传播）
+    assert Alarm.from_dict({"label": "x", "time": None}) is None
+    m = AlarmManager()
+    m.from_dict_list(
+        [
+            {"label": "合法", "time": "07:00"},
+            {"label": "空时间", "time": None},
+            {"label": "空标签", "label": None, "time": "08:00"},
+        ]
+    )
+    # 仅 null time 条目被跳过；label 无校验，null 标签条目按当前语义正常保留
+    assert len(m.alarms) == 2
+    assert m.alarms[0].label == "合法"
+    assert m.alarms[1].label is None
+
+
 def test_replace_keeps_id():
     # 编辑场景整体替换保留 ID（S4 回归）
     m = AlarmManager()

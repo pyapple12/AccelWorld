@@ -17,11 +17,11 @@ class SystemTray(QSystemTrayIcon):
     hide_requested = pyqtSignal()  # 请求隐藏到托盘
     quit_requested = pyqtSignal()  # 请求退出程序
 
-    def __init__(self, version: str = "", parent=None):
+    def __init__(self, parent=None):
         """创建托盘图标与菜单"""
-        # 初始化图标/菜单/双击监听后显示托盘
+        # 初始化图标/菜单/双击监听后显示托盘（版本来自静态配置，单一来源）
         super().__init__(parent)
-        self.setToolTip(f"加速世界 - {version}")
+        self.setToolTip(f"加速世界 - {get_static_config().base['version']}")
         self._create_icon()
         self._create_menu()
         self.activated.connect(self._on_activated)
@@ -93,7 +93,7 @@ class SystemTray(QSystemTrayIcon):
         self, title: str, message: str, icon_kind: str = "info"
     ) -> None:
         """显示系统通知（icon_kind: info/warning）"""
-        # 图标类型映射后统一 3 秒展示
+        # 图标类型映射后展示，时长来自静态配置（E13 参数化）
         icon_map = {
             "info": QSystemTrayIcon.MessageIcon.Information,
             "warning": QSystemTrayIcon.MessageIcon.Warning,
@@ -102,7 +102,7 @@ class SystemTray(QSystemTrayIcon):
             title,
             message,
             icon_map.get(icon_kind, QSystemTrayIcon.MessageIcon.Information),
-            3000,
+            int(get_static_config().base["notification_duration_ms"]),
         )
 
 
@@ -113,6 +113,7 @@ class SystemTray(QSystemTrayIcon):
 #   _create_menu(): 显示/隐藏/倍率（只读）/退出菜单
 #   _on_activated(reason): 双击托盘显示窗口
 #   update_rate(rate): 倍率变化时更新菜单文本（主窗口经 rate 信号调用）
-#   show_notification(title, message, icon_kind): 封装 showMessage
+#   show_notification(title, message, icon_kind): 封装 showMessage（时长来自 base.json）
 #   设计理由：托盘职责独立成类，主窗口不再持有图标/菜单/绘制逻辑
-#   关联配置：版本号由主窗口传入（来自 main.VERSION）；颜色来自静态配置 ui.json
+#   关联配置：版本号来自 config/static/base.json base["version"]（版本迁移方案）；
+#     颜色来自静态配置 ui.json

@@ -4,7 +4,7 @@
 
 ## 运行与验证
 
-- 入口 `main.py`：GUI 为默认模式，CLI 用 `--cli`；版本常量 `VERSION` 单一来源在 `main.py`（当前 `ver 0.45`），其他模块用 `from main import VERSION` 引用
+- 入口 `main.py`：GUI 为默认模式，CLI 用 `--cli`；版本号单一来源在 `config/static/base.json`（`base["version"]`，当前 `ver 0.46`），各模块（main.py --version/窗口标题/托盘 toolTip）一律从配置读取，代码中不得出现版本字符串
 - 没有测试/lint 命令。改动后验证：`.\.venv\Scripts\python.exe -c "import main, modules.time_dilation, modules.chinese_calendar, modules.weather_service, modules.alarm_service, config.settings, config.static.static_config, ui.main_window, ui.alarm_dialog, ui.themes, data.cities, data.timezones, data.weather_codes, utils.logger, utils.file_utils, utils.retry"`。不要直接跑 GUI 验证（会弹窗阻塞）
 - GUI 无头初始化验证（不弹窗）：`$env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWidgets import QApplication; from ui.main_window import AcceleratedWorldGUI; app = QApplication([]); w = AcceleratedWorldGUI(); print('GUI init OK')"`
 - `pyproject.toml` 仅有 basedpyright 配置，且绝大多数检查被显式放宽为 `"none"` —— 不要引入严格类型修复，也不要改动这些配置
@@ -20,15 +20,16 @@
 
 - 包结构按依赖单向分层（参考 DeepTransHub）：`utils/` 通用工具（logger/file_utils/retry/dataclass_utils，无业务依赖）→ `config/` 配置（settings 用户配置 + static/ 应用静态配置层，用户配置存项目内 `config/user_config.json`，日志存项目内 `logs/app-YYYY-MM-DD.log` 每日独立文件）→ `modules/` 业务核心（time_dilation 时间膨胀、chinese_calendar 农历/干支/节气、weather_service Open-Meteo 天气、alarm_service 闹钟）→ `ui/` 界面（main_window 主窗口、alarm_dialog 闹钟对话框、themes 主题 QSS）→ `data/` 静态数据（cities/timezones/weather_codes）
 - 代码零硬编码原则：业务参数（倍率范围/默认值/定时器周期/窗口几何/字体颜色/日志路径等）全部从 `config/static/` 的 json 读取（`get_static_config()` 单例，映射表 config.json 由 static_config.py 的 `__file__` 自定位——唯一结构约定）；用户配置默认值经 `default_factory` 从 base.json 现取
-- `main.py` 收编 CLI/GUI 分发与 `VERSION`；模块间顶层 import，不要使用函数内延迟 import
+- `main.py` 收编 CLI/GUI 分发与版本读取；模块间顶层 import，不要使用函数内延迟 import
 - 提交信息用中文 conventional 风格并带版本号，如 `feat: V0.43，M07完成，添加日期时间选择器...`；功能开发先走 OpenSpec 提案流程
-- 项目规划文档在 `workingboard/` 目录，重构进度在 `x.progress.md`，重构方案在 `z.plan.md`
+- 项目规划文档在 `workingboard/` 目录（已归档至 `archived/workingboard`），重构进度在 `x.progress.md`，重构方案与未完成项规划在 `z.plan.md`
 
 ## 代码规范
 
 ### 函数注释规则
 
 - 每个函数定义下方紧跟 `#` 注释，说明该函数的用途和核心逻辑（1-3 行）
+- **禁止使用 docstring（三引号字符串）替代 `#` 注释**——函数/类/模块文档统一走 `#` 注释体系，docstring 不承担注释职责；单行 docstring 当注释用属于违规（`.temp/verify_s11.py` 自动检测）
 - 每个 `.py` 文件末尾必须有完整的函数逻辑说明区，用 `# =====` 分隔，涵盖文件中所有函数/模块级常量：
   - 输入、输出、逻辑步骤
   - 设计理由（为什么这样做）
@@ -61,6 +62,6 @@
 
 ## 操作注意
 
-- 执行命令前先检测当前 shell（Windows 下为 pwsh）：使用 PowerShell 兼容命令（`Select-String` 替代 `grep`，`Get-ChildItem` 替代 `ls` 等），避免 Linux-only 工具
+- 执行命令前先检测当前 shell（Windows 下为 pwsh）：**搜索统一用 `rg`**（ripgrep 已安装，自动遵循 .gitignore 排除 .venv/.history，中文 UTF-8 正常；如 `rg -n "pattern" --type py`，统计匹配数用 `rg -c`），无 rg 环境时回退 `Select-String`；目录操作使用 PowerShell 兼容命令（`Get-ChildItem` 替代 `ls` 等），避免 Linux-only 工具
 - pwsh 会话带 `-NoProfile` 不加载 `$PROFILE`，输出中文前必须先设置编码：`[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;`
 - 未经用户明确要求，不得擅自执行 `git add`、`git commit` 或任何其他 Git 写操作

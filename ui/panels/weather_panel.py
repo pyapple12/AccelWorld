@@ -66,7 +66,7 @@ class WeatherPanel(QWidget):
         # 构建城市下拉/天气标签/主题与刷新按钮，并启动 30 分钟定时器
         super().__init__(parent)
 
-        self.current_city = "北京"
+        self.current_city = _BASE["default_city"]
         self._weather_pool = QThreadPool.globalInstance()
 
         weather_frame = QFrame()
@@ -82,7 +82,7 @@ class WeatherPanel(QWidget):
         self.city_combo.setFont(QFont(_UI["font_family"], 12))
         self.city_combo.setFixedWidth(120)
         self.city_combo.addItems(sorted(CITIES.keys()))
-        self.city_combo.setCurrentText("北京")
+        self.city_combo.setCurrentText(_BASE["default_city"])
         self.city_combo.currentTextChanged.connect(self.on_city_changed)
         weather_layout.addWidget(self.city_combo)
 
@@ -115,10 +115,10 @@ class WeatherPanel(QWidget):
         outer = QVBoxLayout(self)
         outer.addWidget(weather_frame)
 
-        # 每 30 分钟自动刷新天气
+        # 每 30 分钟自动刷新天气（周期由缓存 TTL 派生，单源配置避免双键漂移，E15）
         self.weather_timer = QTimer(self)
         self.weather_timer.timeout.connect(self.update_weather)
-        self.weather_timer.start(int(_BASE["weather_refresh_ms"]))
+        self.weather_timer.start(int(_BASE["weather_cache_ttl"]) * 1000)
 
     def update_weather(self) -> None:
         """发起后台天气查询（立即返回，结果经信号回调更新）"""
@@ -190,4 +190,3 @@ class WeatherPanel(QWidget):
 #   设计理由：QThreadPool 全局实例复用线程；信号跨线程自动排队，避免手动锁
 #   异常处理：查询失败在 service 层返回 None，回调显示失败文案
 #   关联配置：last_city 配置项由主窗口持久化；城市表来自 data/cities.py
-

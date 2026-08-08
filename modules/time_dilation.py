@@ -10,9 +10,6 @@ from dataclasses import dataclass
 # 配置日志
 logger = logging.getLogger(__name__)
 
-# 程序版本号（单一来源：main.py）
-from main import VERSION
-
 # 导入日期处理模块
 from modules.chinese_calendar import get_chinese_date, get_lunar_info
 
@@ -38,11 +35,6 @@ class TimeInfo:
         return self.standard_datetime.split()[1]
 
     @property
-    def standard_second(self) -> int:
-        # 标准时间秒数（秒变化检测用）
-        return int(self.standard_datetime.split(":")[-1])
-
-    @property
     def custom_hour(self) -> int:
         # 自定义时间小时数（进度条用）
         return int(self.custom_time.split(":")[0])
@@ -57,16 +49,20 @@ class AcceleratedWorld:
     """加速世界 - 基于时间膨胀倍率的自定义小时制时间显示核心类"""
 
     time_dilation_rate: float
-    """时间膨胀倍率（必须>1.0，默认2.0）"""
+    """时间膨胀倍率（下限来自静态配置 rate_min，默认 default_rate）"""
 
     custom_hours_per_day: int
     """基于膨胀率计算的一天总小时数"""
 
-    def __init__(self, time_dilation_rate: float = 2.0):
-        """初始化时间膨胀倍率（校验必须 >1.0）"""
-        # 校验倍率下限，非法值直接抛错阻止实例创建
-        if time_dilation_rate <= 1.0:
-            raise ValueError("时间膨胀倍率必须大于1.0！")
+    def __init__(self, time_dilation_rate: float | None = None):
+        """初始化时间膨胀倍率（默认值与下限校验均来自静态配置）"""
+        # None 哨兵避免默认参数在定义时求值硬编码；下限读 base.rate_min（消除与配置的 1.0 边界矛盾）
+        base = get_static_config().base
+        if time_dilation_rate is None:
+            time_dilation_rate = float(base["default_rate"])
+        rate_min = float(base["rate_min"])
+        if time_dilation_rate < rate_min:
+            raise ValueError(f"时间膨胀倍率必须大于或等于{rate_min}！")
         self.time_dilation_rate = time_dilation_rate
         self.custom_hours_per_day = int(
             24 * time_dilation_rate
@@ -206,7 +202,7 @@ def main_cli(rate: float | None = None) -> None:
         rate = float(get_static_config().base["default_rate"])
     rate_min = float(get_static_config().base["rate_min"])
     if rate < rate_min:
-        print("错误: --rate 参数必须大于或等于 1.0")
+        print(f"错误: --rate 参数必须大于或等于 {rate_min}")
         print("例如: python main.py --cli --rate 2.0")
         sys.exit(1)
 
@@ -230,10 +226,11 @@ if __name__ == "__main__":
 #   standard_datetime/custom_time/chinese_date/lunar_info/dilation_percentage/
 #   expanded_hours_per_day/remaining_hours
 # AcceleratedWorld: 时间膨胀核心类
-#   __init__(rate): 校验倍率>1.0，计算一天自定义小时数（int(24*rate)）
+#   __init__(rate=None): 默认值与下限校验来自静态配置（default_rate/rate_min，None 哨兵零硬编码），
+#     下限为 rate_min（含边界，修复 S10.1 A1 的 1.0 矛盾），计算一天自定义小时数（int(24*rate)）
 #   get_custom_time() -> TimeInfo: 当前秒数×倍率 → 时分秒；含农历/中文日期/剩余小时
 #   run_live_clock(): CLI 实时钟，秒变化时覆写输出，KeyboardInterrupt 优雅退出
 # main_cli(rate): CLI 入口（倍率直接传参，修复 D1），校验后启动实时钟
 #   设计理由：纯计算无 GUI 依赖，CLI/GUI 共用；整数运算避免浮点进位误差
-#   异常处理：rate<=1.0 抛 ValueError；运行期 KeyboardInterrupt 捕获退出
-#   关联配置：VERSION 来自 main.py；农历数据来自 modules/chinese_calendar.py
+#   异常处理：rate < rate_min 抛 ValueError；运行期 KeyboardInterrupt 捕获退出
+#   关联配置：农历数据来自 modules/chinese_calendar.py；倍率参数来自 config/static/base.json

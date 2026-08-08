@@ -19,10 +19,12 @@ def test_format_empty():
     assert weather_service.format_weather_info(None) == "天气信息获取失败"
 
 
-def test_to_display():
-    # WeatherData.to_display 简洁文本
+def test_format_full():
+    # 完整展示文本（S10.11 C1：原 to_display 测试改测 format_weather_info）
     wd = WeatherData(20.0, 50, 5.0, 21.0, 0, "晴", "晴朗无云", "☀️")
-    assert wd.to_display() == "☀️ 20.0°C 晴"
+    assert weather_service.format_weather_info(wd) == (
+        "☀️ 晴 | 20.0°C | 体感 21.0°C | 湿度 50% | 风力 5.0km/h"
+    )
 
 
 def test_cache_hit(monkeypatch):

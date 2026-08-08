@@ -59,6 +59,17 @@ CUSTOM_HOLIDAYS = {
 # 英文节日名称到中文的翻译映射
 HOLIDAY_TRANSLATION = {"New Year's Day": "元旦", "National Day": "国庆节"}
 
+# 星期映射（中文日期格式化用，模块级常量避免每次调用重建，E6）
+_WEEKDAY_NAMES = {
+    0: "星期一",
+    1: "星期二",
+    2: "星期三",
+    3: "星期四",
+    4: "星期五",
+    5: "星期六",
+    6: "星期日",
+}
+
 
 @dataclass
 class LunarInfo:
@@ -155,16 +166,7 @@ def get_chinese_lunar_calendar(year: int, month: int, day: int, hour: int) -> Lu
 def get_chinese_date(now: datetime.datetime) -> str:
     """将 datetime 转为中文日期字符串（YYYY年MM月DD日 星期X）"""
     # 星期映射后经 strftime 格式化
-    weekday_map = {
-        0: "星期一",
-        1: "星期二",
-        2: "星期三",
-        3: "星期四",
-        4: "星期五",
-        5: "星期六",
-        6: "星期日",
-    }
-    return now.strftime(f"%Y年%m月%d日 {weekday_map[now.weekday()]}")
+    return now.strftime(f"%Y年%m月%d日 {_WEEKDAY_NAMES[now.weekday()]}")
 
 
 def get_lunar_info(now: datetime.datetime) -> str:

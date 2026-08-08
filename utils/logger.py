@@ -1,14 +1,12 @@
 # 统一日志配置模块
 # 提供根日志初始化，所有模块的 logging.getLogger(__name__) 自动继承统一 handler
 # S9.5 定案：日志集中项目内 logs/，每天独立文件 app-YYYY-MM-DD.log，保留天数参数化
+# S10.4 D1：日志目录/保留天数由 main.py 从静态配置读取后传入，utils 层不再反向依赖 config
 
 import datetime
 import logging
 import sys
 from pathlib import Path
-
-from utils.file_utils import get_project_root
-from config.static.static_config import get_static_config
 
 # 日志格式（时间/级别/模块/消息）
 _LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] %(message)s"
@@ -59,8 +57,13 @@ def _cleanup_old_logs(log_dir: Path, backup_days: int) -> None:
                 pass
 
 
-def setup_logging(level: int = _DEFAULT_LEVEL) -> None:
+def setup_logging(
+    level: int = _DEFAULT_LEVEL,
+    log_dir: Path | None = None,
+    backup_days: int = 7,
+) -> None:
     # 配置根 logger：控制台 + 每日文件双 handler，只执行一次
+    # log_dir/backup_days 由调用方（main.py）从静态配置传入，utils 层无业务依赖（S10.4 D1）
     global _setup_done
     if _setup_done:
         return
@@ -73,19 +76,18 @@ def setup_logging(level: int = _DEFAULT_LEVEL) -> None:
     console_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
     root.addHandler(console_handler)
 
-    # 文件 handler（项目内 logs/ 每日独立文件，参数来自静态配置）
-    try:
-        static = get_static_config()
-        log_dir = get_project_root() / static.base["logs_dir"]
-        log_dir.mkdir(parents=True, exist_ok=True)
-        file_handler = _DailyFileHandler(log_dir)
-        file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
-        root.addHandler(file_handler)
-        # 启动时清理过期日志
-        _cleanup_old_logs(log_dir, static.base["log_backup_days"])
-    except (OSError, RuntimeError):
-        # 日志文件初始化失败（目录不可写/配置缺失）降级为仅控制台输出
-        pass
+    # 文件 handler（每日独立文件；log_dir 未提供时仅控制台输出）
+    if log_dir is not None:
+        try:
+            log_dir.mkdir(parents=True, exist_ok=True)
+            file_handler = _DailyFileHandler(log_dir)
+            file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+            root.addHandler(file_handler)
+            # 启动时清理过期日志
+            _cleanup_old_logs(log_dir, backup_days)
+        except OSError:
+            # 日志文件初始化失败（目录不可写）降级为仅控制台输出
+            pass
 
     _setup_done = True
 
@@ -96,8 +98,9 @@ def setup_logging(level: int = _DEFAULT_LEVEL) -> None:
 #   emit(): 每次写日志检查日期，跨天关闭旧流重建新文件（路径 2 定案）
 # _cleanup_old_logs(log_dir, backup_days): 删除超过保留天数的 app-*.log
 #   逻辑：按文件名日期戳解析 → (今天-文件日期).days > backup_days 则删除
-# setup_logging(level): 初始化根 logger（控制台+每日文件双 handler）
+# setup_logging(level, log_dir, backup_days): 初始化根 logger（控制台+每日文件双 handler）
 #   设计理由：logging handler 属根 logger，各模块 getLogger 自动继承；
-#   日志参数（logs_dir/log_backup_days）来自 config/static/base.json（零硬编码）
-#   异常处理：文件 handler 创建失败仅降级控制台，不阻断程序
-#   关联配置：logs_dir/log_backup_days 来自 config/static/base.json；由 main.py 启动时调用
+#   日志目录/保留天数由 main.py 从 base.json 读取传入（S10.4 D1 解除 utils→config 反向依赖）；
+#   log_dir 为 None 时仅控制台输出（文件日志降级），不阻断程序
+#   异常处理：文件 handler 创建失败（OSError）仅降级控制台
+#   关联配置：参数来源 config/static/base.json（logs_dir/log_backup_days）；由 main.py 启动时传入

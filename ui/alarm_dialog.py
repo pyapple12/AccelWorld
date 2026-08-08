@@ -75,12 +75,11 @@ class AlarmEditDialog(QDialog):
                 self.sound_type = "custom"
                 self.sound_value = alarm.sound_value
             else:
-                # 预设声音：根据 sound_value 定位下拉框索引
+                # 预设声音：经 from_value 定位枚举（大小写不敏感兜底 CLASSIC），避免手写遍历（E2）
                 self.sound_value = alarm.sound_value
-                for idx, preset in enumerate(list(PresetSound)):
-                    if preset.value == alarm.sound_value:
-                        self.sound_combo.setCurrentIndex(idx)
-                        break
+                self.sound_combo.setCurrentIndex(
+                    PresetSound.from_value(alarm.sound_value).index()
+                )
 
         sound_widget = QWidget()
         sound_widget.setLayout(sound_layout)
@@ -93,7 +92,6 @@ class AlarmEditDialog(QDialog):
         for i, day in enumerate(days):
             checkbox = QCheckBox(day)
             checkbox.setFixedWidth(45)
-            checkbox.setToolTip(days[i])
             if alarm and i in alarm.repeat_days:
                 checkbox.setChecked(True)
             repeat_layout.addWidget(checkbox)
