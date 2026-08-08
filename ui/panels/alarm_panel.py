@@ -22,6 +22,11 @@ from PyQt6.QtGui import QFont
 
 from modules.alarm_service import AlarmManager, Alarm, PresetSound
 from ui.alarm_dialog import AlarmEditDialog
+from config.static.static_config import get_static_config
+
+# 静态配置（检查周期/字体/颜色）
+_BASE = get_static_config().base
+_UI = get_static_config().ui
 
 
 class AlarmPanel(QWidget):
@@ -44,29 +49,29 @@ class AlarmPanel(QWidget):
         # 标题行
         alarm_title_layout = QHBoxLayout()
         alarm_title = QLabel("闹钟:")
-        alarm_title.setFont(QFont("Arial", 12))
+        alarm_title.setFont(QFont(_UI["font_family"], 12))
         alarm_title_layout.addWidget(alarm_title)
         alarm_title_layout.addStretch()
 
         self.add_alarm_button = QPushButton("+ 添加闹钟")
-        self.add_alarm_button.setFont(QFont("Arial", 10))
+        self.add_alarm_button.setFont(QFont(_UI["font_family"], 10))
         self.add_alarm_button.clicked.connect(self.show_add_alarm_dialog)
         alarm_title_layout.addWidget(self.add_alarm_button)
         alarm_layout.addLayout(alarm_title_layout)
 
         # 闹钟列表
         self.alarm_list = QListWidget()
-        self.alarm_list.setFont(QFont("Arial", 11))
+        self.alarm_list.setFont(QFont(_UI["font_family"], 11))
         self.alarm_list.setFixedHeight(120)
         alarm_layout.addWidget(self.alarm_list)
 
         outer = QVBoxLayout(self)
         outer.addWidget(alarm_frame)
 
-        # 每秒检查一次闹钟触发
+        # 每秒检查一次闹钟触发（周期来自静态配置）
         self.check_timer = QTimer(self)
         self.check_timer.timeout.connect(self.check_alarms)
-        self.check_timer.start(1000)
+        self.check_timer.start(int(_BASE["alarm_check_ms"]))
 
     def load_alarms(self, data: list) -> None:
         """从配置数据加载闹钟并刷新列表"""
@@ -104,26 +109,26 @@ class AlarmPanel(QWidget):
 
             # 时间
             time_label = QLabel(alarm.time)
-            time_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+            time_label.setFont(QFont(_UI["font_family"], 12, QFont.Weight.Bold))
             time_label.setFixedWidth(60)
             layout.addWidget(time_label)
 
             # 标签
             label_label = QLabel(alarm.label)
-            label_label.setFont(QFont("Arial", 11))
+            label_label.setFont(QFont(_UI["font_family"], 11))
             label_label.setFixedWidth(150)
             layout.addWidget(label_label)
 
             # 重复信息
             repeat_label = QLabel(self._get_repeat_display(alarm.repeat_days))
-            repeat_label.setFont(QFont("Arial", 10))
-            repeat_label.setStyleSheet("color: #888888")
+            repeat_label.setFont(QFont(_UI["font_family"], 10))
+            repeat_label.setStyleSheet("color: " + _UI["colors"]["text_secondary"])
             layout.addWidget(repeat_label)
 
             # 声音信息
             sound_label = QLabel(self._get_sound_display(alarm))
-            sound_label.setFont(QFont("Arial", 10))
-            sound_label.setStyleSheet("color: #666666")
+            sound_label.setFont(QFont(_UI["font_family"], 10))
+            sound_label.setStyleSheet("color: " + _UI["colors"]["text_tertiary"])
             layout.addWidget(sound_label)
 
             layout.addStretch()
@@ -151,7 +156,9 @@ class AlarmPanel(QWidget):
 
     def check_alarms(self) -> None:
         """每秒检查闹钟触发，命中后发出 alarm_triggered 信号"""
-        # 由 QTimer 驱动，命中闹钟逐一发信号给主窗口处理
+        # 空列表短路：无闹钟时不建 datetime 不遍历（S9.3）
+        if not self.alarm_manager.alarms:
+            return
         now = datetime.datetime.now()
         for alarm in self.alarm_manager.check_alarms(now):
             self.alarm_triggered.emit(alarm)
@@ -164,11 +171,17 @@ class AlarmPanel(QWidget):
 
     def show_add_alarm_dialog(self) -> None:
         """显示添加闹钟对话框"""
-        # 确认后构造 Alarm 加入管理器，成功则保存刷新
+        # 确认后构造 Alarm 加入管理器，失败（上限/重复）弹窗提示用户
         dialog = AlarmEditDialog(self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             if self.alarm_manager.add_alarm(dialog.get_alarm()):
                 self.save_and_refresh()
+            else:
+                QMessageBox.warning(
+                    self,
+                    "提示",
+                    f"添加失败：已达最大数量（{_BASE['max_alarms']}）或存在相同时间与标签的闹钟",
+                )
 
     def show_edit_alarm_dialog(self, alarm_id: str) -> None:
         """显示编辑闹钟对话框"""
@@ -218,10 +231,10 @@ class AlarmPanel(QWidget):
 
     def _get_sound_display(self, alarm: Alarm) -> str:
         """获取声音的显示文本（内部辅助）"""
-        # 预设铃声显示名称，自定义显示文件名（截断 15 字符）
+        # 预设铃声显示名称（经 display_name），自定义显示文件名（截断 15 字符）
         if alarm.sound_type == "preset":
             preset = PresetSound.from_value(alarm.sound_value)
-            return f"🔔 {preset.display_names()[list(PresetSound).index(preset)]}"
+            return f"🔔 {preset.display_name}"
         return f"📁 {os.path.basename(alarm.sound_value)[:15]}"
 
 

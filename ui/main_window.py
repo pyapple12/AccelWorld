@@ -1,7 +1,6 @@
 # 主窗口模块（S4 重构为面板装配器：QTimer 调度 + 信号连接 + 主题/托盘）
 
 import logging
-import traceback
 from typing import Any
 
 # 配置日志
@@ -15,7 +14,6 @@ from PyQt6.QtGui import QCloseEvent
 from main import VERSION
 
 from config.settings import (
-    load_config,
     get_setting,
     load_window_geometry,
     save_window_geometry,
@@ -23,6 +21,7 @@ from config.settings import (
     get_alarms,
     save_alarms,
 )
+from config.static.static_config import get_static_config
 from modules.time_dilation import AcceleratedWorld
 from modules.alarm_service import play_alarm_sound_async, Alarm
 from data.cities import CITIES
@@ -44,17 +43,25 @@ class AcceleratedWorldGUI(QMainWindow):
         # 配置→面板装配→信号→闹钟/天气/倒计时恢复→定时器→主题→托盘
         super().__init__()
 
+        # 静态配置（倍率范围/窗口几何/时钟周期等参数）
+        base = get_static_config().base
+
         # 加载配置
-        saved_rate = get_setting("time_dilation_rate", 2.0)
+        saved_rate = get_setting("time_dilation_rate", base["default_rate"])
 
         self.setWindowTitle(f"加速世界 - 时间膨胀时钟 {VERSION}")
 
-        # 恢复窗口位置和大小
+        # 恢复窗口位置和大小（默认几何来自静态配置）
         geometry = load_window_geometry()
         if geometry:
             self.restoreGeometry(geometry)
         else:
-            self.setGeometry(100, 100, 900, 500)
+            self.setGeometry(
+                int(base["window_x"]),
+                int(base["window_y"]),
+                int(base["window_width"]),
+                int(base["window_height"]),
+            )
 
         # 创建加速世界核心实例
         self.accel_world = AcceleratedWorld(time_dilation_rate=saved_rate)
@@ -101,10 +108,10 @@ class AcceleratedWorldGUI(QMainWindow):
         # 从配置加载闹钟
         self.alarm_panel.load_alarms(get_alarms())
 
-        # ------------------- 时钟定时器（100ms 刷新） -------------------
+        # ------------------- 时钟定时器（周期来自静态配置） -------------------
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_clock)
-        self.timer.start(100)
+        self.timer.start(int(get_static_config().base["clock_tick_ms"]))
 
         # ------------------- 主题（默认浅色） -------------------
         self.is_dark_theme = False
@@ -128,8 +135,8 @@ class AcceleratedWorldGUI(QMainWindow):
             self.countdown_panel.update_countdown()
             self.world_clock_panel.update_world_clock()
         except Exception as e:
-            logger.error(f"更新时钟时出错: {e}")
-            traceback.print_exc()
+            # logger.exception 自带堆栈，单通道记录
+            logger.exception(f"更新时钟时出错: {e}")
 
     # ------------------- 倍率处理 -------------------
 
@@ -141,8 +148,9 @@ class AcceleratedWorldGUI(QMainWindow):
 
     def _update_acceleration_rate(self, rate: float) -> None:
         """更新加速倍率（内部方法，同步持久化到配置）"""
-        # 验证倍率是否在有效范围内
-        if not (1.0 <= rate <= 20.0):
+        # 验证倍率是否在有效范围内（范围来自静态配置）
+        base = get_static_config().base
+        if not (base["rate_min"] <= rate <= base["rate_max"]):
             return
         # 更新加速世界实例
         self.accel_world = AcceleratedWorld(time_dilation_rate=rate)

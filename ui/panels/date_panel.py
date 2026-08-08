@@ -5,6 +5,8 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 
 from modules.time_dilation import TimeInfo
+from config.static.static_config import get_static_config
+_UI = get_static_config().ui
 
 
 class DatePanel(QWidget):
@@ -21,14 +23,14 @@ class DatePanel(QWidget):
 
         # 中文日期标签
         self.date_label = QLabel("2025年12月25日 星期四")
-        self.date_label.setFont(QFont("Arial", 14))
+        self.date_label.setFont(QFont(_UI["font_family"], 14))
         self.date_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         date_layout.addWidget(self.date_label)
 
         # 农历信息标签
         self.lunar_info_label = QLabel("农历信息...")
-        self.lunar_info_label.setFont(QFont("Arial", 12))
-        self.lunar_info_label.setStyleSheet("color: #555555")
+        self.lunar_info_label.setFont(QFont(_UI["font_family"], 12))
+        self.lunar_info_label.setStyleSheet("color: " + _UI["colors"]["text_muted"])
         self.lunar_info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         date_layout.addWidget(self.lunar_info_label)
 
@@ -47,3 +49,5 @@ class DatePanel(QWidget):
 #   update_time(info): 由主窗口时钟 tick 调用，刷新中文日期与农历标签
 #   设计理由：显示职责独立成面板，主窗口只做装配与调度
 #   关联配置：数据来自 modules/time_dilation.py 的 TimeInfo
+
+

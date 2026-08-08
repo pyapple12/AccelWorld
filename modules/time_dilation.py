@@ -2,16 +2,22 @@
 # 提供 AcceleratedWorld 类与 CLI 实时钟入口
 
 import datetime
+import logging
 import time
 import sys
-import argparse
 from dataclasses import dataclass
+
+# 配置日志
+logger = logging.getLogger(__name__)
 
 # 程序版本号（单一来源：main.py）
 from main import VERSION
 
 # 导入日期处理模块
 from modules.chinese_calendar import get_chinese_date, get_lunar_info
+
+# 静态配置（默认倍率）
+from config.static.static_config import get_static_config
 
 
 @dataclass
@@ -26,15 +32,32 @@ class TimeInfo:
     expanded_hours_per_day: float  # 膨胀后一天的小时数
     remaining_hours: float  # 加速后当天剩余的小时数
 
+    @property
+    def standard_time(self) -> str:
+        # 标准时间的 HH:MM:SS 部分（显示用，避免调用点重复 split）
+        return self.standard_datetime.split()[1]
+
+    @property
+    def standard_second(self) -> int:
+        # 标准时间秒数（秒变化检测用）
+        return int(self.standard_datetime.split(":")[-1])
+
+    @property
+    def custom_hour(self) -> int:
+        # 自定义时间小时数（进度条用）
+        return int(self.custom_time.split(":")[0])
+
+    @property
+    def custom_second(self) -> int:
+        # 自定义时间秒数（秒变化检测用）
+        return int(self.custom_time.split(":")[-1])
+
 
 class AcceleratedWorld:
     """加速世界 - 基于时间膨胀倍率的自定义小时制时间显示核心类"""
 
     time_dilation_rate: float
     """时间膨胀倍率（必须>1.0，默认2.0）"""
-
-    seconds_per_day: int
-    """标准一天的总秒数（固定为86400）"""
 
     custom_hours_per_day: int
     """基于膨胀率计算的一天总小时数"""
@@ -45,16 +68,22 @@ class AcceleratedWorld:
         if time_dilation_rate <= 1.0:
             raise ValueError("时间膨胀倍率必须大于1.0！")
         self.time_dilation_rate = time_dilation_rate
-        self.seconds_per_day = 86400  # 标准一天的总秒数
         self.custom_hours_per_day = int(
             24 * time_dilation_rate
         )  # 计算一天的自定义小时数
+        self._time_cache: tuple[tuple[int, ...], TimeInfo] | None = (
+            None  # (标准秒键, TimeInfo) 秒级缓存
+        )
 
     def get_custom_time(self) -> TimeInfo:
-        """计算当前自定义时间与标准时间，聚合为 TimeInfo 返回"""
+        """计算当前自定义时间与标准时间，聚合为 TimeInfo 返回（秒级缓存）"""
+        # 同秒内直接返回缓存，避免 GUI 10Hz tick 重复农历全量计算（S9.3）
         # 基于当前时刻秒数 × 倍率得到自定义秒数，再拆分时分秒
         # 获取当前系统时间（带毫秒精度）
         now = datetime.datetime.now()
+        cache_key = (now.year, now.month, now.day, now.hour, now.minute, now.second)
+        if self._time_cache is not None and self._time_cache[0] == cache_key:
+            return self._time_cache[1]
 
         # 格式化标准日期时间（只显示到秒）
         standard_datetime = now.strftime("%Y-%m-%d %H:%M:%S")
@@ -97,15 +126,12 @@ class AcceleratedWorld:
         expanded_hours_per_day = 24.0 * self.time_dilation_rate
 
         # 计算加速后当天剩余的小时数（精确到两位小数）
-        # 总自定义时间秒数 - 当前自定义时间秒数 = 剩余秒数
+        # 总自定义时间秒数 - 当前自定义时间秒数 = 剩余秒数（rate≤20 时当前值恒小于一天总量，无需取模）
         total_custom_seconds_per_day = expanded_hours_per_day * 3600
-        remaining_seconds = (
-            total_custom_seconds_per_day
-            - custom_total_seconds % total_custom_seconds_per_day
-        )
+        remaining_seconds = total_custom_seconds_per_day - custom_total_seconds
         remaining_hours = remaining_seconds / 3600
 
-        return TimeInfo(
+        info = TimeInfo(
             standard_datetime=standard_datetime,
             custom_time=custom_time,
             chinese_date=chinese_date,
@@ -114,6 +140,8 @@ class AcceleratedWorld:
             expanded_hours_per_day=expanded_hours_per_day,
             remaining_hours=remaining_hours,
         )
+        self._time_cache = (cache_key, info)
+        return info
 
     def run_live_clock(self) -> None:
         """运行 CLI 实时时钟：循环刷新标准/自定义时间，Ctrl+C 退出"""
@@ -129,30 +157,40 @@ class AcceleratedWorld:
 
         try:
             while True:
-                # 获取当前标准日期时间和自定义时间
-                info = self.get_custom_time()
+                try:
+                    # 秒变化检测前置：标准秒未变不调 get_custom_time（配合秒级缓存，每秒仅 1 次全量计算）
+                    now = datetime.datetime.now()
+                    current_standard_second = now.second
+                    if current_standard_second == last_standard_second:
+                        time.sleep(0.01)
+                        continue
 
-                # 提取标准时间的秒数
-                current_standard_second = int(info.standard_datetime.split(":")[-1])
-                # 提取自定义时间的秒数
-                current_custom_second = int(info.custom_time.split(":")[-1])
+                    # 获取当前标准日期时间和自定义时间
+                    info = self.get_custom_time()
 
-                # 当标准时间或自定义时间的秒数变化时，更新显示
-                if (
-                    last_standard_second != current_standard_second
-                    or last_custom_second != current_custom_second
-                ):
-                    # 同时显示所有信息
-                    output = f"\r标准时间：{info.standard_datetime} | 自定义时间：{info.custom_time}"
-                    output += (
-                        f" | 膨胀倍率：{info.dilation_percentage:.0f}% | "
-                        f"一天小时数：{info.expanded_hours_per_day:.2f}小时 | "
-                        f"当天剩余：{info.remaining_hours:.2f}小时"
-                    )
-                    sys.stdout.write(output)
-                    sys.stdout.flush()
-                    last_standard_second = current_standard_second
-                    last_custom_second = current_custom_second
+                    # 提取自定义时间的秒数（经 TimeInfo 计算属性）
+                    current_custom_second = info.custom_second
+
+                    # 当标准时间或自定义时间的秒数变化时，更新显示
+                    if (
+                        last_standard_second != current_standard_second
+                        or last_custom_second != current_custom_second
+                    ):
+                        # 同时显示所有信息
+                        output = f"\r标准时间：{info.standard_datetime} | 自定义时间：{info.custom_time}"
+                        output += (
+                            f" | 膨胀倍率：{info.dilation_percentage:.0f}% | "
+                            f"一天小时数：{info.expanded_hours_per_day:.2f}小时 | "
+                            f"当天剩余：{info.remaining_hours:.2f}小时"
+                        )
+                        sys.stdout.write(output)
+                        sys.stdout.flush()
+                        last_standard_second = current_standard_second
+                        last_custom_second = current_custom_second
+                except Exception as e:
+                    # 单轮异常（如农历库异常）记录后继续，避免 CLI 崩溃退出
+                    logger.exception(f"实时时钟单轮刷新异常: {e}")
+                    time.sleep(1.0)
 
                 # 使用短暂的休眠，平衡精度和CPU使用率
                 time.sleep(0.01)  # 10毫秒休眠
@@ -161,10 +199,13 @@ class AcceleratedWorld:
 
 
 # ------------------- 命令行界面 -------------------
-def main_cli(rate: float = 2.0) -> None:
+def main_cli(rate: float | None = None) -> None:
     """命令行主函数：校验倍率并启动实时时钟（倍率直接传参）"""
-    # 倍率下限校验，非法则退出
-    if rate < 1.0:
+    # 倍率默认值来自静态配置，下限校验非法则退出
+    if rate is None:
+        rate = float(get_static_config().base["default_rate"])
+    rate_min = float(get_static_config().base["rate_min"])
+    if rate < rate_min:
         print("错误: --rate 参数必须大于或等于 1.0")
         print("例如: python main.py --cli --rate 2.0")
         sys.exit(1)

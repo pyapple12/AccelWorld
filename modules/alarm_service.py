@@ -5,10 +5,20 @@ import threading
 import time as time_module
 import uuid
 import winsound
-from dataclasses import dataclass, field, asdict, fields
+import logging
+from dataclasses import dataclass, field, asdict
 from datetime import datetime, time
 from typing import List, Optional, Literal, Dict, Any
 from enum import Enum
+
+# dataclass 反序列化通用工具（S9.4 抽象）
+from utils.dataclass_utils import dataclass_from_dict
+
+# 静态配置（闹钟上限参数）
+from config.static.static_config import get_static_config
+
+# 配置日志
+logger = logging.getLogger(__name__)
 
 
 class PresetSound(Enum):
@@ -33,6 +43,20 @@ class PresetSound(Enum):
             if member.value == value.lower():
                 return member
         return cls.CLASSIC
+
+    @property
+    def display_name(self) -> str:
+        # 当前成员的显示名（与 display_names 顺序对应，S9.6 封装互转）
+        return self.display_names()[self.index()]
+
+    def index(self) -> int:
+        # 当前成员在枚举中的序号（下拉框索引互转用，S9.6 封装）
+        return list(type(self)).index(self)
+
+    @classmethod
+    def from_index(cls, index: int) -> "PresetSound":
+        # 按序号取枚举成员（S9.6 封装）
+        return list(cls)[index]
 
 
 # 支持的音频文件格式
@@ -119,19 +143,14 @@ class Alarm:
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典（用于 JSON 序列化）"""
-        # asdict 递归转 dict 结构
+        # asdict 递归转 dict（标准库一行调用，无需包装层）
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> Optional["Alarm"]:
         """从字典创建（用于 JSON 反序列化），未知键过滤，非法数据返回 None"""
-        # 仅取有效字段，构造失败（如非法 time）返回 None 由调用方跳过
-        valid_fields = {f.name for f in fields(cls)}
-        filtered = {k: v for k, v in data.items() if k in valid_fields}
-        try:
-            return cls(**filtered)
-        except ValueError:
-            return None
+        # 委托通用工具（容错模式）：非法 time 返回 None 由调用方跳过
+        return dataclass_from_dict(cls, data, tolerant=True)
 
     def is_one_time(self) -> bool:
         """是否为一次性闹钟（不重复）"""
@@ -162,7 +181,8 @@ def play_preset_sound(preset: PresetSound) -> None:
             if i < repeat_count - 1:
                 time_module.sleep(interval / 1000.0)
     except Exception as e:
-        print(f"播放预设铃声失败: {e}")
+        # 播放失败记录堆栈（GUI 应用 print 不可见，日志系统已配置）
+        logger.exception(f"播放预设铃声失败: {e}")
 
 
 def play_custom_sound(file_path: str) -> bool:
@@ -186,10 +206,11 @@ def play_custom_sound(file_path: str) -> bool:
 
         return True
     except ImportError:
-        print("PyQt6.Multimedia 不可用，无法播放自定义音频")
+        # PyQt6.Multimedia 缺失属环境问题，记录日志返回 False
+        logger.exception("PyQt6.Multimedia 不可用，无法播放自定义音频")
         return False
     except Exception as e:
-        print(f"播放自定义音频失败: {e}")
+        logger.exception(f"播放自定义音频失败: {e}")
         return False
 
 
@@ -219,6 +240,11 @@ def play_alarm_sound_async(alarm: Alarm) -> None:
         play_alarm_sound(alarm)
 
 
+def _trigger_key(check_time: datetime) -> str:
+    # 生成闹钟触发去重键（"YYYY-MM-DD HH:MM"，含日期维度跨天不误判，S9.4 抽取）
+    return check_time.strftime("%Y-%m-%d %H:%M")
+
+
 # ------------------- 闹钟管理器 -------------------
 
 
@@ -226,9 +252,9 @@ class AlarmManager:
     """闹钟管理器"""
 
     def __init__(self) -> None:
-        # 空列表启动；_last_triggered 存"日期+分钟"触发去重记录
+        # 空列表启动；上限来自静态配置；_last_triggered 存"日期+分钟"触发去重记录
         self.alarms: List[Alarm] = []
-        self.max_alarms = 10
+        self.max_alarms = int(get_static_config().base["max_alarms"])
         self._last_triggered: Dict[str, str] = {}  # alarm_id -> "HH:MM"
 
     def add_alarm(self, alarm: Alarm) -> bool:
@@ -238,15 +264,15 @@ class AlarmManager:
         :param alarm: 闹钟对象
         :return: 是否添加成功
         """
-        # 上限校验 + 同时间同标签去重
+        # 上限校验 + 同时间同标签去重（失败经日志记录，GUI 弹窗提示由面板层负责）
         if len(self.alarms) >= self.max_alarms:
-            print(f"已达到最大闹钟数量限制 ({self.max_alarms})")
+            logger.warning(f"已达到最大闹钟数量限制 ({self.max_alarms})")
             return False
 
         # 检查是否已存在相同时间的闹钟
         for existing in self.alarms:
             if existing.time == alarm.time and existing.label == alarm.label:
-                print("已存在相同时间和标签的闹钟")
+                logger.warning("已存在相同时间和标签的闹钟")
                 return False
 
         self.alarms.append(alarm)
@@ -270,22 +296,6 @@ class AlarmManager:
                 return alarm
         return None
 
-    def update_alarm(self, alarm_id: str, **kwargs) -> bool:
-        """按字段更新闹钟（time 字段复用构造校验，非法值拒绝写入）"""
-        # kwargs 字段 setattr，仅接受已存在属性；time 非法返回 False 保持原值
-        alarm = self.get_alarm(alarm_id)
-        if not alarm:
-            return False
-
-        for key, value in kwargs.items():
-            if not hasattr(alarm, key):
-                continue
-            if key == "time" and not Alarm._validate_time(value):
-                return False
-            setattr(alarm, key, value)
-
-        return True
-
     def replace_alarm(self, alarm: Alarm) -> bool:
         """整体替换闹钟（编辑场景，按 ID 定位）"""
         # 编辑对话框保留原 ID 构造新对象，此处原位替换
@@ -304,11 +314,6 @@ class AlarmManager:
             return True
         return False
 
-    def get_enabled_alarms(self) -> List[Alarm]:
-        """获取所有启用的闹钟"""
-        # 推导式过滤 enabled
-        return [a for a in self.alarms if a.enabled]
-
     def check_alarms(self, check_time: datetime) -> List[Alarm]:
         """
         检查指定时间应该触发的闹钟
@@ -316,8 +321,8 @@ class AlarmManager:
         :param check_time: 要检查的时间
         :return: 应该触发的闹钟列表
         """
-        # 去重键含日期维度（"YYYY-MM-DD HH:MM"），跨天不误判；命中即标记
-        time_str = check_time.strftime("%Y-%m-%d %H:%M")
+        # 去重键含日期维度（经 _trigger_key），跨天不误判；命中即标记
+        time_str = _trigger_key(check_time)
         triggered = []
 
         for alarm in self.alarms:
@@ -335,12 +340,6 @@ class AlarmManager:
                 self._last_triggered[alarm.id] = time_str
 
         return triggered
-
-    def mark_triggered(self, alarm_id: str, check_time: datetime) -> None:
-        """标记闹钟已触发（供外部手动记录）"""
-        # 与 check_alarms 共享同一"日期+分钟"去重键格式，保证外部标记后不再重复触发
-        time_str = check_time.strftime("%Y-%m-%d %H:%M")
-        self._last_triggered[alarm_id] = time_str
 
     def to_dict_list(self) -> List[Dict[str, Any]]:
         """转换为字典列表（供 JSON 序列化）"""
@@ -371,7 +370,7 @@ class AlarmManager:
 # play_alarm_sound(alarm): 按 sound_type 分发；play_alarm_sound_async(alarm):
 #   预设→daemon 后台线程，自定义→主线程（S5 修复 D6，UI 不冻结）
 # AlarmManager: 闹钟管理（上限 10、同时间同标签去重、同分钟触发去重 _last_triggered）
-#   add/remove/get/update/replace/toggle/get_enabled/check/mark/to_dict_list/from_dict_list
+#   add/remove/get/replace/toggle/check/to_dict_list/from_dict_list
 #   设计理由：数据模型与匹配逻辑集中在 service 层，UI 只做展示与持久化
 #   异常处理：构造校验抛 ValueError；播放失败打印提示（后续可换日志）
 #   关联配置：无（纯业务层）；UI 依赖 ui/panels/alarm_panel.py 与 ui/alarm_dialog.py

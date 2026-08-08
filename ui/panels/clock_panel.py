@@ -18,6 +18,11 @@ from PyQt6.QtGui import QFont, QDoubleValidator
 
 from modules.time_dilation import TimeInfo
 from ui.themes import LIGHT_THEME_PROGRESS
+from config.static.static_config import get_static_config
+
+# 静态配置（倍率范围/默认倍率/字体）
+_BASE = get_static_config().base
+_UI = get_static_config().ui
 
 
 class ClockPanel(QWidget):
@@ -41,16 +46,16 @@ class ClockPanel(QWidget):
         # 时间标签行
         time_label_layout = QHBoxLayout()
         self.standard_time_label = QLabel("标准时间: 00:00:00")
-        self.standard_time_label.setFont(QFont("Arial", 16))
+        self.standard_time_label.setFont(QFont(_UI["font_family"], 16))
         time_label_layout.addWidget(self.standard_time_label)
         self.accelerated_time_label = QLabel("加速时间: 00:00:00")
-        self.accelerated_time_label.setFont(QFont("Arial", 16))
+        self.accelerated_time_label.setFont(QFont(_UI["font_family"], 16))
         time_label_layout.addWidget(self.accelerated_time_label)
         clock_layout.addLayout(time_label_layout)
 
         # 加速时间进度条
         self.progress_bar = QProgressBar()
-        self.progress_bar.setFont(QFont("Arial", 10))
+        self.progress_bar.setFont(QFont(_UI["font_family"], 10))
         self.progress_bar.setFixedHeight(25)
         self.progress_bar.setFormat("%v / %m 小时")
         self.progress_bar.setStyleSheet(LIGHT_THEME_PROGRESS)
@@ -60,15 +65,19 @@ class ClockPanel(QWidget):
         params_layout = QGridLayout()
         params_layout.addWidget(QLabel("加速后一天小时数:"), 0, 0)
         self.hours_per_day_value_label = QLabel("48.00小时")
-        self.hours_per_day_value_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.hours_per_day_value_label.setFont(
+            QFont(_UI["font_family"], 12, QFont.Weight.Bold)
+        )
         params_layout.addWidget(self.hours_per_day_value_label, 0, 1)
         params_layout.addWidget(QLabel("加速倍率:"), 0, 2)
         self.rate_value_label = QLabel("200%")
-        self.rate_value_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.rate_value_label.setFont(QFont(_UI["font_family"], 12, QFont.Weight.Bold))
         params_layout.addWidget(self.rate_value_label, 0, 3)
         params_layout.addWidget(QLabel("加速后剩余小时数:"), 0, 4)
         self.remaining_hours_value_label = QLabel("45.00小时")
-        self.remaining_hours_value_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.remaining_hours_value_label.setFont(
+            QFont(_UI["font_family"], 12, QFont.Weight.Bold)
+        )
         params_layout.addWidget(self.remaining_hours_value_label, 0, 5)
         clock_layout.addLayout(params_layout)
 
@@ -80,36 +89,40 @@ class ClockPanel(QWidget):
         input_layout = QGridLayout(input_frame)
 
         rate_input_label = QLabel("加速倍率:")
-        rate_input_label.setFont(QFont("Arial", 12))
+        rate_input_label.setFont(QFont(_UI["font_family"], 12))
         input_layout.addWidget(rate_input_label, 0, 0, Qt.AlignmentFlag.AlignRight)
 
         self.rate_entry = QLineEdit()
-        self.rate_entry.setText("2.0")
-        self.rate_entry.setFont(QFont("Arial", 12))
+        self.rate_entry.setText(str(_BASE["default_rate"]))
+        self.rate_entry.setFont(QFont(_UI["font_family"], 12))
         self.rate_entry.setFixedWidth(80)
-        self.rate_entry.setValidator(QDoubleValidator(1.0, 20.0, 2))
+        self.rate_entry.setValidator(
+            QDoubleValidator(_BASE["rate_min"], _BASE["rate_max"], 2)
+        )
         input_layout.addWidget(self.rate_entry, 0, 1, Qt.AlignmentFlag.AlignLeft)
 
-        rate_hint_label = QLabel("（必须大于1.0，默认值2.0，最大值20.0）")
-        rate_hint_label.setFont(QFont("Arial", 10))
+        rate_hint_label = QLabel(
+            f"（必须大于{_BASE['rate_min']}，默认值{_BASE['default_rate']}，最大值{_BASE['rate_max']}）"
+        )
+        rate_hint_label.setFont(QFont(_UI["font_family"], 10))
         input_layout.addWidget(rate_hint_label, 0, 2, Qt.AlignmentFlag.AlignLeft)
 
         self.slider = QSlider(Qt.Orientation.Horizontal)
-        self.slider.setMinimum(10)  # 1.0 * 10
-        self.slider.setMaximum(200)  # 20.0 * 10
-        self.slider.setValue(20)
+        self.slider.setMinimum(int(_BASE["rate_min"] * 10))  # 倍率 ×10
+        self.slider.setMaximum(int(_BASE["rate_max"] * 10))
+        self.slider.setValue(int(_BASE["default_rate"] * 10))
         self.slider.setFixedHeight(30)
         self.slider.valueChanged.connect(self.on_slider_change)
         input_layout.addWidget(self.slider, 1, 0, 1, 3)
 
-        self.slider_value_label = QLabel("2.0x")
-        self.slider_value_label.setFont(QFont("Arial", 12))
+        self.slider_value_label = QLabel(f"{_BASE['default_rate']:.1f}x")
+        self.slider_value_label.setFont(QFont(_UI["font_family"], 12))
         input_layout.addWidget(
             self.slider_value_label, 2, 1, Qt.AlignmentFlag.AlignLeft
         )
 
         self.confirm_button = QPushButton("应用加速")
-        self.confirm_button.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        self.confirm_button.setFont(QFont(_UI["font_family"], 12, QFont.Weight.Bold))
         self.confirm_button.setFixedSize(120, 50)
         self.confirm_button.clicked.connect(self.apply_acceleration)
         input_layout.addWidget(
@@ -125,10 +138,8 @@ class ClockPanel(QWidget):
 
     def update_time(self, info: TimeInfo) -> None:
         """刷新时钟显示（标准/加速时间、参数标签、进度条）"""
-        # 由主窗口 tick 传入 TimeInfo，更新标签与进度条
-        self.standard_time_label.setText(
-            f"标准时间: {info.standard_datetime.split()[1]}"
-        )
+        # 由主窗口 tick 传入 TimeInfo，经计算属性取值更新标签与进度条
+        self.standard_time_label.setText(f"标准时间: {info.standard_time}")
         self.accelerated_time_label.setText(f"加速时间: {info.custom_time}")
         self.hours_per_day_value_label.setText(f"{info.expanded_hours_per_day:.2f}小时")
         self.rate_value_label.setText(f"{info.dilation_percentage:.0f}%")
@@ -136,7 +147,7 @@ class ClockPanel(QWidget):
 
         # 计算进度并更新进度条
         total_hours = int(info.expanded_hours_per_day)
-        current_hour = int(info.custom_time.split(":")[0])
+        current_hour = info.custom_hour
         self.progress_bar.setMaximum(total_hours)
         self.progress_bar.setValue(current_hour)
 
@@ -171,8 +182,10 @@ class ClockPanel(QWidget):
         try:
             rate = float(rate_text)
             rate = round(rate, 2)
-            if not (1.0 <= rate <= 20.0):
-                raise ValueError("加速倍率必须在1.0到20.0之间")
+            if not (_BASE["rate_min"] <= rate <= _BASE["rate_max"]):
+                raise ValueError(
+                    f"加速倍率必须在{_BASE['rate_min']}到{_BASE['rate_max']}之间"
+                )
 
             self.rate_changed.emit(rate)
             # 同步滑杆的值（清空输入框）

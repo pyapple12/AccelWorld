@@ -11,14 +11,16 @@
   python main.py --hidden                 # 启动后隐藏到托盘
   python main.py --theme dark             # 使用暗色主题
 
-版本：ver 0.44
+版本：ver 0.45
 """
 
 import argparse
 import sys
 
+from config.static.static_config import get_static_config
+
 # 程序版本号（单一来源，所有模块从此处引用）
-VERSION = "ver 0.44"
+VERSION = "ver 0.45"
 
 
 def main() -> None:
@@ -27,6 +29,9 @@ def main() -> None:
     from utils.logger import setup_logging
 
     setup_logging()
+
+    # 静态配置（倍率范围/默认值等参数来源）
+    base = get_static_config().base
 
     parser = argparse.ArgumentParser(
         description=f"加速世界 - 时间膨胀时钟工具 {VERSION}",
@@ -53,7 +58,7 @@ def main() -> None:
         "-R",
         type=float,
         default=None,
-        help="时间膨胀倍率（必须大于1.0，默认2.0）",
+        help=f"时间膨胀倍率（{base['rate_min']}-{base['rate_max']}，默认{base['default_rate']}）",
     )
 
     # GUI 专属参数
@@ -66,9 +71,6 @@ def main() -> None:
     )
     parser.add_argument("--city", "-C", default=None, help="指定默认显示城市")
     parser.add_argument("--hidden", action="store_true", help="启动后隐藏到系统托盘")
-    parser.add_argument(
-        "--minimized", action="store_true", help="启动后最小化到系统托盘"
-    )
 
     # 其他参数
     parser.add_argument(
@@ -77,9 +79,11 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # 验证 --rate 参数（范围 1.0-20.0，与 GUI 滑杆/CLI 一致）
-    if args.rate is not None and not (1.0 <= args.rate <= 20.0):
-        print("错误: --rate 参数必须在 1.0 到 20.0 之间")
+    # 验证 --rate 参数（范围与 GUI 滑杆/CLI 一致，来自静态配置）
+    if args.rate is not None and not (
+        base["rate_min"] <= args.rate <= base["rate_max"]
+    ):
+        print(f"错误: --rate 参数必须在 {base['rate_min']} 到 {base['rate_max']} 之间")
         print("例如: python main.py --rate 2.0")
         sys.exit(1)
 
@@ -98,15 +102,17 @@ def main() -> None:
         # 运行图形界面
         from ui.main_window import main_gui
 
-        # 构建启动参数
-        gui_args = {}
-        if args.rate is not None:
-            gui_args["rate"] = args.rate
-        if args.theme is not None:
-            gui_args["theme"] = args.theme
-        if args.city is not None:
-            gui_args["city"] = args.city
-        if args.hidden or args.minimized:
+        # 构建启动参数（可选参数推导式过滤 None，hidden 布尔单独处理）
+        gui_args = {
+            k: v
+            for k, v in {
+                "rate": args.rate,
+                "theme": args.theme,
+                "city": args.city,
+            }.items()
+            if v is not None
+        }
+        if args.hidden:
             gui_args["hidden"] = True
 
         main_gui(**gui_args)
@@ -117,7 +123,7 @@ if __name__ == "__main__":
 
 
 # ===== main.py 函数/常量说明 =====
-# VERSION: str，程序版本号单一来源（当前 ver 0.44），其他模块经 `from main import VERSION` 引用
+# VERSION: str，程序版本号单一来源（当前 ver 0.45），其他模块经 `from main import VERSION` 引用
 # main() -> None: 主程序入口
 #   输入：命令行参数（argparse）
 #   逻辑步骤：初始化日志 → 解析参数（--gui/--cli/--rate/--theme/--city/--hidden/--version）

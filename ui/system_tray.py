@@ -4,6 +4,11 @@ from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtWidgets import QSystemTrayIcon, QMenu
 from PyQt6.QtGui import QIcon, QAction, QPixmap, QPainter, QPen, QColor, QBrush
 
+from config.static.static_config import get_static_config
+
+# 静态配置（托盘图标颜色）
+_UI = get_static_config().ui
+
 
 class SystemTray(QSystemTrayIcon):
     """系统托盘：图标绘制、菜单（显示/隐藏/倍率/退出）与通知"""
@@ -24,14 +29,15 @@ class SystemTray(QSystemTrayIcon):
 
     def _create_icon(self) -> None:
         """绘制 32x32 蓝色圆形时钟图标"""
-        # QPainter 画圆底+指针，透明背景
+        # QPainter 画圆底+指针，透明背景（颜色来自静态配置）
         pixmap = QPixmap(32, 32)
         pixmap.fill(Qt.GlobalColor.transparent)  # 透明背景
 
+        tray_color = QColor(_UI["colors"]["tray_blue"])
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(QColor("#4A90D9"), 2))  # 蓝色边框
-        painter.setBrush(QBrush(QColor("#4A90D9")))
+        painter.setPen(QPen(tray_color, 2))  # 蓝色边框
+        painter.setBrush(QBrush(tray_color))
         painter.drawEllipse(2, 2, 28, 28)  # 圆形背景
 
         # 时钟指针
@@ -103,10 +109,10 @@ class SystemTray(QSystemTrayIcon):
 # ===== ui/system_tray.py 函数/类说明 =====
 # SystemTray(QSystemTrayIcon): 系统托盘类
 #   信号：show_requested/hide_requested/quit_requested（主窗口连接并处理）
-#   _create_icon(): 用 QPainter 绘制蓝色圆形时钟图标
+#   _create_icon(): 用 QPainter 绘制蓝色圆形时钟图标（颜色来自 config/static/ui.json tray_blue）
 #   _create_menu(): 显示/隐藏/倍率（只读）/退出菜单
 #   _on_activated(reason): 双击托盘显示窗口
 #   update_rate(rate): 倍率变化时更新菜单文本（主窗口经 rate 信号调用）
 #   show_notification(title, message, icon_kind): 封装 showMessage
 #   设计理由：托盘职责独立成类，主窗口不再持有图标/菜单/绘制逻辑
-#   关联配置：版本号由主窗口传入（来自 main.VERSION）
+#   关联配置：版本号由主窗口传入（来自 main.VERSION）；颜色来自静态配置 ui.json

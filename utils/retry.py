@@ -15,6 +15,8 @@ def retry_call(
     **kwargs: Any,
 ) -> Any:
     # 通用重试：调用 func，失败时按异常元组判断是否重试，达上限抛出最后一次异常
+    if retries < 1:
+        raise ValueError("retries 必须大于等于 1")
     last_exc: Exception | None = None
     for attempt in range(retries):
         try:

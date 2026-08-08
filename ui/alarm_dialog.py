@@ -133,9 +133,9 @@ class AlarmEditDialog(QDialog):
             i for i, cb in enumerate(self.repeat_checkboxes) if cb.isChecked()
         ]
 
-        # 获取声音值
+        # 获取声音值（下拉框索引经 from_index 反查枚举，S9.6 封装）
         if self.sound_type == "preset":
-            sound_value = list(PresetSound)[self.sound_combo.currentIndex()].value
+            sound_value = PresetSound.from_index(self.sound_combo.currentIndex()).value
         else:
             sound_value = self.sound_value
 

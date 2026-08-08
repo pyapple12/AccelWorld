@@ -9,6 +9,16 @@ from typing import Any
 # 缓存单例：路径 → 解析后的 JSON 数据
 _json_cache: dict[str, Any] = {}
 
+# 项目根：utils/file_utils.py → utils/ → 项目根
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def get_project_root() -> Path:
+    # 获取项目根目录并校验 main.py 存在（防止目录层级偏移）
+    if not (_PROJECT_ROOT / "main.py").exists():
+        raise RuntimeError(f"项目根目录检测失败：{_PROJECT_ROOT} 下缺少 main.py")
+    return _PROJECT_ROOT
+
 
 def read_json(path: Path | str, default: Any = None) -> Any:
     # 读取 JSON 文件，失败或文件不存在时返回 default
@@ -43,14 +53,6 @@ def write_json(path: Path | str, data: Any) -> bool:
         return False
 
 
-def read_file(path: Path | str, default: str = "") -> str:
-    # 读取文本文件，失败或文件不存在时返回 default
-    try:
-        return Path(path).read_text(encoding="utf-8")
-    except OSError:
-        return default
-
-
 def clear_json_cache(path: Path | str | None = None) -> None:
     # 清空缓存：指定路径则只清该路径，None 清空全部
     if path is None:
@@ -72,10 +74,7 @@ def clear_json_cache(path: Path | str | None = None) -> None:
 #   输入：文件路径、数据；输出：bool 是否成功
 #   设计理由：自动创建父目录，UTF-8 中文友好输出，写入后同步清理缓存保证一致性
 #   异常处理：捕获 OSError 返回 False
-# read_file(path, default): 读取文本文件
-#   输入：文件路径、默认值；输出：文本内容或 default
-#   设计理由：统一 UTF-8 读取与 OSError 兜底
 # clear_json_cache(path): 清空缓存
 #   输入：可选文件路径；输出：None
 #   设计理由：保存配置后调用，保证后续读取始终是最新数据
-#   关联配置：S2 由 config/settings.py 接入
+#   关联配置：由 config/settings.py 接入

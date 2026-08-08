@@ -1,6 +1,6 @@
 # AccelWorld —— 加速世界世界钟
 
-[![Version](https://img.shields.io/badge/Version-ver%200.44-blue.svg)](main.py)
+[![Version](https://img.shields.io/badge/Version-ver%200.45-blue.svg)](main.py)
 [![Python](https://img.shields.io/badge/Python-3.8+-green.svg)](https://www.python.org)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
@@ -75,17 +75,12 @@ python main.py --rate 3.0
 # 启动后隐藏到托盘
 python main.py --hidden
 
-# 启动后最小化到托盘
-python main.py --minimized
-
 # 深色主题启动
 python main.py --theme dark
 
 # 指定城市启动
 python main.py --city 上海
 ```
-
-> 兼容旧入口：`python accelworld.py` 仍可用（转发至 main.py）
 
 ### 命令行模式
 
@@ -107,7 +102,6 @@ python main.py --cli --rate 2.0
 | `--theme`, `-T`   | 主题：`light` 或 `dark`           |
 | `--city`, `-C`    | 默认显示城市                      |
 | `--hidden`        | 启动后隐藏到托盘                  |
-| `--minimized`     | 启动后最小化到托盘                |
 | `--version`, `-V` | 显示版本信息                      |
 
 ### GUI 操作说明
@@ -124,14 +118,20 @@ python main.py --cli --rate 2.0
 ```
 AccelWorld/
 ├── main.py                    # 主入口：CLI/GUI 分发，版本号 VERSION 单一来源
-├── accelworld.py              # 兼容转发壳（转发至 main.py，保持旧启动方式）
 ├── modules/                   # 业务核心层（无 GUI 依赖，可独立测试）
 │   ├── time_dilation.py       # 时间膨胀算法与 CLI 实时钟
 │   ├── chinese_calendar.py    # 农历、干支、生肖、节气、节日
 │   ├── weather_service.py     # 天气服务（Open-Meteo API，30 分钟缓存 + 重试）
 │   └── alarm_service.py       # 闹钟模型、匹配逻辑与音频播放
 ├── config/
-│   └── settings.py            # AppConfig 配置管理（JSON 持久化 + 缓存单例）
+│   ├── settings.py            # 用户配置读写（UserConfig）
+│   ├── user_config.json       # 用户配置（生成于项目内）
+│   └── static/                # 应用静态配置（参数/UI 常量，json 驱动，零硬编码）
+│       ├── config.json        # 引导映射表
+│       ├── base.json          # 应用参数
+│       ├── ui.json            # 字体/颜色
+│       └── static_config.py   # StaticConfig + get_static_config() 单例
+├── logs/                      # 运行日志（app-YYYY-MM-DD.log 每日独立文件）
 ├── ui/                        # GUI 层
 │   ├── main_window.py         # 主窗口装配器（面板 + 信号 + 托盘）
 │   ├── system_tray.py         # 系统托盘（图标/菜单/通知）
@@ -183,7 +183,7 @@ A：默认值为 2.0x，可根据个人需求在 1.0x 到 20.0x 之间调节。�
 
 ### Q2：关闭程序后设置会丢失吗？
 
-A：不会。程序会自动保存加速倍率、主题、城市、时区等设置到配置文件（`~/.config/accelworld/config.json`），下次启动时会自动恢复。
+A：不会。程序会自动保存加速倍率、主题、城市、时区等设置到配置文件（`config/user_config.json`，位于项目目录内），下次启动时会自动恢复。
 
 ### Q3：支持查看哪些城市的天气？
 

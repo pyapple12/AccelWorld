@@ -21,6 +21,11 @@ from modules.weather_service import (
     WeatherData,
 )
 from data.cities import CITIES
+from config.static.static_config import get_static_config
+
+# 静态配置（刷新周期/字体）
+_BASE = get_static_config().base
+_UI = get_static_config().ui
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -42,8 +47,12 @@ class _WeatherTask(QRunnable):
         self.signals = _WeatherTaskSignals()
 
     def run(self) -> None:
-        # 在线程池中执行网络查询，完成后带城市名发信号
-        result = get_weather_by_city(self.city_name)
+        # 在线程池中执行网络查询，异常兜底记录并降级返回，保证 UI 不卡"获取天气中..."
+        try:
+            result = get_weather_by_city(self.city_name)
+        except Exception as e:
+            logger.exception(f"后台天气查询异常: {e}")
+            result = None
         self.signals.finished.emit(self.city_name, result)
 
 
@@ -66,11 +75,11 @@ class WeatherPanel(QWidget):
 
         # 城市选择
         city_label = QLabel("城市:")
-        city_label.setFont(QFont("Arial", 12))
+        city_label.setFont(QFont(_UI["font_family"], 12))
         weather_layout.addWidget(city_label)
 
         self.city_combo = QComboBox()
-        self.city_combo.setFont(QFont("Arial", 12))
+        self.city_combo.setFont(QFont(_UI["font_family"], 12))
         self.city_combo.setFixedWidth(120)
         self.city_combo.addItems(sorted(CITIES.keys()))
         self.city_combo.setCurrentText("北京")
@@ -79,18 +88,18 @@ class WeatherPanel(QWidget):
 
         # 天气图标与信息
         self.weather_icon_label = QLabel("☀️")
-        self.weather_icon_label.setFont(QFont("Arial", 24))
+        self.weather_icon_label.setFont(QFont(_UI["font_family"], 24))
         weather_layout.addWidget(self.weather_icon_label)
 
         self.weather_info_label = QLabel("获取天气中...")
-        self.weather_info_label.setFont(QFont("Arial", 12))
+        self.weather_info_label.setFont(QFont(_UI["font_family"], 12))
         weather_layout.addWidget(self.weather_info_label)
 
         weather_layout.addStretch()
 
         # 主题切换按钮
         self.theme_button = QPushButton("🌙")
-        self.theme_button.setFont(QFont("Arial", 12))
+        self.theme_button.setFont(QFont(_UI["font_family"], 12))
         self.theme_button.setFixedSize(36, 36)
         self.theme_button.setToolTip("切换主题")
         self.theme_button.setStyleSheet("padding: 0px; margin: 0px;")
@@ -99,7 +108,7 @@ class WeatherPanel(QWidget):
 
         # 刷新天气按钮
         self.refresh_weather_button = QPushButton("刷新")
-        self.refresh_weather_button.setFont(QFont("Arial", 10))
+        self.refresh_weather_button.setFont(QFont(_UI["font_family"], 10))
         self.refresh_weather_button.clicked.connect(self.update_weather)
         weather_layout.addWidget(self.refresh_weather_button)
 
@@ -109,7 +118,7 @@ class WeatherPanel(QWidget):
         # 每 30 分钟自动刷新天气
         self.weather_timer = QTimer(self)
         self.weather_timer.timeout.connect(self.update_weather)
-        self.weather_timer.start(30 * 60 * 1000)
+        self.weather_timer.start(int(_BASE["weather_refresh_ms"]))
 
     def update_weather(self) -> None:
         """发起后台天气查询（立即返回，结果经信号回调更新）"""
@@ -123,14 +132,19 @@ class WeatherPanel(QWidget):
     def _on_weather_result(
         self, city_name: str, weather: Optional[WeatherData]
     ) -> None:
-        """后台查询结果回调（乱序结果丢弃）"""
+        """后台查询结果回调（乱序结果丢弃，异常不外泄）"""
         # 城市已切换时丢弃过期结果，避免旧数据覆盖新城市显示
         if city_name != self.current_city:
             return
-        if weather:
-            self.weather_info_label.setText(format_weather_info(weather, city_name))
-            self.weather_icon_label.setText(weather.icon)
-        else:
+        try:
+            if weather:
+                self.weather_info_label.setText(format_weather_info(weather, city_name))
+                self.weather_icon_label.setText(weather.icon)
+            else:
+                self.weather_info_label.setText("天气获取失败")
+                self.weather_icon_label.setText("❓")
+        except Exception as e:
+            logger.exception(f"更新天气显示时出错: {e}")
             self.weather_info_label.setText("天气获取失败")
             self.weather_icon_label.setText("❓")
 
@@ -176,3 +190,4 @@ class WeatherPanel(QWidget):
 #   设计理由：QThreadPool 全局实例复用线程；信号跨线程自动排队，避免手动锁
 #   异常处理：查询失败在 service 层返回 None，回调显示失败文案
 #   关联配置：last_city 配置项由主窗口持久化；城市表来自 data/cities.py
+

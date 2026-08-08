@@ -1,0 +1,27 @@
+{
+  "font_family": "Arial",
+  "colors": {
+    "primary": "#4CAF50",
+    "primary_hover": "#45a049",
+    "primary_pressed": "#3d8b40",
+    "primary_light": "#81C784",
+    "primary_dark_hover": "#5CBF60",
+    "accent": "#2196F3",
+    "danger": "#f44336",
+    "tray_blue": "#4A90D9",
+    "disabled": "#888888",
+    "text_main": "#333333",
+    "text_light": "#e0e0e0",
+    "text_secondary": "#888888",
+    "text_tertiary": "#666666",
+    "text_muted": "#555555",
+    "bg_window_light": "#f5f5f5",
+    "bg_frame_light": "#ffffff",
+    "bg_control_light": "#ffffff",
+    "bg_border_light": "#e0e0e0",
+    "bg_window_dark": "#1e1e1e",
+    "bg_frame_dark": "#2d2d2d",
+    "bg_control_dark": "#3d3d3d",
+    "bg_border_dark": "#4d4d4d"
+  }
+}

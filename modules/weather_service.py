@@ -22,11 +22,14 @@ from data.cities import CITIES
 # 天气代码映射表
 from data.weather_codes import WEATHER_CODE_INFO, UNKNOWN_WEATHER
 
+# 静态配置（缓存 TTL 参数）
+from config.static.static_config import get_static_config
+
 # 天气结果内存缓存：城市名 → (缓存时间戳, WeatherData)
 _weather_cache: dict[str, tuple[float, "WeatherData"]] = {}
 
-# 缓存有效期（秒）
-CACHE_TTL_SECONDS = 30 * 60
+# 缓存有效期（秒，来自静态配置）
+CACHE_TTL_SECONDS = int(get_static_config().base["weather_cache_ttl"])
 
 
 @dataclass
@@ -61,7 +64,7 @@ def get_weather_by_coords(lat: float, lon: float) -> Optional[WeatherData]:
     :param lon: 经度
     :return: WeatherData 天气信息数据类，失败返回 None
     """
-    # 拼接 API URL，重试耗尽后统一返回 None
+    # 拼接 API URL，重试耗尽后统一返回 None；仅捕获网络/解析类异常，编程错误上抛
     try:
         # 使用 Open-Meteo API
         url = (
@@ -95,8 +98,9 @@ def get_weather_by_coords(lat: float, lon: float) -> Optional[WeatherData]:
             description=code_info.description,
             icon=code_info.icon,
         )
-    except Exception as e:
-        logger.error(f"获取天气信息失败: {e}")
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
+        # 网络/超时/JSON 解析失败：记录堆栈并降级返回 None
+        logger.exception(f"获取天气信息失败: {e}")
         return None
 
 
@@ -151,19 +155,6 @@ def format_weather_info(weather: Optional[WeatherData], city_name: str = "") -> 
     )
 
 
-def get_simple_weather(weather: Optional[WeatherData]) -> str:
-    """
-    获取简洁天气信息
-
-    :param weather: WeatherData 天气信息数据类
-    :return: 简洁天气字符串
-    """
-    # 委托 WeatherData.to_display，空值返回"天气未知"
-    if not weather:
-        return "天气未知"
-    return weather.to_display()
-
-
 # ===== modules/weather_service.py 函数/常量说明 =====
 # WeatherData: dataclass，天气信息聚合类，to_display() 生成简洁文本
 # _fetch_weather_data(url): 请求 API 并解析 JSON（供 retry_call 重试的可调用对象）
@@ -171,7 +162,6 @@ def get_simple_weather(weather: Optional[WeatherData]) -> str:
 # get_weather_by_city(city_name): 城市查询，30 分钟缓存（仅缓存成功，失败可立即重试）
 # clear_weather_cache(): 清空缓存
 # format_weather_info(weather, city_name): 完整展示文本
-# get_simple_weather(weather): 简洁展示文本
 #   设计理由：缓存减少 API 调用（对应 M09a）；失败不缓存保证网络恢复后及时更新
-#   异常处理：网络/解析异常统一返回 None 并记录日志；重试达上限抛异常被外层捕获
+#   异常处理：网络/解析异常统一返回 None 并记录堆栈；其余异常上抛暴露编程错误
 #   关联配置：城市表 data/cities.py；天气代码表 data/weather_codes.py；重试工具 utils/retry.py
