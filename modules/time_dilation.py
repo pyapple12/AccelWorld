@@ -62,27 +62,35 @@ class AcceleratedWorld:
         self.custom_hours_per_day = int(
             24 * time_dilation_rate
         )  # 计算一天的自定义小时数
-        self._time_cache: tuple[tuple[int, ...], TimeInfo] | None = (
-            None  # (标准秒键, TimeInfo) 秒级缓存
+        self._lunar_cache: tuple[tuple[int, ...], str, str] | None = (
+            None  # (标准秒键, 中文日期, 农历信息) 昂贵农历计算的标准秒级缓存
         )
 
+    @property
+    def tick_interval_ms(self) -> int:
+        # 刷新周期（毫秒）：取基础 tick 周期与加速秒周期（1000/倍率）的较小值，
+        # 保证加速秒边界不被 tick 周期错过（修复 T001.1：刷新频率随倍率变化）
+        base_tick_ms = int(get_static_config().base["clock_tick_ms"])
+        accelerated_second_ms = 1000.0 / self.time_dilation_rate
+        return max(1, min(base_tick_ms, int(accelerated_second_ms)))
+
     def get_custom_time(self) -> TimeInfo:
-        # 同秒内直接返回缓存，避免 GUI 10Hz tick 重复农历全量计算（S9.3）
-        # 基于当前时刻秒数 × 倍率得到自定义秒数，再拆分时分秒
+        # 标准时间与加速时间每次调用现算（廉价算术，加速时间随倍率节奏实时推进，修复 T001.1）；
+        # 昂贵的农历/中文日期计算按标准秒缓存，同标准秒内直接复用
         # 获取当前系统时间（带毫秒精度）
         now = datetime.datetime.now()
-        cache_key = (now.year, now.month, now.day, now.hour, now.minute, now.second)
-        if self._time_cache is not None and self._time_cache[0] == cache_key:
-            return self._time_cache[1]
+        second_key = (now.year, now.month, now.day, now.hour, now.minute, now.second)
+        if self._lunar_cache is not None and self._lunar_cache[0] == second_key:
+            chinese_date = self._lunar_cache[1]
+            lunar_info = self._lunar_cache[2]
+        else:
+            # 使用日期模块获取中文日期与农历信息
+            chinese_date = get_chinese_date(now)
+            lunar_info = get_lunar_info(now)
+            self._lunar_cache = (second_key, chinese_date, lunar_info)
 
-        # 格式化标准日期时间（只显示到秒）
+        # 格式化标准日期时间（只显示到秒，每次现算保证标准时间新鲜不回读缓存）
         standard_datetime = now.strftime("%Y-%m-%d %H:%M:%S")
-
-        # 使用日期模块获取中文日期
-        chinese_date = get_chinese_date(now)
-
-        # 获取农历信息
-        lunar_info = get_lunar_info(now)
 
         # 计算当前时刻在标准一天中的总秒数（毫秒级精度）
         current_hour = now.hour
@@ -121,7 +129,7 @@ class AcceleratedWorld:
         remaining_seconds = total_custom_seconds_per_day - custom_total_seconds
         remaining_hours = remaining_seconds / 3600
 
-        info = TimeInfo(
+        return TimeInfo(
             standard_datetime=standard_datetime,
             custom_time=custom_time,
             chinese_date=chinese_date,
@@ -130,41 +138,25 @@ class AcceleratedWorld:
             expanded_hours_per_day=expanded_hours_per_day,
             remaining_hours=remaining_hours,
         )
-        self._time_cache = (cache_key, info)
-        return info
 
     def run_live_clock(self) -> None:
-        # 秒数变化时整行覆写输出，10ms 轮询平衡精度与 CPU
+        # 标准时间或加速时间的显示内容变化时整行覆写输出（加速时间随倍率节奏刷新，修复 T001.1）
         print(
             f"=== 加速世界 | 时间膨胀倍率{self.time_dilation_rate}倍 | "
             f"一天{self.custom_hours_per_day}小时制实时时钟 ==="
         )
         print("按 Ctrl+C 退出\n")
 
-        last_standard_second = None
-        last_custom_second = None
+        last_output_key: tuple[str, str] | None = None
 
         try:
             while True:
                 try:
-                    # 秒变化检测前置：标准秒未变不调 get_custom_time（配合秒级缓存，每秒仅 1 次全量计算）
-                    now = datetime.datetime.now()
-                    current_standard_second = now.second
-                    if current_standard_second == last_standard_second:
-                        time.sleep(0.01)
-                        continue
-
-                    # 获取当前标准日期时间和自定义时间
+                    # 每轮现算 TimeInfo（农历已被标准秒缓存兜住开销），
+                    # 显示内容（标准时间/加速时间字符串）变化才重绘
                     info = self.get_custom_time()
-
-                    # 提取自定义时间的秒数（经 TimeInfo 计算属性）
-                    current_custom_second = info.custom_second
-
-                    # 当标准时间或自定义时间的秒数变化时，更新显示
-                    if (
-                        last_standard_second != current_standard_second
-                        or last_custom_second != current_custom_second
-                    ):
+                    output_key = (info.standard_datetime, info.custom_time)
+                    if output_key != last_output_key:
                         # 同时显示所有信息
                         output = f"\r标准时间：{info.standard_datetime} | 自定义时间：{info.custom_time}"
                         output += (
@@ -174,8 +166,7 @@ class AcceleratedWorld:
                         )
                         sys.stdout.write(output)
                         sys.stdout.flush()
-                        last_standard_second = current_standard_second
-                        last_custom_second = current_custom_second
+                        last_output_key = output_key
                 except Exception as e:
                     # 单轮异常（如农历库异常）记录后继续，避免 CLI 崩溃退出
                     logger.exception(f"实时时钟单轮刷新异常: {e}")
@@ -220,8 +211,12 @@ if __name__ == "__main__":
 # AcceleratedWorld: 时间膨胀核心类
 #   __init__(rate=None): 默认值与下限校验来自静态配置（default_rate/rate_min，None 哨兵零硬编码），
 #     下限为 rate_min（含边界，修复 S10.1 A1 的 1.0 矛盾），计算一天自定义小时数（int(24*rate)）
-#   get_custom_time() -> TimeInfo: 当前秒数×倍率 → 时分秒；含农历/中文日期/剩余小时
-#   run_live_clock(): CLI 实时钟，秒变化时覆写输出，KeyboardInterrupt 优雅退出
+#   tick_interval_ms 属性: 刷新周期 = min(基础 tick 周期, 1000/倍率)，保证加速秒边界不被错过
+#     （T001.1 新增，GUI 定时器与 CLI 轮询节奏随倍率联动）
+#   get_custom_time() -> TimeInfo: 标准时间/加速时间每次现算（加速时间随倍率节奏实时推进，
+#     修复 T001.1 标准秒缓存导致的固定 1 秒刷新）；农历/中文日期按标准秒缓存复用，
+#     同标准秒仅全量计算一次（保留 S9.3 的性能收益）
+#   run_live_clock(): CLI 实时钟，标准/加速显示内容变化时覆写输出，KeyboardInterrupt 优雅退出
 # main_cli(rate): CLI 入口（倍率直接传参，修复 D1），校验后启动实时钟
 #   设计理由：纯计算无 GUI 依赖，CLI/GUI 共用；整数运算避免浮点进位误差
 #   异常处理：rate < rate_min 抛 ValueError；运行期 KeyboardInterrupt 捕获退出

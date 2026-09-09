@@ -1,5 +1,6 @@
 # 时间膨胀模块测试（S9.7 测试引入）
-# 覆盖：倍率校验、时间计算、24h 边界、TimeInfo 字段、秒级缓存、剩余小时
+# 覆盖：倍率校验、时间计算、24h 边界、TimeInfo 字段、农历秒级缓存、加速秒刷新节奏、
+#       标准时间新鲜度、tick 周期、剩余小时
 
 import datetime
 from unittest import mock
@@ -7,6 +8,14 @@ from unittest import mock
 import modules.time_dilation as td
 from modules.time_dilation import AcceleratedWorld, TimeInfo
 from config.static.static_config import get_static_config
+
+
+def _fake_now(monkeypatch, moments):
+    # 打桩 td.datetime（绕过 datetime 不可 setattr 限制），now() 依次返回 moments 序列
+    fake_dt = mock.MagicMock()
+    fake_dt.datetime.now.side_effect = list(moments)
+    monkeypatch.setattr(td, "datetime", fake_dt)
+    return fake_dt.datetime.now
 
 
 def test_init_valid_rates():
@@ -75,8 +84,8 @@ def test_timeinfo_properties():
     assert t.custom_second == 34
 
 
-def test_second_cache(monkeypatch):
-    # 秒级缓存：同秒多次调用仅全量计算一次，跨秒重算（S9.3 回归）
+def test_lunar_second_cache(monkeypatch):
+    # 农历计算标准秒级缓存：同标准秒多次调用仅全量计算一次（T001.1 重构回归，保留 S9.3 收益）
     aw = AcceleratedWorld(2.0)
     calls = {"n": 0}
     orig_get_lunar = td.get_lunar_info
@@ -90,22 +99,84 @@ def test_second_cache(monkeypatch):
     i1 = aw.get_custom_time()
     i2 = aw.get_custom_time()
     i3 = aw.get_custom_time()
-    assert i1 is i2 is i3  # 同秒返回同一缓存对象
-    assert calls["n"] == 1
+    assert calls["n"] == 1  # 同标准秒仅计算一次
+    assert i1 is not i2 is not i3  # 每次返回全新 TimeInfo（加速时间实时推进，T001.1）
+    assert i1.lunar_info == i2.lunar_info == i3.lunar_info  # 农历复用缓存
 
 
-def test_second_cache_cross_second(monkeypatch):
-    # 跨秒重算（打桩 datetime 模块引用，绕过 datetime 不可 setattr 限制）
+def test_lunar_cache_cross_second(monkeypatch):
+    # 跨标准秒重算农历（T001.1 重构回归）
     aw = AcceleratedWorld(2.0)
-    fake_dt = mock.MagicMock()
-    base = datetime.datetime(2026, 8, 8, 12, 0, 0, 123456)
-    fake_dt.datetime.now.return_value = base
-    monkeypatch.setattr(td, "datetime", fake_dt)
+    calls = {"n": 0}
+    orig_get_lunar = td.get_lunar_info
+
+    def counting_lunar(now):
+        calls["n"] += 1
+        return orig_get_lunar(now)
+
+    monkeypatch.setattr(td, "get_lunar_info", counting_lunar)
+    _fake_now(
+        monkeypatch,
+        [
+            datetime.datetime(2026, 8, 8, 12, 0, 0, 123456),
+            datetime.datetime(2026, 8, 8, 12, 0, 1, 123456),
+        ],
+    )
     i1 = aw.get_custom_time()
-    fake_dt.datetime.now.return_value = base.replace(second=1)
     i2 = aw.get_custom_time()
-    assert i1 is not i2  # 跨秒重算（新对象）
+    assert calls["n"] == 2  # 跨标准秒重算
     assert i2.standard_datetime.endswith(":01")
+
+
+def test_accelerated_second_cadence_rate_2(monkeypatch):
+    # 加速秒节奏：rate 2.0 下现实 0.5 秒 = 加速 1 秒，custom_second 每步变化（T001.1）
+    aw = AcceleratedWorld(2.0)
+    base = datetime.datetime(2026, 9, 10, 10, 0, 0, 500000)
+    _fake_now(monkeypatch, [base + datetime.timedelta(seconds=i * 0.5) for i in range(4)])
+    seq = [aw.get_custom_time().custom_second for _ in range(4)]
+    assert len(set(seq)) == 4  # 每个加速秒边界均被刷新
+
+
+def test_accelerated_second_cadence_rate_10(monkeypatch):
+    # 加速秒节奏：rate 10.0 下现实 0.1 秒 = 加速 1 秒（y.problems#1 预期场景，T001.1）
+    aw = AcceleratedWorld(10.0)
+    base = datetime.datetime(2026, 9, 10, 10, 0, 0, 500000)
+    _fake_now(monkeypatch, [base + datetime.timedelta(seconds=i * 0.1) for i in range(5)])
+    seq = [aw.get_custom_time().custom_second for _ in range(5)]
+    assert len(set(seq)) == 5
+
+
+def test_accelerated_second_no_flap(monkeypatch):
+    # 节拍保护：rate 2.0 下现实 0.25 秒加速秒未走满 1 秒，custom_second 不得变化（T001.1）
+    aw = AcceleratedWorld(2.0)
+    base = datetime.datetime(2026, 9, 10, 10, 0, 0, 500000)
+    _fake_now(monkeypatch, [base + datetime.timedelta(seconds=i * 0.25) for i in range(4)])
+    seq = [aw.get_custom_time().custom_second for _ in range(4)]
+    assert seq[0] == seq[1] and seq[2] == seq[3] and seq[1] != seq[2]
+
+
+def test_standard_time_fresh_within_accelerated_second(monkeypatch):
+    # 标准时间新鲜度：加速秒未变但标准秒已跨越，TimeInfo 必须现算而非回读缓存（T001.1）
+    aw = AcceleratedWorld(1.05)
+    cross_base = datetime.datetime(2026, 9, 10, 10, 0, 0, 990000)
+    _fake_now(
+        monkeypatch,
+        [cross_base, cross_base + datetime.timedelta(milliseconds=10)],
+    )
+    i1 = aw.get_custom_time()
+    i2 = aw.get_custom_time()
+    assert i1 is not i2
+    assert i2.standard_datetime != i1.standard_datetime  # 标准时间跨秒新鲜
+    assert i1.custom_time == i2.custom_time  # 加速秒未变
+
+
+def test_tick_interval_ms():
+    # 刷新周期 = min(基础 tick 周期, 1000/倍率)（T001.1，基础周期来自静态配置）
+    base_tick = int(get_static_config().base["clock_tick_ms"])
+    assert AcceleratedWorld(1.0).tick_interval_ms == base_tick
+    assert AcceleratedWorld(2.0).tick_interval_ms == min(base_tick, 500)
+    assert AcceleratedWorld(11.3).tick_interval_ms == min(base_tick, 88)
+    assert AcceleratedWorld(20.0).tick_interval_ms == min(base_tick, 50)
 
 
 def test_remaining_hours_formula():

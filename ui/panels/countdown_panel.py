@@ -170,8 +170,27 @@ class CountdownPanel(QWidget):
             return self.countdown_target.text().strip()
         return ""
 
-    def show_date_picker(self) -> None:
-        # 弹窗选日期，保留输入框已有时间部分
+    def _set_target_date_part(self, selected_date: QDate) -> None:
+        # 将选中日期写回输入框日期部分，保留原时间部分（实时反馈不等 OK，修复 T001.2）
+        current_text = self.countdown_target.text().strip()
+        if current_text and len(current_text) >= 10:
+            time_part = current_text[10:] if len(current_text) > 10 else " 00:00:00"
+            self.countdown_target.setText(
+                f"{selected_date.toString('yyyy-MM-dd')}{time_part}"
+            )
+        else:
+            self.countdown_target.setText(
+                f"{selected_date.toString('yyyy-MM-dd')} 00:00:00"
+            )
+
+    def _apply_quick_date(self, calendar: QCalendarWidget, days: int) -> None:
+        # 快捷日期按钮：日历勾选对应日期 + 输入框即时写回（实时反馈，修复 T001.2）
+        target = QDate.currentDate().addDays(days)
+        calendar.setSelectedDate(target)
+        self._set_target_date_part(target)
+
+    def _build_date_dialog(self) -> tuple[QDialog, QCalendarWidget]:
+        # 构建日期选择弹窗（含日历点击/快捷按钮的实时反馈接线，修复 T001.2）
         dialog = QDialog(self)
         dialog.setWindowTitle("选择日期")
         dialog.setFixedSize(320, 340)
@@ -185,28 +204,20 @@ class CountdownPanel(QWidget):
         calendar.setFixedSize(310, 250)
         layout.addWidget(calendar)
 
-        # 预设快捷按钮
+        # 日历点击实时反馈：点击日期立即写回输入框（不等 OK）
+        calendar.clicked.connect(self._set_target_date_part)
+
+        # 预设快捷按钮（勾选日历 + 即时写回）
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(5)
 
-        today_btn = QPushButton("今天")
-        today_btn.setFont(QFont(_UI["font_family"], 10))
-        today_btn.clicked.connect(lambda: calendar.setSelectedDate(QDate.currentDate()))
-        btn_layout.addWidget(today_btn)
-
-        tomorrow_btn = QPushButton("明天")
-        tomorrow_btn.setFont(QFont(_UI["font_family"], 10))
-        tomorrow_btn.clicked.connect(
-            lambda: calendar.setSelectedDate(QDate.currentDate().addDays(1))
-        )
-        btn_layout.addWidget(tomorrow_btn)
-
-        week_btn = QPushButton("一周后")
-        week_btn.setFont(QFont(_UI["font_family"], 10))
-        week_btn.clicked.connect(
-            lambda: calendar.setSelectedDate(QDate.currentDate().addDays(7))
-        )
-        btn_layout.addWidget(week_btn)
+        for label, days in (("今天", 0), ("明天", 1), ("一周后", 7)):
+            quick_btn = QPushButton(label)
+            quick_btn.setFont(QFont(_UI["font_family"], 10))
+            quick_btn.clicked.connect(
+                lambda _=False, c=calendar, d=days: self._apply_quick_date(c, d)
+            )
+            btn_layout.addWidget(quick_btn)
 
         layout.addLayout(btn_layout)
 
@@ -218,39 +229,19 @@ class CountdownPanel(QWidget):
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
 
+        return dialog, calendar
+
+    def show_date_picker(self) -> None:
+        # 弹窗选日期：日历点击/快捷按钮即时写回输入框，OK 按当前选中日期定稿
+        dialog, calendar = self._build_date_dialog()
+
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            selected_date = calendar.selectedDate()
-            current_text = self.countdown_target.text().strip()
-            # 保留当前时间部分，只更新日期
-            if current_text and len(current_text) >= 10:
-                time_part = current_text[10:] if len(current_text) > 10 else " 00:00:00"
-                self.countdown_target.setText(
-                    f"{selected_date.toString('yyyy-MM-dd')}{time_part}"
-                )
-            else:
-                self.countdown_target.setText(
-                    f"{selected_date.toString('yyyy-MM-dd')} 00:00:00"
-                )
+            self._set_target_date_part(calendar.selectedDate())
 
-    def show_time_picker(self) -> None:
-        # 弹窗选时间，日期取输入框或今天
-        # 使用输入框中的日期，为空则使用今天
-        current_text = self.countdown_target.text().strip()
-        if current_text and len(current_text) >= 10:
-            date_str = current_text[:10]
-        else:
-            date_str = QDate.currentDate().toString("yyyy-MM-dd")
-
-        # 解析当前时间（如果有）：fromString 不抛异常，无效值回退当前时间（E10 去无意义 try）
-        current_time = QTime.currentTime()
-        if current_text and len(current_text) >= 16:
-            parsed = QTime.fromString(current_text[11:16], "HH:mm")
-            if parsed.isValid():
-                current_time = parsed
-
+    def _build_time_dialog(self, current_time: QTime) -> tuple[QDialog, QTimeEdit]:
+        # 构建时间选择弹窗（尺寸交由 Qt sizeHint 自适应，修复 HH:mm:ss 在 120px 固定宽度内显示不全）
         dialog = QDialog(self)
         dialog.setWindowTitle("选择时间")
-        dialog.setFixedSize(220, 140)
 
         layout = QVBoxLayout(dialog)
         layout.setSpacing(10)
@@ -259,7 +250,6 @@ class CountdownPanel(QWidget):
         time_edit.setDisplayFormat("HH:mm:ss")
         time_edit.setTime(current_time)
         time_edit.setFont(QFont(_UI["font_family"], 14))
-        time_edit.setFixedSize(120, 40)
         layout.addWidget(time_edit)
 
         btn_layout = QHBoxLayout()
@@ -280,6 +270,26 @@ class CountdownPanel(QWidget):
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
 
+        return dialog, time_edit
+
+    def show_time_picker(self) -> None:
+        # 弹窗选时间，日期取输入框或今天
+        # 使用输入框中的日期，为空则使用今天
+        current_text = self.countdown_target.text().strip()
+        if current_text and len(current_text) >= 10:
+            date_str = current_text[:10]
+        else:
+            date_str = QDate.currentDate().toString("yyyy-MM-dd")
+
+        # 解析当前时间（如果有）：fromString 不抛异常，无效值回退当前时间（E10 去无意义 try）
+        current_time = QTime.currentTime()
+        if current_text and len(current_text) >= 16:
+            parsed = QTime.fromString(current_text[11:16], "HH:mm")
+            if parsed.isValid():
+                current_time = parsed
+
+        dialog, time_edit = self._build_time_dialog(current_time)
+
         if dialog.exec() == QDialog.DialogCode.Accepted:
             selected_time = time_edit.time()
             time_str = selected_time.toString("HH:mm:ss")
@@ -292,6 +302,11 @@ class CountdownPanel(QWidget):
 #   clear_countdown(): 清除目标与显示
 #   update_countdown(): 主窗口 tick 调用，计算剩余并着色（结束红/进行绿）
 #   get_target_text(): 供主窗口保存配置；未设置返回空串
+#   _set_target_date_part(selected_date): 选中日期写回输入框日期部分并保留时间部分
+#     （实时反馈不等 OK，修复 T001.2；日历点击/快捷按钮/OK 共用此路径）
+#   _apply_quick_date(calendar, days): 快捷日期按钮（今天/明天/一周后），勾选日历 + 即时写回
+#   _build_date_dialog()/_build_time_dialog(...): 弹窗构建器（接线实时反馈；时间弹窗尺寸
+#     交由 Qt sizeHint 自适应，修复 HH:mm:ss 显示不全，T001.3）
 #   show_date_picker()/show_time_picker(): 弹窗选择，仅改写输入框对应部分
 #   设计理由：倒计时状态（目标时间）内聚在面板，主窗口只做 tick 驱动
 #   异常处理：格式解析 ValueError 弹窗提示；过期目标置 None

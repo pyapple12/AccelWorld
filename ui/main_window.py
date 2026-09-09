@@ -108,10 +108,10 @@ class AcceleratedWorldGUI(QMainWindow):
         # 从配置加载闹钟
         self.alarm_panel.load_alarms(get_alarms())
 
-        # ------------------- 时钟定时器（周期来自静态配置） -------------------
+        # ------------------- 时钟定时器（周期随倍率联动，T001.1） -------------------
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_clock)
-        self.timer.start(int(get_static_config().base["clock_tick_ms"]))
+        self.timer.start(self.accel_world.tick_interval_ms)
 
         # ------------------- 主题（默认浅色） -------------------
         self.is_dark_theme = False
@@ -151,6 +151,8 @@ class AcceleratedWorldGUI(QMainWindow):
             return
         # 更新加速世界实例
         self.accel_world = AcceleratedWorld(time_dilation_rate=rate)
+        # 刷新周期随倍率联动重启（加速秒周期 1000/倍率，修复 T001.1）
+        self.timer.start(self.accel_world.tick_interval_ms)
         # 同步保存倍率（滑杆/输入框/启动参数共用此路径）
         set_setting("time_dilation_rate", rate)
 
@@ -278,10 +280,10 @@ def main_gui(**kwargs: Any) -> None:
 
 # ===== ui/main_window.py 函数/类说明 =====
 # AcceleratedWorldGUI(QMainWindow): 主窗口装配器
-#   __init__: 加载配置 → 装配 6 个面板 → 连接信号 → 闹钟加载 → 100ms 定时器 → 主题 → 托盘
+#   __init__: 加载配置 → 装配 6 个面板 → 连接信号 → 闹钟加载 → 定时器（周期随倍率）→ 主题 → 托盘
 #   update_clock(): tick 分发 TimeInfo 到时钟/日期/倒计时/世界时钟面板
 #   _on_rate_changed(rate): 倍率信号 → 重建核心实例 + 持久化 + 托盘更新
-#   _update_acceleration_rate(rate): 倍率验证/重建/保存共用路径
+#   _update_acceleration_rate(rate): 倍率验证/重建/保存/定时器重启共用路径（周期随倍率，T001.1）
 #   _save_alarms(): 闹钟变更持久化（alarm_saved 信号）
 #   _on_alarm_triggered(alarm): 播放/通知/一次性禁用（alarm_triggered 信号）
 #   toggle_theme()/apply_theme(): 主题切换（窗口 QSS + 进度条样式 + 按钮图标）

@@ -56,9 +56,9 @@ $env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWi
 
 ### T001: 实测问题修复（对应版本 0.4.7.1）[problems#1-3]
 
-- [ ] T001.1 [P1] 加速时间刷新频率随倍率变化（1/rate 秒节奏） —— `get_custom_time()` 秒级缓存按标准时间秒做键导致界面每标准秒只变一次；改法：GUI/CLI tick 间隔按 `1000ms / rate` 动态计算（`clock_tick_ms` 参数化），配合缓存键改用加速时间秒；验证：单元测试断言倍率 2.0/10.0 下 `TimeInfo.custom_second` 变化周期 + GUI 无头初始化
-- [ ] T001.2 [P2] 倒计时日期选择器实时反馈 —— `countdown_panel.show_date_picker()` 中快捷按钮 `setSelectedDate` 后即时写回 `countdown_target` 输入框，日历 `clicked` 信号连接同步写回，不等 `dialog.exec()` Accepted；验证：GUI 无头初始化 + 手动核对快捷按钮与日历点击均即时勾选
-- [ ] T001.3 [P3] 时间选择框显示不全 —— `show_time_picker()` 的 `QTimeEdit.setFixedSize(120, 40)` 宽度放不下 `HH:mm:ss`；改法：宽度按 `sizeHint` 自适应或加宽常量入 `ui.json`；验证：GUI 无头初始化 + 截图核对时分秒完整可见
+- [x] T001.1 [P1] 加速时间刷新频率随倍率变化（1/rate 秒节奏） —— `get_custom_time()` 秒级缓存按标准时间秒做键导致界面每标准秒只变一次；改法：GUI/CLI tick 间隔按 `1000ms / rate` 动态计算（`clock_tick_ms` 参数化），配合缓存键改用加速时间秒；验证：单元测试断言倍率 2.0/10.0 下 `TimeInfo.custom_second` 变化周期 + GUI 无头初始化（2026-09-10 完成：农历/中文日期改标准秒级缓存，标准/加速时间每次现算，新增 `tick_interval_ms` 属性且 GUI 定时器随倍率联动重启；探针 11 项 + 54 用例全过）
+- [x] T001.2 [P2] 倒计时日期选择器实时反馈 —— `countdown_panel.show_date_picker()` 中快捷按钮 `setSelectedDate` 后即时写回 `countdown_target` 输入框，日历 `clicked` 信号连接同步写回，不等 `dialog.exec()` Accepted；验证：GUI 无头初始化 + 手动核对快捷按钮与日历点击均即时勾选（2026-09-10 完成：新增 `_set_target_date_part`/`_apply_quick_date`/`_build_date_dialog`，日历 `clicked` 与快捷按钮共用实时写回路径；探针含保留时间部分断言）
+- [x] T001.3 [P3] 时间选择框显示不全 —— `show_time_picker()` 的 `QTimeEdit.setFixedSize(120, 40)` 宽度放不下 `HH:mm:ss`；改法：宽度按 `sizeHint` 自适应或加宽常量入 `ui.json`；验证：GUI 无头初始化 + 截图核对时分秒完整可见（2026-09-10 完成：移除弹窗与 QTimeEdit 固定尺寸，`_build_time_dialog` 交由 Qt sizeHint 自适应，sizeHint 198px ≥ 需求 176px；像素级视觉效果留待用户运行确认）
 
 ### T002: 运行监控体系 [problems#4]
 
