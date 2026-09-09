@@ -4,8 +4,11 @@
 
 import urllib.request
 import urllib.error
+import urllib.parse
+import ipaddress
 import json
 import logging
+import socket
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -31,6 +34,14 @@ _weather_cache: dict[str, tuple[float, "WeatherData"]] = {}
 # 缓存有效期（秒，来自静态配置）
 CACHE_TTL_SECONDS = int(get_static_config().base["weather_cache_ttl"])
 
+# 经纬度合法定义域（地理常量，非业务调参；请求前校验防非法参数拼入 URL，V0.4.7.0 安全加固）
+_LAT_RANGE = (-90.0, 90.0)
+_LON_RANGE = (-180.0, 180.0)
+
+# 请求主机白名单（SSRF 防护：仅允许向 Open-Meteo 官方接口发起 HTTPS 请求，V0.4.7.0）
+_API_SCHEME = "https"
+_API_HOST = "api.open-meteo.com"
+
 
 @dataclass
 class WeatherData:
@@ -44,13 +55,47 @@ class WeatherData:
     icon: str  # emoji 图标
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    # 禁止跟随重定向（SSRF 防护：重定向可能绕过主机白名单，V0.4.7.0）
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # 返回 None 表示不构造重定向请求，urlopen 将抛 HTTPError
+        return None
+
+
+# 禁止重定向的共享 opener
+_OPENER = urllib.request.build_opener(_NoRedirectHandler)
+
+
 def _fetch_weather_data(url: str) -> dict:
     # 请求 Open-Meteo API 并解析 JSON（独立函数供 retry_call 重试）
-    with urllib.request.urlopen(url, timeout=10) as response:
+    # SSRF 防护（V0.4.7.0）：协议/主机白名单 + 域名解析 IP 私网阻断 + 禁止重定向；
+    # 剩余 TOCTOU 型 DNS rebinding 理论风险由域名固定为官方接口兜底（单机应用可接受）
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme != _API_SCHEME or parts.hostname != _API_HOST:
+        raise ValueError(f"拒绝请求非 Open-Meteo 接口地址: {url}")
+    addr_infos = socket.getaddrinfo(parts.hostname, 443, proto=socket.IPPROTO_TCP)
+    for info in addr_infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            raise ValueError(f"接口域名解析到受限地址: {ip}")
+    with _OPENER.open(url, timeout=10) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
 def get_weather_by_coords(lat: float, lon: float) -> Optional[WeatherData]:
+    # 经纬度定义域校验：越界属编程错误直接上抛（城市坐标来自 data/cities.py 静态表）
+    lat_ok = _LAT_RANGE[0] <= lat <= _LAT_RANGE[1]
+    lon_ok = _LON_RANGE[0] <= lon <= _LON_RANGE[1]
+    if not (lat_ok and lon_ok):
+        raise ValueError(f"经纬度越界: lat={lat}, lon={lon}")
+
     # 拼接 API URL，重试耗尽后统一返回 None；仅捕获网络/解析类异常，编程错误上抛
     try:
         # 使用 Open-Meteo API
@@ -130,8 +175,13 @@ def format_weather_info(weather: Optional[WeatherData], city_name: str = "") -> 
 
 # ===== modules/weather_service.py 函数/常量说明 =====
 # WeatherData: dataclass，天气信息聚合类（S10.11 C1：to_display 已删，展示统一走 format_weather_info）
-# _fetch_weather_data(url): 请求 API 并解析 JSON（供 retry_call 重试的可调用对象）
-# get_weather_by_coords(lat, lon): 经纬度查询，URLError/TimeoutError 自动重试 2 次
+# _fetch_weather_data(url): 请求 API 并解析 JSON（供 retry_call 重试的可调用对象）；
+#   请求前校验 scheme/hostname 白名单并解析域名阻断私网/环回等受限 IP，
+#   非官方接口抛 ValueError（编程错误上抛，不被网络异常降级吞掉）
+# _NoRedirectHandler/_OPENER: 禁止重定向的共享 opener（重定向可能绕过主机白名单）
+# _LAT_RANGE/_LON_RANGE: 经纬度合法定义域（地理常量），请求前校验防非法参数拼入 URL
+# get_weather_by_coords(lat, lon): 经纬度查询，越界抛 ValueError；
+#   URLError/TimeoutError 自动重试 2 次
 # get_weather_by_city(city_name): 城市查询，30 分钟缓存（仅缓存成功，失败可立即重试）
 # clear_weather_cache(): 清空缓存
 # format_weather_info(weather, city_name): 完整展示文本

@@ -1,15 +1,16 @@
 # AccelWorld 项目说明
 
-单包 Python 桌面应用：基于加速倍率的时间膨胀时钟（PyQt6，中文界面为主）。无测试套件、无 lint/格式脚本、无构建步骤。
+单包 Python 桌面应用：基于加速倍率的时间膨胀时钟（PyQt6，中文界面为主）。无 lint/格式脚本、无构建步骤；单元测试用 pytest（tests/，49 用例）。2026-09-10 起接入 DeepTransHub 工作流体系（文档四件套 + Commit 提交规范 + `.agents/skills/` 项目级技能）。
 
 ## 运行与验证
 
-- 入口 `main.py`：GUI 为默认模式，CLI 用 `--cli`；版本号单一来源在 `config/static/base.json`（`base["version"]`，当前 `ver 0.46`），各模块（main.py --version/窗口标题/托盘 toolTip）一律从配置读取，代码中不得出现版本字符串
+- 入口 `main.py`：GUI 为默认模式，CLI 用 `--cli`；版本号单一来源在 `config/static/base.json`（`base["version"]`，当前 `0.4.7.0`），各模块（main.py --version/窗口标题/托盘 toolTip）一律从配置读取，代码中不得出现版本字符串
+- **版本体系**（2026-09-10 切换）：自 `0.4.7.0` 起启用四段式纯数字 `X.Y.Z.P`（无 `ver ` 前缀）；历史存量 `ver 0.4x` 为旧三段式带前缀格式，仅存留于历史文档与提交记录，不回溯改写
 - 没有测试/lint 命令。改动后验证：`.\.venv\Scripts\python.exe -c "import main, modules.time_dilation, modules.chinese_calendar, modules.weather_service, modules.alarm_service, config.settings, config.static.static_config, ui.main_window, ui.alarm_dialog, ui.themes, data.cities, data.timezones, data.weather_codes, utils.logger, utils.file_utils, utils.retry"`。不要直接跑 GUI 验证（会弹窗阻塞）
 - GUI 无头初始化验证（不弹窗）：`$env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWidgets import QApplication; from ui.main_window import AcceleratedWorldGUI; app = QApplication([]); w = AcceleratedWorldGUI(); print('GUI init OK')"`
 - `pyproject.toml` 仅有 basedpyright 配置，且绝大多数检查被显式放宽为 `"none"` —— 不要引入严格类型修复，也不要改动这些配置
 - CLI 冒烟测试：`.\.venv\Scripts\python.exe main.py --version`、`main.py --cli --rate 2.0`
-- 单元测试：`.\.venv\Scripts\python.exe -m pytest tests/ -v`（41 用例覆盖 time_dilation/chinese_calendar/settings/alarm_service/weather_service；依赖 `tests/requirements-dev.txt` 的 pytest）
+- 单元测试：`.\.venv\Scripts\python.exe -m pytest tests/ -v`（49 用例覆盖 time_dilation/chinese_calendar/settings/alarm_service/weather_service/file_utils；依赖 `tests/requirements-dev.txt` 的 pytest）
 
 ## 环境陷阱
 
@@ -18,11 +19,50 @@
 
 ## 结构与约定
 
-- 包结构按依赖单向分层（参考 DeepTransHub）：`utils/` 通用工具（logger/file_utils/retry/dataclass_utils，无业务依赖）→ `config/` 配置（settings 用户配置 + static/ 应用静态配置层，用户配置存项目内 `config/user_config.json`，日志存项目内 `logs/app-YYYY-MM-DD.log` 每日独立文件）→ `modules/` 业务核心（time_dilation 时间膨胀、chinese_calendar 农历/干支/节气、weather_service Open-Meteo 天气、alarm_service 闹钟）→ `ui/` 界面（main_window 主窗口、alarm_dialog 闹钟对话框、themes 主题 QSS）→ `data/` 静态数据（cities/timezones/weather_codes）
+- 包结构按依赖单向分层（参考 DeepTransHub）：`utils/` 通用工具（logger/file_utils/retry/dataclass_utils，无业务依赖）→ `config/` 配置（settings 用户配置 + static/ 应用静态配置层，用户配置存项目内 `config/user_config.json`，日志存项目内 `logs/app-YYYY-MM-DD.log` 每日独立文件）→ `modules/` 业务核心（time_dilation 时间膨胀、chinese_calendar 农历/干支/节气、weather_service Open-Meteo 天气、alarm_service 闹钟）→ `ui/` 界面（main_window 主窗口装配器、panels/ 6 面板、system_tray 托盘、alarm_dialog 闹钟对话框、audio_player 音频、themes 主题 QSS）→ `data/` 静态数据（cities/timezones/weather_codes）
 - 代码零硬编码原则：业务参数（倍率范围/默认值/定时器周期/窗口几何/字体颜色/日志路径等）全部从 `config/static/` 的 json 读取（`get_static_config()` 单例，映射表 config.json 由 static_config.py 的 `__file__` 自定位——唯一结构约定）；用户配置默认值经 `default_factory` 从 base.json 现取
 - `main.py` 收编 CLI/GUI 分发与版本读取；模块间顶层 import，不要使用函数内延迟 import
-- 提交信息用中文 conventional 风格并带版本号，如 `feat: V0.43，M07完成，添加日期时间选择器...`；功能开发先走 OpenSpec 提案流程
-- 项目规划文档在 `workingboard/` 目录（已归档至 `archived/workingboard`），重构进度在 `x.progress.md`，重构方案与未完成项规划在 `z.plan.md`
+- 提交信息规范见下文「Commit 提交规范」节；功能开发先走 OpenSpec 提案流程
+- 工作流文档四件套（2026-09-10 接入 DeepTransHub 工作流体系）：`w.study.md` 项目分析报告 / `x.progress.md` 任务清单（已完成在前、未完成在后；审计修复组 `FIX{NNN}`）/ `y.problems.md` 已知问题 / `z.plan.md` 方案记录与审计附录（含豁免定案清单，附录 `A{NNN}` 递增）；另有 `m.milestone.md` 版本里程碑清单
+- 项目级 Agent 技能在 `.agents/skills/`（audit-project 全量审计 / audit-report 审计归档 / progress-task 按任务组执行 / skillforge 技能创建），已 gitignore 仅本地使用
+- 历史规划文档 `workingboard/` 已归档至 `archived/workingboard`（gitignore）
+
+## 工程原则（设计哲学，所有项目通用）
+
+> 设计哲学总纲（18 条 / 5 大类，与用户级 instructions.md 同源）；下文"代码规范"为项目细则，两者冲突时以本项目边界为准。
+
+### 核心思想
+
+- 以第一性原理思考问题：理解需求背后的真实目标，而非直接套用已有模式或技术方案。
+- 优先解决本质问题，避免为假设中的未来需求提前设计复杂系统。
+- 在保证长期可维护性的前提下，选择当前最简单、可靠、清晰的实现方案。
+
+### 简洁与设计
+
+- 遵循 KISS：优先选择简单直接的实现，避免不必要的复杂度。
+- 遵循 DRY：避免重复逻辑，但不要为了消除少量重复而创建过度抽象。
+- 遵循 SOLID 思想：职责清晰、降低模块耦合，提高可维护性和扩展能力。
+
+### 架构
+
+- 不长期保留废弃方案：优先删除过时代码，而不是增加兼容层、fallback 或临时迁移逻辑。
+- 不进行未经验证的架构设计：避免提前引入抽象、配置和间接层。
+- 从最小可工作的版本开始逐步演进，每次修改建立在已有可运行系统之上。
+- 永远不要用未来可能需要的复杂性，牺牲当前产品的可用性。
+
+### 代码质量
+
+- 保持模块职责明确，避免一个模块承担过多职责。
+- 优先使用成熟、稳定、维护良好的第三方库，而不是重复造轮子。
+- 使用项目已有依赖解决问题之前，不要随意新增依赖。
+- 在引入新方案前，先检查已有代码、依赖、文档和能力。
+- 避免为了"看起来更优雅"而增加实际复杂度。
+
+### 工程决策
+
+- 优先选择长期可维护的方案，而不是只能临时运行的解决方案。
+- 代码应该服务于业务目标，而不是为了展示技术复杂度。
+- 如果简单方案已经满足需求，不要主动升级为复杂方案。
 
 ## 代码规范
 
@@ -55,10 +95,23 @@
 - 字符串引号：普通字符串用双引号，文档字符串用 `"""` 三引号；f-string 内含大量双引号时允许外层使用单引号
 - 路径处理：强制使用 `pathlib` 代替 `os.path`
 - 临时文件：所有临时生成的脚本/文件必须写入项目根目录下的 `.temp/` 文件夹（已 gitignore）
+- **文件修改必须用 edit 工具**：修改既有文件（.py/.md/.json）一律用 edit 的精确 oldString/newString 替换，禁止用 python -c 或 PowerShell 脚本做内容替换（易踩引号/缩进坑）；新建 .temp 探针脚本不受限
+- **版本单一来源**：版本号只存 `config/static/base.json` 的 `version` 字段，其他处一律 `get_static_config().base["version"]` 引用，禁止第二处硬编码；版本格式见「运行与验证」节（四段式 X.Y.Z.P）
+- **全量回归输出**：`.\.venv\Scripts\python.exe -m pytest tests/ -v` 的结果行全量显示，禁止 `tail`/`Select-Object -First/-Last` 截断——截断会掩盖前段 FAIL（2026-09-10 约定）
+
+## Commit 提交规范
+
+- **标题行**：`<type>: V<版本>，<摘要>`——版本号与 `config/static/base.json` 的 `version` 一致（四段式全写，如 `V0.4.7.0`）；摘要一句话概括核心
+- **版本递增**：`feat`/`fix`/`refactor`/`perf` 提交前先 bump version（patch 位 +1）；`docs`/`test`/`style`/`chore` 不强制
+- **type 全集**（conventional 风格）：`feat` 新功能 / `fix` 修复 / `refactor` 重构（行为不变）/ `perf` 性能 / `docs` 文档 / `test` 测试 / `style` 格式 / `build` 构建依赖 / `ci` CI / `chore` 杂项 / `revert` 回滚
+- **正文**（改动大时可选）：`- ` 列表，按主题分组、分组下子条目缩进，每个功能块一行自然中文描述，每行 ≤ 100 字符
+- **禁止项**：内部编号（A0.1/B1.5/FIX1.1/T001.2 等任务编号）、验证/回归数字（如"全量回归 44 项通过"）、英文混排描述
+- **提交范围**：一个版本的所有连带改动一次提交（源码 + 配置 + 文档同步）
+- **流程**：由 AI 根据 `git status`/`git diff` 核对清单并草拟 commit 内容（git add 清单 + message）→ 用户审阅后自行执行 `git add`/`git commit`/`git push`（AI 不执行 git 写操作）
 
 ## Git 注意
 
-- `.gitignore` 忽略 `CLAUDE.md`、`openspec/`、`.vscode/`、`.venv`、`archived/` —— 对这些文件的修改不会出现在 `git status` 中；`AGENTS.md` 已纳入版本控制
+- `.gitignore` 忽略 `CLAUDE.md`、`openspec/`、`.vscode/`、`.venv`、`archived/`、`.opencode/`、`.agents/`、`.temp/`、`.history/`、`.mimosa/` —— 对这些文件的修改不会出现在 `git status` 中；`AGENTS.md` 与工作流文档四件套（w/x/y/z/m）已纳入版本控制
 
 ## 操作注意
 

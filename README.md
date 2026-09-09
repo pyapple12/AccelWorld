@@ -1,6 +1,6 @@
 # AccelWorld —— 加速世界世界钟
 
-[![Version](https://img.shields.io/badge/Version-ver%200.46-blue.svg)](main.py)
+[![Version](https://img.shields.io/badge/Version-0.4.7.0-blue.svg)](config/static/base.json)
 [![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
@@ -9,6 +9,8 @@
 ## 项目简介
 
 基于时间膨胀倍率的自定义小时制时钟应用。根据设定的加速倍率（1.0x - 20.0x），实时显示加速后的时间，同时保留标准时间对照。灵感来自《加速世界》，界面以中文为主，提供农历、生肖、节气等中华传统文化元素。
+
+> 当前状态：S1-S10 重构完成（0.4.7.0）；任务清单见 `x.progress.md`，已知问题见 `y.problems.md`，版本路线见 `m.milestone.md`。
 
 ## 目录
 
@@ -148,9 +150,15 @@ AccelWorld/
 │   ├── file_utils.py          # JSON 读写 + 缓存单例 + 项目根定位
 │   ├── dataclass_utils.py     # dataclass 反序列化通用工具
 │   └── retry.py               # 泛型重试函数
-├── tests/                     # pytest 单元测试（44 用例）
+├── tests/                     # pytest 单元测试（49 用例）
 ├── requirements.txt           # Python 依赖列表
 ├── pyproject.toml             # 项目配置
+├── AGENTS.md                  # Agent 协作规范（工程原则/代码规范/Commit 提交规范）
+├── w.study.md                 # 项目分析报告（工作流四件套）
+├── x.progress.md              # 任务清单（工作流四件套）
+├── y.problems.md              # 已知问题（工作流四件套）
+├── z.plan.md                  # 方案记录与审计附录（工作流四件套）
+├── m.milestone.md             # 版本里程碑清单
 ├── LICENSE                    # GPL-3.0 许可证
 └── README.md                  # 本文件
 ```

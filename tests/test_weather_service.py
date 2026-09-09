@@ -4,8 +4,13 @@
 import json
 import time
 
+import pytest
+
 import modules.weather_service as weather_service
 from modules.weather_service import WeatherData
+
+# 导入期捕获真实请求函数（conftest 的 mock_weather fixture 会把模块属性打成假桩）
+_REAL_FETCH = weather_service._fetch_weather_data
 
 
 def _set_fetch(monkeypatch, func):
@@ -158,3 +163,28 @@ def test_unknown_city(monkeypatch):
     _set_fetch(monkeypatch, fake)
     assert weather_service.get_weather_by_city("不存在的城市") is None
     assert calls["n"] == 0
+
+
+def test_invalid_coords_raised(monkeypatch):
+    # 经纬度越界为编程错误：请求前直接抛 ValueError 且不发请求（V0.4.7.0 安全加固回归）
+    calls = {"n": 0}
+
+    def fake(url):
+        # 越界坐标不应发起任何网络请求
+        calls["n"] += 1
+        return {"current": {}}
+
+    _set_fetch(monkeypatch, fake)
+    with pytest.raises(ValueError):
+        weather_service.get_weather_by_coords(95.0, 116.4)  # 纬度超出 [-90, 90]
+    with pytest.raises(ValueError):
+        weather_service.get_weather_by_coords(39.9, 200.0)  # 经度超出 [-180, 180]
+    assert calls["n"] == 0
+
+
+def test_fetch_rejects_non_api_url():
+    # 请求主机白名单：非 Open-Meteo 官方接口直接拒绝（V0.4.7.0 SSRF 防护回归）
+    with pytest.raises(ValueError):
+        _REAL_FETCH("http://127.0.0.1:8080/forecast")
+    with pytest.raises(ValueError):
+        _REAL_FETCH("https://evil.example.com/v1")

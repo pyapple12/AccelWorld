@@ -1,9 +1,9 @@
 {
-    "time_dilation_rate": 1.0,
+    "time_dilation_rate": 11.3,
     "theme": "light",
-    "last_city": "北京",
-    "last_timezone": "Asia/Shanghai",
-    "countdown_target": "",
-    "window_geometry": null,
+    "last_city": "上海",
+    "last_timezone": "America/Los_Angeles",
+    "countdown_target": "2026-08-23 00:00:00",
+    "window_geometry": "AdnQywADAAAAAAEdAAAAKgAABQcAAAOkAAABHQAAAEgAAAUHAAADpAAAAAAAAAAABgAAAAEdAAAASAAABQcAAAOk",
     "alarms": []
 }

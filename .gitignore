@@ -54,8 +54,12 @@ archived/
 # opencode 项目级配置（机器绑定解释器路径）
 .opencode/
 
+# agents 项目级技能（.agents/skills/，仅本地使用，不同步仓库）
+.agents/
+
 # My Own WorkingBoard
 # workingboard/
 
 #Local History
 .history/
+.mimosa/

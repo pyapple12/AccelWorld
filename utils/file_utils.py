@@ -3,6 +3,7 @@
 # S1 阶段创建工具，S2 由 config/settings.py 接入使用
 
 import json
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,13 @@ _json_cache: dict[str, Any] = {}
 
 # 项目根：utils/file_utils.py → utils/ → 项目根
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+# 写入允许根目录：项目根 + 系统临时目录（V0.4.7.0 安全加固，防路径穿越；
+# 临时目录豁免为兼容 pytest tmp_path 测试隔离）
+_WRITE_ALLOWED_ROOTS: tuple[Path, ...] = (
+    _PROJECT_ROOT,
+    Path(tempfile.gettempdir()).resolve(),
+)
 
 
 def get_project_root() -> Path:
@@ -42,12 +50,16 @@ def read_json_cached(path: Path | str, default: Any = None) -> Any:
 
 def write_json(path: Path | str, data: Any) -> bool:
     # 写入 JSON 文件（UTF-8、ensure_ascii=False、缩进 4），成功后刷新缓存
+    # 安全约束：路径规范化后必须位于项目根/系统临时目录内，越界视为编程错误抛 ValueError
+    resolved = Path(path).resolve()
+    if not any(resolved.is_relative_to(root) for root in _WRITE_ALLOWED_ROOTS):
+        raise ValueError(f"拒绝写入允许目录之外的路径: {resolved}")
     try:
-        file_path = Path(path)
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-        clear_json_cache(str(file_path))
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        resolved.write_text(
+            json.dumps(data, ensure_ascii=False, indent=4), encoding="utf-8"
+        )
+        clear_json_cache(str(resolved))
         return True
     except OSError:
         return False
@@ -73,7 +85,9 @@ def clear_json_cache(path: Path | str | None = None) -> None:
 # write_json(path, data): 写入 JSON 文件
 #   输入：文件路径、数据；输出：bool 是否成功
 #   设计理由：自动创建父目录，UTF-8 中文友好输出，写入后同步清理缓存保证一致性
-#   异常处理：捕获 OSError 返回 False
+#   安全约束（V0.4.7.0）：路径规范化（resolve）后必须位于 _WRITE_ALLOWED_ROOTS
+#   （项目根/系统临时目录）内，防路径穿越；IO 与缓存键统一使用解析后路径
+#   异常处理：越界抛 ValueError（编程错误上抛）；IO 捕获 OSError 返回 False
 # clear_json_cache(path): 清空缓存
 #   输入：可选文件路径；输出：None
 #   设计理由：保存配置后调用，保证后续读取始终是最新数据
