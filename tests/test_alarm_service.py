@@ -150,4 +150,12 @@ def test_repeat_days_normalized():
     assert alarm.repeat_days == [1, 2]
     assert alarm.should_trigger_on(datetime.datetime(2026, 8, 4, 7, 0)) is True  # 周二
     assert alarm.should_trigger_on(datetime.datetime(2026, 8, 8, 7, 0)) is False  # 周六
+
+
+def test_repeat_days_bool_and_decimal_consistent():
+    # 布尔不穿透（int(True)=1 口径）、小数统一剔除（[1.7] 与 ["1.5"] 行为一致，FIX002.17）
+    assert Alarm(label="a", time="07:00", repeat_days=[True]).repeat_days == []
+    assert Alarm(label="b", time="07:00", repeat_days=[1.7]).repeat_days == []
+    assert Alarm(label="c", time="07:00", repeat_days=["1.5"]).repeat_days == []
+    assert Alarm(label="d", time="07:00", repeat_days=[1.0]).repeat_days == [1]
     assert PresetSound.from_value("不存在的") is PresetSound.CLASSIC  # 兜底

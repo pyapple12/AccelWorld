@@ -1,6 +1,6 @@
 # AccelWorld —— 加速世界世界钟
 
-[![Version](https://img.shields.io/badge/Version-0.4.7.4-blue.svg)](config/static/base.json)
+[![Version](https://img.shields.io/badge/Version-0.4.7.5-blue.svg)](config/static/base.json)
 [![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
@@ -10,7 +10,7 @@
 
 基于时间膨胀倍率的自定义小时制时钟应用。根据设定的加速倍率（1.0x - 20.0x），实时显示加速后的时间，同时保留标准时间对照。灵感来自《加速世界》，界面以中文为主，提供农历、生肖、节气等中华传统文化元素。
 
-> 当前状态：S1-S10 重构完成；第 1 轮审计修复完成（0.4.7.4）；任务清单见 `x.progress.md`，已知问题见 `y.problems.md`，版本路线见 `m.milestone.md`。
+> 当前状态：S1-S10 重构完成；第 2 轮审计修复完成（0.4.7.5）；任务清单见 `x.progress.md`，已知问题见 `y.problems.md`，版本路线见 `m.milestone.md`。
 
 ## 目录
 

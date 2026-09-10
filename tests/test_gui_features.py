@@ -13,6 +13,8 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # 子进程脚本：argv[1]=项目根，argv[2]=临时配置文件路径（环境变量注入，FIX001.12）
 _SUBPROCESS_SCRIPT = """
+import datetime
+import json
 import os
 import sys
 
@@ -20,14 +22,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["ACCELWORLD_CONFIG_FILE"] = sys.argv[2]
 sys.path.insert(0, sys.argv[1])
 
-import datetime
+from pathlib import Path
 
 from PyQt6.QtCore import QEventLoop, QTimer
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon
 
 app = QApplication([])
 
-from config.settings import get_setting
+from config.settings import get_setting, set_setting
 from config.static.static_config import get_static_config
 from modules.alarm_service import Alarm
 from modules.time_dilation import TimeInfo
@@ -55,6 +57,30 @@ def process_events_ms(ms):
     loop = QEventLoop()
     QTimer.singleShot(ms, loop.quit)
     loop.exec()
+
+
+def clear_and_reload():
+    from utils.file_utils import clear_json_cache
+
+    clear_json_cache()
+
+
+# ------------------- FIX002.1 越界持久化倍率启动不崩 -------------------
+# 在任何窗口创建前写入越界倍率（0.5 < rate_min）：主窗口必须回退默认倍率存活而非崩溃
+Path(sys.argv[2]).write_text(
+    json.dumps({"time_dilation_rate": 0.5}), encoding="utf-8"
+)
+
+
+def c_dirty_rate_startup():
+    window0 = AcceleratedWorldGUI()
+    assert abs(window0.accel_world.time_dilation_rate - 2.0) < 1e-9, (
+        f"越界倍率未回退默认: {window0.accel_world.time_dilation_rate}"
+    )
+    return "越界持久化倍率 0.5 启动回退默认 2.0"
+
+
+check("FIX002.1 越界倍率启动回退", c_dirty_rate_startup)
 
 
 # ------------------- FIX001.5 首次天气查询 -------------------
@@ -98,13 +124,36 @@ def c_shortcuts_and_theme_persist():
     return "三快捷键在位，主题持久化往返生效"
 
 
-def clear_and_reload():
-    from utils.file_utils import clear_json_cache
-
-    clear_json_cache()
-
-
 check("T004.1/FIX001.11 快捷键与主题持久化", c_shortcuts_and_theme_persist)
+
+
+# ------------------- FIX002.10 --theme light 生效 -------------------
+def c_theme_light_arg():
+    set_setting("theme", "dark")
+    clear_and_reload()
+    window3 = AcceleratedWorldGUI()
+    assert window3.is_dark_theme is True, "前置深色未恢复"
+    window3.apply_startup_args(theme="light")
+    assert window3.is_dark_theme is False, "--theme light 未生效"
+    clear_and_reload()
+    assert get_setting("theme") == "light", "--theme light 未持久化"
+    return "深色持久化下 --theme light 复位并持久化"
+
+
+check("FIX002.10 --theme light 生效", c_theme_light_arg)
+
+
+# ------------------- FIX002.9 托盘初始倍率同步持久化值 -------------------
+def c_tray_initial_rate():
+    set_setting("time_dilation_rate", 10.0)
+    clear_and_reload()
+    window4 = AcceleratedWorldGUI()
+    text = window4.tray.rate_action.text()
+    assert "10.0x" in text, f"托盘初始倍率未同步持久化值: {text!r}"
+    return f"托盘初始倍率同步持久化值: {text!r}"
+
+
+check("FIX002.9 托盘初始倍率同步", c_tray_initial_rate)
 
 
 # ------------------- FIX001.6 铃声类型切换 -------------------
@@ -137,24 +186,30 @@ def c_countdown_restore_kept():
 check("FIX001.10 倒计时恢复不清空", c_countdown_restore_kept)
 
 
-# ------------------- FIX001.19 保存失败上浮提示 -------------------
+# ------------------- FIX001.19 保存失败上浮提示（FIX002.12 桩还原） -------------------
 def c_save_failure_notified():
-    original = mw.save_config
+    original_save = mw.save_config
+    original_notify = window.tray.show_notification
     mw.save_config = lambda config: False
+    notified = []
+
+    def spy_notify(title, message, kind="info"):
+        notified.append(title)
+
+    window.tray.show_notification = spy_notify
     try:
-        notified = []
-        window.tray.show_notification = lambda t, m, kind="info": notified.append(t)
         window.save_settings()
         assert notified, "保存失败未上浮托盘提示"
         return f"保存失败触发提示: {notified[0]!r}"
     finally:
-        mw.save_config = original
+        mw.save_config = original_save
+        window.tray.show_notification = original_notify
 
 
 check("FIX001.19 保存失败上浮提示", c_save_failure_notified)
 
 
-# ------------------- FIX001.23 写盘去抖 + 双发消除 -------------------
+# ------------------- FIX001.23 写盘去抖 + 双发消除（FIX002.12 桩还原） -------------------
 def c_slider_write_debounce():
     write_calls = []
     emit_calls = []
@@ -164,50 +219,68 @@ def c_slider_write_debounce():
             write_calls.append(value)
         return True
 
+    def sink(rate):
+        emit_calls.append(rate)
+
+    original_set_setting = mw.set_setting
     mw.set_setting = fake_set_setting
-    window.clock_panel.rate_changed.connect(lambda r: emit_calls.append(r))
+    window.clock_panel.rate_changed.connect(sink)
+    try:
+        for rate in (3.0, 4.0, 5.0):
+            window.clock_panel.set_rate(rate)
+        process_events_ms(50)
+        immediate = len(write_calls)
+        process_events_ms(int(_BASE["rate_save_debounce_ms"]) + 250)
 
-    for rate in (3.0, 4.0, 5.0):
-        window.clock_panel.set_rate(rate)
-    process_events_ms(50)
-    immediate = len(write_calls)
-    process_events_ms(int(_BASE["rate_save_debounce_ms"]) + 250)
-
-    # 双发消除：应用加速按钮路径
-    window.clock_panel.rate_entry.setText("6.0")
-    window.clock_panel.confirm_button.click()
-    process_events_ms(int(_BASE["rate_save_debounce_ms"]) + 250)
+        # 双发消除：应用加速按钮路径
+        window.clock_panel.rate_entry.setText("6.0")
+        window.clock_panel.confirm_button.click()
+        process_events_ms(int(_BASE["rate_save_debounce_ms"]) + 250)
+    finally:
+        mw.set_setting = original_set_setting
+        window.clock_panel.rate_changed.disconnect(sink)
 
     assert immediate == 0, f"拖动未去抖，立即写盘 {immediate} 次"
     assert emit_calls.count(6.0) == 1, f"应用加速双发: {emit_calls}"
     assert write_calls and write_calls[-1] == 6.0, f"去抖后未落盘: {write_calls}"
-    return f"拖动 0 次立即写盘、去抖后单次落盘、应用加速单发"
+    return "拖动 0 次立即写盘、去抖后单次落盘、应用加速单发"
 
 
 check("FIX001.23 写盘去抖与双发消除", c_slider_write_debounce)
 
 
-# ------------------- T004 沉淀：进度条动画 -------------------
+# ------------------- T004 沉淀：进度条动画（FIX002.8 全确定性，时间无关） -------------------
 def c_progress_animation():
+    from PyQt6.QtCore import QPropertyAnimation
+
     window.timer.stop()
     duration = int(_BASE["progress_anim_ms"])
-    info = TimeInfo(
+    common = dict(
         standard_datetime="2026-09-10 12:00:00",
-        custom_time="13:45:10",
         chinese_date="2026年09月10日 星期四",
         lunar_info="农历七月廿九",
         dilation_percentage=200.0,
         expanded_hours_per_day=48.0,
         remaining_hours=34.25,
     )
-    start_value = window.clock_panel.progress_bar.value()
-    window.clock_panel.update_time(info)
-    process_events_ms(duration // 2)
-    mid_value = window.clock_panel.progress_bar.value()
-    assert start_value < mid_value < info.custom_hour, f"半程 {mid_value} 疑似跳变"
-    process_events_ms(duration)
-    assert window.clock_panel.progress_bar.value() == info.custom_hour
-    return f"半程 {mid_value} ∈ ({start_value}, {info.custom_hour})，平滑收敛"
+    info_a = TimeInfo(custom_time="05:00:00", **common)
+    info_b = TimeInfo(custom_time="13:45:10", **common)
+
+    # 阶段一：收敛到已知值 5（排除前序 check 遗留的实时加速小时值）
+    window.clock_panel.update_time(info_a)
+    process_events_ms(duration + 250)
+    assert window.clock_panel.progress_bar.value() == 5, (
+        f"阶段一未收敛: {window.clock_panel.progress_bar.value()}"
+    )
+
+    # 阶段二：目标 13 与当前 5 不同 → 动画必须处于 Running（跳变实现无动画对象/状态）
+    window.clock_panel.update_time(info_b)
+    anim = window.clock_panel._progress_anim
+    assert anim.state() == QPropertyAnimation.State.Running, "更新后动画未运行"
+    assert anim.duration() == duration, f"动画时长 {anim.duration()} != 配置"
+    process_events_ms(duration + 250)
+    assert window.clock_panel.progress_bar.value() == 13, "动画终值未收敛"
+    return f"Running 态 + 时长 {duration}ms + 终值收敛（平滑非跳变）"
 
 
 check("T004.3 进度条动画沉淀", c_progress_animation)

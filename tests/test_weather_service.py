@@ -220,6 +220,50 @@ def test_missing_required_fields_returns_none(monkeypatch):
 
 
 def test_response_not_dict_returns_none(monkeypatch):
-    # 响应结构异常（非 dict）降级 None 不崩溃（FIX001.14）
+    # 响应为非 dict 结构降级 None 不崩溃（FIX001.14）
     _set_fetch(monkeypatch, lambda url: ["unexpected"])
     assert weather_service.get_weather_by_coords(30.0, 120.0) is None
+
+
+def test_null_value_field_rejected(monkeypatch):
+    # 字段存在但值为 null：同样判失败（FIX002.4，此前穿透后格式化层崩溃）
+    payload = {
+        "current": {
+            "temperature_2m": None,
+            "relative_humidity_2m": 50,
+            "weather_code": 0,
+            "wind_speed_10m": 5.0,
+            "apparent_temperature": 21.0,
+        }
+    }
+    _set_fetch(monkeypatch, lambda url: payload)
+    assert weather_service.get_weather_by_coords(30.0, 120.0) is None
+
+
+def test_non_numeric_value_field_rejected(monkeypatch):
+    # 数值字段为字符串等错型：判失败（FIX002.4）
+    payload = {
+        "current": {
+            "temperature_2m": "25",
+            "relative_humidity_2m": 50,
+            "weather_code": 0,
+            "wind_speed_10m": 5.0,
+            "apparent_temperature": 21.0,
+        }
+    }
+    _set_fetch(monkeypatch, lambda url: payload)
+    assert weather_service.get_weather_by_coords(30.0, 120.0) is None
+
+
+def test_read_phase_error_degrades_and_retried(monkeypatch):
+    # 读体阶段网络异常（ConnectionResetError）进入重试白名单并降级（FIX002.5）
+    calls = {"n": 0}
+
+    def fake(url):
+        calls["n"] += 1
+        raise ConnectionResetError("read 中途断开")
+
+    _set_fetch(monkeypatch, fake)
+    monkeypatch.setattr(time, "sleep", lambda seconds: None)
+    assert weather_service.get_weather_by_coords(30.0, 120.0) is None
+    assert calls["n"] == 3

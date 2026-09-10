@@ -55,6 +55,8 @@ class PresetSound(Enum):
 
 
 # 预设铃声播放参数（频率, 重复次数, 间隔毫秒）——模块级常量，避免每次调用重建（E5）
+# 注：SUPPORTED_AUDIO_FORMATS 已迁 ui/alarm_dialog.py（FIX002.17：Qt 文件对话框过滤器
+# 字符串属 UI 展示配置，不应置于业务层）
 _PRESET_SOUND_CONFIG = {
     PresetSound.CLASSIC: (800, 3, 500),
     PresetSound.GENTLE: (600, 2, 800),
@@ -63,10 +65,7 @@ _PRESET_SOUND_CONFIG = {
 }
 
 
-# 支持的音频文件格式
-SUPPORTED_AUDIO_FORMATS = (
-    "Audio Files (*.wav *.mp3 *.ogg *.flac *.m4a *.wma *.aac);;All Files (*)"
-)
+# 支持的音频文件格式常量已迁 ui/alarm_dialog.py（FIX002.17 分层修正）
 
 
 @dataclass
@@ -81,10 +80,14 @@ class Alarm:
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
     def __post_init__(self) -> None:
-        # repeat_days 规范化：数字字符串强转 int、越界/非法/重复元素剔除
-        # （FIX001.9/21 脏配置防御：["1"] 此前静默恒不匹配、[9] 可致启动 IndexError）
+        # repeat_days 规范化：数字字符串强转 int、布尔剔除（int(True)=1 穿透防御）、
+        # 非整数值剔除（[1.7] 与 ["1.5"] 行为一致，FIX002.17）、越界/重复剔除
         normalized: List[int] = []
         for day in self.repeat_days or []:
+            if isinstance(day, bool):
+                continue
+            if isinstance(day, float) and not day.is_integer():
+                continue
             try:
                 day_int = int(day)
             except (TypeError, ValueError):

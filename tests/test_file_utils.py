@@ -44,12 +44,12 @@ def test_read_json_unicode_error_returns_default(tmp_path):
 
 
 def test_write_json_replaces_without_tmp_residue(tmp_path):
-    # 原子替换：覆盖写后内容为新值且无 .tmp 中间文件残留（FIX001.2）
+    # 原子替换：覆盖写后内容为新值且无任何 .tmp 中间文件残留（FIX001.2/FIX002.7 唯一化后缀）
     target = tmp_path / "cfg.json"
     assert write_json(target, {"a": 1}) is True
     assert write_json(target, {"a": 2}) is True
     assert read_json(target) == {"a": 2}
-    assert not (tmp_path / "cfg.json.tmp").exists()
+    assert not list(tmp_path.glob("*.tmp")), "残留 .tmp 中间文件"
 
 
 def test_cache_key_resolved_relative_and_absolute(tmp_path, monkeypatch):

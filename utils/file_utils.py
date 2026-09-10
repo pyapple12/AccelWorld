@@ -57,7 +57,8 @@ def write_json(path: Path | str, data: Any) -> bool:
     resolved = Path(path).resolve()
     if not any(resolved.is_relative_to(root) for root in _WRITE_ALLOWED_ROOTS):
         raise ValueError(f"拒绝写入允许目录之外的路径: {resolved}")
-    tmp_path = resolved.with_name(resolved.name + ".tmp")
+    # tmp 名带进程号：多进程同时保存不共享同一中间文件（FIX002.7）
+    tmp_path = resolved.with_name(f"{resolved.name}.{os.getpid()}.tmp")
     try:
         resolved.parent.mkdir(parents=True, exist_ok=True)
         # 原子替换：先写同目录临时文件再 os.replace，防中途崩溃产生半截文件（FIX001.2）
@@ -68,7 +69,11 @@ def write_json(path: Path | str, data: Any) -> bool:
         clear_json_cache(str(resolved))
         return True
     except OSError:
-        tmp_path.unlink(missing_ok=True)
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            # Windows 下刚关闭的文件可能被 AV/索引服务瞬时占用，清理失败不外抛（FIX002.7）
+            pass
         return False
 
 

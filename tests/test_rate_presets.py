@@ -18,7 +18,8 @@ _BASE = get_static_config().base
 
 # 子进程脚本：无头创建主窗口，逐个点击预设按钮，断言配置持久化与核心实例生效；
 # 另建独立 ClockPanel 验证按钮点击经信号链发出对应倍率。
-# 写盘断言前显式 flush 去抖定时器（FIX001.23 起倍率落盘经 500ms 去抖）
+# 写盘断言前等待去抖定时器触发（FIX001.23 去抖；FIX002.19 以事件等待替代私有方法调用）；
+# 天气查询打桩（FIX002.11：避免真实网络请求引入尾延迟与外部依赖）
 _SUBPROCESS_SCRIPT = """
 import os
 import sys
@@ -27,12 +28,16 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["ACCELWORLD_CONFIG_FILE"] = sys.argv[2]
 sys.path.insert(0, sys.argv[1])
 
+from PyQt6.QtCore import QEventLoop, QTimer
 from PyQt6.QtWidgets import QApplication
 
 from config.settings import get_setting
 from config.static.static_config import get_static_config
 from ui.main_window import AcceleratedWorldGUI
 from ui.panels.clock_panel import ClockPanel
+import ui.panels.weather_panel as weather_panel
+
+weather_panel.get_weather_by_city = lambda city_name: None  # 天气打桩（FIX002.11）
 
 app = QApplication([])
 window = AcceleratedWorldGUI()
@@ -40,9 +45,18 @@ presets = get_static_config().base["rate_presets"]
 
 assert set(window.clock_panel.preset_buttons) == set(presets), "预设按钮集合不符"
 
+
+def flush_rate_save():
+    # 等待倍率写盘去抖定时器触发（FIX002.19：不调用私有 _flush_pending_rate）
+    delay = int(get_static_config().base["rate_save_debounce_ms"]) + 150
+    loop = QEventLoop()
+    QTimer.singleShot(delay, loop.quit)
+    loop.exec()
+
+
 for name, rate in presets.items():
     window.clock_panel.preset_buttons[name].click()
-    window._flush_pending_rate()  # 立即落盘（正常由去抖定时器触发）
+    flush_rate_save()
     assert abs(get_setting("time_dilation_rate") - float(rate)) < 1e-9, (
         f"预设 {name} 后配置未生效: {get_setting('time_dilation_rate')}"
     )

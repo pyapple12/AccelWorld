@@ -11,13 +11,12 @@ from pathlib import Path
 # 日志格式（时间/级别/模块/消息）
 _LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] %(message)s"
 
-# 默认日志级别（main.py 经 base.json log_level 传入，FIX001.24；此默认值仅兜底）
-_DEFAULT_LEVEL = logging.INFO
-
 # 崩溃栈日志文件名前缀（单源常量，utils/monitor.py 引用同一份，FIX001.24）
 CRASH_LOG_PREFIX = "crash-"
 
 # 根 logger 配置标记（避免重复添加 handler）
+# 默认级别/保留天数不在本模块维护：唯一来源是 config/static/base.json
+# （log_level/log_backup_days），由 main.py 显式传入（FIX002.14 消除双源漂移）
 _setup_done = False
 
 
@@ -26,31 +25,35 @@ class _DailyFileHandler(logging.FileHandler):
         # 初始化当日文件路径（文件名含日期戳）
         self.log_dir = Path(log_dir)
         self._today: datetime.date | None = None
-        super().__init__(self._today_path(), encoding="utf-8")
-
-    def _today_path(self) -> str:
-        # 生成当天日志文件路径 logs/app-YYYY-MM-DD.log
         self._today = datetime.date.today()
-        return str(self.log_dir / f"app-{self._today.isoformat()}.log")
+        super().__init__(self._path_for(self._today), encoding="utf-8")
+
+    def _path_for(self, day: datetime.date) -> str:
+        # 无副作用路径拼装（__init__/emit 共用，FIX002.16 消除双处维护）
+        return str(self.log_dir / f"app-{day.isoformat()}.log")
 
     def emit(self, record: logging.LogRecord) -> None:
-        # 跨天检查：日期变化则关闭旧流并重建新日期文件。
-        # 重开失败（目录不可写/被占用等）回退旧路径且 _today 保持旧值——本次跳过文件写入
-        # （仅控制台通道），后续每次 emit 自动重试直至恢复
-        # （FIX001.18：修复重开失败后文件日志永久失效；Python 3.14 的 emit 不再吞 _open 异常，
-        # 故流为 None 时不得调用 super().emit）
+        # 跨天检查：日期变化则关闭旧流、切换新日期文件并显式重开（stream 必须自行赋值，
+        # FileHandler._open 只返回流不落成员）；重开失败回退旧路径且 _today 保持旧值，
+        # 本次跳过文件写入（仅控制台通道），后续每次 emit 自动重试直至恢复
+        # （FIX001.18；Python 3.14 的 FileHandler.emit 不再代管 _open 异常与惰性重开）
         today = datetime.date.today()
         if today != self._today:
             old_path = self.baseFilename
             try:
                 self.close()
-                self.baseFilename = str(self.log_dir / f"app-{today.isoformat()}.log")
-                self._open()
+                self.baseFilename = self._path_for(today)
+                self.stream = self._open()
                 self._today = today
             except OSError:
                 self.baseFilename = old_path
-        if self.stream is not None:
-            super().emit(record)
+        if self.stream is None:
+            # 惰性重开（含上轮重开失败后的恢复路径）：仍失败则本次仅控制台通道
+            try:
+                self.stream = self._open()
+            except OSError:
+                return
+        super().emit(record)
 
 
 def _cleanup_old_logs(log_dir: Path, backup_days: int) -> None:
@@ -72,12 +75,13 @@ def _cleanup_old_logs(log_dir: Path, backup_days: int) -> None:
 
 
 def setup_logging(
-    level: int = _DEFAULT_LEVEL,
+    level: int,
     log_dir: Path | None = None,
-    backup_days: int = 7,
+    backup_days: int | None = None,
 ) -> None:
     # 配置根 logger：控制台 + 每日文件双 handler，只执行一次
-    # log_dir/backup_days 由调用方（main.py）从静态配置传入，utils 层无业务依赖（S10.4 D1）
+    # level/backup_days 由调用方（main.py）从 base.json 显式传入（FIX002.14：取消模块内
+    # 字面默认值，杜绝双源漂移）；log_dir 未提供时仅控制台输出
     global _setup_done
     if _setup_done:
         return
@@ -97,8 +101,9 @@ def setup_logging(
             file_handler = _DailyFileHandler(log_dir)
             file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
             root.addHandler(file_handler)
-            # 启动时清理过期日志
-            _cleanup_old_logs(log_dir, backup_days)
+            # 启动时清理过期日志（backup_days 未传时跳过清理，调用方应显式传入）
+            if backup_days is not None:
+                _cleanup_old_logs(log_dir, backup_days)
         except OSError:
             # 日志文件初始化失败（目录不可写）降级为仅控制台输出
             pass
@@ -107,14 +112,17 @@ def setup_logging(
 
 
 # ===== utils/logger.py 函数/常量说明 =====
+# CRASH_LOG_PREFIX: 崩溃栈日志前缀单源常量（monitor.py 共用，FIX001.24）
 # _DailyFileHandler(FileHandler): 每日独立文件 handler
-#   _today_path(): 生成 logs/app-YYYY-MM-DD.log 路径
-#   emit(): 每次写日志检查日期，跨天关闭旧流重建新文件（路径 2 定案）
+#   _path_for(day): 无副作用路径拼装（__init__/emit 共用，FIX002.16）
+#   emit(): 每次写日志检查日期，跨天关闭旧流、切换新日期文件并显式重开（stream 自行赋值）；
+#     重开失败回退旧路径并跳过本次文件写入，后续 emit 自动重试（FIX001.18）
 # _cleanup_old_logs(log_dir, backup_days): 删除超过保留天数的 app-*.log 与 crash-*.log
 #   逻辑：按文件名日期戳解析 → (今天-文件日期).days > backup_days 则删除
 # setup_logging(level, log_dir, backup_days): 初始化根 logger（控制台+每日文件双 handler）
 #   设计理由：logging handler 属根 logger，各模块 getLogger 自动继承；
-#   日志目录/保留天数由 main.py 从 base.json 读取传入（S10.4 D1 解除 utils→config 反向依赖）；
-#   log_dir 为 None 时仅控制台输出（文件日志降级），不阻断程序
+#   日志级别/目录/保留天数由 main.py 从 base.json 显式传入，模块内不维护字面默认值
+#   （FIX002.14 单源化）；log_dir 为 None 时仅控制台输出（文件日志降级），不阻断程序
 #   异常处理：文件 handler 创建失败（OSError）仅降级控制台
-#   关联配置：参数来源 config/static/base.json（logs_dir/log_backup_days）；由 main.py 启动时传入
+#   关联配置：参数来源 config/static/base.json（log_level/logs_dir/log_backup_days）；
+#   由 main.py 启动时传入

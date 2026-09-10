@@ -136,7 +136,7 @@
 
 | 文件:行号 | 描述 | 定案理由 | 定案日期 |
 | --------- | ---- | -------- | -------- |
-| （暂无）   |      |          |          |
+| modules/alarm_service.py:193-196 | 闹钟触发去重键 _last_triggered 仅内存不持久化（同分钟内重启理论可重复响一次） | 单实例桌面应用；去重键含日期维度，触发窗口极窄（仅"精确触发分钟内重启"）；代码注释已声明接受（FIX001.21 P3#15） | 2026-09-11 |
 
 ### ② 条件豁免（触发条件变化时重新评估）
 
@@ -264,3 +264,92 @@
 - T001.1 农历缓存键设计正确（细于全部下游依赖，无脏命中）；T004 信号链无双发、动画生命周期管理正确
 - SSRF 校验链健壮：userinfo/IPv6 绕过技巧被 urlsplit 化解，URL 由已校验 float 拼接无注入面
 - 测试断言质量良好（56 用例无恒真断言）；pathlib/顶层 import/# 注释体系/文件尾说明区整体合规
+
+---
+
+## 附录 A002：全量代码审计报告（第 2 轮，2026-09-11）
+
+> 范围：main.py + config/ data/ modules/ ui/ utils/ tests/ 全部 45 个 .py/.json 文件全文通读（三路并行子审计 + 主会话高严重度亲核；上轮修复本身为主要审查对象）
+> 方式：只读审计，未修改任何代码；豁免定案清单当时为空
+> 状态：📌 待修复（FIX002 任务清单见 x.progress.md）
+
+### 零、上轮（A001）修复复核清单
+
+复核方式：全局 grep 关键行 + `git show ec8403f` 逐 hunk 对比 + 子审计运行时探针（节日名 8400+ 天全扫描、闹钟顺延边界、天气异常层级实测）。
+
+| A001 条目 | 现状 | 证据 |
+| --- | --- | --- |
+| FIX001.1/.2/.3/.4/.8/.9/.10/.12/.13/.17/.18/.19/.20/.21/.22/.24/.25/.26 等 | ✅ 在位且实现正确（探针实证） | grep + 运行时探针 |
+| FIX001.7 启动脏倍率回退 | ❌ 修复被残留代码击穿：防护构造（main_window.py:46-52）落地，但 72-73 行旧无保护构造仍执行并覆盖——越界持久化倍率仍启动即崩，回退分支成死代码 | 主会话亲核 72-73 行（P1-1） |
+| FIX001.14 天气缺字段判失败 | ⚠️ 修复不完整：只查键存在，null/错型值穿透（P2-2） | weather_service.py:140-144 |
+| P3#5 托盘初始倍率取配置 | ⚠️ 修复不完整：取 default_rate 而非恢复的持久化倍率（P2-3） | system_tray.py:66 + main_window.py:133,161 |
+| P3#18 timezones 说明区 | ❌ 已列未修（唯一真遗留）（P3-3） | data/timezones.py:19 |
+| P3#20 backup_days 双源 / P3#21 static_config | ⚠️ 部分修复（P3-2 / P3-1） | logger.py:77、static_config.py:26-31 |
+| FIX001.5 / FIX001.11 / FIX001.23 | ✅ 功能生效，⚠️ 各引入一个轻微副作用（P3-6 / P2-4 / P3-9） | 见修复清单 |
+
+### 一、P0-P3 修复清单
+
+#### P1（确定性启动崩溃）
+
+| 文件:行号 | 类型 | 描述 | 建议 | 性质 | 影响面 |
+| --- | --- | --- | --- | --- | --- |
+| ui/main_window.py:72-73 | 1 正确性 | A001 修复残留（三组独立发现，主会话亲核）：FIX001.7 的受保护构造（46-52）落地后，旧无保护构造 `AcceleratedWorld(time_dilation_rate=saved_rate)`（72-73）仍执行并覆盖前者。持久化倍率越界（手改 user_config.json 为 0.5/50.0，类型校验只挡类型不挡取值域）→ 73 行重抛 ValueError 无人捕获 → 启动崩溃；回退分支实为死代码，正常路径也重复构造两次 | 删除 72-73（含注释），仅保留 46-52 防护版；补"越界持久化倍率启动不崩"子进程用例 | A001 修复残留 | GUI 面板/时间膨胀/配置体系 |
+| utils/dataclass_utils.py:46-48 + config/settings.py:71-76 | 1+2 | 合法 JSON 但非 dict 结构穿透：`data.items()` 在 try 外，user_config.json 内容为 `[]`/"x"/123 时 AttributeError 穿透启动崩溃；且 `data is not None` 判定放行 → FIX001.2 的 .bak 转存对这类损坏完全旁路。元素级同型：`"alarms": ["字符串"]` 穿透 tolerant 容错 | `dataclass_from_dict` 入口加 isinstance(dict) 判定；`load_config` 对非 dict data 走损坏转存分支；补用例 | 新增 | 配置体系/跨模块 |
+
+#### P2
+
+| # | 文件:行号 | 类型 | 描述 | 建议 | 性质 | 影响面 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | utils/dataclass_utils.py:27-29 | 2 | NaN/Infinity 穿透类型校验：json.load 默认放行非标准字面量，`"time_dilation_rate": NaN` 载入后区间比较恒 False 不拒 → `int(1000/nan)` 启动崩溃 | float 分支加 `math.isfinite`，或 read_json 用 parse_constant 拒绝 | 新增 | 配置体系/时间膨胀 |
+| 2 | modules/weather_service.py:140-144 | 2 | null/错型值穿透缺字段校验（FIX001.14 残留）：只查键存在，`temperature_2m: null` 穿透后在格式化层抛 TypeError（被 UI 兜底吞掉但日志误导） | 校验键存在 + 值非 None | A001 修复残留 | 天气服务 |
+| 3 | modules/weather_service.py:104,159 | 13 | 读体阶段网络异常逃逸：`response.read()` 中途断开抛 ConnectionResetError/IncompleteRead，不在重试白名单也不在降级 except，穿透到 UI 兜底 | read 纳入重试范围或 except 元组补充（收窄取舍） | 新增 | 天气服务 |
+| 4 | config/settings.py:25-35 + utils/file_utils.py:57-59 | 2+11 | env 注入配置路径与写入白名单未对齐：注入项目根/临时目录之外的合法路径时保存抛 ValueError 绕过 FIX001.19 降级链直达 Qt 槽；_backup_corrupted_config copyfile 同样无白名单 | save_config 捕获 ValueError 同 OSError 策略返回 False；或注入路径预检回退 | 新增 | 配置体系 |
+| 5 | utils/file_utils.py:60 | 8 | 原子写 tmp 文件名固定：双开 GUI/多进程同时保存时同 tmp 文件交错写，原子替换失效 | tmp 名加 pid 后缀或 mkstemp | 新增 | 配置体系 |
+| 6 | utils/file_utils.py:71 | 2 | except OSError 内 `tmp_path.unlink(missing_ok=True)` 自身可抛 PermissionError 逃逸出 write_json，违背"IO 失败返回 False"契约 | 清理再包一层 try/except OSError | 新增 | 配置体系 |
+| 7 | tests/test_gui_features.py:203-210 | 12 | 动画断言时间依赖，约 02:10 后整套 GUI 用例必失败：前置 check 把倍率设为 6.0，进度条已被 tick 驱动到实时加速小时（=当日秒数/600），断言 `start < 13` 仅当地时刻早于约 02:00 成立——当前全绿纯属提交时间巧合 | 断言改方向性收敛或 check 前把倍率置 1.0 | 新增 | 测试 |
+| 8 | ui/system_tray.py:66 + ui/main_window.py:133,161 | 1+6 | 托盘菜单初始倍率显示错值：rate_action 取 default_rate，而主窗口加载的持久化倍率从不传给托盘——持久化 10.0 时菜单显示 2.0x 与悬停文本自相矛盾 | __init__ 托盘创建后补 `tray.update_rate(...)` | A001 修复残留 | 托盘与音频 |
+| 9 | ui/main_window.py:307-311 | 1 | `--theme light` 在持久化深色下被静默忽略：apply_startup_args 只有 dark 分支（FIX001.11 持久化后语义缺口显形） | 补 `elif theme == "light":` 分支 | 新增（FIX001.11 副作用） | GUI 面板/主流程编排(main) |
+| 10 | tests/test_rate_presets.py:38 | 12 | 预设子进程每次运行发起真实天气请求：未打桩 get_weather_by_city，联网时引入最长约 33s 尾延迟与网络依赖 | 照抄 gui_features 的天气打桩 | 新增（FIX001.5 副作用未适配） | 测试 |
+| 11 | tests/test_gui_features.py:146,167-168 | 12 | 打桩泄漏无还原：tray.show_notification 实例替换、mw.set_setting 模块替换、匿名 lambda 信号连接三处无 try/finally（同脚本 save_config 桩有还原，标准不一） | 三处补 try/finally 还原 | 新增 | 测试 |
+
+#### P3（低）
+
+| # | 文件:行号 | 类型 | 描述 | 建议 | 性质 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | config/static/static_config.py:26-31 | 13+6 | A001 P3-21 修复不完整：映射表缺 base/ui 键仍 KeyError、值为非串抛 TypeError、分类内容非 dict 放行 | 循环后显式校验键集与 dict 类型 | A001 修复残留 |
+| 2 | utils/logger.py:77 + main.py:18 | 12 | A001 P3-20 部分修复：backup_days=7 与 base.json 仍双源；log_level 兜底 "INFO" 与 _DEFAULT_LEVEL 同值双写 | 默认值单源于 base.json 并注释声明 | A001 修复残留 |
+| 3 | data/timezones.py:19 | 6 | A001 P3#18 已列未修：说明区仍写"供 ui/main_window.py 使用"，实际消费方 world_clock_panel | 更新 | 遗留 |
+| 4 | utils/logger.py:31-34,47 | 4 | 日志文件名模式两处重复拼装（emit 未复用带副作用的 _today_path） | 拆无副作用 _path_for(day) 共用 | 新增 |
+| 5 | config/settings.py:98 | 6 | get_setting 注释写"AppConfig"，类名实为 UserConfig | 改正 | 新增 |
+| 6 | config/settings.py:71-86 | 13+9 | 损坏文件未修复期间每次 load_config 重复转存+告警（启动约 6-7 次）无节流 | 模块级标志首次后置位 | 新增 |
+| 7 | modules/alarm_service.py:86-93 | 2 | repeat_days 规范化口径不一：[True]→[1] 布尔穿透、[1.7]→[1] 截断而 ["1.5"]→[] 剔除（闹钟静默翻转为一次性） | 元素层排除 bool、小数统一剔除 | 新增 |
+| 8 | modules/alarm_service.py:67-69 | 11 | SUPPORTED_AUDIO_FORMATS 是 Qt 文件对话框过滤器串（;; 语法），UI 展示配置置于业务层 | 迁 ui 层或注明 | 新增 |
+| 9 | ui/panels/weather_panel.py:153-156 | 9 | 列表外城市 addItem 后当次会话永久残留下拉框 | 可接受或标记临时项 | 新增（FIX001.23 副作用） |
+| 10 | ui/main_window.py:87,107 + weather_panel | 9 | 启动期天气双请求（FIX001.5 副作用）：init 首查 default_city + set_city 联动查询，非默认 last_city 时第一次结果被丢弃，多打一次真实 API | set_city 先设 current_city 再首查/构造参数注入 | 新增 |
+| 11 | tests/test_rate_presets.py:45 | 11 | 子进程脚本调用私有方法 `window._flush_pending_rate()`（_ 前缀约定外部不调用） | 提供公开 flush 或等待事件循环 | 新增 |
+
+### 二、参考级观察项（记录不修，含回落理由）
+
+**A001 观察项携带复核**：get_alarms 浅拷贝、monitor 重复安装 fd 窗口、crash 文件日期固定、临时目录放行、DNS rebinding、enabled 双检、lunar 异常直抛、QPropertyAnimation 重启、快捷键 WindowShortcut、refresh_list 信号栈、QFont 样板、int(rate*10) 写法、applicationName——原样保留无变化，按 2026-09-11 定案继续维持观察级。
+
+**本轮新增观察项**：
+
+| 位置 | 描述 | 回落理由 |
+| --- | --- | --- |
+| utils/dataclass_utils.py:35-36 | 未知注解形态放行（未来新字段类型可能绕过过滤） | 当前两 dataclass 字段全覆盖，无可达路径【需验证新增字段】 |
+| utils/monitor.py:41-66 | install_excepthook 二次安装成链式套娃 | main.py 单点装配，同 A001 crash-handler 豁免口径 |
+| utils/logger.py:36-53 | 重开失败期每次 emit 重试的开销 | 注释声明"自动重试直至恢复"设计取向；INFO 低频 |
+| utils/file_utils.py:64-66 | 无 fsync，掉电丢最近一次保存 | 桌面应用可接受 |
+| alarm_service.py:193-196 | _last_triggered 仅内存，同分钟重启理论重复响 | 已定案永久豁免（2026-09-11 用户确认，见豁免清单①），后续轮次不再报告 |
+| alarm_service.py:229-235 | replace_alarm 不清理同 id 去重键 | 仅同分钟内编辑场景，无害 |
+| weather_service.py:32 | _weather_cache 无锁 | GIL 下原子，最坏重复请求一次 |
+| time_dilation.py:79 | 1ms tick 下限仅当 rate_max>1000 可达 | 当前配置不可达（触发条件：静态配置变更） |
+| countdown_panel.py:74 vs 159 | 占位符 4 段与运行态 3 段格式不一 | 外观细节 |
+| ui/audio_player.py:35-36 | QAudioOutput 局部变量疑虑 | 本轮探针证伪（C++ 侧持引用），记录防复发 |
+
+### 三、亮点
+
+- 三组独立交叉验证锁定同一条 P1 残留（回归复核机制有效性的直接证明）；A001 的 22/27 子任务修复实证完全在位
+- 节日映射经 8400+ 天全量扫描验证与库枚举精确匹配；gaierror/URLError 异常层级、SSRF ValueError 穿透路径、闹钟顺延全部边界经运行时探针实证
+- 配置键卫生保持满分：base.json 26 键、ui.json 25 键零死键零缺失；文档版本五处（README/x.progress/m.milestone/AGENTS/base.json）全部一致
+- 上轮两个疑点经探针证伪（QAudioOutput GC、--version 副作用），避免无效修复

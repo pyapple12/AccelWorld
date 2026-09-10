@@ -18,7 +18,12 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import QTime
 
-from modules.alarm_service import PresetSound, SUPPORTED_AUDIO_FORMATS, Alarm
+from modules.alarm_service import PresetSound, Alarm
+
+# 支持的音频文件格式（Qt 文件对话框过滤器串；FIX002.17 自业务层迁入 UI 层）
+SUPPORTED_AUDIO_FORMATS = (
+    "Audio Files (*.wav *.mp3 *.ogg *.flac *.m4a *.wma *.aac);;All Files (*)"
+)
 
 
 class AlarmEditDialog(QDialog):

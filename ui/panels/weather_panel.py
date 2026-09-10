@@ -55,11 +55,14 @@ class _WeatherTask(QRunnable):
 class WeatherPanel(QWidget):
     theme_toggled = pyqtSignal()  # 主题切换请求信号
 
-    def __init__(self, parent: QWidget | None = None):
-        # 构建城市下拉/天气标签/主题与刷新按钮，并启动 30 分钟定时器
+    def __init__(
+        self, parent: QWidget | None = None, initial_city: str | None = None
+    ):
+        # 构建城市下拉/天气标签/主题与刷新按钮，并启动 30 分钟定时器；
+        # initial_city 为恢复的持久化城市（FIX002.18：首查即用恢复值，消除启动双请求）
         super().__init__(parent)
 
-        self.current_city = _BASE["default_city"]
+        self.current_city = initial_city or _BASE["default_city"]
         self._weather_pool = QThreadPool.globalInstance()
 
         weather_frame = QFrame()
@@ -75,7 +78,16 @@ class WeatherPanel(QWidget):
         self.city_combo.setFont(QFont(_UI["font_family"], 12))
         self.city_combo.setFixedWidth(120)
         self.city_combo.addItems(sorted(CITIES.keys()))
-        self.city_combo.setCurrentText(_BASE["default_city"])
+        # 初始城市写入下拉框：列表内直接选中；列表外补入并屏蔽信号
+        # （FIX002.18：替换原 default_city 占位 setText，避免恢复路径二次查询）
+        if self.current_city in CITIES:
+            self.city_combo.setCurrentText(self.current_city)
+        else:
+            # 列表外城市仅当次会话保留于下拉框（会话级展示项，FIX002.18 接受语义）
+            self.city_combo.blockSignals(True)
+            self.city_combo.addItem(self.current_city)
+            self.city_combo.setCurrentText(self.current_city)
+            self.city_combo.blockSignals(False)
         self.city_combo.currentTextChanged.connect(self.on_city_changed)
         weather_layout.addWidget(self.city_combo)
 
@@ -113,8 +125,8 @@ class WeatherPanel(QWidget):
         self.weather_timer.timeout.connect(self.update_weather)
         self.weather_timer.start(int(_BASE["weather_cache_ttl"]) * 1000)
 
-        # 启动即发起首次查询（FIX001.5：信号连接前的 setCurrentText 与恢复同值文本
-        # 都不会触发 currentTextChanged，此前默认城市启动悬挂"获取天气中..."最长 30 分钟）
+        # 启动即发起首次查询（FIX001.5；FIX002.18 起查询城市即恢复的持久化城市，
+        # main_window 不再二次 set_city，启动期仅此一次请求）
         self.update_weather()
 
     def update_weather(self) -> None:

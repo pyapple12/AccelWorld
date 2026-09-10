@@ -34,6 +34,9 @@ def _resolve_config_file() -> Path:
 # 用户配置文件路径（项目内随项目走；测试子进程经环境变量重定向）
 CONFIG_FILE = _resolve_config_file()
 
+# 损坏配置转存节流标志：同进程仅转存一次，防重复 load 反复 IO 与告警刷屏（FIX002.16）
+_backup_done = False
+
 
 @dataclass
 class UserConfig:
@@ -67,12 +70,16 @@ class UserConfig:
 
 def load_config() -> UserConfig:
     # 经 file_utils 缓存单例读取，仅成功解析才入缓存；
-    # 文件存在但损坏时先转存 .bak 再回退默认值（FIX001.2：防默认值覆盖导致不可恢复丢失）
+    # 文件存在但解析失败或结构非 dict（合法 JSON 但损坏，FIX002.2）时
+    # 先转存 .bak 再回退默认值（FIX001.2：防默认值覆盖导致不可恢复丢失）
+    global _backup_done
     data = read_json_cached(CONFIG_FILE, None)
-    if data is None:
-        if CONFIG_FILE.exists():
+    if data is None or not isinstance(data, dict):
+        if CONFIG_FILE.exists() and not _backup_done:
             _backup_corrupted_config(CONFIG_FILE)
+            _backup_done = True
         return UserConfig()
+    _backup_done = False  # 配置恢复正常后重置节流，后续再损坏仍会转存
     return UserConfig.from_dict(data)
 
 
@@ -87,15 +94,20 @@ def _backup_corrupted_config(path: Path) -> None:
 
 
 def save_config(config: UserConfig) -> bool:
-    # 写入后自动清理缓存，保证下次读取一致
-    result = write_json(CONFIG_FILE, config.to_dict())
+    # 写入后自动清理缓存，保证下次读取一致；
+    # 写入白名单外路径（env 注入自定义路径场景）按失败策略降级返回 False 而非上抛（FIX002.6）
+    try:
+        result = write_json(CONFIG_FILE, config.to_dict())
+    except ValueError as e:
+        logger.error(f"保存配置被拒绝: {e}")
+        return False
     if not result:
         logger.error("保存配置文件失败")
     return result
 
 
 def get_setting(key: str, default: Any = None) -> Any:
-    # 经 AppConfig 字段反射取值，未知键返回 default
+    # 经 UserConfig 字段反射取值，未知键返回 default（FIX002.16：修正失实的 AppConfig 旧称）
     config = load_config()
     return getattr(config, key, default)
 

@@ -5,6 +5,7 @@
 import urllib.request
 import urllib.error
 import urllib.parse
+import http.client
 import ipaddress
 import json
 import logging
@@ -42,13 +43,31 @@ _LON_RANGE = (-180.0, 180.0)
 _API_SCHEME = "https"
 _API_HOST = "api.open-meteo.com"
 
-# 必要响应字段（与请求 current 参数一致；缺失任一即视为失败，FIX001.14）
+# 必要响应字段（与请求 current 参数一致；缺失或值为 null 判失败，FIX001.14/FIX002.4）
 _REQUIRED_FIELDS = (
     "temperature_2m",
     "relative_humidity_2m",
     "weather_code",
     "wind_speed_10m",
     "apparent_temperature",
+)
+
+# 数值型必要字段（weather_code 允许任意标量；其余须为数值，FIX002.4）
+_NUMERIC_FIELDS = (
+    "temperature_2m",
+    "relative_humidity_2m",
+    "wind_speed_10m",
+    "apparent_temperature",
+)
+
+# 网络/解析类异常白名单（重试与降级共用；ConnectionResetError/HTTPException 覆盖
+# 读体阶段中断，FIX002.5）
+_NETWORK_ERRORS = (
+    urllib.error.URLError,
+    TimeoutError,
+    socket.gaierror,
+    ConnectionResetError,
+    http.client.HTTPException,
 )
 
 
@@ -121,26 +140,34 @@ def get_weather_by_coords(lat: float, lon: float) -> Optional[WeatherData]:
             f"&timezone=auto"
         )
 
-        # 网络错误自动重试（次数/间隔来自静态配置 FIX001.16；
-        # gaierror 为 V0.4.7.0 加固后 DNS 故障的抛出形态，FIX001.3 补入白名单）
+        # 网络错误自动重试（次数/间隔来自静态配置 FIX001.16；白名单含 gaierror FIX001.3、
+        # 读体阶段 ConnectionResetError/HTTPException FIX002.5）
         base = get_static_config().base
         data = retry_call(
             _fetch_weather_data,
             url,
             retries=int(base["weather_retries"]),
-            exceptions=(urllib.error.URLError, TimeoutError, socket.gaierror),
+            exceptions=_NETWORK_ERRORS,
             delay=float(base["weather_retry_delay"]),
         )
 
-        # 响应结构/必要字段校验（FIX001.14：缺失不再以 0 值假数据兜底）
+        # 响应结构/必要字段校验（FIX001.14/FIX002.4：缺失或 null/错型值均判失败，不以假数据兜底）
         if not isinstance(data, dict):
             logger.error(f"天气响应结构异常: {data!r}")
             return None
         current = data.get("current")
         if not isinstance(current, dict) or any(
-            field_name not in current for field_name in _REQUIRED_FIELDS
+            field_name not in current or current[field_name] is None
+            for field_name in _REQUIRED_FIELDS
         ):
             logger.error(f"天气响应缺少必要字段: {data!r}")
+            return None
+        if any(
+            not isinstance(current[field_name], (int, float))
+            or isinstance(current[field_name], bool)
+            for field_name in _NUMERIC_FIELDS
+        ):
+            logger.error(f"天气响应数值字段类型非法: {data!r}")
             return None
 
         weather_code = current["weather_code"]
@@ -156,8 +183,8 @@ def get_weather_by_coords(lat: float, lon: float) -> Optional[WeatherData]:
             description=code_info.description,
             icon=code_info.icon,
         )
-    except (urllib.error.URLError, TimeoutError, socket.gaierror, json.JSONDecodeError) as e:
-        # 网络/超时/DNS 故障/JSON 解析失败：记录堆栈并降级返回 None（FIX001.3 补 gaierror）
+    except _NETWORK_ERRORS + (json.JSONDecodeError,) as e:
+        # 网络/超时/DNS/读体中断/JSON 解析失败：记录堆栈并降级返回 None（FIX002.5 复用白名单）
         logger.exception(f"获取天气信息失败: {e}")
         return None
 

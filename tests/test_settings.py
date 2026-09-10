@@ -86,6 +86,80 @@ def test_env_config_path_override(tmp_path, monkeypatch):
     )
 
 
+def test_non_dict_config_backed_up(tmp_path, monkeypatch):
+    # 合法 JSON 但非 dict 结构（[]/"x"/123）→ 走损坏转存分支回退默认（FIX002.2）
+    for bad_content in ("[]", '"x"', "123"):
+        settings._backup_done = False  # 循环内重置节流标志（每次损坏独立转存）
+        bad_file = tmp_path / "user_config.json"
+        bad_file.write_text(bad_content, encoding="utf-8")
+        monkeypatch.setattr(settings, "CONFIG_FILE", bad_file)
+        from utils.file_utils import clear_json_cache
+
+        clear_json_cache()
+        cfg = settings.load_config()
+        assert cfg.time_dilation_rate == 2.0, f"非 dict 内容 {bad_content} 未回退默认"
+        assert (tmp_path / "user_config.json.bak").exists(), (
+            f"非 dict 内容 {bad_content} 未转存 .bak"
+        )
+        (tmp_path / "user_config.json.bak").unlink()
+        bad_file.unlink()
+
+
+def test_alarms_non_dict_element_does_not_crash(tmp_path, monkeypatch):
+    # alarms 列表混入非 dict 元素：配置载入不崩（元素剔除发生在 alarm_panel 层，FIX002.2）
+    bad_file = tmp_path / "user_config.json"
+    bad_file.write_text('{"alarms": ["字符串元素"]}', encoding="utf-8")
+    monkeypatch.setattr(settings, "CONFIG_FILE", bad_file)
+    from utils.file_utils import clear_json_cache
+
+    clear_json_cache()
+    cfg = settings.load_config()
+    assert cfg.alarms == ["字符串元素"]  # 配置层保留原值，剔除由 AlarmManager 负责
+
+
+def test_nan_rate_falls_back_to_default():
+    # NaN 穿透 JSON 的数值防御：载入即回退默认（FIX002.3）
+    cfg = settings.UserConfig.from_dict({"time_dilation_rate": float("nan")})
+    assert cfg.time_dilation_rate == 2.0
+
+
+def test_save_config_outside_roots_returns_false(tmp_path, monkeypatch):
+    # 配置注入白名单外路径（项目根与系统临时目录之外）：保存按失败策略返回 False 而非抛
+    # ValueError（FIX002.6）
+    outside = settings.get_project_root().parent / "越界配置.json"
+    monkeypatch.setattr(settings, "CONFIG_FILE", outside)
+    from utils.file_utils import clear_json_cache
+
+    clear_json_cache()
+    try:
+        assert settings.set_setting("theme", "dark") is False
+        assert not outside.exists()
+    finally:
+        clear_json_cache()
+
+
+def test_corrupted_backup_only_once(tmp_path, monkeypatch):
+    # 损坏文件未修复期间多次 load 仅转存一次（FIX002.16 节流）
+    bad_file = tmp_path / "user_config.json"
+    bad_file.write_text("{ 损坏", encoding="utf-8")
+    monkeypatch.setattr(settings, "CONFIG_FILE", bad_file)
+    from utils.file_utils import clear_json_cache
+
+    copy_calls = {"n": 0}
+    original_copyfile = settings.shutil.copyfile
+
+    def counting_copyfile(src, dst):
+        copy_calls["n"] += 1
+        original_copyfile(src, dst)
+
+    monkeypatch.setattr(settings.shutil, "copyfile", counting_copyfile)
+    clear_json_cache()
+    settings.load_config()
+    settings.load_config()
+    settings.load_config()
+    assert copy_calls["n"] == 1, f"损坏转存重复触发 {copy_calls['n']} 次"
+
+
 def test_cache_invalidation():
     # 写后读一致（write_json 清理缓存，S9.5 回归）
     settings.set_setting("theme", "dark")

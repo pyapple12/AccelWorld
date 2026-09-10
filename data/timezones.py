@@ -16,4 +16,4 @@ TIMEZONES = [
 # ===== data/timezones.py 函数/常量说明 =====
 # TIMEZONES: list[tuple[str, str]]，世界时钟时区表（显示名, IANA 时区）
 #   设计理由：时区表原为 GUI 内局部变量，外置后 GUI 与未来 CLI/配置层可复用
-#   关联配置：无外部依赖，供 ui/main_window.py 使用
+#   关联配置：无外部依赖，供 ui/panels/world_clock_panel.py 使用（FIX002.15 修正消费方）

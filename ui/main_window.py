@@ -69,9 +69,6 @@ class AcceleratedWorldGUI(QMainWindow):
                 int(base["window_height"]),
             )
 
-        # 创建加速世界核心实例
-        self.accel_world = AcceleratedWorld(time_dilation_rate=saved_rate)
-
         # 设置中心部件和主布局
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -84,7 +81,10 @@ class AcceleratedWorldGUI(QMainWindow):
         self.date_panel = DatePanel()
         self.countdown_panel = CountdownPanel()
         self.world_clock_panel = WorldClockPanel()
-        self.weather_panel = WeatherPanel()
+        # 天气面板以恢复城市作为初始城市（首查即用恢复值，FIX002.18 消除启动双请求）
+        self.weather_panel = WeatherPanel(
+            initial_city=get_setting("last_city", base["default_city"])
+        )
         self.alarm_panel = AlarmPanel()
 
         for panel in (
@@ -103,8 +103,7 @@ class AcceleratedWorldGUI(QMainWindow):
         self.alarm_panel.alarm_saved.connect(self._save_alarms)
         self.alarm_panel.alarm_triggered.connect(self._on_alarm_triggered)
 
-        # 恢复上次城市/时区（S10.3 B1：修复只存不读；set_city 自带联动查询）
-        self.weather_panel.set_city(get_setting("last_city", base["default_city"]))
+        # 恢复上次时区（S10.3 B1：修复只存不读；天气城市已并入面板初始城市，FIX002.18）
         self.world_clock_panel.set_timezone(
             get_setting("last_timezone", base["default_timezone"])
         )
@@ -134,6 +133,8 @@ class AcceleratedWorldGUI(QMainWindow):
         self.tray.show_requested.connect(self.show_normal)
         self.tray.hide_requested.connect(self.hide_to_tray)
         self.tray.quit_requested.connect(self.quit_app)
+        # 初始倍率同步托盘菜单（持久化值 ≠ 默认值时菜单不再显示错值，FIX002.9）
+        self.tray.update_rate(self.accel_world.time_dilation_rate)
 
     # ------------------- 时钟调度 -------------------
 
@@ -304,11 +305,12 @@ class AcceleratedWorldGUI(QMainWindow):
         if city:
             self.weather_panel.set_city(city)
 
-        # 应用深色主题（直接设置状态后刷新样式并持久化，FIX001.11）
-        if theme == "dark":
-            self.is_dark_theme = True
+        # 应用启动主题（light/dark 双分支均生效并持久化；FIX002.10：此前 light 在
+        # 深色持久化下被静默忽略）
+        if theme in ("dark", "light"):
+            self.is_dark_theme = theme == "dark"
             self.apply_theme()
-            set_setting("theme", "dark")
+            set_setting("theme", theme)
 
 
 def main_gui(**kwargs: Any) -> None:

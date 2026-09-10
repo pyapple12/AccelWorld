@@ -2,6 +2,7 @@
 # dataclass_from_dict：字段白名单 + 类型校验过滤 + 默认值兜底（tolerant 容错模式供列表加载）
 # to_dict 直接用标准库 asdict（一行调用无需抽象，S9.6 清理冗余包装）
 
+import math
 import typing
 from typing import Any, Dict, Type, TypeVar
 
@@ -25,8 +26,13 @@ def _value_matches(annotation: Any, value: Any) -> bool:
         return True
     if isinstance(annotation, type):
         if annotation is float:
-            # JSON 数字可整可浮；布尔是 int 子类需显式排除
-            return isinstance(value, (int, float)) and not isinstance(value, bool)
+            # JSON 数字可整可浮；布尔是 int 子类需显式排除；
+            # NaN/Infinity 经 json.load 默认放行，须拒绝（FIX002.3：防 int(nan) 启动崩溃）
+            return (
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and math.isfinite(value)
+            )
         if annotation is int:
             return isinstance(value, int) and not isinstance(value, bool)
         if annotation is bool:
@@ -42,6 +48,12 @@ def dataclass_from_dict(
     # 从字典构造 dataclass：仅取类型匹配的有效字段并兜底默认值；tolerant=True 时构造失败返回 None
     # 类型不符的键剔除（FIX001.9：脏配置静默穿透的防御），剔除后由字段默认值兜底；
     # 必填字段被剔除时构造抛 TypeError → tolerant 模式返回 None 由调用方跳过该条目
+    if not isinstance(data, dict):
+        # 结构级损坏（合法 JSON 但非对象，如 []/"x"）：tolerant 跳过 / 非 tolerant 按损坏上抛
+        # （FIX002.2：此前 data.items() 的 AttributeError 在白名单外穿透）
+        if tolerant:
+            return None
+        raise ValueError(f"dataclass 反序列化要求数据为 dict，实际: {type(data).__name__}")
     hints = typing.get_type_hints(cls)
     filtered = {
         k: v for k, v in data.items() if k in hints and _value_matches(hints[k], v)

@@ -17,17 +17,23 @@ class StaticConfig:
 
 
 def _load_static_config() -> StaticConfig:
-    # 私有加载：读引导映射表 → 遍历读取各分类 json → 聚合返回；文件缺失/损坏抛错暴露
-    # （FIX001.25：映射表缺失/损坏此前抛 KeyError/AttributeError，与承诺的 RuntimeError 不符）
+    # 私有加载：读引导映射表 → 遍历读取各分类 json → 聚合返回；任何缺失/损坏抛 RuntimeError
+    # （FIX002.13 补全 A001 残留：缺必需分类/键值非串/分类内容非 dict 此前分别抛
+    #   KeyError/TypeError/下游 TypeError，与承诺不符）
     mapping = read_json(STATIC_DIR / "config.json", default=None)
     if not isinstance(mapping, dict):
         raise RuntimeError(f"静态配置映射表缺失或损坏: {STATIC_DIR / 'config.json'}")
     result: Dict[str, Dict[str, Any]] = {}
     for key, rel_path in mapping.items():
+        if not isinstance(rel_path, str):
+            raise RuntimeError(f"静态配置映射表键值非法: {key}={rel_path!r}")
         data = read_json(STATIC_DIR / rel_path, default=None)
-        if data is None:
+        if not isinstance(data, dict):
             raise RuntimeError(f"静态配置文件缺失或损坏: {rel_path}")
         result[key] = data
+    missing_keys = {"base", "ui"} - result.keys()
+    if missing_keys:
+        raise RuntimeError(f"静态配置映射表缺少必需分类: {sorted(missing_keys)}")
     return StaticConfig(base=result["base"], ui=result["ui"])
 
 

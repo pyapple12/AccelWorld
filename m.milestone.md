@@ -45,6 +45,15 @@
 6. 测试扩充：56 → 78 用例（新增 logger/monitor/gui_features 测试文件，GUI 断言子进程化沉淀）✅
 7. 审计报告归档：z.plan.md 附录 A001（第 1 轮全量审计，2026-09-10）✅
 
+## 版本 0.4.7.5 的 MileStone（第 2 轮审计修复，任务组 FIX002，2026-09-11 发布）
+
+1. P1 回归与穿透修复：启动脏倍率回退被残留构造击穿（A001 FIX001.7 残留）、合法 JSON 非 dict 结构穿透类型校验并旁路 .bak 转存 ✅
+2. P2 防御补全：NaN/Infinity 拒绝、天气响应 null/错型值判失败、读体阶段网络异常入重试白名单、白名单外保存降级、原子写 tmp 唯一化 ✅
+3. P2 修复副作用治理：GUI 动画断言去时间依赖、托盘初始倍率同步持久化值、--theme light 生效、预设子进程天气打桩、GUI 测试打桩还原、启动双请求消除 ✅
+4. P3 残留清理：static_config RuntimeError 承诺补全（A001 残留）、日志默认值单源化（A001 残留）、timezones 说明区（A001 遗留）、闹钟 repeat_days 口径统一、SUPPORTED_AUDIO_FORMATS 分层迁移、损坏转存节流等 ✅
+5. 审计闭环：A002 报告归档（z.plan.md 附录）；_last_triggered 定案永久豁免（豁免清单①首条）✅
+6. 测试扩充：78 → 90 用例（新增 tests/test_static_config.py，GUI 子进程用例扩至 12 项检查）✅
+
 ## 后续版本的 MileStone（暂不定版本号）
 
 1. 已知问题排查：GUI 进程退出期硬崩溃（y.problems#6，P3，不阻塞功能）
