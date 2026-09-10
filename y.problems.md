@@ -49,7 +49,7 @@
   2. 加 `qInstallMessageHandler` → Qt 原生警告（QSS 解析失败等）转发进 logger
   3. 可选：`faulthandler.enable(file=...)` 崩溃栈落文件；崩溃码查 Windows 事件查看器（应用程序日志）
 - **目标覆盖**：Python 异常 / Qt 警告 / 原生崩溃 三层全部进 `logs/`
-- **状态**：待实施
+- **状态**：已实施（V0.4.7.2：`utils/monitor.py` 三层监控，main.py 参数解析后装配；崩溃栈写 `logs/crash-YYYY-MM-DD.log` 并入同保留期清理）
 
 ---
 

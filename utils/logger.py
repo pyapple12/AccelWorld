@@ -41,18 +41,21 @@ class _DailyFileHandler(logging.FileHandler):
 
 
 def _cleanup_old_logs(log_dir: Path, backup_days: int) -> None:
-    # 删除超过保留天数的 app-*.log 文件（按文件名日期戳判断）
+    # 删除超过保留天数的 app-*.log 与 crash-*.log 文件（按文件名日期戳判断，T002 新增 crash 前缀）
     today = datetime.date.today()
-    for f in Path(log_dir).glob("app-*.log"):
-        try:
-            file_date = datetime.date.fromisoformat(f.stem[4:])  # 去掉 "app-" 前缀
-        except ValueError:
-            continue
-        if (today - file_date).days > backup_days:
+    for pattern in ("app-*.log", "crash-*.log"):
+        for f in Path(log_dir).glob(pattern):
             try:
-                f.unlink()
-            except OSError:
-                pass
+                file_date = datetime.date.fromisoformat(
+                    f.stem.split("-", 1)[1]
+                )  # 去掉 "app-"/"crash-" 前缀
+            except (ValueError, IndexError):
+                continue
+            if (today - file_date).days > backup_days:
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
 
 
 def setup_logging(
@@ -94,7 +97,7 @@ def setup_logging(
 # _DailyFileHandler(FileHandler): 每日独立文件 handler
 #   _today_path(): 生成 logs/app-YYYY-MM-DD.log 路径
 #   emit(): 每次写日志检查日期，跨天关闭旧流重建新文件（路径 2 定案）
-# _cleanup_old_logs(log_dir, backup_days): 删除超过保留天数的 app-*.log
+# _cleanup_old_logs(log_dir, backup_days): 删除超过保留天数的 app-*.log 与 crash-*.log
 #   逻辑：按文件名日期戳解析 → (今天-文件日期).days > backup_days 则删除
 # setup_logging(level, log_dir, backup_days): 初始化根 logger（控制台+每日文件双 handler）
 #   设计理由：logging handler 属根 logger，各模块 getLogger 自动继承；

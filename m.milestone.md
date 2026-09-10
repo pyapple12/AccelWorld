@@ -18,7 +18,13 @@
 1. 加速时间刷新频率随倍率变化（1/rate 秒节奏，P1）✅
 2. 倒计时日期选择器实时反馈（快捷按钮/日历点击即勾选，P2）✅
 3. 时间选择框显示不全修复（分钟可见，P3）✅
-4. 运行监控体系三项落地（excepthook / qInstallMessageHandler / faulthandler，可选）——顺延后续版本
+4. 运行监控体系三项落地（excepthook / qInstallMessageHandler / faulthandler，可选）→ 于 V0.4.7.2 发布
+
+## 版本 0.4.7.2 的 MileStone（运行监控体系，任务组 T002，2026-09-10 发布）
+
+1. 全局异常钩子：主线程/子线程未捕获异常带堆栈写入 logs/ 每日日志
+2. Qt 原生警告转发：五级消息按级别接入日志体系（QSS 解析失败等可见）
+3. faulthandler 原生崩溃栈落盘：logs/crash-YYYY-MM-DD.log，并入同保留期清理
 
 ## 后续版本的 MileStone（方向待定稿，任务组 T003/T004，暂不定版本号）
 

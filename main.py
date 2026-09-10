@@ -6,6 +6,7 @@ import sys
 from config.static.static_config import get_static_config
 from utils.file_utils import get_project_root
 from utils.logger import setup_logging
+from utils.monitor import install_crash_handler, install_excepthook, install_qt_message_handler
 from modules.time_dilation import main_cli
 from ui.main_window import main_gui
 
@@ -74,6 +75,12 @@ def main() -> None:
         print("例如: python main.py --rate 2.0")
         sys.exit(1)
 
+    # 装配运行监控三层（未捕获异常/Qt 警告/原生崩溃统一进日志，T002）
+    # 时机在参数解析后：--version/--help 等即刻返回的路径不产生崩溃栈文件
+    install_excepthook()
+    install_qt_message_handler()
+    install_crash_handler(get_project_root() / base["logs_dir"])
+
     # 判断运行模式（run_cli 一行别名已内联，S10.11 C4）
     if args.cli:
         # 运行命令行界面（顶层 import，无模块会 import main，按需加载收益不存在）
@@ -108,8 +115,11 @@ if __name__ == "__main__":
 #   及各 UI 显示均从静态配置读取（版本迁移方案，代码零硬编码版本字符串）
 # main() -> None: 主程序入口
 #   输入：命令行参数（argparse）
-#   逻辑步骤：读取静态配置 → 初始化日志 → 解析参数（--gui/--cli/--rate/--theme/--city/--hidden/--version）
+#   逻辑步骤：读取静态配置 → 初始化日志 → 装配运行监控三层（T002：异常钩子/Qt 警告/崩溃栈）
+#            → 解析参数（--gui/--cli/--rate/--theme/--city/--hidden/--version）
 #            → 验证 --rate 范围 → 分发 CLI（main_cli(rate=...)）或 GUI（main_gui(**gui_args)）
-#   设计理由：入口收编 CLI/GUI 分发；版本号从 base.json 读取（单一来源，代码零硬编码）
-#   异常处理：rate 越界打印错误并 sys.exit(1)
-#   关联配置：utils/logger.py 日志初始化；modules/time_dilation.py CLI；ui/main_window.py GUI
+#   设计理由：入口收编 CLI/GUI 分发；版本号从 base.json 读取（单一来源，代码零硬编码）；
+#   监控在日志初始化后立即装配，CLI/GUI 双模式均受保护
+#   异常处理：rate 越界打印错误并 sys.exit(1)；监控装配失败（OSError）按严格抛错暴露
+#   关联配置：utils/logger.py 日志初始化；utils/monitor.py 运行监控；
+#     modules/time_dilation.py CLI；ui/main_window.py GUI

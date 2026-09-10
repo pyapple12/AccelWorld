@@ -4,7 +4,7 @@
 
 ## 运行与验证
 
-- 入口 `main.py`：GUI 为默认模式，CLI 用 `--cli`；版本号单一来源在 `config/static/base.json`（`base["version"]`，当前 `0.4.7.1`），各模块（main.py --version/窗口标题/托盘 toolTip）一律从配置读取，代码中不得出现版本字符串
+- 入口 `main.py`：GUI 为默认模式，CLI 用 `--cli`；版本号单一来源在 `config/static/base.json`（`base["version"]`，当前 `0.4.7.2`），各模块（main.py --version/窗口标题/托盘 toolTip）一律从配置读取，代码中不得出现版本字符串
 - **版本体系**（2026-09-10 切换）：自 `0.4.7.0` 起启用四段式纯数字 `X.Y.Z.P`（无 `ver ` 前缀）；历史存量 `ver 0.4x` 为旧三段式带前缀格式，仅存留于历史文档与提交记录，不回溯改写
 - 没有测试/lint 命令。改动后验证：`.\.venv\Scripts\python.exe -c "import main, modules.time_dilation, modules.chinese_calendar, modules.weather_service, modules.alarm_service, config.settings, config.static.static_config, ui.main_window, ui.alarm_dialog, ui.themes, data.cities, data.timezones, data.weather_codes, utils.logger, utils.file_utils, utils.retry"`。不要直接跑 GUI 验证（会弹窗阻塞）
 - GUI 无头初始化验证（不弹窗）：`$env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWidgets import QApplication; from ui.main_window import AcceleratedWorldGUI; app = QApplication([]); w = AcceleratedWorldGUI(); print('GUI init OK')"`
@@ -19,7 +19,7 @@
 
 ## 结构与约定
 
-- 包结构按依赖单向分层（参考 DeepTransHub）：`utils/` 通用工具（logger/file_utils/retry/dataclass_utils，无业务依赖）→ `config/` 配置（settings 用户配置 + static/ 应用静态配置层，用户配置存项目内 `config/user_config.json`，日志存项目内 `logs/app-YYYY-MM-DD.log` 每日独立文件）→ `modules/` 业务核心（time_dilation 时间膨胀、chinese_calendar 农历/干支/节气、weather_service Open-Meteo 天气、alarm_service 闹钟）→ `ui/` 界面（main_window 主窗口装配器、panels/ 6 面板、system_tray 托盘、alarm_dialog 闹钟对话框、audio_player 音频、themes 主题 QSS）→ `data/` 静态数据（cities/timezones/weather_codes）
+- 包结构按依赖单向分层（参考 DeepTransHub）：`utils/` 通用工具（logger/file_utils/retry/dataclass_utils/monitor 运行监控，无业务依赖）→ `config/` 配置（settings 用户配置 + static/ 应用静态配置层，用户配置存项目内 `config/user_config.json`，日志存项目内 `logs/app-YYYY-MM-DD.log` 每日独立文件、崩溃栈 `logs/crash-YYYY-MM-DD.log`）→ `modules/` 业务核心（time_dilation 时间膨胀、chinese_calendar 农历/干支/节气、weather_service Open-Meteo 天气、alarm_service 闹钟）→ `ui/` 界面（main_window 主窗口装配器、panels/ 6 面板、system_tray 托盘、alarm_dialog 闹钟对话框、audio_player 音频、themes 主题 QSS）→ `data/` 静态数据（cities/timezones/weather_codes）
 - 代码零硬编码原则：业务参数（倍率范围/默认值/定时器周期/窗口几何/字体颜色/日志路径等）全部从 `config/static/` 的 json 读取（`get_static_config()` 单例，映射表 config.json 由 static_config.py 的 `__file__` 自定位——唯一结构约定）；用户配置默认值经 `default_factory` 从 base.json 现取
 - `main.py` 收编 CLI/GUI 分发与版本读取；模块间顶层 import，不要使用函数内延迟 import
 - 提交信息规范见下文「Commit 提交规范」节；功能开发先走 OpenSpec 提案流程

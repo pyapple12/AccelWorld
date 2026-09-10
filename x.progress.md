@@ -62,9 +62,9 @@ $env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWi
 
 ### T002: 运行监控体系 [problems#4]
 
-- [ ] T002.1 [P2] 全局异常钩子 —— `main.py` 加 `sys.excepthook` → `logger.critical(..., exc_info=True)`，Python 未捕获异常（含 Qt 槽内抛错）不再静默；验证：.temp 探针触发异常，断言日志文件含 traceback
-- [ ] T002.2 [P2] Qt 原生警告转发 —— `qInstallMessageHandler` 将 Qt 警告（QSS 解析失败等）按级别转发进 logger；验证：探针触发 Qt warning，断言落日志
-- [ ] T002.3 [P3] 原生崩溃栈落盘（可选） —— `faulthandler.enable(file=...)` 崩溃栈写入 logs/ 专用文件；验证：仅手工执行探针验证文件产出
+- [x] T002.1 [P2] 全局异常钩子 —— `main.py` 加 `sys.excepthook` → `logger.critical(..., exc_info=True)`，Python 未捕获异常（含 Qt 槽内抛错）不再静默；验证：.temp 探针触发异常，断言日志文件含 traceback（2026-09-10 完成：`utils/monitor.py` `install_excepthook` 主线程 + `threading.excepthook` 子线程双钩子；探针断言日志含标记与堆栈）
+- [x] T002.2 [P2] Qt 原生警告转发 —— `qInstallMessageHandler` 将 Qt 警告（QSS 解析失败等）按级别转发进 logger；验证：探针触发 Qt warning 断言落日志（2026-09-10 完成：`install_qt_message_handler` 五级消息映射 logging，附来源文件:行号）
+- [x] T002.3 [P3] 原生崩溃栈落盘（可选） —— `faulthandler.enable(file=...)` 崩溃栈写入 logs/ 专用文件；验证：仅手工执行探针验证文件产出（2026-09-10 完成：`install_crash_handler` 写 `logs/crash-YYYY-MM-DD.log`，子进程真实崩溃自动化验证；crash-*.log 并入同保留期清理）
 
 ### T003: UI 美化方向决策 [problems#5]
 
