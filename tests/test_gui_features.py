@@ -12,6 +12,7 @@ from pathlib import Path
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # 子进程脚本：argv[1]=项目根，argv[2]=临时配置文件路径（环境变量注入，FIX001.12）
+# 桩点在 interface 层（PL001.14）：AppInterface.fetch_weather 类级打桩覆盖全部窗口实例
 _SUBPROCESS_SCRIPT = """
 import datetime
 import json
@@ -29,16 +30,16 @@ from PyQt6.QtWidgets import QApplication, QSystemTrayIcon
 
 app = QApplication([])
 
+import config.settings as cs
 from config.settings import get_setting, set_setting
 from config.static.static_config import get_static_config
-from modules.alarm_service import Alarm
-from modules.time_dilation import TimeInfo
+from interface import AppInterface
+from interface.types import Alarm, TimeInfo
 from ui.alarm_dialog import AlarmEditDialog
 from ui.main_window import AcceleratedWorldGUI
 from ui.panels.countdown_panel import CountdownPanel
 from ui.panels.weather_panel import WeatherPanel
-import ui.main_window as mw
-import ui.panels.weather_panel as wp
+import interface.app_interface as app_interface
 
 _BASE = get_static_config().base
 failures = []
@@ -73,9 +74,9 @@ Path(sys.argv[2]).write_text(
 
 
 def c_dirty_rate_startup():
-    window0 = AcceleratedWorldGUI()
-    assert abs(window0.accel_world.time_dilation_rate - 2.0) < 1e-9, (
-        f"越界倍率未回退默认: {window0.accel_world.time_dilation_rate}"
+    window0 = AcceleratedWorldGUI(AppInterface())
+    assert abs(window0._interface.get_rate() - 2.0) < 1e-9, (
+        f"越界倍率未回退默认: {window0._interface.get_rate()}"
     )
     return "越界持久化倍率 0.5 启动回退默认 2.0"
 
@@ -83,20 +84,20 @@ def c_dirty_rate_startup():
 check("FIX002.1 越界倍率启动回退", c_dirty_rate_startup)
 
 
-# ------------------- FIX001.5 首次天气查询 -------------------
+# ------------------- FIX001.5 首次天气查询（interface 层打桩，PL001.14） -------------------
 weather_calls = []
 
 
-def fake_city_weather(city_name):
+def fake_fetch_weather(self, city_name):
     weather_calls.append(city_name)
     return None
 
 
-wp.get_weather_by_city = fake_city_weather
+app_interface.AppInterface.fetch_weather = fake_fetch_weather
 
 
 def c_first_weather_query():
-    window = AcceleratedWorldGUI()
+    window = AcceleratedWorldGUI(AppInterface())
     process_events_ms(1500)
     assert weather_calls, "启动后未发起首次天气查询"
     return f"启动即查询 {weather_calls[0]!r}"
@@ -104,7 +105,7 @@ def c_first_weather_query():
 
 check("FIX001.5 启动首次天气查询", c_first_weather_query)
 
-window = AcceleratedWorldGUI()
+window = AcceleratedWorldGUI(AppInterface())
 
 
 # ------------------- T004 沉淀：快捷键 + 主题持久化（FIX001.11） -------------------
@@ -118,7 +119,7 @@ def c_shortcuts_and_theme_persist():
     assert window.is_dark_theme is True, "Ctrl+T 未翻转主题"
     assert get_setting("theme") == "dark", "主题切换未持久化"
     clear_and_reload()
-    window2 = AcceleratedWorldGUI()
+    window2 = AcceleratedWorldGUI(AppInterface())
     assert window2.is_dark_theme is True, "重启后主题未从配置恢复"
     scs[_BASE["shortcuts"]["theme"]].activated.emit()  # 还原浅色
     return "三快捷键在位，主题持久化往返生效"
@@ -131,7 +132,7 @@ check("T004.1/FIX001.11 快捷键与主题持久化", c_shortcuts_and_theme_pers
 def c_theme_light_arg():
     set_setting("theme", "dark")
     clear_and_reload()
-    window3 = AcceleratedWorldGUI()
+    window3 = AcceleratedWorldGUI(AppInterface())
     assert window3.is_dark_theme is True, "前置深色未恢复"
     window3.apply_startup_args(theme="light")
     assert window3.is_dark_theme is False, "--theme light 未生效"
@@ -147,7 +148,7 @@ check("FIX002.10 --theme light 生效", c_theme_light_arg)
 def c_tray_initial_rate():
     set_setting("time_dilation_rate", 10.0)
     clear_and_reload()
-    window4 = AcceleratedWorldGUI()
+    window4 = AcceleratedWorldGUI(AppInterface())
     text = window4.tray.rate_action.text()
     assert "10.0x" in text, f"托盘初始倍率未同步持久化值: {text!r}"
     return f"托盘初始倍率同步持久化值: {text!r}"
@@ -186,11 +187,11 @@ def c_countdown_restore_kept():
 check("FIX001.10 倒计时恢复不清空", c_countdown_restore_kept)
 
 
-# ------------------- FIX001.19 保存失败上浮提示（FIX002.12 桩还原） -------------------
+# ------------------- FIX001.19 保存失败上浮提示（FIX002.12 桩还原；桩点迁 settings 层） -------------------
 def c_save_failure_notified():
-    original_save = mw.save_config
+    original_save = cs.save_config
     original_notify = window.tray.show_notification
-    mw.save_config = lambda config: False
+    cs.save_config = lambda config: False
     notified = []
 
     def spy_notify(title, message, kind="info"):
@@ -202,14 +203,14 @@ def c_save_failure_notified():
         assert notified, "保存失败未上浮托盘提示"
         return f"保存失败触发提示: {notified[0]!r}"
     finally:
-        mw.save_config = original_save
+        cs.save_config = original_save
         window.tray.show_notification = original_notify
 
 
 check("FIX001.19 保存失败上浮提示", c_save_failure_notified)
 
 
-# ------------------- FIX001.23 写盘去抖 + 双发消除（FIX002.12 桩还原） -------------------
+# ------------------- FIX001.23 写盘去抖 + 双发消除（桩点迁 settings 层） -------------------
 def c_slider_write_debounce():
     write_calls = []
     emit_calls = []
@@ -222,8 +223,8 @@ def c_slider_write_debounce():
     def sink(rate):
         emit_calls.append(rate)
 
-    original_set_setting = mw.set_setting
-    mw.set_setting = fake_set_setting
+    original_set_setting = cs.set_setting
+    cs.set_setting = fake_set_setting
     window.clock_panel.rate_changed.connect(sink)
     try:
         for rate in (3.0, 4.0, 5.0):
@@ -237,7 +238,7 @@ def c_slider_write_debounce():
         window.clock_panel.confirm_button.click()
         process_events_ms(int(_BASE["rate_save_debounce_ms"]) + 250)
     finally:
-        mw.set_setting = original_set_setting
+        cs.set_setting = original_set_setting
         window.clock_panel.rate_changed.disconnect(sink)
 
     assert immediate == 0, f"拖动未去抖，立即写盘 {immediate} 次"
@@ -314,7 +315,8 @@ check("T004.4 托盘悬停沉淀", c_tray_tooltip)
 
 # ------------------- FIX001.23 列表外城市显示一致 -------------------
 def c_out_of_list_city_display():
-    outside = next(n for n in ("葛底斯堡", "小城测试") if n not in wp.CITIES)
+    city_names = window._interface.get_city_names()
+    outside = next(n for n in ("葛底斯堡", "小城测试") if n not in city_names)
     window.weather_panel.set_city(outside)
     assert window.weather_panel.city_combo.currentText() == outside, (
         "列表外城市下拉框显示不一致"

@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 # 加速世界 - 主程序入口文件（CLI/GUI 统一分发，用法示例见 --help epilog，S10.12 F3 去重）
+# PL001（plan#UI2.0）：本文件只做装配——GUI 分支构造 AppInterface 注入 main_gui；
+# 静态参数经接口静态访问器读取（零 config import）；CLI 分支直连后端 main_cli
+# （CLI 属后端自足入口，不涉接口，plan#UI2.0 合理例外）
 import argparse
 import logging
 import sys
 from typing import Any, Dict
 
-from config.static.static_config import get_static_config
 from utils.file_utils import get_project_root
 from utils.logger import setup_logging
 from utils.monitor import install_crash_handler, install_excepthook, install_qt_message_handler
+from interface import AppInterface
 from modules.time_dilation import main_cli
 from ui.main_window import main_gui
 
@@ -20,8 +23,8 @@ def _resolve_log_level(base: Dict[str, Any]) -> int:
 
 
 def main() -> None:
-    # 静态配置（倍率范围/默认值/日志路径等参数来源）
-    base = get_static_config().base
+    # 静态配置（倍率范围/默认值/日志路径等参数来源，经接口静态访问器，无实例副作用）
+    base = AppInterface.get_app_static()
 
     parser = argparse.ArgumentParser(
         description=f"加速世界 - 时间膨胀时钟工具 {base['version']}",
@@ -99,7 +102,7 @@ def main() -> None:
         else:
             main_cli()
     else:
-        # 运行图形界面
+        # 运行图形界面（装配 AppInterface 注入 GUI，plan#UI2.0 三大块装配点）
         # 构建启动参数（可选参数推导式过滤 None，hidden 布尔单独处理）
         gui_args = {
             k: v
@@ -113,7 +116,7 @@ def main() -> None:
         if args.hidden:
             gui_args["hidden"] = True
 
-        main_gui(**gui_args)
+        main_gui(interface=AppInterface(), **gui_args)
 
 
 if __name__ == "__main__":
@@ -122,15 +125,17 @@ if __name__ == "__main__":
 
 # ===== main.py 函数/常量说明 =====
 # 版本号：单一来源在 config/static/base.json（base["version"]），main.py 的 --version/description
-#   及各 UI 显示均从静态配置读取（版本迁移方案，代码零硬编码版本字符串）
+#   经 AppInterface.get_app_static() 静态访问器读取（版本迁移方案，代码零硬编码版本字符串）
 # main() -> None: 主程序入口
 #   输入：命令行参数（argparse）
-#   逻辑步骤：读取静态配置 → 解析参数（--gui/--cli/--rate/--theme/--city/--hidden/--version）
+#   逻辑步骤：经接口静态访问器读取静态配置 → 解析参数
+#            （--gui/--cli/--rate/--theme/--city/--hidden/--version）
 #            → 验证 --rate 范围 → 初始化日志（级别/目录/保留期来自静态配置，FIX001.24 后移）
 #            → 装配运行监控三层（T002：异常钩子/Qt 警告/崩溃栈）
-#            → 分发 CLI（main_cli(rate=...)）或 GUI（main_gui(**gui_args)）
-#   设计理由：入口收编 CLI/GUI 分发；版本号从 base.json 读取（单一来源，代码零硬编码）；
-#   日志与监控在参数解析后装配，--version/--help 即刻返回路径零副作用（FIX001.24）
+#            → 分发 CLI（main_cli(rate=...)，直连后端例外）或 GUI（构造 AppInterface 注入
+#            main_gui，plan#UI2.0 三大块装配点）
+#   设计理由：入口只做装配不含业务；GUI 与后端经 interface 契约隔离（动 UI 不伤后端）；
+#   get_app_static 为 staticmethod，argparse/--version 期读取零实例副作用（FIX001.24 保持）
 #   异常处理：rate 越界打印错误并 sys.exit(1)；监控装配失败（OSError）按严格抛错暴露
 #   关联配置：utils/logger.py 日志初始化；utils/monitor.py 运行监控；
-#     modules/time_dilation.py CLI；ui/main_window.py GUI
+#     modules/time_dilation.py CLI；interface/app_interface.py 应用接口；ui/main_window.py GUI

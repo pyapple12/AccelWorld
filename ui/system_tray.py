@@ -1,14 +1,11 @@
 # 系统托盘模块（S4 GUI 面板化拆分，托盘图标绘制、菜单、通知）
+# PL001（plan#UI2.0）：版本号/颜色/通知时长/默认倍率经 AppInterface 读取，零后端 import
 
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtWidgets import QSystemTrayIcon, QMenu
 from PyQt6.QtGui import QIcon, QAction, QPixmap, QPainter, QPen, QColor, QBrush
 
-from config.static.static_config import get_static_config
-
-# 静态配置（托盘图标颜色/默认倍率）
-_BASE = get_static_config().base
-_UI = get_static_config().ui
+from interface import AppInterface
 
 
 class SystemTray(QSystemTrayIcon):
@@ -16,21 +13,23 @@ class SystemTray(QSystemTrayIcon):
     hide_requested = pyqtSignal()  # 请求隐藏到托盘
     quit_requested = pyqtSignal()  # 请求退出程序
 
-    def __init__(self, parent=None):
-        # 初始化图标/菜单/双击监听后显示托盘（版本来自静态配置，单一来源）
+    def __init__(self, interface: AppInterface, parent=None):
+        # 初始化图标/菜单/双击监听后显示托盘（版本/颜色/倍率/时长经接口读取）
         super().__init__(parent)
-        self.setToolTip(f"加速世界 - {get_static_config().base['version']}")
+        self._interface = interface
+        self._ui = interface.get_ui_static()
+        self.setToolTip(f"加速世界 - {interface.get_version()}")
         self._create_icon()
         self._create_menu()
         self.activated.connect(self._on_activated)
         self.show()
 
     def _create_icon(self) -> None:
-        # QPainter 画圆底+指针，透明背景（颜色来自静态配置）
+        # QPainter 画圆底+指针，透明背景（颜色来自接口提供的 ui.json 颜色表）
         pixmap = QPixmap(32, 32)
         pixmap.fill(Qt.GlobalColor.transparent)  # 透明背景
 
-        tray_color = QColor(_UI["colors"]["tray_blue"])
+        tray_color = QColor(self._ui["colors"]["tray_blue"])
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(QPen(tray_color, 2))  # 蓝色边框
@@ -39,7 +38,7 @@ class SystemTray(QSystemTrayIcon):
 
         # 时钟指针（颜色经 ui.json 配置，FIX001.13）
         painter.setPen(
-            QPen(QColor(_UI["colors"]["tray_hand"]), 2, Qt.PenStyle.SolidLine,
+            QPen(QColor(self._ui["colors"]["tray_hand"]), 2, Qt.PenStyle.SolidLine,
                  Qt.PenCapStyle.RoundCap)
         )
         painter.drawLine(16, 16, 16, 8)  # 分针
@@ -63,7 +62,8 @@ class SystemTray(QSystemTrayIcon):
         self.tray_menu.addSeparator()
 
         # 当前倍率显示（只读；初始值取配置默认倍率，FIX001.23 P3#5）
-        self.rate_action = QAction(f"当前倍率: {float(_BASE['default_rate']):.1f}x", self)
+        default_rate = float(self._interface.get_app_static()["default_rate"])
+        self.rate_action = QAction(f"当前倍率: {default_rate:.1f}x", self)
         self.rate_action.setEnabled(False)
         self.tray_menu.addAction(self.rate_action)
 
@@ -93,32 +93,34 @@ class SystemTray(QSystemTrayIcon):
     def show_notification(
         self, title: str, message: str, icon_kind: str = "info"
     ) -> None:
-        # 图标类型映射后展示，时长来自静态配置（E13 参数化）
+        # 图标类型映射后展示，时长经接口读取（E13 参数化）
         icon_map = {
             "info": QSystemTrayIcon.MessageIcon.Information,
             "warning": QSystemTrayIcon.MessageIcon.Warning,
         }
+        duration_ms = int(self._interface.get_app_static()["notification_duration_ms"])
         self.showMessage(
             title,
             message,
             icon_map.get(icon_kind, QSystemTrayIcon.MessageIcon.Information),
-            int(get_static_config().base["notification_duration_ms"]),
+            duration_ms,
         )
 
 
 # ===== ui/system_tray.py 函数/类说明 =====
 # SystemTray(QSystemTrayIcon): 系统托盘类
 #   信号：show_requested/hide_requested/quit_requested（主窗口连接并处理）
-#   _create_icon(): 用 QPainter 绘制蓝色圆形时钟图标（颜色来自 config/static/ui.json tray_blue）
+#   __init__(interface, parent): 版本号经 AppInterface.get_version()、颜色经 get_ui_static()
+#   _create_icon(): 用 QPainter 绘制蓝色圆形时钟图标（颜色来自 ui.json tray_blue/tray_hand）
 #   _create_menu(): 显示/隐藏/倍率（只读）/退出菜单
 #   _on_activated(reason): 双击托盘显示窗口
 #   update_rate(rate): 倍率变化时更新菜单文本（主窗口经 rate 信号调用）
 #   update_tooltip(accelerated_time, rate): tick 推送悬停文本（T004.4）
 #     输入：加速时间字符串、当前倍率；输出：无（副作用为 setToolTip）
 #     设计理由：文本未变化时跳过 setToolTip（tick 高频调用，托盘悬停无需逐帧重绘）；
-#     只接收基础类型参数，托盘不依赖 modules 层
+#     只接收基础类型参数，托盘不依赖业务对象
 #     异常处理：无
-#   show_notification(title, message, icon_kind): 封装 showMessage（时长来自 base.json）
-#   设计理由：托盘职责独立成类，主窗口不再持有图标/菜单/绘制逻辑
-#   关联配置：版本号来自 config/static/base.json base["version"]（版本迁移方案）；
-#     颜色来自静态配置 ui.json
+#   show_notification(title, message, icon_kind): 封装 showMessage（时长经接口读取）
+#   设计理由：托盘职责独立成类，主窗口不再持有图标/菜单/绘制逻辑；
+#   PL001 起零后端 import（plan#UI2.0 铁律 2）
+#   关联配置：版本号/默认倍率/通知时长经接口读取（base.json）；颜色经接口（ui.json）

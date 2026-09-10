@@ -1,9 +1,9 @@
 {
-    "time_dilation_rate": 11.3,
-    "theme": "light",
+    "time_dilation_rate": 10.0,
+    "theme": "dark",
     "last_city": "上海",
-    "last_timezone": "America/Los_Angeles",
-    "countdown_target": "2026-08-23 00:00:00",
-    "window_geometry": "AdnQywADAAAAAAEdAAAAKgAABQcAAAOkAAABHQAAAEgAAAUHAAADpAAAAAAAAAAABgAAAAEdAAAASAAABQcAAAOk",
+    "last_timezone": "Australia/Sydney",
+    "countdown_target": "",
+    "window_geometry": "AdnQywADAAAAAAELAAAAHQAABOQAAAO5AAABCwAAADsAAATkAAADuQAAAAAAAAAABgAAAAELAAAAOwAABOQAAAO5",
     "alarms": []
 }

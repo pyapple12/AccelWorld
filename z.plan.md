@@ -353,3 +353,64 @@
 - 节日映射经 8400+ 天全量扫描验证与库枚举精确匹配；gaierror/URLError 异常层级、SSRF ValueError 穿透路径、闹钟顺延全部边界经运行时探针实证
 - 配置键卫生保持满分：base.json 26 键、ui.json 25 键零死键零缺失；文档版本五处（README/x.progress/m.milestone/AGENTS/base.json）全部一致
 - 上轮两个疑点经探针证伪（QAudioOutput GC、--version 副作用），避免无效修复
+
+---
+
+## UI 2.0 迭代方案（PL001–PL003，2026-09-11 立项）
+
+> 决策（用户拍板）：①路线 A——PyQt-Fluent-Widgets 整体重写；②跟随系统深浅色；③经典 QSS 皮肤不保留（新系统新皮肤，themes.py 管线退役）；④直接立项，不做打包验证前置
+> 基线：`ui1-final` 标签（V0.4.7.5）为经典 UI 技术收官存档
+> 执行清单：三个 PL 的细致 todo 见 x.progress.md 对应任务组
+> 状态：PL001 架构解耦 ✅（2026-09-11：interface/ 契约落地、ui/ 后端 import 清零、无 Qt 场景接口测试独立通过、软件实测运行）；PL002 / PL003 未开始
+
+### 架构定案：后端 / 接口 / UI 三大块
+
+```
+AccelWorld/
+├── modules/ config/ utils/ data/   【后端】业务核心（不 import ui；稳定层）
+├── interface/                       【接口】前后端唯一契约（新建，无 PyQt6 依赖）
+│   ├── app_interface.py             AppInterface：UI 唯一的后端访问入口
+│   └── types.py                     DTO 转出（TimeInfo/WeatherData/Alarm/PresetSound/UiPreferences）
+└── ui/                              【UI】Fluent 重写（可独立替换）
+    ├── panels/                      面板 = 纯展示（渲染数据 + 发用户动作，零计算零后端 import）
+    ├── tools/                       UI 层运算（展示格式化/解析/进度换算）
+    └── ...                          dialogs/tray/audio_player/themes(PL002 退役)
+```
+
+### 四条铁律
+
+1. 面板零逻辑：运算一律在 `ui/tools/`（展示格式化/解析/进度换算）；业务运算仍归后端 modules
+2. UI 不 import 后端：`modules/config/data` 的直接 import 在 ui/ 下清零（含 tools）；DTO 经 `interface.types` 转出
+3. 接口双向：UI→接口（查询/动作）；后端事件（时钟 tick/闹钟触发/天气回包）由 UI 定时器经接口**拉取**（接口保持同步、无 Qt 依赖，线程编排留在 UI 层）
+4. 解耦验收（软化版）：后端 + 接口的 pytest 不依赖 PyQt6 可运行；UI 层可整体替换而不改接口与后端
+
+### 契约清单（AppInterface 方法，PL001 落地）
+
+| 域 | 方法 | 后端实现 |
+| --- | --- | --- |
+| 时钟 | get_time_info() / get_tick_interval_ms() / get_version() | AcceleratedWorld / base.json |
+| 倍率 | get_rate() / get_rate_bounds() / get_rate_presets() / apply_rate(rate)（校验+重建+持久化内聚） | AcceleratedWorld + settings |
+| 天气 | get_city_names() / fetch_weather(city) / get_weather_refresh_interval_ms() / format_weather_display(city, weather) | cities / weather_service |
+| 闹钟 | AlarmManager 所有权迁入接口：load_alarm_dicts() / save_alarm_dicts(list) / check_alarms(now) / get_max_alarms() | settings + AlarmManager |
+| 时区 | get_timezone_options() | data.timezones |
+| 配置 | get_ui_preferences() -> UiPreferences(theme/last_city/last_timezone/countdown_target)；save_theme / save_last_city / save_last_timezone / save_countdown_target | settings |
+| 几何 | load_window_geometry() / save_window_geometry(bytes) | settings |
+
+### 迁移要点
+
+- UI 现存 22 处后端 import（main.py 2 处 + 12 个 UI 文件）为 PL001 收编清单，逐文件清零
+- AlarmManager 所有权从 alarm_panel（UI 层持业务状态）迁入接口
+- `config/settings.py` 读写归后端；UI 需要的配置经 get_ui_preferences()/save_* 暴露，UI 不直接 import settings
+- main.py 留根目录：装配 AppInterface → 装配 UI（注入）→ 进事件循环/CLI 分发，不含业务
+- PL002 跟随系统深浅色：qfw Theme.AUTO；主题偏好取值扩为 auto/light/dark（旧 light/dark 兼容），经 save_theme 持久化
+- PL002 退役清单：themes.py、LIGHT/DARK_THEME 常量、ui.json 颜色键转主题色映射（键保留换用途）
+
+### 三阶段概要与版本策略
+
+| 阶段 | 目标 | 出口标准 |
+| --- | --- | --- |
+| PL001 架构解耦 | interface/ 契约落地、面板纯展示化、ui/tools/ 抽取（视觉不动，仍为 ui1 外观） | ui/ 目录后端 import 清零；tests/test_interface.py 无 Qt 全绿；GUI 子进程用例全过；手动启动功能无回归 |
+| PL002 UI 2.0 重写 | Fluent Widgets 重写全部面板/对话框/托盘 + 跟随系统深浅色 + QSS 管线退役 | 全量回归绿；GUI 子进程用例适配后全过；用户视觉验收（涉及截图时切多模态核对） |
+| PL003 落地打磨 | 设计 tokens（间距/字号/圆角）入 ui.json、动效参数化、一致性清理、文档同步、1.0 收口 | 全量回归绿；手动验收走查清单通过；版本策略经用户定案 |
+
+风险记录：PL002 打包（PyInstaller + qfw 资源）未做前置验证（用户决策跳过）——若 1.0 需要分发，届时在 PL003 或独立任务中补验证。

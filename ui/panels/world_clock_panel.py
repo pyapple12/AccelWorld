@@ -1,4 +1,6 @@
 # 世界时钟面板模块（S4 GUI 面板化拆分，时区下拉 + 世界时间）
+# PL001（plan#UI2.0）：时区选项经 AppInterface 读取（铁律 2）；
+# pytz 换算属渲染逻辑保留在面板（纯展示化边界内的展示运算）
 
 import datetime
 import logging
@@ -9,20 +11,19 @@ import pytz
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QFrame, QLabel, QComboBox
 from PyQt6.QtGui import QFont
 
-from data.timezones import TIMEZONES
-from config.static.static_config import get_static_config
-
-# 静态配置（字体/颜色）
-_UI = get_static_config().ui
+from interface import AppInterface
 
 # 配置日志
 logger = logging.getLogger(__name__)
 
 
 class WorldClockPanel(QWidget):
-    def __init__(self, parent: QWidget | None = None):
-        # 用 data/timezones 常量填充下拉框，显示名+IANA 标识
+    def __init__(self, interface: AppInterface, parent: QWidget | None = None):
+        # 用接口提供的时区选项表填充下拉框，显示名+IANA 标识；样式经接口读取
         super().__init__(parent)
+        self._interface = interface
+
+        ui = interface.get_ui_static()
 
         world_clock_frame = QFrame()
         world_clock_frame.setFrameShape(QFrame.Shape.StyledPanel)
@@ -30,21 +31,21 @@ class WorldClockPanel(QWidget):
 
         # 世界时钟标题
         world_clock_title = QLabel("世界时钟:")
-        world_clock_title.setFont(QFont(_UI["font_family"], 12))
+        world_clock_title.setFont(QFont(ui["font_family"], 12))
         world_clock_layout.addWidget(world_clock_title)
 
         # 时区选择
         self.timezone_combo = QComboBox()
-        self.timezone_combo.setFont(QFont(_UI["font_family"], 11))
+        self.timezone_combo.setFont(QFont(ui["font_family"], 11))
         self.timezone_combo.setFixedWidth(150)
-        for name, tz in TIMEZONES:
+        for name, tz in interface.get_timezone_options():
             self.timezone_combo.addItem(name, tz)
         world_clock_layout.addWidget(self.timezone_combo)
 
         # 世界时钟显示
         self.world_clock_label = QLabel("00:00:00")
-        self.world_clock_label.setFont(QFont(_UI["font_family"], 14, QFont.Weight.Bold))
-        self.world_clock_label.setStyleSheet("color: " + _UI["colors"]["accent"] + ";")
+        self.world_clock_label.setFont(QFont(ui["font_family"], 14, QFont.Weight.Bold))
+        self.world_clock_label.setStyleSheet("color: " + ui["colors"]["accent"] + ";")
         world_clock_layout.addWidget(self.world_clock_label)
 
         world_clock_layout.addStretch()
@@ -92,17 +93,19 @@ class WorldClockPanel(QWidget):
                 return
 
     def current_timezone(self) -> str:
-        # 下拉框 currentData 为空时回退静态配置默认时区
+        # 下拉框 currentData 为空时回退静态配置默认时区（经接口读取）
         return (
             self.timezone_combo.currentData()
-            or get_static_config().base["default_timezone"]
+            or self._interface.get_app_static()["default_timezone"]
         )
 
 
 # ===== ui/panels/world_clock_panel.py 函数/类说明 =====
 # WorldClockPanel(QWidget): 世界时钟面板
-#   update_world_clock(): 由主窗口时钟 tick 调用，pytz 换算当前时区时间
+#   __init__(interface, parent): 时区选项经 AppInterface.get_timezone_options() 读取，
+#     字体/颜色经 get_ui_static()（PL001.10 纯展示化）
+#   update_world_clock(): 由主窗口时钟 tick 调用，pytz 换算当前时区时间（渲染逻辑保留面板）
 #   set_timezone(tz_name): 按 IANA 标识定位下拉项（配置恢复用，S10.3 B1）
-#   current_timezone(): 供主窗口 save_settings 持久化时区选择（回退默认时区来自静态配置）
+#   current_timezone(): 供主窗口 save_settings 持久化时区选择（回退默认时区经接口读取）
 #   异常处理：pytz 转换失败降级显示 00:00:00 并记录日志
-#   关联配置：时区表来自 data/timezones.py
+#   关联配置：时区表 data/timezones.py 经接口转出；默认时区 base.json 经接口读取

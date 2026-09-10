@@ -4,13 +4,13 @@
 
 ## 运行与验证
 
-- 入口 `main.py`：GUI 为默认模式，CLI 用 `--cli`；版本号单一来源在 `config/static/base.json`（`base["version"]`，当前 `0.4.7.5`），各模块（main.py --version/窗口标题/托盘 toolTip）一律从配置读取，代码中不得出现版本字符串
+- 入口 `main.py`：GUI 为默认模式，CLI 用 `--cli`；版本号单一来源在 `config/static/base.json`（`base["version"]`，当前 `0.4.7.6`），各模块（main.py --version/窗口标题/托盘 toolTip）一律从配置读取，代码中不得出现版本字符串
 - **版本体系**（2026-09-10 切换）：自 `0.4.7.0` 起启用四段式纯数字 `X.Y.Z.P`（无 `ver ` 前缀）；历史存量 `ver 0.4x` 为旧三段式带前缀格式，仅存留于历史文档与提交记录，不回溯改写
-- 没有测试/lint 命令。改动后验证：`.\.venv\Scripts\python.exe -c "import main, modules.time_dilation, modules.chinese_calendar, modules.weather_service, modules.alarm_service, config.settings, config.static.static_config, ui.main_window, ui.alarm_dialog, ui.themes, data.cities, data.timezones, data.weather_codes, utils.logger, utils.file_utils, utils.retry"`。不要直接跑 GUI 验证（会弹窗阻塞）
-- GUI 无头初始化验证（不弹窗）：`$env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWidgets import QApplication; from ui.main_window import AcceleratedWorldGUI; app = QApplication([]); w = AcceleratedWorldGUI(); print('GUI init OK')"`
+- 没有测试/lint 命令。改动后验证：`.\.venv\Scripts\python.exe -c "import main, modules.time_dilation, modules.chinese_calendar, modules.weather_service, modules.alarm_service, config.settings, config.static.static_config, ui.main_window, ui.alarm_dialog, ui.themes, ui.audio_player, ui.system_tray, data.cities, data.timezones, data.weather_codes, utils.logger, utils.file_utils, utils.retry, interface, ui.tools.countdown_tools, ui.tools.clock_tools, ui.tools.alarm_text"`。不要直接跑 GUI 验证（会弹窗阻塞）
+- GUI 无头初始化验证（不弹窗）：`$env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWidgets import QApplication; from interface import AppInterface; from ui.main_window import AcceleratedWorldGUI; app = QApplication([]); w = AcceleratedWorldGUI(AppInterface()); print('GUI init OK')"`（进程退出码可能为已知退出期崩溃所污染，以 stdout 输出为准）
 - `pyproject.toml` 仅有 basedpyright 配置，且绝大多数检查被显式放宽为 `"none"` —— 不要引入严格类型修复，也不要改动这些配置
 - CLI 冒烟测试：`.\.venv\Scripts\python.exe main.py --version`、`main.py --cli --rate 2.0`
-- 单元测试：`.\.venv\Scripts\python.exe -m pytest tests/ -v`（90 用例覆盖 time_dilation/chinese_calendar/settings/alarm_service/weather_service/file_utils/rate_presets/logger/monitor/static_config/gui_features；依赖 `tests/requirements-dev.txt` 的 pytest；GUI 断言类测试放子进程执行、以 stdout 标记断言——本机 GUI 进程退出期硬崩溃见 y.problems#6，勿在 pytest 主进程内联创建 QApplication；子进程配置隔离统一走 ACCELWORLD_CONFIG_FILE 环境变量，FIX001.12）
+- 单元测试：`.\.venv\Scripts\python.exe -m pytest tests/ -v`（128 用例覆盖 time_dilation/chinese_calendar/settings/alarm_service/weather_service/file_utils/rate_presets/logger/monitor/static_config/gui_features/interface/countdown_tools/ui_tools；依赖 `tests/requirements-dev.txt` 的 pytest；GUI 断言类测试放子进程执行、以 stdout 标记断言——本机 GUI 进程退出期硬崩溃见 y.problems#6，勿在 pytest 主进程内联创建 QApplication；子进程配置隔离统一走 ACCELWORLD_CONFIG_FILE 环境变量，FIX001.12）
 
 ## 环境陷阱
 
@@ -112,6 +112,7 @@
 ## Git 注意
 
 - `.gitignore` 忽略 `CLAUDE.md`、`openspec/`、`.vscode/`、`.venv`、`archived/`、`.opencode/`、`.agents/`、`.temp/`、`.history/`、`.mimosa/` —— 对这些文件的修改不会出现在 `git status` 中；`AGENTS.md` 与工作流文档四件套（w/x/y/z/m）已纳入版本控制
+- **`config/user_config.json` 每次提交必须入库**（2026-09-11 用户定案）：该文件虽为运行时用户配置，但已纳入版本控制且未 ignore，历次提交均须 `git add` 一并入库，不得以"运行时状态"为由排除
 
 ## 操作注意
 

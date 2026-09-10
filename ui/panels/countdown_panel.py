@@ -1,4 +1,6 @@
 # 倒计时面板模块（S4 GUI 面板化拆分，倒计时输入 + 日期/时间选择器）
+# PL001（plan#UI2.0）：解析与剩余运算迁 ui/tools/countdown_tools（铁律 1），
+# 样式参数经 AppInterface 读取（铁律 2），本文件零后端 import
 
 import datetime
 
@@ -19,16 +21,15 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import QDate, QTime
 from PyQt6.QtGui import QFont
 
-from config.static.static_config import get_static_config
-
-# 静态配置（字体/颜色）
-_UI = get_static_config().ui
+from interface import AppInterface
+from ui.tools.countdown_tools import format_remaining, parse_target_text
 
 
 class CountdownPanel(QWidget):
-    def __init__(self, parent: QWidget | None = None):
-        # 目标时间内部态初始为 None；选择器只改写输入框文本
+    def __init__(self, interface: AppInterface, parent: QWidget | None = None):
+        # 目标时间内部态初始为 None；选择器只改写输入框文本；样式经接口读取
         super().__init__(parent)
+        self._ui = interface.get_ui_static()
 
         self.countdown_target_date: datetime.datetime | None = None  # 倒计时目标时间
 
@@ -37,7 +38,7 @@ class CountdownPanel(QWidget):
         countdown_layout = QHBoxLayout(countdown_frame)
 
         countdown_title_label = QLabel("倒计时:")
-        countdown_title_label.setFont(QFont(_UI["font_family"], 12))
+        countdown_title_label.setFont(QFont(self._ui["font_family"], 12))
         countdown_layout.addWidget(countdown_title_label)
 
         # 目标时间输入框和选择器（水平排列）
@@ -46,7 +47,7 @@ class CountdownPanel(QWidget):
 
         self.countdown_target = QLineEdit()
         self.countdown_target.setPlaceholderText("YYYY-MM-DD HH:MM:SS")
-        self.countdown_target.setFont(QFont(_UI["font_family"], 9))
+        self.countdown_target.setFont(QFont(self._ui["font_family"], 9))
         self.countdown_target.setFixedWidth(200)
         countdown_input_layout.addWidget(self.countdown_target)
 
@@ -54,7 +55,7 @@ class CountdownPanel(QWidget):
         self.date_picker_button = QPushButton("📅")
         self.date_picker_button.setFixedSize(32, 32)
         self.date_picker_button.setToolTip("选择日期")
-        self.date_picker_button.setFont(QFont(_UI["font_family"], 12))
+        self.date_picker_button.setFont(QFont(self._ui["font_family"], 12))
         self.date_picker_button.setStyleSheet("padding: 0px; margin: 0px;")
         self.date_picker_button.clicked.connect(self.show_date_picker)
         countdown_input_layout.addWidget(self.date_picker_button)
@@ -63,7 +64,7 @@ class CountdownPanel(QWidget):
         self.time_picker_button = QPushButton("🕐")
         self.time_picker_button.setFixedSize(32, 32)
         self.time_picker_button.setToolTip("选择时间")
-        self.time_picker_button.setFont(QFont(_UI["font_family"], 12))
+        self.time_picker_button.setFont(QFont(self._ui["font_family"], 12))
         self.time_picker_button.setStyleSheet("padding: 0px; margin: 0px;")
         self.time_picker_button.clicked.connect(self.show_time_picker)
         countdown_input_layout.addWidget(self.time_picker_button)
@@ -72,41 +73,27 @@ class CountdownPanel(QWidget):
 
         # 倒计时显示
         self.countdown_label = QLabel("--天 --:--:--:--")
-        self.countdown_label.setFont(QFont(_UI["font_family"], 14, QFont.Weight.Bold))
-        self.countdown_label.setStyleSheet("color: " + _UI["colors"]["primary"] + ";")
+        self.countdown_label.setFont(QFont(self._ui["font_family"], 14, QFont.Weight.Bold))
+        self.countdown_label.setStyleSheet(
+            "color: " + self._ui["colors"]["primary"] + ";"
+        )
         countdown_layout.addWidget(self.countdown_label)
 
         countdown_layout.addStretch()
 
         # 设置/清除按钮
         self.set_countdown_button = QPushButton("设置")
-        self.set_countdown_button.setFont(QFont(_UI["font_family"], 10))
+        self.set_countdown_button.setFont(QFont(self._ui["font_family"], 10))
         self.set_countdown_button.clicked.connect(self.set_countdown)
         countdown_layout.addWidget(self.set_countdown_button)
 
         self.clear_countdown_button = QPushButton("清除")
-        self.clear_countdown_button.setFont(QFont(_UI["font_family"], 10))
+        self.clear_countdown_button.setFont(QFont(self._ui["font_family"], 10))
         self.clear_countdown_button.clicked.connect(self.clear_countdown)
         countdown_layout.addWidget(self.clear_countdown_button)
 
         outer = QVBoxLayout(self)
         outer.addWidget(countdown_frame)
-
-    def _parse_target_text(self, target_text: str) -> datetime.datetime | None:
-        # 解析三种目标文本格式（19/16/10 位，日期格式默认 23:59:59）；非法返回 None
-        # （set_countdown 与启动恢复共用，FIX001.10）
-        try:
-            if len(target_text) == 19:  # YYYY-MM-DD HH:MM:SS
-                return datetime.datetime.strptime(target_text, "%Y-%m-%d %H:%M:%S")
-            if len(target_text) == 16:  # YYYY-MM-DD HH:MM
-                return datetime.datetime.strptime(target_text, "%Y-%m-%d %H:%M")
-            if len(target_text) == 10:  # YYYY-MM-DD
-                return datetime.datetime.strptime(
-                    target_text, "%Y-%m-%d"
-                ).replace(hour=23, minute=59, second=59)
-        except ValueError:
-            return None
-        return None
 
     def restore_target(self, text: str) -> None:
         # 启动恢复：回填输入框并解析内部目标态（FIX001.10）。
@@ -114,7 +101,7 @@ class CountdownPanel(QWidget):
         # 下一次正常退出即把持久化值清空（跨会话数据丢失）；解析失败时内部态为 None，
         # 恢复"输入即存、点设置才倒计时"语义不变
         self.countdown_target.setText(text)
-        self.countdown_target_date = self._parse_target_text(text.strip())
+        self.countdown_target_date = parse_target_text(text.strip())
 
     def set_countdown(self) -> None:
         # 解析目标文本并校验过期；过期目标拒绝并置 None
@@ -123,7 +110,7 @@ class CountdownPanel(QWidget):
             QMessageBox.warning(self, "警告", "请输入目标时间")
             return
 
-        parsed = self._parse_target_text(target_text)
+        parsed = parse_target_text(target_text)
         if parsed is None:
             QMessageBox.critical(
                 self,
@@ -148,29 +135,19 @@ class CountdownPanel(QWidget):
         self.countdown_target.clear()
 
     def update_countdown(self) -> None:
-        # 剩余拆天/时/分/秒；结束红色、进行绿色
+        # 剩余拆解/结束判定在 ui/tools（PL001.06 迁入），此处只做 setText 与着色：
+        # 结束红色、进行中主题色
         if not self.countdown_target_date:
             return
 
-        now = datetime.datetime.now()
-        remaining = self.countdown_target_date - now
-
-        if remaining.total_seconds() <= 0:
-            self.countdown_label.setText("00天 00:00:00")
-            self.countdown_label.setStyleSheet(
-                "color: " + _UI["colors"]["danger"] + ";"
-            )  # 红色表示倒计时结束
-            return
-
-        days = remaining.days
-        hours = remaining.seconds // 3600
-        minutes = (remaining.seconds % 3600) // 60
-        seconds = remaining.seconds % 60
-
-        self.countdown_label.setText(
-            f"{days}天 {hours:02d}:{minutes:02d}:{seconds:02d}"
+        text, finished = format_remaining(
+            self.countdown_target_date, datetime.datetime.now()
         )
-        self.countdown_label.setStyleSheet("color: " + _UI["colors"]["primary"] + ";")
+        color_key = "danger" if finished else "primary"
+        self.countdown_label.setText(text)
+        self.countdown_label.setStyleSheet(
+            "color: " + self._ui["colors"][color_key] + ";"
+        )
 
     def get_target_text(self) -> str:
         # 仅在目标已设置时返回输入框文本
@@ -221,7 +198,7 @@ class CountdownPanel(QWidget):
 
         for label, days in (("今天", 0), ("明天", 1), ("一周后", 7)):
             quick_btn = QPushButton(label)
-            quick_btn.setFont(QFont(_UI["font_family"], 10))
+            quick_btn.setFont(QFont(self._ui["font_family"], 10))
             quick_btn.clicked.connect(
                 lambda _=False, c=calendar, d=days: self._apply_quick_date(c, d)
             )
@@ -232,7 +209,7 @@ class CountdownPanel(QWidget):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        buttons.setFont(QFont(_UI["font_family"], 10))
+        buttons.setFont(QFont(self._ui["font_family"], 10))
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
@@ -260,14 +237,14 @@ class CountdownPanel(QWidget):
         time_edit = QTimeEdit()
         time_edit.setDisplayFormat("HH:mm:ss")
         time_edit.setTime(current_time)
-        time_edit.setFont(QFont(_UI["font_family"], 14))
+        time_edit.setFont(QFont(self._ui["font_family"], 14))
         layout.addWidget(time_edit)
 
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(5)
 
         now_btn = QPushButton("现在")
-        now_btn.setFont(QFont(_UI["font_family"], 10))
+        now_btn.setFont(QFont(self._ui["font_family"], 10))
         now_btn.clicked.connect(lambda: time_edit.setTime(QTime.currentTime()))
         btn_layout.addWidget(now_btn)
 
@@ -276,7 +253,7 @@ class CountdownPanel(QWidget):
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        buttons.setFont(QFont(_UI["font_family"], 10))
+        buttons.setFont(QFont(self._ui["font_family"], 10))
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
@@ -311,12 +288,13 @@ class CountdownPanel(QWidget):
 
 # ===== ui/panels/countdown_panel.py 函数/类说明 =====
 # CountdownPanel(QWidget): 倒计时面板
-#   set_countdown(): 解析目标文本并校验过期，成功后刷新显示
+#   __init__(interface, parent): 样式参数经 AppInterface.get_ui_static() 读取（PL001.10）
+#   set_countdown(): 解析（经 tools.parse_target_text）并校验过期，成功后刷新显示
 #   clear_countdown(): 清除目标与显示
-#   update_countdown(): 主窗口 tick 调用，计算剩余并着色（结束红/进行绿）
+#   update_countdown(): 主窗口 tick 调用；剩余拆解/结束态经 tools.format_remaining，
+#     本方法只做 setText 与着色（结束红 danger/进行绿 primary，plan#UI2.0 铁律 1）
 #   get_target_text(): 供主窗口保存配置；未设置返回空串
-#   _parse_target_text(text): 三种目标文本格式解析（FIX001.10 抽取共用；非法返回 None）
-#   restore_target(text): 启动恢复（回填输入框并解析内部态，FIX001.10 修复跨会话清空）
+#   restore_target(text): 启动恢复（回填输入框并经 tools 解析内部态，FIX001.10）
 #   _set_target_date_part(selected_date): 选中日期写回输入框日期部分并保留时间部分
 #     （实时反馈不等 OK，修复 T001.2；日历点击/快捷按钮/OK 共用此路径）
 #   _apply_quick_date(calendar, days): 快捷日期按钮（今天/明天/一周后），勾选日历 + 即时写回
@@ -324,6 +302,6 @@ class CountdownPanel(QWidget):
 #     交由 Qt sizeHint 自适应，修复 HH:mm:ss 显示不全，T001.3）
 #   show_date_picker()/show_time_picker(): 弹窗选择，仅改写输入框对应部分；
 #     exec 后 deleteLater 释放子对话框（FIX001.23）
-#   设计理由：倒计时状态（目标时间）内聚在面板，主窗口只做 tick 驱动
-#   异常处理：格式解析 ValueError 弹窗提示；过期目标置 None
-#   关联配置：countdown_target 配置项由主窗口经 get_target_text 持久化
+#   设计理由：倒计时状态（目标时间）内聚在面板，运算在 ui/tools，主窗口只做 tick 驱动
+#   异常处理：格式解析（tools 层返回 None）弹窗提示；过期目标置 None
+#   关联配置：countdown_target 配置项由主窗口经 get_target_text 持久化；样式经 ui.json

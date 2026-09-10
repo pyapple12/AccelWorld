@@ -1,6 +1,7 @@
 # 闹钟编辑对话框模块（S4 完善：类型注解 + get_alarm 返回 Alarm dataclass）
+# PL001（plan#UI2.0）：Alarm/PresetSound 类型改经 interface.types 转出（铁律 2），
+# 自定义铃声按钮文案迁 ui/tools/alarm_text（铁律 1），本文件零后端 import
 
-import os
 from typing import Optional, List, Literal
 
 from PyQt6.QtWidgets import (
@@ -18,7 +19,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import QTime
 
-from modules.alarm_service import PresetSound, Alarm
+from interface.types import Alarm, PresetSound
+from ui.tools.alarm_text import format_sound_button_name
 
 # 支持的音频文件格式（Qt 文件对话框过滤器串；FIX002.17 自业务层迁入 UI 层）
 SUPPORTED_AUDIO_FORMATS = (
@@ -74,9 +76,7 @@ class AlarmEditDialog(QDialog):
                 self.sound_type = "custom"
                 self.sound_value = alarm.sound_value
                 # 回填文件名到按钮文案（FIX001.6：修复打开自定义闹钟时当前铃声不可见）
-                self.custom_sound_button.setText(
-                    f"📁 {os.path.basename(alarm.sound_value)[:15]}"
-                )
+                self.custom_sound_button.setText(format_sound_button_name(alarm.sound_value))
             else:
                 # 预设声音：经 from_value 定位枚举（大小写不敏感兜底 CLASSIC），避免手写遍历（E2）
                 self.sound_value = alarm.sound_value
@@ -124,7 +124,7 @@ class AlarmEditDialog(QDialog):
         if file_path:
             self.sound_type = "custom"
             self.sound_value = file_path
-            self.custom_sound_button.setText(f"📁 {os.path.basename(file_path)[:15]}")
+            self.custom_sound_button.setText(format_sound_button_name(file_path))
 
     def get_alarm(self) -> Alarm:
         # 获取时间
@@ -161,9 +161,11 @@ class AlarmEditDialog(QDialog):
 # ===== ui/alarm_dialog.py 函数/类说明 =====
 # AlarmEditDialog(QDialog): 闹钟添加/编辑对话框
 #   __init__(parent, alarm): 构建表单（标签/时间/声音/重复），编辑模式预填数据
-#     （自定义铃声回填文件名到按钮文案，FIX001.6）
+#     （自定义铃声回填文件名到按钮文案，FIX001.6，文案经 tools.format_sound_button_name）
 #   _on_sound_preset_selected(index): 下拉框选预设复位 sound_type（FIX001.6）
 #   select_custom_sound(): 文件选择器设置自定义铃声
 #   get_alarm(): 从表单构造 Alarm dataclass；编辑模式继承原 id/created_at/enabled
-#   设计理由：直接返回数据类避免 dict 魔法键；ID 保留保证 replace_alarm 定位正确
-#   关联配置：预设枚举与音频格式来自 modules/alarm_service.py
+#   设计理由：直接返回数据类避免 dict 魔法键；ID 保留保证 replace_alarm 定位正确；
+#   类型经 interface.types 转出（plan#UI2.0 铁律 2，本文件零后端 import）
+#   关联配置：预设枚举经 interface.types；SUPPORTED_AUDIO_FORMATS 为本文件 UI 常量
+#   （Qt 文件对话框过滤器串，FIX002.17 自业务层迁入）

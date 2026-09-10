@@ -16,10 +16,11 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 _BASE = get_static_config().base
 
-# 子进程脚本：无头创建主窗口，逐个点击预设按钮，断言配置持久化与核心实例生效；
+# 子进程脚本：无头创建主窗口，逐个点击预设按钮，断言配置持久化与接口内核心生效；
 # 另建独立 ClockPanel 验证按钮点击经信号链发出对应倍率。
 # 写盘断言前等待去抖定时器触发（FIX001.23 去抖；FIX002.19 以事件等待替代私有方法调用）；
-# 天气查询打桩（FIX002.11：避免真实网络请求引入尾延迟与外部依赖）
+# 天气查询打桩在 interface 层（PL001.14：AppInterface.fetch_weather 类级替换，
+# 覆盖全部实例，避免真实网络请求引入尾延迟与外部依赖）
 _SUBPROCESS_SCRIPT = """
 import os
 import sys
@@ -33,14 +34,14 @@ from PyQt6.QtWidgets import QApplication
 
 from config.settings import get_setting
 from config.static.static_config import get_static_config
+from interface import AppInterface
 from ui.main_window import AcceleratedWorldGUI
 from ui.panels.clock_panel import ClockPanel
-import ui.panels.weather_panel as weather_panel
 
-weather_panel.get_weather_by_city = lambda city_name: None  # 天气打桩（FIX002.11）
+AppInterface.fetch_weather = lambda self, city_name: None  # 天气打桩（interface 层，PL001.14）
 
 app = QApplication([])
-window = AcceleratedWorldGUI()
+window = AcceleratedWorldGUI(AppInterface())
 presets = get_static_config().base["rate_presets"]
 
 assert set(window.clock_panel.preset_buttons) == set(presets), "预设按钮集合不符"
@@ -60,11 +61,11 @@ for name, rate in presets.items():
     assert abs(get_setting("time_dilation_rate") - float(rate)) < 1e-9, (
         f"预设 {name} 后配置未生效: {get_setting('time_dilation_rate')}"
     )
-    assert abs(window.accel_world.time_dilation_rate - float(rate)) < 1e-9, (
+    assert abs(window._interface.get_rate() - float(rate)) < 1e-9, (
         f"预设 {name} 后核心实例未生效"
     )
 
-panel = ClockPanel()
+panel = ClockPanel(AppInterface())
 captured: list[float] = []
 panel.rate_changed.connect(captured.append)
 for name, rate in presets.items():
