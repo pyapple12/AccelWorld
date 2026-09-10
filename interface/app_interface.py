@@ -4,6 +4,7 @@
 # UI 编排一律留在 ui 层（plan#UI2.0 铁律 3/PL001.02）
 
 import logging
+import winreg
 from datetime import datetime
 from typing import Any
 
@@ -27,6 +28,11 @@ from modules.time_dilation import AcceleratedWorld, TimeInfo
 from modules.weather_service import WeatherData, format_weather_info, get_weather_by_city
 
 logger = logging.getLogger(__name__)
+
+# 主题偏好合法取值（PL002.02 三态：跟随系统/浅色/深色）与 Windows 深浅色注册表位置
+_THEME_CHOICES = ("auto", "light", "dark")
+_SYSTEM_THEME_SUB_KEY = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+_SYSTEM_THEME_VALUE = "AppsUseLightTheme"
 
 
 class AppInterface:
@@ -174,14 +180,31 @@ class AppInterface:
     # ------------------- 配置偏好（PL001.03） -------------------
 
     def get_ui_preferences(self) -> UiPreferences:
-        # 组装 UI 会话偏好快照（缺省值回退 base.json 默认）
+        # 组装 UI 会话偏好快照；主题归一化为三态（auto/light/dark），非法值回退默认；
+        # 缺省值回退 base.json 默认
         base = get_static_config().base
+        theme = str(settings.get_setting("theme", base["default_theme"]))
+        if theme not in _THEME_CHOICES:
+            theme = str(base["default_theme"])
         return UiPreferences(
-            theme=str(settings.get_setting("theme", base["default_theme"])),
+            theme=theme,
             last_city=str(settings.get_setting("last_city", base["default_city"])),
             last_timezone=str(settings.get_setting("last_timezone", base["default_timezone"])),
             countdown_target=str(settings.get_setting("countdown_target", "")),
         )
+
+    def get_system_theme_hint(self) -> str:
+        # 读取系统深浅色（Windows 注册表 AppsUseLightTheme：1=浅色 0=深色）；
+        # 键缺失/读取失败等 OSError 回退 "light"，AUTO 模式跟随由 UI 层 setTheme(AUTO) 内建
+        try:
+            with winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER, _SYSTEM_THEME_SUB_KEY
+            ) as reg_key:
+                value, _ = winreg.QueryValueEx(reg_key, _SYSTEM_THEME_VALUE)
+            return "light" if int(value) == 1 else "dark"
+        except OSError:
+            logger.warning("系统深浅色读取失败，回退浅色")
+            return "light"
 
     def save_theme(self, theme: str) -> bool:
         # 主题偏好落盘（light/dark；PL002 扩展 auto）

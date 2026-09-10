@@ -58,9 +58,9 @@ def main() -> None:
     parser.add_argument(
         "--theme",
         "-T",
-        choices=["light", "dark"],
+        choices=["auto", "light", "dark"],
         default=None,
-        help="指定主题：light（浅色）或 dark（深色）",
+        help="指定主题：auto（跟随系统，默认）、light（浅色）或 dark（深色）",
     )
     parser.add_argument("--city", "-C", default=None, help="指定默认显示城市")
     parser.add_argument("--hidden", action="store_true", help="启动后隐藏到系统托盘")

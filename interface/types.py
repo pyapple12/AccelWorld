@@ -12,7 +12,7 @@ from modules.alarm_service import Alarm, PresetSound
 
 @dataclass
 class UiPreferences:
-    theme: str  # 主题偏好（light/dark；PL002 扩展 auto/light/dark 三态）
+    theme: str  # 主题偏好三态（auto=跟随系统/light/dark，PL002.02；非法值由接口归一化回退默认）
     last_city: str  # 上次选择的城市（缺省回退 default_city）
     last_timezone: str  # 上次选择的时区（缺省回退 default_timezone）
     countdown_target: str  # 上次设置的倒计时目标文本（未设置为空串）

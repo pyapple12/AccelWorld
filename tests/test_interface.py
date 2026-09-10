@@ -140,6 +140,62 @@ def test_ui_preferences_defaults_match_base_json():
     assert prefs.countdown_target == ""
 
 
+def test_ui_preferences_theme_three_state(tmp_path):
+    # PL002.02：theme 取值扩为 auto/light/dark，存量 light/dark 兼容
+    (tmp_path / "user_config.json").write_text(
+        json.dumps({"theme": "auto"}), encoding="utf-8"
+    )
+    clear_json_cache()
+    iface = AppInterface()
+    assert iface.get_ui_preferences().theme == "auto"
+    assert iface.save_theme("dark") is True
+    assert iface.get_ui_preferences().theme == "dark"
+    assert iface.save_theme("light") is True
+    assert iface.get_ui_preferences().theme == "light"
+
+
+def test_ui_preferences_theme_invalid_falls_back(tmp_path):
+    # 非法主题值回退 base.json 默认主题（default_theme 现为 auto）
+    (tmp_path / "user_config.json").write_text(
+        json.dumps({"theme": "bogus"}), encoding="utf-8"
+    )
+    clear_json_cache()
+    iface = AppInterface()
+    assert iface.get_ui_preferences().theme == _BASE_JSON["default_theme"]
+
+
+def test_get_system_theme_hint(monkeypatch):
+    # Windows 注册表 AppsUseLightTheme 侦测：1=浅色 0=深色，读取失败回退 "light"
+    import interface.app_interface as ai
+
+    class _FakeKey:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def make_openkey(return_value):
+        def fake_openkey(key, sub_key):
+            assert "Personalize" in sub_key
+            return _FakeKey()
+
+        return fake_openkey
+
+    monkeypatch.setattr(ai.winreg, "OpenKey", make_openkey(None))
+    monkeypatch.setattr(ai.winreg, "QueryValueEx", lambda key, name: (1, 4))
+    assert ai.AppInterface().get_system_theme_hint() == "light"
+
+    monkeypatch.setattr(ai.winreg, "QueryValueEx", lambda key, name: (0, 4))
+    assert ai.AppInterface().get_system_theme_hint() == "dark"
+
+    def raise_missing(key, sub_key):
+        raise FileNotFoundError("no personalize key")
+
+    monkeypatch.setattr(ai.winreg, "OpenKey", raise_missing)
+    assert ai.AppInterface().get_system_theme_hint() == "light"
+
+
 def test_window_geometry_base64_roundtrip():
     iface = AppInterface()
     assert iface.load_window_geometry() is None  # 未保存时无几何

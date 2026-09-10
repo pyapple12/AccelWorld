@@ -4,16 +4,24 @@
 
 import base64
 import json
+from pathlib import Path
 
 import config.settings as settings
 from config.settings import UserConfig
+
+# 独立证据：直接读 base.json 文件取默认主题（PL002.02 起为 auto，不与实现同源）
+_DEFAULT_THEME = json.loads(
+    (Path(__file__).resolve().parent.parent / "config" / "static" / "base.json").read_text(
+        encoding="utf-8"
+    )
+)["default_theme"]
 
 
 def test_default_values():
     # UserConfig 默认值来自静态配置 base.json（零硬编码，S9.5 回归）
     u = UserConfig()
     assert u.time_dilation_rate == 2.0
-    assert u.theme == "light"
+    assert u.theme == _DEFAULT_THEME
     assert u.last_city == "北京"
     assert u.last_timezone == "Asia/Shanghai"
     assert u.countdown_target == ""
@@ -27,7 +35,7 @@ def test_load_save_roundtrip():
     assert settings.get_setting("time_dilation_rate") == 3.5
     assert settings.load_config().time_dilation_rate == 3.5
     # 未设置的键取默认
-    assert settings.get_setting("theme") == "light"
+    assert settings.get_setting("theme") == _DEFAULT_THEME
 
 
 def test_corrupted_json(tmp_path, monkeypatch):
@@ -68,7 +76,7 @@ def test_from_dict_invalid_types_fall_back_defaults():
             "alarms": "notalist",
         }
     )
-    assert cfg.theme == "light"
+    assert cfg.theme == _DEFAULT_THEME
     assert cfg.time_dilation_rate == 2.0
     assert cfg.last_city == "北京"
     assert cfg.countdown_target == "2027-01-01 00:00:00"

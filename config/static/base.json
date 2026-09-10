@@ -1,5 +1,5 @@
 {
-  "version": "0.4.7.6",
+  "version": "0.4.7.7",
   "rate_min": 1.0,
   "rate_max": 20.0,
   "default_rate": 2.0,
@@ -13,7 +13,7 @@
     "quit": "Ctrl+Q",
     "theme": "Ctrl+T"
   },
-  "default_theme": "light",
+  "default_theme": "auto",
   "default_city": "北京",
   "default_timezone": "Asia/Shanghai",
   "max_alarms": 10,

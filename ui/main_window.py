@@ -1,6 +1,8 @@
-# 主窗口模块（S4 重构为面板装配器：QTimer 调度 + 信号连接 + 主题/托盘）
+# 主窗口模块（S4 重构为面板装配器；PL002 Fluent 重写：FluentWindow 基座 + 三态主题）
 # PL001（plan#UI2.0）：后端访问一律经 AppInterface 注入，本文件零后端 import；
-# 保留 UI 编排：去抖定时器、闹钟播放/通知编排、主题翻转、快捷键、托盘接线
+# PL002：窗口基座换 FluentWindow（主题背景/导航内建），主题偏好三态（auto/light/dark）
+# 经 qfw setTheme 应用（AUTO 跟随系统），QSS 管线退役（themes.py 已删除，PL002.09）；
+# 保留 UI 编排：去抖定时器、闹钟播放/通知编排、快捷键、托盘接线
 
 import logging
 from typing import Any
@@ -8,14 +10,23 @@ from typing import Any
 # 配置日志
 logger = logging.getLogger(__name__)
 
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout
 from PyQt6.QtCore import QTimer
-from PyQt6.QtGui import QCloseEvent, QKeySequence, QShortcut
+from PyQt6.QtGui import QCloseEvent, QColor, QKeySequence, QShortcut
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout
+
+from qfluentwidgets import (
+    FluentIcon,
+    FluentWindow,
+    SystemThemeListener,
+    Theme,
+    isDarkTheme,
+    setTheme,
+    setThemeColor,
+)
 
 from interface import AppInterface
 from interface.types import Alarm
 from ui.audio_player import play_alarm_sound_async
-from ui.themes import build_theme
 from ui.system_tray import SystemTray
 from ui.panels.clock_panel import ClockPanel
 from ui.panels.date_panel import DatePanel
@@ -24,17 +35,26 @@ from ui.panels.world_clock_panel import WorldClockPanel
 from ui.panels.weather_panel import WeatherPanel
 from ui.panels.alarm_panel import AlarmPanel
 
+# 主题偏好 → qfw Theme 映射与三态循环顺序（跟随系统 → 浅色 → 深色 → 跟随系统，PL002.03）
+_THEME_SWITCH = {
+    "auto": Theme.AUTO,
+    "light": Theme.LIGHT,
+    "dark": Theme.DARK,
+}
+_THEME_NEXT = {"auto": "light", "light": "dark", "dark": "auto"}
 
-class AcceleratedWorldGUI(QMainWindow):
+
+class AcceleratedWorldGUI(FluentWindow):
     def __init__(self, interface: AppInterface):
-        # 接口注入→偏好恢复→面板装配→信号→恢复→定时器→主题→快捷键→托盘
+        # 接口注入→偏好恢复→主题应用→面板装配→信号→恢复→定时器→快捷键→托盘
         super().__init__()
         self._interface = interface
 
-        # 静态配置（窗口默认几何/快捷键/去抖周期等 UI 编排参数，经接口只读引用）
+        # 静态配置（窗口默认几何/快捷键/去抖周期/主题色等 UI 编排参数，经接口只读引用）
         self._base = interface.get_app_static()
+        self._colors = interface.get_ui_static()["colors"]
 
-        # 启动偏好快照（主题/城市/时区/倒计时，缺省值已在接口内回退 base.json 默认）
+        # 启动偏好快照（主题三态/城市/时区/倒计时，非法主题已在接口内归一化回退）
         prefs = interface.get_ui_preferences()
 
         # 倍率写盘去抖状态（FIX001.23：拖动滑杆高频变化仅停止后落盘一次；
@@ -44,7 +64,7 @@ class AcceleratedWorldGUI(QMainWindow):
 
         self.setWindowTitle(f"加速世界 - 时间膨胀时钟 {interface.get_version()}")
 
-        # 恢复窗口位置和大小（默认几何来自静态配置）
+        # 恢复窗口位置和大小（默认几何来自静态配置；FluentWindow 无边框窗口同样支持）
         geometry = interface.load_window_geometry()
         if geometry:
             self.restoreGeometry(geometry)
@@ -56,19 +76,21 @@ class AcceleratedWorldGUI(QMainWindow):
                 int(self._base["window_height"]),
             )
 
-        # 主题 QSS 构建一次按需取用（颜色经接口读取，工厂在 ui/themes，PL002 退役）
-        colors = interface.get_ui_static()["colors"]
-        self._qss_light, self._progress_light = build_theme(colors, dark=False)
-        self._qss_dark, self._progress_dark = build_theme(colors, dark=True)
+        # ------------------- 主题（三态偏好，qfw 内建深浅样式，PL002.03/09） -------------------
+        # 先应用 qfw 全局主题（qfw 组件样式在绘制期解析，早应用保证装配期语义一致）；
+        # 天气面板按钮外观在面板装配后由 _apply_theme_preference 的收尾段同步
+        setTheme(_THEME_SWITCH[prefs.theme])
+        setThemeColor(QColor(self._colors["primary"]))
+        self.theme_pref = prefs.theme
+        self.is_dark_theme = bool(isDarkTheme())
 
-        # 设置中心部件和主布局
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        self.main_layout = QVBoxLayout(central_widget)
+        # ------------------- 面板装配（接口注入，单页布局保持原 UX） -------------------
+        home = QWidget()
+        home.setObjectName("home")  # FluentWindow.addSubInterface 要求非空 objectName
+        self.main_layout = QVBoxLayout(home)
         self.main_layout.setContentsMargins(20, 20, 20, 20)
         self.main_layout.setSpacing(10)
 
-        # ------------------- 面板装配（接口注入） -------------------
         self.clock_panel = ClockPanel(interface)
         self.date_panel = DatePanel(interface)
         self.countdown_panel = CountdownPanel(interface)
@@ -86,6 +108,11 @@ class AcceleratedWorldGUI(QMainWindow):
             self.alarm_panel,
         ):
             self.main_layout.addWidget(panel)
+
+        self.addSubInterface(home, FluentIcon.HOME, "加速世界")
+
+        # 面板就绪后同步主题按钮外观（auto=🌗 跟随系统 / light=☀️ / dark=🌙）
+        self.weather_panel.set_theme_button(self.theme_pref)
 
         # ------------------- 信号连接 -------------------
         self.clock_panel.rate_changed.connect(self._on_rate_changed)
@@ -108,10 +135,6 @@ class AcceleratedWorldGUI(QMainWindow):
         self.timer.timeout.connect(self.update_clock)
         self.timer.start(interface.get_tick_interval_ms())
 
-        # ------------------- 主题（持久化恢复，FIX001.11） -------------------
-        self.is_dark_theme = prefs.theme == "dark"
-        self.apply_theme()
-
         # ------------------- 快捷键（键位来自静态配置，T004.1） -------------------
         self._install_shortcuts()
 
@@ -122,6 +145,34 @@ class AcceleratedWorldGUI(QMainWindow):
         self.tray.quit_requested.connect(self.quit_app)
         # 初始倍率同步托盘菜单（持久化值 ≠ 默认值时菜单不再显示错值，FIX002.9）
         self.tray.update_rate(interface.get_rate())
+
+        # ------------------- 系统深浅色变更侦听（PL002.10：AUTO 模式实时跟随） -------------------
+        self._theme_listener = SystemThemeListener(self)
+        self._theme_listener.systemThemeChanged.connect(self._on_system_theme_changed)
+        self._theme_listener.start()
+
+    # ------------------- 主题（三态） -------------------
+
+    def _apply_theme_preference(self, theme_pref: str) -> None:
+        # 应用主题偏好三态：setTheme 映射（AUTO 由 qfw 解析系统深浅）+ 主题色 +
+        # 生效深浅状态与天气面板按钮外观同步
+        setTheme(_THEME_SWITCH[theme_pref])
+        setThemeColor(QColor(self._colors["primary"]))
+        self.theme_pref = theme_pref
+        self.is_dark_theme = bool(isDarkTheme())
+        self.weather_panel.set_theme_button(theme_pref)
+
+    def toggle_theme(self) -> None:
+        # 三态循环（跟随系统→浅→深→跟随系统，PL002.03）、应用并持久化（FIX001.11 接线保持）
+        next_pref = _THEME_NEXT[self.theme_pref]
+        self._apply_theme_preference(next_pref)
+        self._interface.save_theme(next_pref)
+
+    def _on_system_theme_changed(self) -> None:
+        # 系统深浅色变更（侦听器线程信号）：AUTO 模式下重新解析生效主题并同步状态
+        if self.theme_pref == "auto":
+            setTheme(Theme.AUTO)
+            self.is_dark_theme = bool(isDarkTheme())
 
     # ------------------- 时钟调度 -------------------
 
@@ -190,24 +241,6 @@ class AcceleratedWorldGUI(QMainWindow):
         if alarm.is_one_time():
             self._interface.toggle_alarm(alarm.id)
             self.alarm_panel.save_and_refresh()
-
-    # ------------------- 主题 -------------------
-
-    def toggle_theme(self) -> None:
-        # 翻转状态、应用样式并持久化（FIX001.11：主题选择经接口写回配置）
-        self.is_dark_theme = not self.is_dark_theme
-        self.apply_theme()
-        self._interface.save_theme("dark" if self.is_dark_theme else "light")
-
-    def apply_theme(self) -> None:
-        # 深浅主题三处联动：窗口样式、进度条、按钮图标（QSS 构造期已按主题缓存）
-        if self.is_dark_theme:
-            self.setStyleSheet(self._qss_dark)
-            self.clock_panel.set_progress_style(self._progress_dark)
-        else:
-            self.setStyleSheet(self._qss_light)
-            self.clock_panel.set_progress_style(self._progress_light)
-        self.weather_panel.set_theme_button(self.is_dark_theme)
 
     # ------------------- 快捷键 -------------------
 
@@ -295,11 +328,9 @@ class AcceleratedWorldGUI(QMainWindow):
         if city:
             self.weather_panel.set_city(city)
 
-        # 应用启动主题（light/dark 双分支均生效并持久化；FIX002.10：此前 light 在
-        # 深色持久化下被静默忽略）
-        if theme in ("dark", "light"):
-            self.is_dark_theme = theme == "dark"
-            self.apply_theme()
+        # 应用启动主题（auto/light/dark 三态均生效并持久化；PL002.02 语义升级）
+        if theme in ("auto", "light", "dark"):
+            self._apply_theme_preference(theme)
             self._interface.save_theme(theme)
 
 
@@ -324,26 +355,27 @@ def main_gui(interface: AppInterface, **kwargs: Any) -> None:
 
 
 # ===== ui/main_window.py 函数/类说明 =====
-# AcceleratedWorldGUI(QMainWindow): 主窗口装配器
-#   __init__(interface): 接口注入（plan#UI2.0 三大块装配点）→ 偏好快照 → 装配 6 面板 →
-#     连接信号 → 恢复时区/倒计时/闹钟 → 定时器（周期随倍率）→ 主题 → 快捷键 → 托盘
-#     设计理由：窗口自身零后端 import（后端访问全部经 self._interface，PL001.08）；
-#     主题 QSS 经 ui.themes.build_theme 参数化构建（构造期一次，切换零开销）
+# _THEME_SWITCH/_THEME_NEXT: 主题偏好→qfw Theme 映射与三态循环顺序表（PL002.03）
+# AcceleratedWorldGUI(FluentWindow): 主窗口装配器（PL002 基座重写）
+#   __init__(interface): 接口注入（plan#UI2.0 装配点）→ 偏好快照 → 主题应用 → 装配 6 面板
+#   于单一 home 页（FluentWindow 单导航项，保持原单屏 UX）→ 信号 → 恢复时区/倒计时/闹钟
+#   → 定时器（周期随倍率）→ 快捷键 → 托盘 → SystemThemeListener（AUTO 深浅跟随，PL002.10）
+#   设计理由：窗口自身零后端 import（后端访问全部经 self._interface，PL001.08 保持）；
+#   深浅样式由 qfw 内建（QSS 管线退役 PL002.09，themes.py 删除）
+#   _apply_theme_preference(theme_pref): setTheme 三态映射 + setThemeColor（ui.json primary）
+#     + is_dark_theme 生效状态与天气按钮外观同步
+#   toggle_theme(): 三态循环 → 应用 → 经接口持久化
+#   _on_system_theme_changed(): AUTO 模式下系统主题变更重解析（PL002.10）
 #   update_clock(): tick 经接口拉取 TimeInfo 分发时钟/日期/倒计时/世界时钟面板，推送托盘悬停
-#   _on_rate_changed(rate): 倍率信号 → 接口生效 + 托盘更新
-#   _update_acceleration_rate(rate): 接口 set_rate 实时生效（越界拒绝）+ 定时器重启 +
-#     去抖定时器（FIX001.23；去抖属 UI 编排保留在此）
-#   _flush_pending_rate(): 去抖回调，接口 apply_rate 内聚落盘（校验+重建+持久化）
+#   _on_rate_changed(rate)/_update_acceleration_rate(rate)/_flush_pending_rate():
+#     倍率信号 → 接口 set_rate 实时生效（越界拒绝）→ 去抖定时器 → apply_rate 内聚落盘
+#     （FIX001.23 去抖属 UI 编排保留在此）
 #   _save_alarms(): 接口 save_alarm_dicts 落盘（失败上浮托盘提示 FIX001.19）
 #   _on_alarm_triggered(alarm): 播放/通知/一次性禁用（接口 toggle_alarm 保持状态单一路径）
-#   toggle_theme()/apply_theme(): 主题切换（缓存 QSS + 进度条 + 按钮图标；FIX001.11 持久化）
 #   _install_shortcuts(): 挂载窗口级快捷键（Ctrl+S 保存/Ctrl+Q 退出/Ctrl+T 主题，T004.1）
-#   hide_to_tray()/show_normal()/quit_app(): 托盘交互（SystemTray 信号回调）
-#   closeEvent(): 托盘可见时隐藏而非退出
-#   save_settings(): 倍率/城市/时区/倒计时/几何经接口逐项落盘（每项即写即存；
-#     相比 E11 合并单写多几次小文件 IO，换取接口逐域契约的清晰性，PL001 权衡）
-#   apply_startup_args(rate/theme/city): 启动参数应用
+#   hide_to_tray()/show_normal()/quit_app()/closeEvent(): 托盘交互与退出保存
+#   save_settings(): 倍率/城市/时区/倒计时/几何经接口逐项落盘
+#   apply_startup_args(rate/theme/city): 启动参数应用（theme 三态）
 # main_gui(interface, **kwargs): 创建应用/窗口/启动参数/显示/事件循环
-#   设计理由：主窗口只做装配与调度，业务 UI 全部内聚在面板（signal/slot 解耦）
-#   关联配置：AppInterface（后端唯一入口）；ui/audio_player.py 闹钟播放；
-#     ui/system_tray.py 托盘；ui/themes.py 主题工厂
+#   关联配置：AppInterface（后端唯一入口）；ui/system_tray.py 托盘；
+#   ui/audio_player.py 闹钟播放；主题色/字体键 config/static/ui.json

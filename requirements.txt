@@ -1,4 +1,5 @@
 lunar-python>=0.0.9
 chinese-calendar>=1.8.0
 PyQt6>=6.6.0
+PyQt6-Fluent-Widgets>=1.11.3
 pytz>=2024.1

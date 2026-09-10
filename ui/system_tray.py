@@ -1,9 +1,13 @@
 # 系统托盘模块（S4 GUI 面板化拆分，托盘图标绘制、菜单、通知）
+# PL002 Fluent 化：菜单改 qfw RoundMenu（右键 Context 激活时弹出，PL002.08）；
+# 通知保留原生 showMessage（qfw 无系统托盘组件，todo 明示可保留原生）；
 # PL001（plan#UI2.0）：版本号/颜色/通知时长/默认倍率经 AppInterface 读取，零后端 import
 
 from PyQt6.QtCore import pyqtSignal, Qt
-from PyQt6.QtWidgets import QSystemTrayIcon, QMenu
-from PyQt6.QtGui import QIcon, QAction, QPixmap, QPainter, QPen, QColor, QBrush
+from PyQt6.QtGui import QCursor, QIcon, QAction, QPixmap, QPainter, QPen, QColor, QBrush
+from PyQt6.QtWidgets import QSystemTrayIcon
+
+from qfluentwidgets import RoundMenu
 
 from interface import AppInterface
 
@@ -14,7 +18,7 @@ class SystemTray(QSystemTrayIcon):
     quit_requested = pyqtSignal()  # 请求退出程序
 
     def __init__(self, interface: AppInterface, parent=None):
-        # 初始化图标/菜单/双击监听后显示托盘（版本/颜色/倍率/时长经接口读取）
+        # 初始化图标/菜单/激活监听后显示托盘（版本/颜色/倍率/时长经接口读取）
         super().__init__(parent)
         self._interface = interface
         self._ui = interface.get_ui_static()
@@ -48,8 +52,9 @@ class SystemTray(QSystemTrayIcon):
         self.setIcon(QIcon(pixmap))
 
     def _create_menu(self) -> None:
-        # 菜单动作经信号转发给主窗口处理
-        self.tray_menu = QMenu()
+        # 菜单改 qfw RoundMenu（Fluent 风格弹层）；动作经信号转发给主窗口处理；
+        # 未 setContextMenu，右键经 Context 激活在光标处弹出（PL002.08）
+        self.tray_menu = RoundMenu(parent=self.parent())
 
         self.show_action = QAction("显示窗口", self)
         self.show_action.triggered.connect(self.show_requested.emit)
@@ -73,11 +78,11 @@ class SystemTray(QSystemTrayIcon):
         self.quit_action.triggered.connect(self.quit_requested.emit)
         self.tray_menu.addAction(self.quit_action)
 
-        self.setContextMenu(self.tray_menu)
-
     def _on_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
-        # 仅响应 DoubleClick，其他激活原因忽略
-        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+        # 右键（Context）弹出 Fluent 菜单；双击显示窗口；其余忽略
+        if reason == QSystemTrayIcon.ActivationReason.Context:
+            self.tray_menu.popup(QCursor.pos())
+        elif reason == QSystemTrayIcon.ActivationReason.DoubleClick:
             self.show_requested.emit()
 
     def update_rate(self, rate: float) -> None:
@@ -93,7 +98,7 @@ class SystemTray(QSystemTrayIcon):
     def show_notification(
         self, title: str, message: str, icon_kind: str = "info"
     ) -> None:
-        # 图标类型映射后展示，时长经接口读取（E13 参数化）
+        # 保留原生 showMessage（qfw 无托盘通知能力，PL002.08 决策）；时长经接口读取（E13）
         icon_map = {
             "info": QSystemTrayIcon.MessageIcon.Information,
             "warning": QSystemTrayIcon.MessageIcon.Warning,
@@ -112,15 +117,12 @@ class SystemTray(QSystemTrayIcon):
 #   信号：show_requested/hide_requested/quit_requested（主窗口连接并处理）
 #   __init__(interface, parent): 版本号经 AppInterface.get_version()、颜色经 get_ui_static()
 #   _create_icon(): 用 QPainter 绘制蓝色圆形时钟图标（颜色来自 ui.json tray_blue/tray_hand）
-#   _create_menu(): 显示/隐藏/倍率（只读）/退出菜单
-#   _on_activated(reason): 双击托盘显示窗口
+#   _create_menu(): qfw RoundMenu 菜单重建（显示/隐藏/倍率只读/退出，PL002.08）；
+#     不调 setContextMenu，由 _on_activated 在右键时 popup 到光标处
+#   _on_activated(reason): Context 弹菜单、DoubleClick 显示窗口
 #   update_rate(rate): 倍率变化时更新菜单文本（主窗口经 rate 信号调用）
-#   update_tooltip(accelerated_time, rate): tick 推送悬停文本（T004.4）
-#     输入：加速时间字符串、当前倍率；输出：无（副作用为 setToolTip）
-#     设计理由：文本未变化时跳过 setToolTip（tick 高频调用，托盘悬停无需逐帧重绘）；
-#     只接收基础类型参数，托盘不依赖业务对象
-#     异常处理：无
-#   show_notification(title, message, icon_kind): 封装 showMessage（时长经接口读取）
-#   设计理由：托盘职责独立成类，主窗口不再持有图标/菜单/绘制逻辑；
-#   PL001 起零后端 import（plan#UI2.0 铁律 2）
+#   update_tooltip(accelerated_time, rate): tick 推送悬停文本（T004.4；文本未变跳过重绘）
+#   show_notification(title, message, icon_kind): 保留原生 showMessage（时长经接口读取）
+#   设计理由：托盘职责独立成类；PL002 决策——通知与图标保留原生（qfw 无系统托盘能力，
+#   todo 明示可保留），仅菜单 Fluent 化；PL001 起零后端 import（plan#UI2.0 铁律 2）
 #   关联配置：版本号/默认倍率/通知时长经接口读取（base.json）；颜色经接口（ui.json）

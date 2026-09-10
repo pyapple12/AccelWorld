@@ -1,23 +1,22 @@
 # 闹钟编辑对话框模块（S4 完善：类型注解 + get_alarm 返回 Alarm dataclass）
+# PL002 Fluent 重写：MessageBoxBase 基座 + qfw LineEdit/TimePicker/ComboBox/CheckBox；
 # PL001（plan#UI2.0）：Alarm/PresetSound 类型改经 interface.types 转出（铁律 2），
 # 自定义铃声按钮文案迁 ui/tools/alarm_text（铁律 1），本文件零后端 import
 
-from typing import Optional, List, Literal
+from typing import List, Literal, Optional
 
-from PyQt6.QtWidgets import (
-    QDialog,
-    QDialogButtonBox,
-    QFormLayout,
-    QLineEdit,
-    QTimeEdit,
-    QComboBox,
-    QPushButton,
-    QHBoxLayout,
-    QWidget,
-    QFileDialog,
-    QCheckBox,
-)
 from PyQt6.QtCore import QTime
+from PyQt6.QtWidgets import QFileDialog, QHBoxLayout, QFormLayout, QWidget
+
+from qfluentwidgets import (
+    CheckBox,
+    ComboBox,
+    LineEdit,
+    MessageBoxBase,
+    PushButton,
+    SubtitleLabel,
+    TimePicker,
+)
 
 from interface.types import Alarm, PresetSound
 from ui.tools.alarm_text import format_sound_button_name
@@ -27,46 +26,50 @@ SUPPORTED_AUDIO_FORMATS = (
     "Audio Files (*.wav *.mp3 *.ogg *.flac *.m4a *.wma *.aac);;All Files (*)"
 )
 
+# 重复星期复选框文案（下标即 weekday() 数字 0-6）
+_WEEKDAY_LABELS = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
 
-class AlarmEditDialog(QDialog):
-    def __init__(self, parent: Optional[QWidget] = None, alarm: Optional[Alarm] = None):
-        # 构建表单并预填数据；编辑模式回填时间/声音/重复
+
+class AlarmEditDialog(MessageBoxBase):
+    def __init__(self, parent: QWidget, alarm: Optional[Alarm] = None):
+        # 构建表单并预填数据；编辑模式回填时间/声音/重复（MessageBoxBase 需父窗口）
         super().__init__(parent)
         self.alarm = alarm
         self.sound_type: Literal["preset", "custom"] = "preset"
         self.sound_value: str = "classic"
-        self.repeat_checkboxes: List[QCheckBox] = []
+        self.repeat_checkboxes: List[CheckBox] = []
 
-        self.setWindowTitle("编辑闹钟" if alarm else "添加闹钟")
-        self.setFixedWidth(400)
+        self.titleLabel = SubtitleLabel("编辑闹钟" if alarm else "添加闹钟", self)
+        self.viewLayout.addWidget(self.titleLabel)
 
-        layout = QFormLayout(self)
+        form_host = QWidget(self)
+        form = QFormLayout(form_host)
+        form.setSpacing(8)
 
         # 标签
-        self.label_edit = QLineEdit()
+        self.label_edit = LineEdit()
         self.label_edit.setPlaceholderText("闹钟名称")
         self.label_edit.setText(alarm.label if alarm else "Alarm")
-        layout.addRow("标签:", self.label_edit)
+        form.addRow("标签:", self.label_edit)
 
-        # 时间
-        self.time_edit = QTimeEdit()
-        self.time_edit.setDisplayFormat("HH:mm")
+        # 时间（qfw TimePicker，HH:mm）
+        self.time_edit = TimePicker()
         if alarm:
             time_parts = alarm.time.split(":")
             self.time_edit.setTime(QTime(int(time_parts[0]), int(time_parts[1])))
         else:
             self.time_edit.setTime(QTime.currentTime().addSecs(3600))  # 默认1小时后
-        layout.addRow("时间:", self.time_edit)
+        form.addRow("时间:", self.time_edit)
 
         # 声音选择
         sound_layout = QHBoxLayout()
-        self.sound_combo = QComboBox()
+        self.sound_combo = ComboBox()
         self.sound_combo.addItems(PresetSound.display_names())
         # 下拉框选择预设时复位声音类型（FIX001.6：此前自定义闹钟选任何预设都被静默忽略）
-        self.sound_combo.currentIndexChanged.connect(self._on_sound_preset_selected)
+        self.sound_combo.currentTextChanged.connect(self._on_sound_preset_selected)
         sound_layout.addWidget(self.sound_combo)
 
-        self.custom_sound_button = QPushButton("自定义...")
+        self.custom_sound_button = PushButton("自定义...")
         self.custom_sound_button.clicked.connect(self.select_custom_sound)
         sound_layout.addWidget(self.custom_sound_button)
 
@@ -84,35 +87,33 @@ class AlarmEditDialog(QDialog):
                     PresetSound.from_value(alarm.sound_value).index()
                 )
 
-        sound_widget = QWidget()
+        sound_widget = QWidget(self)
         sound_widget.setLayout(sound_layout)
-        layout.addRow("声音:", sound_widget)
+        form.addRow("声音:", sound_widget)
 
         # 重复设置
         repeat_layout = QHBoxLayout()
-        repeat_layout.setSpacing(5)
-        days = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
-        for i, day in enumerate(days):
-            checkbox = QCheckBox(day)
-            checkbox.setFixedWidth(45)
+        repeat_layout.setSpacing(4)
+        for i, day in enumerate(_WEEKDAY_LABELS):
+            checkbox = CheckBox(day)
             if alarm and i in alarm.repeat_days:
                 checkbox.setChecked(True)
             repeat_layout.addWidget(checkbox)
             self.repeat_checkboxes.append(checkbox)
 
-        repeat_widget = QWidget()
+        repeat_widget = QWidget(self)
         repeat_widget.setLayout(repeat_layout)
-        layout.addRow("重复:", repeat_widget)
+        form.addRow("重复:", repeat_widget)
 
-        # 按钮
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addRow(buttons)
+        self.viewLayout.addWidget(form_host)
 
-    def _on_sound_preset_selected(self, index: int) -> None:
+        # 底部按钮（MessageBoxBase 自带 yesButton/cancelButton，文案本地化并接线）
+        self.yesButton.setText("确定")
+        self.cancelButton.setText("取消")
+        self.yesButton.clicked.connect(self.accept)
+        self.cancelButton.clicked.connect(self.reject)
+
+    def _on_sound_preset_selected(self, text: str) -> None:
         # 下拉框选择预设时复位声音类型为 preset（FIX001.6：自定义→预设切换不再被静默忽略）
         self.sound_type = "preset"
 
@@ -127,8 +128,8 @@ class AlarmEditDialog(QDialog):
             self.custom_sound_button.setText(format_sound_button_name(file_path))
 
     def get_alarm(self) -> Alarm:
-        # 获取时间
-        time_obj = self.time_edit.time()
+        # 获取时间（qfw TimePicker → HH:MM 字符串）
+        time_obj = self.time_edit.getTime()
         time_str = f"{time_obj.hour():02d}:{time_obj.minute():02d}"
 
         # 获取重复天数
@@ -159,13 +160,17 @@ class AlarmEditDialog(QDialog):
 
 
 # ===== ui/alarm_dialog.py 函数/类说明 =====
-# AlarmEditDialog(QDialog): 闹钟添加/编辑对话框
-#   __init__(parent, alarm): 构建表单（标签/时间/声音/重复），编辑模式预填数据
-#     （自定义铃声回填文件名到按钮文案，FIX001.6，文案经 tools.format_sound_button_name）
-#   _on_sound_preset_selected(index): 下拉框选预设复位 sound_type（FIX001.6）
+# _WEEKDAY_LABELS: 重复星期复选框文案（下标即 weekday 数字）
+# SUPPORTED_AUDIO_FORMATS: 本文件 UI 常量（Qt 文件对话框过滤器串，FIX002.17）
+# AlarmEditDialog(MessageBoxBase): 闹钟添加/编辑对话框（PL002 Fluent 重写）
+#   __init__(parent, alarm): parent 必传（MessageBoxBase 遮罩依赖父窗口）；
+#     表单（标签 LineEdit/时间 TimePicker/声音 ComboBox+PushButton/重复 CheckBox）；
+#     编辑模式预填数据（自定义铃声回填文件名到按钮文案，FIX001.6，文案经 tools）
+#     设计理由：qfw ComboBox 的 currentTextChanged（str）替代原 currentIndexChanged，
+#     回调语义不变（选择预设即复位 sound_type）
+#   _on_sound_preset_selected(text): 选预设复位 sound_type（FIX001.6）
 #   select_custom_sound(): 文件选择器设置自定义铃声
 #   get_alarm(): 从表单构造 Alarm dataclass；编辑模式继承原 id/created_at/enabled
 #   设计理由：直接返回数据类避免 dict 魔法键；ID 保留保证 replace_alarm 定位正确；
 #   类型经 interface.types 转出（plan#UI2.0 铁律 2，本文件零后端 import）
-#   关联配置：预设枚举经 interface.types；SUPPORTED_AUDIO_FORMATS 为本文件 UI 常量
-#   （Qt 文件对话框过滤器串，FIX002.17 自业务层迁入）
+#   关联配置：预设枚举经 interface.types；铃声按钮文案经 ui.tools.alarm_text

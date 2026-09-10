@@ -37,8 +37,6 @@ from interface import AppInterface
 from interface.types import Alarm, TimeInfo
 from ui.alarm_dialog import AlarmEditDialog
 from ui.main_window import AcceleratedWorldGUI
-from ui.panels.countdown_panel import CountdownPanel
-from ui.panels.weather_panel import WeatherPanel
 import interface.app_interface as app_interface
 
 _BASE = get_static_config().base
@@ -108,24 +106,33 @@ check("FIX001.5 启动首次天气查询", c_first_weather_query)
 window = AcceleratedWorldGUI(AppInterface())
 
 
-# ------------------- T004 沉淀：快捷键 + 主题持久化（FIX001.11） -------------------
+# ------------------- T004 沉淀：快捷键 + 主题三态循环持久化（PL002.03） -------------------
 def c_shortcuts_and_theme_persist():
     from PyQt6.QtGui import QShortcut
 
     scs = {s.key().toString(): s for s in window.findChildren(QShortcut)}
     for key in (_BASE["shortcuts"][k] for k in ("save", "quit", "theme")):
         assert key in scs, f"缺快捷键 {key}"
+    # 三态循环：auto→light→dark→auto（默认主题 auto，跟随系统）
+    assert window.theme_pref == "auto", f"初始主题应为 auto: {window.theme_pref}"
     scs[_BASE["shortcuts"]["theme"]].activated.emit()
-    assert window.is_dark_theme is True, "Ctrl+T 未翻转主题"
-    assert get_setting("theme") == "dark", "主题切换未持久化"
+    assert window.theme_pref == "light", "auto→light 未循环"
+    assert window.is_dark_theme is False, "light 下生效深浅应为浅"
+    assert get_setting("theme") == "light", "主题切换未持久化"
+    scs[_BASE["shortcuts"]["theme"]].activated.emit()
+    assert window.theme_pref == "dark" and window.is_dark_theme is True, "light→dark 未循环"
+    assert get_setting("theme") == "dark"
     clear_and_reload()
     window2 = AcceleratedWorldGUI(AppInterface())
-    assert window2.is_dark_theme is True, "重启后主题未从配置恢复"
-    scs[_BASE["shortcuts"]["theme"]].activated.emit()  # 还原浅色
-    return "三快捷键在位，主题持久化往返生效"
+    assert window2.theme_pref == "dark" and window2.is_dark_theme is True, (
+        "重启后主题未从配置恢复"
+    )
+    scs[_BASE["shortcuts"]["theme"]].activated.emit()  # dark→auto 还原跟随系统
+    assert get_setting("theme") == "auto", "dark→auto 未循环持久化"
+    return "三快捷键在位，主题三态循环与持久化往返生效"
 
 
-check("T004.1/FIX001.11 快捷键与主题持久化", c_shortcuts_and_theme_persist)
+check("T004.1/PL002.03 快捷键与主题三态持久化", c_shortcuts_and_theme_persist)
 
 
 # ------------------- FIX002.10 --theme light 生效 -------------------
@@ -157,11 +164,14 @@ def c_tray_initial_rate():
 check("FIX002.9 托盘初始倍率同步", c_tray_initial_rate)
 
 
-# ------------------- FIX001.6 铃声类型切换 -------------------
+# ------------------- FIX001.6 铃声类型切换（PL002：对话框需父窗口） -------------------
 def c_sound_switch_back_to_preset():
+    from PyQt6.QtWidgets import QWidget
+
+    host = QWidget()  # MessageBoxBase 遮罩依赖父窗口（PL002.07）
     custom = Alarm(label="自定义", time="07:00", sound_type="custom",
                    sound_value=r"C:/music/wake.wav")
-    dialog = AlarmEditDialog(alarm=custom)
+    dialog = AlarmEditDialog(host, alarm=custom)
     assert "wake.wav" in dialog.custom_sound_button.text(), "自定义铃声未回填按钮文案"
     dialog.sound_combo.setCurrentIndex(3)  # Chime
     out = dialog.get_alarm()
@@ -185,6 +195,34 @@ def c_countdown_restore_kept():
 
 
 check("FIX001.10 倒计时恢复不清空", c_countdown_restore_kept)
+
+
+# ------------------- PL002.06 选择器交互 check（qfw DatePicker/TimePicker 对话框） -------------------
+def c_pickers_construct_and_interact():
+    from PyQt6.QtCore import QDate, QTime
+
+    from ui.panels.countdown_panel import _DatePickDialog, _TimePickDialog
+
+    date_dialog = _DatePickDialog(window, on_quick_picked=lambda days: None)
+    assert date_dialog.calendar.getDate().isValid(), "DatePicker 初始日期非法"
+    date_dialog.calendar.setDate(QDate(2027, 1, 1))
+    assert date_dialog.calendar.getDate() == QDate(2027, 1, 1), "DatePicker setDate 失效"
+    quick_calls: list[int] = []
+    dialog2 = _DatePickDialog(window, on_quick_picked=quick_calls.append)
+    dialog2.yesButton.click()  # 确定接线（不 exec，仅验证信号通路）
+    time_dialog = _TimePickDialog(window, QTime(8, 30))
+    got = time_dialog.time_picker.getTime()
+    assert got.hour() == 8 and got.minute() == 30, f"TimePicker 预填异常: {got.toString()}"
+    time_dialog.time_picker.setTime(QTime(23, 59))
+    got2 = time_dialog.time_picker.getTime()
+    assert got2.hour() == 23 and got2.minute() == 59, "TimePicker setTime 失效"
+    for d in (date_dialog, dialog2, time_dialog):
+        d.deleteLater()
+    assert quick_calls == []
+    return "日期/时间选择器对话框构建、读写与确定接线 OK（不进模态 exec）"
+
+
+check("PL002.06 选择器交互", c_pickers_construct_and_interact)
 
 
 # ------------------- FIX001.19 保存失败上浮提示（FIX002.12 桩还原；桩点迁 settings 层） -------------------

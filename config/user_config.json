@@ -1,6 +1,6 @@
 {
-    "time_dilation_rate": 10.0,
-    "theme": "dark",
+    "time_dilation_rate": 1.0,
+    "theme": "light",
     "last_city": "上海",
     "last_timezone": "Australia/Sydney",
     "countdown_target": "",
