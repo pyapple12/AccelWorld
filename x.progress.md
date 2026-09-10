@@ -1,7 +1,7 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告）
-> 当前版本：0.4.7.7（UI2.0 Fluent 重写 PL002 完成）
+> 当前版本：0.4.7.8（UI2.0 视觉迭代 PL003 完成：多页导航 + Acrylic 材质）
 > 状态：**S1-S10 全部完成**，无未完成项（重构期收官）
 > 更新（2026-09-10）：接入 DeepTransHub 工作流体系；自即日起新增任务按下文「未完成」区的新规则记录
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
@@ -165,11 +165,24 @@ $env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWi
 - [x] PL002.11 全量回归与视觉验收 —— pytest 全量 + GUI 子进程用例适配后全绿；涉及视觉核对时按多模态节点停下切多模态模型截图走查；验证：回归全绿 + 用户确认（2026-09-11 完成：测试适配——主题三态循环重写、铃声对话框补父窗口、新增选择器交互 check、settings 主题断言改 base.json 独立证据；全量 131 用例全绿；反向验收 .temp/verify_pl002_accept.py 5/5（子进程模式规避侦听线程退出硬崩，并修正其配置写穿真实文件问题）；Fluent 版已拉起（PID 19064），视觉走查与改系统主题跟随核对待用户确认——本模型无视觉能力，如实声明不读图）
 - [x] PL002.12 PL002 收尾提交 —— 勾选条目、方案状态、草拟 commit（版本号 bump 由用户定）；验证：git diff 核对（2026-09-11 完成：z.plan 状态行更新；commit 草拟见汇报，版本 bump 由用户定夺）
 
-### PL003: UI2.0 落地打磨与 1.0 收口 [plan#UI2.0]
+### PL003: UI2.0 视觉迭代——多页导航与 Acrylic 材质 [plan#UI2.0]
 
-- [ ] PL003.01 设计 tokens 整理 —— 间距/字号/圆角/动效时长收编 ui.json（经 interface 暴露给 tools/面板），清除散落魔数；验证：rg 面板内无硬编码 px 字号/间距残留抽查
-- [ ] PL003.02 动效与一致性清理 —— QPropertyAnimation 参数统一入配置，进度/倒计时/主题切换动效风格对齐；验证：GUI 子进程动画 check + 手动观察
-- [ ] PL003.03 退出崩溃复查 —— y.problems#6（GUI 退出期硬崩溃）在 Fluent 体系下复测：子进程 GUI 用例退出码 + logs/crash-\*.log 检查；验证：复测记录写入 y.problems#6 状态
-- [ ] PL003.04 文档同步 —— README（UI 说明/截图占位）、w.study 架构章节（三大块+接口契约）、m.milestone 1.0 对齐、AGENTS（结构树/验证命令如涉变化）；验证：文档交叉核对
-- [ ] PL003.05 版本策略定案 —— 0.5.0.0 版本号/发布形态经用户定案后 bump 并草拟发布 commit；验证：base.json 与五处文档版本一致
-- [ ] PL003.06 终验走查 —— 全量回归 + 手动验收清单（用户操作走查：启动/时钟/倍率/预设/主题跟随/天气/闹钟/倒计时/托盘/快捷键/退出）+ 配置零污染复验；验证：走查清单逐项确认
+- [x] PL003.01 多页装配改造 —— main_window 拆单页为 FluentWindow 六导航页：时钟（ClockPanel+DatePanel，倍率控制留同页）/倒计时/世界时钟/天气/闹钟 + 设置页置底（addSubInterface position=Bottom）；每页独立 QWidget 容器并设 objectName（addSubInterface 硬要求），侧栏图标成员名探针实测（HOME/TIMER/ALARM/CLOUD/SETTING 等，缺失就近替代）；tick 分发逻辑不变（隐藏页照常更新，开销可忽略）；验证：子进程用例断言六页存在且可轮转切换（stackedWidget currentWidget）（2026-09-11 完成：_make_page 页容器工厂；图标定案 HOME/STOP_WATCH/GLOBE/CLOUD/RINGER/SETTING（TIMER/ALARM/WORLD 不存在，探针全量成员表选定）；六页切换 check 过）
+- [x] PL003.02 设置页新建与主题控制搬家 —— 新建 ui/panels/settings_panel.py：主题三段选择器（SegmentedWidget 成员名探针确认，缺失则 PillToolButton 组替代）发 theme_selected(str) 信号，main_window 应用并经接口持久化；_apply_theme_preference 的按钮外观同步改设置页选中态同步；weather_panel 的 theme_button/theme_toggled/set_theme_button 全链路退役；验证：子进程用例（选择器三态切换持久化往返 + 快捷键 Ctrl+T 循环后选择器选中态同步）；rg "theme_toggled|set_theme_button" ui/ 零结果（2026-09-11 完成：SegmentedWidget 实测 currentItemChanged(str) 信号可用；双路径 check 过——选择器直达 + 快捷键循环互相同步）
+- [x] PL003.03 Acrylic 背板落地 —— 新建 ui/backdrop.py：enable_acrylic(window) 封装（qfw 透明底座 + ctypes DwmSetWindowAttribute DWMWA_SYSTEMBACKDROP_TYPE=38 值 3=TRANSIENTWINDOW；HWND 取 int(window.winId())，调用置于窗口 show 后）；OSError/不支持环境窄捕获静默降级纯色；只做 Acrylic 不做 Mica（用户定案）；验证：DWM 属性读回断言（读回=3）子进程用例 + 真机材质肉眼验收（DWM 材质不进截图，如实声明）（2026-09-11 完成：真机窗口 DWM 读回=3 实测；重大实测发现——offscreen 假句柄上的 DWM 试探会毒化进程，致后续窗口构造硬崩 0xC0000409，修复为 offscreen 平台最先短路并固化教训注释；主题切换时重铺刷新深浅 tint）
+- [x] PL003.04 英雄区强化 —— clock_panel 显示卡重构：加速时间升绝对主角（DisplayLabel 加大字号），标准时间退右侧次要小字，膨胀百分比大数字化；等宽数字防走字抖动（QFont 数字特性探针验证 PyQt6 setFeature/tnum 可用性，缺失则固定宽度右对齐方案）；验证：子进程探针连续 tick 断言时间文本宽度稳定（QFontMetrics.horizontalAdvance）+ 视觉走查（2026-09-11 完成：加速时间 56px 绝对主角 + 倍率 30px 大数字并列，字号入 ui.json hero_time_font_size/hero_percent_font_size；等宽数字定案弃用 QFont.setFeature——实测该 API 毒化进程致后续窗口构造硬崩，而雅黑数字天然等宽（600px 同宽实测）收益为零；宽度稳定 check 过）
+- [x] PL003.05 预设按钮收身 —— clock_panel 设置卡预设三按钮改紧凑小按钮组（去全宽拉伸）；字号数值不动（tokens 归 PL004）；验证：子进程预设点击 check（test_rate_presets 的 preset_buttons 契约保持）通过（2026-09-11 完成：96×32 紧凑组居中排布）
+- [x] PL003.06 图标统一与细节 —— 侧栏/页内图标全 FluentIcon 查漏补齐；新增参数（英雄区字号等）入 base.json/ui.json 零硬编码；动效不加新（定案）；验证：rg 主题 emoji 按钮残留（🌙/🌗/☀️）零结果 + 子进程全过（2026-09-11 完成：主题 emoji 按钮随搬家退役零残留（天气图标 ☀️ 属定案保留的个性）；英雄字号入 ui.json；动效未加新）
+- [x] PL003.07 测试适配与新增 —— test_gui_features 主题三态 check 增设置页选择器路径（快捷键循环路径保留，双路径并存）；新增六页导航切换 check；test_rate_presets 回归兼容；验证：全量 pytest 绿（2026-09-11 完成：重大重构——测试改为分阶段子进程（3 阶段，每阶段独立进程/配置/标记），单进程累积 ≥4 个 FluentWindow 实测触发窗口资源型硬崩（y.problems#6 家族变体，多轮二分排除 Acrylic/setFeature 等单点诱因后定案测试架构规避）；新增主题双路径/六页切换/等宽数字/选择器交互 check）
+- [x] PL003.08 解耦与规范复核 —— rg "^(from|import) (modules|config|data)" ui/ 零结果保持；rg "setStyleSheet" ui/ 零结果保持（Acrylic 实现不得引样式表）；验证：rg 三连 + 全量回归（2026-09-11 完成：rg 三连全零，含退役链路 theme_toggled/set_theme_button 与主题 emoji 残留）
+- [x] PL003.09 全量回归与视觉验收 —— pytest 全量 + 反向验收 .temp/verify_pl003_accept.py（六页结构/主题双路径/Acrylic 属性读回/退役链路清零）+ 拉起软件多模态走查（Acrylic 真机材质肉眼确认，截图可能纯色如实声明）；验证：回归全绿 + 用户确认（2026-09-11 完成：全量 pytest 131 用例绿；反向验收 5/5——真机窗口 DWM 读回=3(Acrylic 实际生效)+六页+主题直达、offscreen 短路、清零保持；软件已拉起 0.4.7.7（hwnd 1051500），Acrylic 材质与多页观感待用户肉眼确认——本会话视觉通道中断，如实声明未截图核对）
+- [x] PL003.10 PL003 收尾提交 —— 勾选条目、z.plan 状态、草拟 commit（版本 bump 由用户定）；验证：git diff 核对（2026-09-11 完成：z.plan 状态行更新；commit 草拟见汇报，版本 bump 由用户定夺）
+
+### PL004: UI2.0 落地打磨与版本收口（原 PL003 顺延改编）[plan#UI2.0]
+
+- [ ] PL004.01 设计 tokens 整理 —— 间距/字号/圆角/动效时长收编 ui.json（经 interface 暴露给 tools/面板），清除散落魔数（在 PL003 多页新形态上执行）；验证：rg 面板内无硬编码 px 字号/间距残留抽查
+- [ ] PL004.02 动效与一致性清理 —— QPropertyAnimation 参数统一入配置，进度/倒计时/主题切换动效风格对齐；验证：GUI 子进程动画 check + 手动观察
+- [ ] PL004.03 退出崩溃复查 —— y.problems#6（GUI 退出期硬崩溃）在 Fluent 体系下复测：子进程 GUI 用例退出码 + logs/crash-\*.log 检查；验证：复测记录写入 y.problems#6 状态
+- [ ] PL004.04 文档同步 —— README（UI 说明/截图占位）、w.study 架构章节（三大块+接口契约）、m.milestone 对齐、AGENTS（结构树/验证命令如涉变化）；验证：文档交叉核对
+- [ ] PL004.05 版本策略定案 —— 0.5.0.0 版本号/发布形态经用户定案后 bump 并草拟发布 commit；验证：base.json 与五处文档版本一致
+- [ ] PL004.06 终验走查 —— 全量回归 + 手动验收清单（用户操作走查：启动/多页切换/时钟/倍率/预设/主题跟随/Acrylic 材质/天气/闹钟/倒计时/托盘/快捷键/退出）+ 配置零污染复验；验证：走查清单逐项确认

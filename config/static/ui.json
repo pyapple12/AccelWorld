@@ -1,5 +1,7 @@
 {
   "font_family": "Microsoft YaHei",
+  "hero_time_font_size": 56,
+  "hero_percent_font_size": 30,
   "colors": {
     "primary": "#4CAF50",
     "primary_hover": "#45a049",

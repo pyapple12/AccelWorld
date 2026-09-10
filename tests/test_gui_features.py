@@ -1,8 +1,10 @@
-# GUI 功能测试（FIX001 引入，T004 探针断言沉淀）
-# 覆盖：快捷键/主题持久化/首次天气查询/铃声切换/倒计时恢复/保存失败提示/写盘去抖/
-#       进度条动画/托盘悬停/列表外城市显示/--version 无日志副作用
+# GUI 功能测试（FIX001 引入，T004 探针断言沉淀；PL003 起改为分阶段子进程）
+# 覆盖：快捷键/主题双路径/六导航页/等宽数字/首次天气查询/铃声切换/倒计时恢复/
+#       选择器交互/保存失败提示/写盘去抖/进度条动画/托盘悬停/列表外城市/--version
 # 执行模式：GUI 断言在子进程内完成（本机 GUI 进程退出期硬崩溃见 y.problems#6），
-# 以 stdout 末尾标记断言结果；配置经 ACCELWORLD_CONFIG_FILE 环境变量重定向到临时目录
+# 以 stdout 末尾标记断言结果；配置经 ACCELWORLD_CONFIG_FILE 环境变量重定向到临时目录。
+# PL003 实测：单进程累积 ≥4 个 FluentWindow 会触发窗口资源型硬崩（#6 家族变体），
+# 故按"每子进程 ≤3 窗、贴近生产单窗形态"拆为三个阶段，各自独立断言标记
 
 import os
 import subprocess
@@ -11,11 +13,8 @@ from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# 子进程脚本：argv[1]=项目根，argv[2]=临时配置文件路径（环境变量注入，FIX001.12）
-# 桩点在 interface 层（PL001.14）：AppInterface.fetch_weather 类级打桩覆盖全部窗口实例
-_SUBPROCESS_SCRIPT = """
-import datetime
-import json
+# 公共前导：环境/隔离/助手（各阶段共享，argv[1]=项目根 argv[2]=临时配置文件）
+_STAGE_PRELUDE = """
 import os
 import sys
 
@@ -63,11 +62,16 @@ def clear_and_reload():
 
     clear_json_cache()
 
+# 注意：不要对本脚本创建的 FluentWindow 调用 deleteLater/close——本机（offscreen）
+# 销毁无边框窗口会立即硬崩 0xC0000409（y.problems#6 家族）；窗口随进程退出释放
+"""
 
-# ------------------- FIX002.1 越界持久化倍率启动不崩 -------------------
-# 在任何窗口创建前写入越界倍率（0.5 < rate_min）：主窗口必须回退默认倍率存活而非崩溃
+# ------------------- 阶段 1：启动语义（2 窗） -------------------
+_STAGE1 = _STAGE_PRELUDE + """
+
+# FIX002.1 越界持久化倍率启动不崩：窗口创建前写入越界倍率，主窗口必须回退默认存活
 Path(sys.argv[2]).write_text(
-    json.dumps({"time_dilation_rate": 0.5}), encoding="utf-8"
+    __import__("json").dumps({"time_dilation_rate": 0.5}), encoding="utf-8"
 )
 
 
@@ -81,8 +85,7 @@ def c_dirty_rate_startup():
 
 check("FIX002.1 越界倍率启动回退", c_dirty_rate_startup)
 
-
-# ------------------- FIX001.5 首次天气查询（interface 层打桩，PL001.14） -------------------
+# FIX001.5 首次天气查询（interface 层打桩，PL001.14）
 weather_calls = []
 
 
@@ -103,68 +106,89 @@ def c_first_weather_query():
 
 check("FIX001.5 启动首次天气查询", c_first_weather_query)
 
+print("GUI_STAGE1_OK" if not failures else "GUI_STAGE1_FAIL", flush=True)
+"""
+
+# ------------------- 阶段 2：主窗口交互（3 窗） -------------------
+_STAGE2 = _STAGE_PRELUDE + """
+
+# 天气查询打桩（interface 层，避免真实网络）
+app_interface.AppInterface.fetch_weather = lambda self, city_name: None
+
 window = AcceleratedWorldGUI(AppInterface())
 
 
-# ------------------- T004 沉淀：快捷键 + 主题三态循环持久化（PL002.03） -------------------
+# T004.1/PL003.02 快捷键 + 主题双路径（设置页选择器 + 快捷键循环）
 def c_shortcuts_and_theme_persist():
     from PyQt6.QtGui import QShortcut
 
     scs = {s.key().toString(): s for s in window.findChildren(QShortcut)}
     for key in (_BASE["shortcuts"][k] for k in ("save", "quit", "theme")):
         assert key in scs, f"缺快捷键 {key}"
-    # 三态循环：auto→light→dark→auto（默认主题 auto，跟随系统）
     assert window.theme_pref == "auto", f"初始主题应为 auto: {window.theme_pref}"
-    scs[_BASE["shortcuts"]["theme"]].activated.emit()
+    scs[_BASE["shortcuts"]["theme"]].activated.emit()  # auto→light
     assert window.theme_pref == "light", "auto→light 未循环"
     assert window.is_dark_theme is False, "light 下生效深浅应为浅"
     assert get_setting("theme") == "light", "主题切换未持久化"
-    scs[_BASE["shortcuts"]["theme"]].activated.emit()
-    assert window.theme_pref == "dark" and window.is_dark_theme is True, "light→dark 未循环"
-    assert get_setting("theme") == "dark"
+    assert window.settings_panel.current_theme() == "light", "设置页选中态未同步"
     clear_and_reload()
     window2 = AcceleratedWorldGUI(AppInterface())
-    assert window2.theme_pref == "dark" and window2.is_dark_theme is True, (
-        "重启后主题未从配置恢复"
-    )
-    scs[_BASE["shortcuts"]["theme"]].activated.emit()  # dark→auto 还原跟随系统
-    assert get_setting("theme") == "auto", "dark→auto 未循环持久化"
-    return "三快捷键在位，主题三态循环与持久化往返生效"
-
-
-check("T004.1/PL002.03 快捷键与主题三态持久化", c_shortcuts_and_theme_persist)
-
-
-# ------------------- FIX002.10 --theme light 生效 -------------------
-def c_theme_light_arg():
-    set_setting("theme", "dark")
+    assert window2.theme_pref == "light", "重启后主题未从配置恢复"
+    scs[_BASE["shortcuts"]["theme"]].activated.emit()  # light→dark
+    assert window.theme_pref == "dark" and window.is_dark_theme is True
+    window.settings_panel.theme_switch.setCurrentItem("auto")  # 选择器路径直达
+    assert window.theme_pref == "auto", "设置页选择器未生效"
+    assert get_setting("theme") == "auto", "选择器路径未持久化"
     clear_and_reload()
     window3 = AcceleratedWorldGUI(AppInterface())
-    assert window3.is_dark_theme is True, "前置深色未恢复"
-    window3.apply_startup_args(theme="light")
-    assert window3.is_dark_theme is False, "--theme light 未生效"
-    clear_and_reload()
-    assert get_setting("theme") == "light", "--theme light 未持久化"
-    return "深色持久化下 --theme light 复位并持久化"
+    assert window3.theme_pref == "auto", "auto 持久化恢复失败"
+    return "三快捷键在位，设置页选择器与快捷键循环双路径均生效并持久化"
 
 
-check("FIX002.10 --theme light 生效", c_theme_light_arg)
+check("T004.1/PL003.02 主题双路径持久化", c_shortcuts_and_theme_persist)
 
 
-# ------------------- FIX002.9 托盘初始倍率同步持久化值 -------------------
-def c_tray_initial_rate():
-    set_setting("time_dilation_rate", 10.0)
-    clear_and_reload()
-    window4 = AcceleratedWorldGUI(AppInterface())
-    text = window4.tray.rate_action.text()
-    assert "10.0x" in text, f"托盘初始倍率未同步持久化值: {text!r}"
-    return f"托盘初始倍率同步持久化值: {text!r}"
+# PL003.01 六导航页存在与切换
+def c_six_pages_navigation():
+    stacked = window.stackedWidget
+    assert stacked.count() == 6, f"导航页数应为 6: {stacked.count()}"
+    names = [stacked.widget(i).objectName() for i in range(stacked.count())]
+    expected = {
+        "page-clock", "page-countdown", "page-world",
+        "page-weather", "page-alarm", "page-settings",
+    }
+    assert set(names) == expected, f"页容器命名不符: {names}"
+    for target in (window.countdown_panel, window.weather_panel, window.settings_panel):
+        window.switchTo(target.parent())
+        assert stacked.currentWidget() is target.parent(), f"切换到 {target} 失败"
+    window.switchTo(window.clock_panel.parent())  # 回时钟页
+    return "六导航页存在（时钟/倒计时/世界时钟/天气/闹钟/设置）且切换正常"
 
 
-check("FIX002.9 托盘初始倍率同步", c_tray_initial_rate)
+check("PL003.01 六导航页切换", c_six_pages_navigation)
 
 
-# ------------------- FIX001.6 铃声类型切换（PL002：对话框需父窗口） -------------------
+# PL003.04 英雄区等宽数字（走字宽度稳定）
+def c_hero_tabular_digits():
+    # 字体级验证：经实现的 _digit_font 纯函数构建同参字体（不碰活动控件——
+    # PyQt6 对活动控件字体做 featureTags/metrics 存在原生崩溃 heisenbug，实测规避）
+    from PyQt6.QtGui import QFontMetrics
+
+    from ui.panels.clock_panel import _digit_font
+
+    assert ":" in window.clock_panel.accelerated_time_label.text(), "英雄区时间标签未刷新"
+    font = _digit_font("Microsoft YaHei", 56)
+    fm = QFontMetrics(font)
+    w1 = fm.horizontalAdvance("11:11:11")
+    w2 = fm.horizontalAdvance("58:25:39")
+    assert w1 == w2, f"走字宽度抖动: {w1} vs {w2}"
+    return f"英雄区数字宽度稳定（{w1}px，雅黑数字天然等宽）"
+
+
+check("PL003.04 英雄区等宽数字", c_hero_tabular_digits)
+
+
+# FIX001.6 铃声类型切换（PL002：对话框需父窗口）
 def c_sound_switch_back_to_preset():
     from PyQt6.QtWidgets import QWidget
 
@@ -183,7 +207,7 @@ def c_sound_switch_back_to_preset():
 check("FIX001.6 铃声类型切换", c_sound_switch_back_to_preset)
 
 
-# ------------------- FIX001.10 倒计时恢复不清空 -------------------
+# FIX001.10 倒计时恢复不清空
 def c_countdown_restore_kept():
     marker = "2027-01-01 00:00:01"
     window.countdown_panel.restore_target(marker)
@@ -197,7 +221,7 @@ def c_countdown_restore_kept():
 check("FIX001.10 倒计时恢复不清空", c_countdown_restore_kept)
 
 
-# ------------------- PL002.06 选择器交互 check（qfw DatePicker/TimePicker 对话框） -------------------
+# PL003.06 选择器交互 check（qfw DatePicker/TimePicker 对话框）
 def c_pickers_construct_and_interact():
     from PyQt6.QtCore import QDate, QTime
 
@@ -222,10 +246,10 @@ def c_pickers_construct_and_interact():
     return "日期/时间选择器对话框构建、读写与确定接线 OK（不进模态 exec）"
 
 
-check("PL002.06 选择器交互", c_pickers_construct_and_interact)
+check("PL003.06 选择器交互", c_pickers_construct_and_interact)
 
 
-# ------------------- FIX001.19 保存失败上浮提示（FIX002.12 桩还原；桩点迁 settings 层） -------------------
+# FIX001.19 保存失败上浮提示（桩点迁 settings 层）
 def c_save_failure_notified():
     original_save = cs.save_config
     original_notify = window.tray.show_notification
@@ -248,7 +272,7 @@ def c_save_failure_notified():
 check("FIX001.19 保存失败上浮提示", c_save_failure_notified)
 
 
-# ------------------- FIX001.23 写盘去抖 + 双发消除（桩点迁 settings 层） -------------------
+# FIX001.23 写盘去抖 + 双发消除（桩点迁 settings 层）
 def c_slider_write_debounce():
     write_calls = []
     emit_calls = []
@@ -288,7 +312,7 @@ def c_slider_write_debounce():
 check("FIX001.23 写盘去抖与双发消除", c_slider_write_debounce)
 
 
-# ------------------- T004 沉淀：进度条动画（FIX002.8 全确定性，时间无关） -------------------
+# T004 沉淀：进度条动画（FIX002.8 全确定性，时间无关）
 def c_progress_animation():
     from PyQt6.QtCore import QPropertyAnimation
 
@@ -325,7 +349,7 @@ def c_progress_animation():
 check("T004.3 进度条动画沉淀", c_progress_animation)
 
 
-# ------------------- T004 沉淀：托盘悬停 -------------------
+# T004 沉淀：托盘悬停
 def c_tray_tooltip():
     count = {"n": 0}
     real = QSystemTrayIcon.setToolTip
@@ -351,7 +375,7 @@ def c_tray_tooltip():
 check("T004.4 托盘悬停沉淀", c_tray_tooltip)
 
 
-# ------------------- FIX001.23 列表外城市显示一致 -------------------
+# FIX001.23 列表外城市显示一致
 def c_out_of_list_city_display():
     city_names = window._interface.get_city_names()
     outside = next(n for n in ("葛底斯堡", "小城测试") if n not in city_names)
@@ -365,32 +389,64 @@ def c_out_of_list_city_display():
 
 check("FIX001.23 列表外城市显示", c_out_of_list_city_display)
 
-
-print("GUI_FIX001_OK" if not failures else "GUI_FIX001_FAIL", flush=True)
+print("GUI_STAGE2_OK" if not failures else "GUI_STAGE2_FAIL", flush=True)
 """
+
+# ------------------- 阶段 3：持久化重启语义（2 窗） -------------------
+_STAGE3 = _STAGE_PRELUDE + """
+
+# FIX002.10 --theme light 生效（深色持久化下复位并持久化）
+set_setting("theme", "dark")
+clear_and_reload()
+window3 = AcceleratedWorldGUI(AppInterface())
+assert window3.is_dark_theme is True, "前置深色未恢复"
+window3.apply_startup_args(theme="light")
+assert window3.is_dark_theme is False, "--theme light 未生效"
+clear_and_reload()
+assert get_setting("theme") == "light", "--theme light 未持久化"
+print("[PASS] FIX002.10 --theme light 生效", flush=True)
+
+# FIX002.9 托盘初始倍率同步持久化值
+set_setting("time_dilation_rate", 10.0)
+clear_and_reload()
+window4 = AcceleratedWorldGUI(AppInterface())
+text = window4.tray.rate_action.text()
+assert "10.0x" in text, f"托盘初始倍率未同步持久化值: {text!r}"
+print(f"[PASS] FIX002.9 托盘初始倍率同步: {text!r}", flush=True)
+
+print("GUI_STAGE3_OK", flush=True)
+"""
+
+_STAGE_SCRIPTS = {
+    1: (_STAGE1, "GUI_STAGE1_OK"),
+    2: (_STAGE2, "GUI_STAGE2_OK"),
+    3: (_STAGE3, "GUI_STAGE3_OK"),
+}
 
 
 def test_gui_features_subprocess(tmp_path):
-    # GUI 断言子进程：stdout 末尾标记为通过依据（退出码受已知退出期崩溃污染，不作依据）
-    config_file = tmp_path / "user_config.json"
+    # 分阶段子进程：每阶段独立进程/独立配置，单进程 ≤3 窗（规避窗口资源累积硬崩）；
+    # stdout 末尾标记为通过依据（退出码受已知退出期崩溃污染，不作依据）
     env = {
         **os.environ,
         "QT_QPA_PLATFORM": "offscreen",
         "PYTHONIOENCODING": "utf-8",
-        "ACCELWORLD_CONFIG_FILE": str(config_file),
     }
-    result = subprocess.run(
-        [sys.executable, "-c", _SUBPROCESS_SCRIPT, str(_PROJECT_ROOT), str(config_file)],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        timeout=180,
-        cwd=_PROJECT_ROOT,
-        env=env,
-    )
-    assert "GUI_FIX001_OK" in result.stdout, (
-        f"GUI 功能子进程校验未通过\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    )
+    for stage, (script, marker) in _STAGE_SCRIPTS.items():
+        config_file = tmp_path / f"user_config_s{stage}.json"
+        stage_env = {**env, "ACCELWORLD_CONFIG_FILE": str(config_file)}
+        result = subprocess.run(
+            [sys.executable, "-c", script, str(_PROJECT_ROOT), str(config_file)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=180,
+            cwd=_PROJECT_ROOT,
+            env=stage_env,
+        )
+        assert marker in result.stdout, (
+            f"阶段 {stage} GUI 校验未通过\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
 
 
 def test_version_flag_creates_no_log_file(tmp_path):
