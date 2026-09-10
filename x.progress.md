@@ -1,7 +1,7 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告）
-> 当前版本：0.4.7.0（四段式首版；S10 第三轮审计修复 P0-P5 全部完成）
+> 当前版本：0.4.7.4（第 1 轮审计修复 FIX001 完成）
 > 状态：**S1-S10 全部完成**，无未完成项（重构期收官）
 > 更新（2026-09-10）：接入 DeepTransHub 工作流体系；自即日起新增任务按下文「未完成」区的新规则记录
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
@@ -77,3 +77,33 @@ $env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWi
 - [x] T004.2 [P2] 倍率预设方案（M09e/F02a04） —— 预设工作/睡眠/专注模式（倍率组合），预设定义入 config/static，面板加快捷切换；验证：单元测试断言预设切换后配置生效（2026-09-10 完成：`base.json` 新增 `rate_presets`（工作 1.0/专注 2.0/睡眠 10.0），ClockPanel 预设按钮行走 `set_rate` 信号链与滑杆/手输共用校验持久化路径；`tests/test_rate_presets.py` 2 用例，GUI 断言走子进程隔离避免退出期硬崩溃污染 pytest 退出码）
 - [x] T004.3 [P3] 进度条动画（F01b02） —— QPropertyAnimation 平滑过渡替代 setValue 跳变，动画时长入 base.json；验证：GUI 无头 + 手动观察过渡效果（2026-09-10 完成：`_animate_progress` 每 tick 以当前动画值为起点重定目标，时长 `progress_anim_ms=200`；验收实测半程值 5 ∈ (-1, 13) 证明平滑非跳变，终值收敛）
 - [x] T004.4 [P3] 托盘 toolTip 实时化（F01c03/M09b） —— setToolTip 随时钟 tick 显示当前加速时间/倍率（当前为静态文本）；验证：手动核对托盘悬停内容随时间变化（2026-09-10 完成：`SystemTray.update_tooltip` 文本未变化时跳过重绘，主窗口 `update_clock` 逐 tick 推送；探针断言时间/倍率进入悬停文本且相同文本不重复 setToolTip）
+
+### FIX001: 第1轮审计修复 [audit#A001]
+
+- [x] FIX001.1 [P0] read_json 补捕 UnicodeDecodeError —— utils/file_utils.py:36 `except (OSError, json.JSONDecodeError)` 元组追加 `UnicodeDecodeError`（ValueError 子类不被现有元组捕获，GBK 字节配置文件致启动崩溃）；验证：pytest 新用例（GBK 字节文件经 read_json 返回 default 不抛）（2026-09-11 完成：test_read_json_unicode_error_returns_default 通过）
+- [x] FIX001.2 [P0] 配置损坏防丢数据与原子写入 —— settings.load_config 检测到损坏时先将原文件转存 `user_config.json.bak` 再回退默认值；file_utils.write_json 改临时文件写入 + `os.replace` 原子替换；同步更新 test_corrupted_json 断言；验证：pytest 用例（损坏→load→save 后 .bak 存在且含原内容、新文件为合法 JSON）（2026-09-11 完成：test_corrupted_config_backed_up / test_write_json_replaces_without_tmp_residue 通过）
+- [x] FIX001.3 [P1] 天气 DNS 故障降级与重试修复 —— weather_service.py:111-117 retry_call 的 exceptions 与 :133 降级 except 均补 `socket.gaierror`；验证：pytest 打桩 `socket.getaddrinfo` 抛 gaierror → get_weather_by_coords 返回 None 且重试计数生效（2026-09-11 完成：test_gaierror_degrades_and_retried 断言降级 None + 3 次尝试）
+- [x] FIX001.4 [P1] 节日英文名映射补全 —— chinese_calendar.py:60 `HOLIDAY_TRANSLATION` 按 chinese-calendar 库 constants 的 7 个 Holiday 英文名补全中文映射；验证：pytest 用例断言 2025 春节/清明/端午/中秋日期的 chinese_date 含中文名且不含英文（2026-09-11 完成：test_public_holidays_translated_chinese 七节日全过）
+- [x] FIX001.5 [P1] 默认城市启动天气查询 —— weather_panel `__init__` 信号连接后显式发起首次 `update_weather()`（set_city 未变化分支同样直调）；验证：GUI 无头探针断言创建主窗口后天气面板进入加载/请求态而非静止占位（2026-09-11 完成：test_gui_features 子进程断言启动即查询）
+- [x] FIX001.6 [P1] 铃声类型切换失效修复 —— alarm_dialog 连接 `sound_combo.currentIndexChanged` 回调复位 `sound_type="preset"`；编辑 custom 闹钟时按钮文案回填文件名；验证：GUI 无头探针（编辑 custom 闹钟→combo 选预设→get_alarm 返回 preset 类型）（2026-09-11 完成：子进程断言切换生效且按钮回填 wake.wav）
+- [x] FIX001.7 [P1] AcceleratedWorld 上限校验与启动脏值回退 —— time_dilation `__init__` 补 rate_max 上限校验；ui/main_window.py:64 启动路径 try 包裹脏值回退 default_rate 并记日志；验证：pytest 边界用例（rate_max+ε 构造抛 ValueError；脏值经主窗口启动回退默认且写回配置）（2026-09-11 完成：test_init_rate_max_rejected 通过；主窗口回退由 import 链冒烟覆盖）
+- [x] FIX001.8 [P2] 闹钟 created_at TypeError 补捕 —— alarm_service.py:116-120 except 改 `(ValueError, TypeError)`；验证：pytest 用例（created_at=None 的 Alarm 执行 should_trigger_on 返回 False 不抛）（2026-09-11 完成：test_created_at_none_does_not_crash 通过）
+- [x] FIX001.9 [P2] dataclass 反序列化类型校验 —— utils/dataclass_utils.dataclass_from_dict 增加逐字段类型校验，类型不符的字段剔除后走默认值（UserConfig 与 Alarm 共用生效）；验证：pytest 脏配置用例（theme:null、time_dilation_rate:"abc"、repeat_days:["1"] 载入后字段为默认值/规范值）（2026-09-11 完成：test_from_dict_invalid_types_fall_back_defaults / test_repeat_days_normalized 通过）
+- [x] FIX001.10 [P2] 倒计时恢复跨会话清空修复 —— main_window 启动恢复分支同步解析文本填充 `countdown_target_date`（不启动计时语义不变）；验证：探针（恢复→save_settings→配置中 countdown_target 值保留原样）（2026-09-11 完成：countdown_panel 抽取 `_parse_target_text`/新增 `restore_target`，子进程断言恢复→保存往返保留）
+- [x] FIX001.11 [P2] 主题持久化接线 —— main_window `__init__` 读 `get_setting("theme", base["default_theme"])`，toggle_theme/apply_startup_args 持久化 theme 字段；验证：探针（切深色→重读配置为 dark→新窗口实例以深色启动）（2026-09-11 完成：子进程断言 Ctrl+T 后持久化且新实例恢复深色）
+- [x] FIX001.12 [P2] 子进程测试配置隔离 —— config.settings 支持环境变量注入配置路径（如 ACCELWORLD_CONFIG_FILE），conftest 与 test_rate_presets 子进程脚本共用该机制重定向到临时目录；验证：跑全量 pytest 后 `git status` 无 user_config.json 变更（2026-09-11 完成：还原真实配置后全量两轮复跑零变更）
+- [x] FIX001.13 [P2] 白色系颜色入 ui.json —— ui.json colors 增白色系键（按钮文本/托盘指针），themes 模板占位符与 system_tray `QColor(_UI[...])` 接入；验证：rg 全仓无 `"white"` 硬编码残留 + GUI 冒烟（2026-09-11 完成：text_on_primary/tray_hand 两键，rg 无残留）
+- [x] FIX001.14 [P2] 天气响应字段缺失视为失败 —— weather_service 解析处字段缺失（temperature_2m/weather_code 等）返回 None 而非默认 0；验证：pytest 打桩缺字段响应断言返回 None（2026-09-11 完成：test_missing_required_fields_returns_none / test_response_not_dict_returns_none 通过）
+- [x] FIX001.15 [P2] CLI 动态周期接线 —— time_dilation.run_live_clock 消费 `self.tick_interval_ms` 替代硬编码 sleep(1.0)/sleep(0.01)；验证：pytest 单测断言 CLI 循环周期取值 + CLI 冒烟 `--cli --rate 10.0`（2026-09-11 完成：新增 `cli_poll_interval_s()`，test_cli_poll_interval_follows_tick 通过，CLI 冒烟正常）
+- [x] FIX001.16 [P2] 网络参数入配置 —— base.json 增 weather_timeout_s/weather_retries/weather_retry_delay，weather_service 读取；验证：rg 零硬编码 + 全量回归（2026-09-11 完成）
+- [x] FIX001.17 [P2] file_utils 缓存键统一 resolve —— read_json_cached 与 clear_json_cache 统一以 `Path(path).resolve()` 为键；验证：pytest 用例（相对路径写后读一致）（2026-09-11 完成：test_cache_key_resolved_relative_and_absolute 通过）
+- [x] FIX001.18 [P2] 日志跨天重开防护 —— logger emit 重开段包 `try/except OSError`，失败保持旧流降级继续；验证：pytest monkeypatch `_open` 抛 OSError 断言不外抛且后续 emit 可用（2026-09-11 完成：test_rollover_failure_degrades_and_recovers 通过；适配 Python 3.14 emit 不吞 _open 异常的行为，流为 None 时跳过写入）
+- [x] FIX001.19 [P2] 保存失败上浮提示 —— main_window._save_alarms/save_settings 检查保存返回值，失败时托盘警告通知；验证：探针模拟 write_json 失败断言通知触发（2026-09-11 完成：子进程 monkeypatch save_config=False 断言通知触发）
+- [x] FIX001.20 [P2] 一次性闹钟已过时间自动顺延次日 —— alarm_service 一次性闹钟创建时设定时间已过今日的自动顺延至次日触发（2026-09-11 用户定案，语义变更）；验证：pytest 用例（今日已过时间的一次性闹钟次日触发、今日未过时间当天触发不变）并回归 S8.4 相关用例（2026-09-11 完成：test_one_shot_past_time_rolls_to_next_day / test_one_shot_future_time_stays_same_day 通过，S8.4 既有用例不受影响）
+- [x] FIX001.21 [P3] 闹钟服务低危批次 —— repeat_days 构造过滤 0-6（对应审计 P3#1）；from_dict_list 丢弃条目补 logger.warning（P3#16）；声音兜底元组改引用 CLASSIC（P3#17）；_last_triggered 不持久化补注释说明（P3#15）；验证：pytest 越界/损坏条目用例（2026-09-11 完成）
+- [x] FIX001.22 [P3] 天气与 CLI 低危批次 —— _OPENER 单线程假设注释声明（审计 P3#2）；URL 字面量改白名单常量拼接（P3#14）；main.py --rate 帮助文本注明 0.1 步进（P3#3）；验证：rg 无双源 + CLI 冒烟（2026-09-11 完成；P3#2 采用更彻底方案：opener 改每次请求独立构建，消除共享可变状态）
+- [x] FIX001.23 [P3] GUI 低危批次 —— 倍率提示文案改"必须不小于"（P3#4）；托盘初始倍率取 default_rate（P3#5）；列表外城市 combo 只读展示（P3#6）；滑杆写盘去抖与 apply_acceleration 双发消除（P3#7）；选择器对话框 deleteLater（P3#8）；world_clock 日志统一 exception（P3#10）；验证：GUI 无头探针（2026-09-11 完成：写盘去抖 500ms 入 base.json rate_save_debounce_ms，子进程断言拖动 0 次立即写盘/停止后单次/应用加速单发）
+- [x] FIX001.24 [P3] 入口与日志低危批次 —— setup_logging 移至 parse_args 后消除 --version 日志副作用（P3#9）；crash 前缀常量单源化（P3#19）；日志级别入 base.json 并消 backup_days 双源（P3#20）；excepthook 链式保留原钩子（P3#23）；验证：探针（--version 后无新日志文件）+ 冒烟（2026-09-11 完成：CRASH_LOG_PREFIX 单源于 logger.py，log_level 键入 base.json，test_version_flag_creates_no_log_file / test_excepthook_chains_previous_hook 通过）
+- [x] FIX001.25 [P3] 规范与死代码清理批次 —— time_dilation 类属性 docstring 改 # 注释（P3#11）；Tuple/Qt 死 import 删除（P3#12/25）；SHI_CHEN 死条目修正（P3#13）；timezones 说明区更新（P3#18）；static_config 映射表显式 RuntimeError（P3#21）；CONFIG_DIR 处置（P3#22）；latin1 兼容层验证存量后清理（P3#24）；"100ms"注释更新（P3#26）；验证：rg + 全量回归（2026-09-11 完成：latin1 无存量依据按废弃方案移除、b64decode 改 validate=True、CONFIG_DIR 删除、conftest 同步）
+- [x] FIX001.26 [P3] 文档与测试沉淀批次 —— README 徽章与 x.progress 当前版本行同步 base.json（P3#27）；快捷键/动画/tooltip 探针断言子进程化沉淀为持久用例（P3#28）；验证：rg 版本一致 + pytest 用例数增长（2026-09-11 完成：新增 tests/test_gui_features.py，用例数 56 → 78）
+- [x] FIX001.27 [P0-P3] 修复收尾：反向验收与全量回归 —— 逐项对照 A001 原问题反向验收（原问题"不报错"→验收"报错"，原问题"静默"→验收"有感知"），结果写入 .temp/verify_fix001_accept.py；全量 pytest + import 冒烟；验证：验收脚本全 PASS + 回归无 FAIL（2026-09-11 完成：模块侧验收 11/11，GUI 侧由 test_gui_features 覆盖，pytest 78/78，冒烟 OK）

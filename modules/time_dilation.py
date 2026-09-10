@@ -16,6 +16,9 @@ from modules.chinese_calendar import get_chinese_date, get_lunar_info
 # 静态配置（默认倍率）
 from config.static.static_config import get_static_config
 
+# CLI 单轮异常后的暂停秒数（防错误刷屏；防御路径常量，非业务调参场景）
+_CLI_ERROR_PAUSE_S = 1.0
+
 
 @dataclass
 class TimeInfo:
@@ -44,20 +47,21 @@ class TimeInfo:
 
 
 class AcceleratedWorld:
-    time_dilation_rate: float
-    """时间膨胀倍率（下限来自静态配置 rate_min，默认 default_rate）"""
-
-    custom_hours_per_day: int
-    """基于膨胀率计算的一天总小时数"""
+    time_dilation_rate: float  # 时间膨胀倍率（下限/上限来自静态配置，默认 default_rate）
+    custom_hours_per_day: int  # 基于膨胀率计算的一天总小时数
 
     def __init__(self, time_dilation_rate: float | None = None):
-        # None 哨兵避免默认参数在定义时求值硬编码；下限读 base.rate_min（消除与配置的 1.0 边界矛盾）
+        # None 哨兵避免默认参数在定义时求值硬编码；上下限读 base.rate_min/rate_max
+        # （FIX001.7：补上限校验，与下限对称——脏持久化值经启动路径回退兜底）
         base = get_static_config().base
         if time_dilation_rate is None:
             time_dilation_rate = float(base["default_rate"])
         rate_min = float(base["rate_min"])
+        rate_max = float(base["rate_max"])
         if time_dilation_rate < rate_min:
             raise ValueError(f"时间膨胀倍率必须大于或等于{rate_min}！")
+        if time_dilation_rate > rate_max:
+            raise ValueError(f"时间膨胀倍率必须小于或等于{rate_max}！")
         self.time_dilation_rate = time_dilation_rate
         self.custom_hours_per_day = int(
             24 * time_dilation_rate
@@ -73,6 +77,11 @@ class AcceleratedWorld:
         base_tick_ms = int(get_static_config().base["clock_tick_ms"])
         accelerated_second_ms = 1000.0 / self.time_dilation_rate
         return max(1, min(base_tick_ms, int(accelerated_second_ms)))
+
+    def cli_poll_interval_s(self) -> float:
+        # CLI 轮询周期（秒）= tick_interval_ms/1000，与 GUI 同源随倍率联动
+        # （FIX001.15：clock_tick_ms 此前被 CLI 硬编码 sleep 旁路）
+        return self.tick_interval_ms / 1000
 
     def get_custom_time(self) -> TimeInfo:
         # 标准时间与加速时间每次调用现算（廉价算术，加速时间随倍率节奏实时推进，修复 T001.1）；
@@ -168,12 +177,13 @@ class AcceleratedWorld:
                         sys.stdout.flush()
                         last_output_key = output_key
                 except Exception as e:
-                    # 单轮异常（如农历库异常）记录后继续，避免 CLI 崩溃退出
+                    # 单轮异常（如农历库异常）记录后继续，避免 CLI 崩溃退出；
+                    # 异常后固定暂停防刷屏（防御路径常量，非业务调参场景）
                     logger.exception(f"实时时钟单轮刷新异常: {e}")
-                    time.sleep(1.0)
+                    time.sleep(_CLI_ERROR_PAUSE_S)
 
-                # 使用短暂的休眠，平衡精度和CPU使用率
-                time.sleep(0.01)  # 10毫秒休眠
+                # 轮询周期与 GUI 同源随倍率联动（FIX001.15）
+                time.sleep(self.cli_poll_interval_s())
         except KeyboardInterrupt:
             print("\n\n时钟已停止运行～")
 
@@ -209,14 +219,16 @@ if __name__ == "__main__":
 #   standard_datetime/custom_time/chinese_date/lunar_info/dilation_percentage/
 #   expanded_hours_per_day/remaining_hours
 # AcceleratedWorld: 时间膨胀核心类
-#   __init__(rate=None): 默认值与下限校验来自静态配置（default_rate/rate_min，None 哨兵零硬编码），
-#     下限为 rate_min（含边界，修复 S10.1 A1 的 1.0 矛盾），计算一天自定义小时数（int(24*rate)）
+#   __init__(rate=None): 默认值与上下限校验来自静态配置（default_rate/rate_min/rate_max，
+#     None 哨兵零硬编码；FIX001.7 补上限校验），计算一天自定义小时数（int(24*rate)）
 #   tick_interval_ms 属性: 刷新周期 = min(基础 tick 周期, 1000/倍率)，保证加速秒边界不被错过
-#     （T001.1 新增，GUI 定时器与 CLI 轮询节奏随倍率联动）
+#     （T001.1 新增，GUI 定时器随倍率联动）
+#   cli_poll_interval_s(): CLI 轮询周期（秒）= tick_interval_ms/1000（FIX001.15，与 GUI 同源）
 #   get_custom_time() -> TimeInfo: 标准时间/加速时间每次现算（加速时间随倍率节奏实时推进，
 #     修复 T001.1 标准秒缓存导致的固定 1 秒刷新）；农历/中文日期按标准秒缓存复用，
 #     同标准秒仅全量计算一次（保留 S9.3 的性能收益）
-#   run_live_clock(): CLI 实时钟，标准/加速显示内容变化时覆写输出，KeyboardInterrupt 优雅退出
+#   run_live_clock(): CLI 实时钟，标准/加速显示内容变化时覆写输出，轮询周期经
+#     cli_poll_interval_s 随倍率联动（FIX001.15），KeyboardInterrupt 优雅退出
 # main_cli(rate): CLI 入口（倍率直接传参，修复 D1），校验后启动实时钟
 #   设计理由：纯计算无 GUI 依赖，CLI/GUI 共用；整数运算避免浮点进位误差
 #   异常处理：rate < rate_min 抛 ValueError；运行期 KeyboardInterrupt 捕获退出

@@ -1,5 +1,5 @@
 {
-  "version": "0.4.7.3",
+  "version": "0.4.7.4",
   "rate_min": 1.0,
   "rate_max": 20.0,
   "default_rate": 2.0,
@@ -22,10 +22,15 @@
   "window_width": 900,
   "window_height": 500,
   "clock_tick_ms": 100,
+  "rate_save_debounce_ms": 500,
   "progress_anim_ms": 200,
   "alarm_check_ms": 1000,
   "notification_duration_ms": 3000,
   "weather_cache_ttl": 1800,
+  "weather_timeout_s": 10,
+  "weather_retries": 3,
+  "weather_retry_delay": 1.0,
+  "log_level": "INFO",
   "user_config": "config/user_config.json",
   "logs_dir": "logs",
   "log_backup_days": 7

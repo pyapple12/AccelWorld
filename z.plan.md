@@ -151,4 +151,116 @@
 > 格式：`## 附录 A{NNN}：全量代码审计报告（第N轮，YYYY-MM-DD）`，编号 `A001` 起递增（取号：搜索本文档 `## 附录 A\d{3}` 最大值 +1）。
 > 审计执行见 `.agents/skills/audit-project`，归档流程见 `.agents/skills/audit-report`，修复任务组 `FIX{NNN}` 写入 `x.progress.md` 未完成区。
 
-（暂无审计报告，首轮从 A001 开始）
+## 附录 A001：全量代码审计报告（第 1 轮，2026-09-10；2026-09-11 归档）
+
+> 范围：main.py + config/ data/ modules/ ui/ utils/ tests/ 全部 42 个 .py/.json 文件全文通读（三路并行子审计 + 主会话高严重度逐条亲核与行号抽查）
+> 方式：只读审计，未修改任何代码；豁免定案清单当时为空，无已定案豁免项
+> 状态：✅ 已修复（2026-09-11，FIX001 任务清单见 x.progress.md，版本 V0.4.7.4）
+
+### 零、回归复核清单
+
+> 无上轮 A 编号报告（首轮），改为对照最近 4 个版本提交复核改动引入问题。
+
+| 来源提交 | 结论（现状/证据） |
+| --- | --- |
+| 2638a09（V0.4.7.0 安全加固） | ⚠️ 引入回归 1 项：gaierror 逃逸降级契约（P1-1）；write_json 越界校验对全部调用方成立（settings.py:67 + tests 3 处），无漏改 |
+| 6f29d47（V0.4.7.1） | ⚠️ 漏改：T001.1 仅落地 GUI 侧动态周期，CLI sleep 硬编码残留（P2-8）；死 import 与失实注释各 1（P3-25/26） |
+| 05273bd（V0.4.7.2 监控） | ✅ 装配时机、crash 日志清理、句柄防 GC 均正确；边界项 `--version` 日志副作用（P3-9） |
+| bd0c5e4（V0.4.7.3） | ✅ 快捷键/预设信号链/动画/tooltip 实现正确无双发；⚠️ 子进程测试写真实用户配置无还原（P2-5，实施当日实际发生并手工还原，确证） |
+
+### 一、P0-P3 修复清单
+
+#### P0（启动崩溃 / 不可逆数据丢失，确定性复现）
+
+| 文件:行号 | 类型 | 描述 | 建议 | 性质 | 影响面 |
+| --- | --- | --- | --- | --- | --- |
+| utils/file_utils.py:36 | 1 正确性 | `read_json` 异常捕获漏 `UnicodeDecodeError`（ValueError 子类，两者均不捕获）：配置含非 UTF-8 字节（GBK 记事本保存）时异常穿透 import 链，启动即崩溃 | except 补 `UnicodeDecodeError` | 新增 | 配置体系/跨模块 |
+| config/settings.py:57-70 + utils/file_utils.py:59-61 | 13+2 | 损坏配置静默重置为默认值 + 任一保存即以默认值覆盖旧文件（闹钟/倒计时/城市记忆不可恢复丢失）；`write_text` 非原子写入加剧闭环 | 损坏时先转存 `.bak` 再兜底；写入改临时文件+rename 原子替换（同步改 test_corrupted_json 断言） | 新增 | 配置体系 |
+
+#### P1（功能确定性失效）
+
+| 文件:行号 | 类型 | 描述 | 建议 | 性质 | 影响面 |
+| --- | --- | --- | --- | --- | --- |
+| modules/weather_service.py:76, 111-117, 133 | 13 错误策略 | V0.4.7.0 引入回归：`socket.getaddrinfo` 的 `gaierror` 不在 retry_call 白名单也不在降级 except → 断网/DNS 故障 0 重试且抛异常而非承诺的 `None`（加固前经 urlopen 包装为 URLError 可重试可降级） | retry 与降级 except 均补 `socket.gaierror` | 新增（回归） | 天气服务 |
+| modules/chinese_calendar.py:60 | 1 正确性 | `HOLIDAY_TRANSLATION` 仅映射 7 个 Holiday 英文名中的 2 个：春节/清明/端午/中秋/抗战胜利日泄漏英文（实测 2025-01-30 显示 "Spring Festival"） | 按库常量补全 7 项映射 | 新增 | 农历日历 |
+| ui/panels/weather_panel.py:74-79, 143-149 | 1 正确性 | 默认城市启动时不触发天气查询：`setCurrentText` 在信号连接前执行、恢复 last_city 文本未变化不发射信号 → 天气区悬挂"获取天气中..."最长 30 分钟 | `__init__` 尾部或 `set_city` 未变化分支显式调 `update_weather()` | 新增 | GUI 面板 |
+| ui/alarm_dialog.py:29, 56-74, 104-133 | 1 正确性 | `sound_combo` 无 `currentIndexChanged` 监听：自定义铃声闹钟选任何预设铃声被静默忽略（自定义→预设方向完全不可用）；自定义闹钟打开时按钮不回填文件名 | combo 切换回调复位 `sound_type="preset"`；编辑模式回填按钮文案 | 新增 | 闹钟服务/GUI 面板 |
+| modules/time_dilation.py:53-64 | 2 防御 | 构造只校验 `rate_min` 不校验 `rate_max` 且失败 raise 不回退：脏配置（rate<1.0、非数值）经 ui/main_window.py:64 原样传入 → 启动即崩溃；超大值另致 1000Hz 轮询 | 补上限校验或超界回退 default_rate 并记日志 | 新增 | 时间膨胀/主流程编排(main) |
+
+#### P2
+
+| 文件:行号 | 类型 | 描述 | 建议 | 性质 | 影响面 |
+| --- | --- | --- | --- | --- | --- |
+| modules/alarm_service.py:116-120 + ui/panels/alarm_panel.py:154-160 | 2 防御 | `created_at=None`（脏配置可构造成功）时 `fromisoformat` 抛 `TypeError` 穿透 QTimer 槽（实测 TypeError）→ PyQt6 槽内未捕获异常将中止应用；与 S10 A2 修复模式不一致（同场景漏改） | except 改 `(ValueError, TypeError)` | 新增 | 闹钟服务 |
+| utils/dataclass_utils.py:15-24 + config/settings.py:27-54 + modules/alarm_service.py:130-133 | 2 防御 | dataclass 反序列化无运行时类型校验（同根因合并）：`theme:null`、`time_dilation_rate:"abc"` 静默载入回写；`repeat_days:["1"]` 构造成功但星期匹配恒 False（实测，闹钟永不重复响） | from_dict 增加逐字段类型校验，非法回退默认 | 新增 | 配置体系/闹钟服务/跨模块 |
+| ui/main_window.py:104-106, 257 + ui/panels/countdown_panel.py:167-171 | 1 正确性 | 恢复的倒计时目标未填 `countdown_target_date`（None）→ `get_target_text` 返回空 → 下一次正常退出即把持久化值清空（跨会话数据丢失） | 恢复时同步解析填充 date（不启动计时），或改"有文本即返回" | 新增 | GUI 面板 |
+| ui/main_window.py:117, 251-258 | 1+3 | 主题选择完全不持久化：`is_dark_theme=False` 硬编码、save_settings 不写 theme；`base.json default_theme` 与 `UserConfig.theme` 成互喂死链路（全仓 grep 证实无其他读写点） | init 读配置、切换时持久化 | 新增 | GUI 面板/配置体系 |
+| tests/test_rate_presets.py:20-92 | 12 测试卫生 | 子进程测试写真实 user_config.json 且无还原（conftest 隔离对子进程无效），每次跑 pytest 都把用户倍率改成 10.0 | 子进程内重定向配置路径（环境变量注入临时目录），与 conftest 共用机制 | 新增 | 测试 |
+| ui/themes.py:89, 180 + ui/system_tray.py:41 | 3 硬编码 | QSS 按钮文本 `color: white` 与托盘指针 `QColor("white")` 硬编码（"该进配置未进"，不可豁免） | ui.json 增白色系键并接入 `_apply_colors` | 新增 | GUI 面板/托盘与音频 |
+| modules/weather_service.py:119-127 | 2 防御 | Open-Meteo 响应字段缺失时默认 0：接口变更时显示"晴 0.0°C"假数据而非失败 | 字段缺失视为失败返回 None | 新增 | 天气服务 |
+| modules/time_dilation.py:173, 176 | 3 硬编码 | CLI 循环硬编码 `sleep(1.0)`/`sleep(0.01)`，`clock_tick_ms` 与 `tick_interval_ms` 被 CLI 旁路（T001.1 计划口径含 CLI，漏改） | `run_live_clock` 消费 `tick_interval_ms` | 新增（漏改） | CLI/时间膨胀 |
+| modules/weather_service.py:88, 115-116 | 3 硬编码 | `timeout=10`/`retries=3`/`delay=1.0` 网络参数硬编码 | 入 base.json | 新增 | 天气服务/配置体系 |
+| utils/file_utils.py:42 vs 62 | 2+11 | 缓存键不一致：读用未 resolve 路径、写清缓存用 resolve 后路径（V0.4.7.0 改动残留）；当前调用方恰好全部规范化故未触发 | 三处统一 `Path(path).resolve()` 为键 | 新增 | utils 公共契约 |
+| utils/logger.py:33-40 | 2 防御 | 跨天重开日志文件无异常防护：重开失败后文件日志通道静默永久失效直至重启 | 重开段包 `try/except OSError` 降级 | 新增 | 日志 |
+| config/settings.py:65-70 + ui/main_window.py:170 | 10+13 | 保存失败静默：磁盘满/只读时 `save_config` 返回 False，`_save_alarms`/`save_settings` 等调用方全部忽略返回值，用户无感知且内存磁盘持续分叉 | 失败上浮 UI 提示 | 新增 | 配置体系/GUI 面板 |
+| modules/alarm_service.py:114-121 + ui/alarm_dialog.py:116-117 | 1/2 语义 | 一次性闹钟"仅创建当天触发"（S8.4 定案）副作用：创建时设定时间已过今日则永不触发且 UI 持续显示启用；对话框无日期选择无法表达"明天的一次性" | **已定案修复（2026-09-11 用户确认）：创建时已过今日时间自动顺延次日触发（语义变更，需回归 S8.4 相关用例）** | 新增 | 闹钟服务 |
+
+#### P3（低）
+
+| # | 文件:行号 | 类型 | 描述 | 建议 | 性质 | 影响面 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | modules/alarm_service.py:78 + ui/panels/alarm_panel.py:219 | 2 | 越界 `repeat_days=[9]` 可致启动 IndexError【需验证】 | `__post_init__` 过滤 0-6 | 新增 | 闹钟服务 |
+| 2 | modules/weather_service.py:66, 88 | 8 | `_OPENER` 全局复用理论性线程安全【需验证】 | 每任务构建或注释声明单线程假设 | 新增 | 天气服务 |
+| 3 | main.py:44-50, 71-76 | 1 | CLI `--rate 2.05` 等非 0.1 步进值被银行家舍入静默吸附且方向不一致，帮助文本未说明粒度（实机验证） | 帮助文本注明 0.1 步进或显式提示 | 新增 | CLI |
+| 4 | ui/panels/clock_panel.py:104-106 | 6 | 提示"必须大于1.0"与闭区间校验矛盾，且预设"工作 1.0x"即取该值 | 文案改"必须不小于" | 新增 | GUI 面板 |
+| 5 | ui/system_tray.py:64 | 3 | 托盘菜单初始倍率硬编码 "2.0x" | 取 `base["default_rate"]` | 新增 | 托盘与音频 |
+| 6 | ui/panels/weather_panel.py:143-149 | 1 | 列表外 `--city` 时下拉框显示旧城市而查询按实际城市 | combo 只读展示实际城市 | 新增 | GUI 面板 |
+| 7 | ui/panels/clock_panel.py:190-215 | 9 | 滑杆拖动每格重建实例+写盘（2.0→10.0 约 80 次写盘）；`apply_acceleration` 显式 emit + setValue 再 emit 双发（幂等但冗余 IO） | sliderReleased 再发/写盘去抖；删显式 emit 统一走 `set_rate` | 新增 | GUI 面板 |
+| 8 | ui/panels/countdown_panel.py:194, 243 | 9 | 选择器对话框重复打开累积未释放子 QDialog | `exec()` 后 `deleteLater()` | 新增 | GUI 面板 |
+| 9 | main.py:19-22, 68 | 2 | `--version/--help` 仍创建当日日志文件（setup_logging 先于 parse_args） | setup_logging 移至 parse_args 后 | 新增 | 主流程编排(main) |
+| 10 | ui/panels/world_clock_panel.py:82-84 | 13 | `logger.error` 无堆栈，与他处同类回调 `logger.exception` 风格不一 | 统一 `logger.exception` | 新增 | GUI 面板 |
+| 11 | modules/time_dilation.py:47-52 | 6 | 类属性用 docstring 当注释（S10 P5 清理残留） | 改 `#` 注释 | 新增 | 时间膨胀 |
+| 12 | modules/chinese_calendar.py:5 | 5 | `Tuple` import 未使用 | 删除 | 新增 | 农历日历 |
+| 13 | modules/chinese_calendar.py:11 | 5 | `SHI_CHEN` 条目 `(23, 1, "子时")` 恒 False 死数据（结果靠 else 兜底，正确但误导） | 改 `(23,24)`+`(0,1)` 或注释说明 | 新增 | 农历日历 |
+| 14 | modules/weather_service.py:102-108 vs 42-43 | 4 | URL 字面量与 `_API_SCHEME/_API_HOST` 白名单双源维护 | URL 用常量拼接 | 新增 | 天气服务 |
+| 15 | modules/alarm_service.py:174-176 | 2 | `_last_triggered` 仅内存，同分钟重启重复响（窗口极窄） | 持久化或豁免定案 | 新增 | 闹钟服务 |
+| 16 | modules/alarm_service.py:250-259 | 10 | `from_dict_list` 丢弃损坏条目无日志 | logger.warning | 新增 | 闹钟服务 |
+| 17 | modules/alarm_service.py:147-149 vs 59 | 12 | 声音兜底元组与 CLASSIC 条目字面量重复（且不可达） | 兜底改引用 CLASSIC | 新增 | 闹钟服务 |
+| 18 | data/timezones.py:19 | 6 | 说明区写"供 ui/main_window.py 使用"，实际消费方是 world_clock_panel | 更新说明区 | 新增 | 文档 |
+| 19 | utils/logger.py:46 vs utils/monitor.py:18 | 12 | crash 前缀双源（改一处即永不清理） | 常量单源化 | 新增 | 日志 |
+| 20 | utils/logger.py:15, 64 | 12+3 | backup_days 代码默认值与 base.json 双处维护；日志级别未配置化 | level 入 base.json | 新增 | 日志/配置体系 |
+| 21 | config/static/static_config.py:21-28 | 13+6 | config.json 缺失/损坏抛 KeyError/AttributeError，与注释承诺的 RuntimeError 不符 | 显式校验映射表 | 新增 | 配置体系 |
+| 22 | config/settings.py:23 | 5 | `CONFIG_DIR` 死常量（仅测试 monkeypatch） | 删除或让 CONFIG_FILE 派生 | 新增 | 配置体系 |
+| 23 | utils/monitor.py:54-55 | 2 | excepthook 直接覆盖不链式保留原钩子（当前无冲突方） | 保存并调用 `_previous` 钩子 | 新增 | 日志 |
+| 24 | config/settings.py:99-112 | 5+6 | 旧 latin1 几何格式兼容层疑似死代码【需验证存量文件】 | 验证后按"不留废弃方案"清理 | 新增 | 配置体系 |
+| 25 | ui/panels/countdown_panel.py:19 | 5 | `Qt` import 死代码（V0.4.7.1 重构遗留） | 移除 | 新增（漏改） | GUI 面板 |
+| 26 | ui/main_window.py:132 | 6 | "100ms 定时器驱动"注释失实（周期已随倍率联动） | 更新注释 | 新增（漏改） | GUI 面板 |
+| 27 | README.md:3, 13 + x.progress.md:4 | 6 | 文档版本滞后：README 徽章 0.4.7.2、x.progress"当前版本 0.4.7.0" vs base.json 0.4.7.3 | 同步 | 新增 | 文档 |
+| 28 | tests/ | 10 | T004 新功能（动画/tooltip/快捷键）仅探针验证，无沉淀断言 | 探针断言子进程化沉淀 | 新增 | 测试 |
+
+### 二、参考级观察项（记录不修；2026-09-11 用户复核：全部维持观察级，不提升）
+
+| 文件:行号 | 描述 | 回落理由 |
+| --- | --- | --- |
+| utils/monitor.py:73-75 | 重复 install_crash_handler 窗口期旧 fd 失效 | 无可达触发路径【需验证】 |
+| utils/monitor.py:72 | crash 文件日期安装时固定，跨天进程写昨日文件 | 桌面应用叠加概率极低 |
+| utils/file_utils.py:18-21 | 临时目录整目录放行超出最小写入面 | 有注释依据（pytest 隔离豁免） |
+| config/settings.py:118-120 | get_alarms 仅隔离外层，内层 dict 共享引用 | 无可证触发路径，需 alarm_panel 侧验证 |
+| utils/monitor.py:11-12 | utils 层 import PyQt6，与分层先例有张力 | 代码有注释论证，无运行时影响 |
+| modules/weather_service.py:58-66 | 重定向被拒后按网络错误重试 3 次（约 2s 浪费） | 官方接口正常不重定向 |
+| modules/weather_service.py:71-72 | DNS rebinding TOCTOU | 注释显式声明接受（固定官方域名） |
+| modules/alarm_service.py:99, 231 | enabled 双重检查 | 无害冗余防御 |
+| modules/chinese_calendar.py:89-160 | lunar-python 异常直接上抛不包装 | 符合窄捕获上抛策略，上层有单轮兜底 |
+| modules/weather_service.py:172 | humidity 无小数格式化与他项不一 | 极小展示瑕疵 |
+| ui/panels/clock_panel.py:165-175 | QPropertyAnimation 每 tick stop/start | 单线程无竞态、收敛正确（本轮亲核） |
+| ui/main_window.py:205-215 | 窗口隐藏托盘后快捷键失效 | Qt WindowShortcut 机制固有，托盘菜单有等效入口 |
+| ui/panels/clock_panel.py:215 | `int(rate*10)` vs `int(round(...))` 写法不一致 | 实机验证 [1.0,20.0] 全步进当前无差值；防御性建议统一 |
+| main_window.py:284 | 未设 QApplication.applicationName | 外观类 |
+| ui/panels/alarm_panel.py:85-152 | refresh_list 在信号栈内 clear+重建 | Qt 延迟删除实践安全；排查 y.problems#6 时可复查 |
+
+### 三、亮点
+
+- 零硬编码兑现度高：base.json 21 键、ui.json 23 键逐一核对无死键、无读取不存在键；版本字符串零硬编码
+- T001.1 农历缓存键设计正确（细于全部下游依赖，无脏命中）；T004 信号链无双发、动画生命周期管理正确
+- SSRF 校验链健壮：userinfo/IPv6 绕过技巧被 urlsplit 化解，URL 由已校验 float 拼接无注入面
+- 测试断言质量良好（56 用例无恒真断言）；pathlib/顶层 import/# 注释体系/文件尾说明区整体合规

@@ -18,7 +18,10 @@ class StaticConfig:
 
 def _load_static_config() -> StaticConfig:
     # 私有加载：读引导映射表 → 遍历读取各分类 json → 聚合返回；文件缺失/损坏抛错暴露
-    mapping = read_json(STATIC_DIR / "config.json", default={})
+    # （FIX001.25：映射表缺失/损坏此前抛 KeyError/AttributeError，与承诺的 RuntimeError 不符）
+    mapping = read_json(STATIC_DIR / "config.json", default=None)
+    if not isinstance(mapping, dict):
+        raise RuntimeError(f"静态配置映射表缺失或损坏: {STATIC_DIR / 'config.json'}")
     result: Dict[str, Dict[str, Any]] = {}
     for key, rel_path in mapping.items():
         data = read_json(STATIC_DIR / rel_path, default=None)

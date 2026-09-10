@@ -3,6 +3,8 @@
 
 import base64
 import logging
+import os
+import shutil
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -19,9 +21,18 @@ from config.static.static_config import get_static_config
 # 配置日志
 logger = logging.getLogger(__name__)
 
-# 用户配置目录/文件（项目内，随项目走）
-CONFIG_DIR = get_project_root() / "config"
-CONFIG_FILE = get_project_root() / get_static_config().base["user_config"]
+
+def _resolve_config_file() -> Path:
+    # 解析用户配置文件路径：环境变量 ACCELWORLD_CONFIG_FILE 优先（子进程测试隔离，FIX001.12），
+    # 未设置时使用项目内 config/user_config.json
+    env_path = os.environ.get("ACCELWORLD_CONFIG_FILE")
+    if env_path:
+        return Path(env_path)
+    return get_project_root() / get_static_config().base["user_config"]
+
+
+# 用户配置文件路径（项目内随项目走；测试子进程经环境变量重定向）
+CONFIG_FILE = _resolve_config_file()
 
 
 @dataclass
@@ -55,11 +66,24 @@ class UserConfig:
 
 
 def load_config() -> UserConfig:
-    # 经 file_utils 缓存单例读取，仅成功解析才入缓存
+    # 经 file_utils 缓存单例读取，仅成功解析才入缓存；
+    # 文件存在但损坏时先转存 .bak 再回退默认值（FIX001.2：防默认值覆盖导致不可恢复丢失）
     data = read_json_cached(CONFIG_FILE, None)
     if data is None:
+        if CONFIG_FILE.exists():
+            _backup_corrupted_config(CONFIG_FILE)
         return UserConfig()
     return UserConfig.from_dict(data)
+
+
+def _backup_corrupted_config(path: Path) -> None:
+    # 损坏配置转存同名 .bak，保留最近一次原始内容供人工恢复
+    backup = path.with_name(path.name + ".bak")
+    try:
+        shutil.copyfile(path, backup)
+        logger.error(f"配置文件损坏，已转存: {backup}")
+    except OSError as e:
+        logger.error(f"损坏配置转存失败: {e}")
 
 
 def save_config(config: UserConfig) -> bool:
@@ -97,19 +121,15 @@ def save_window_geometry(geometry: bytes) -> bool:
 
 
 def load_window_geometry() -> Optional[bytes]:
-    # base64 解码失败时回退旧格式 latin1，双重兼容
+    # base64 解码（validate=True 拒绝非字母表字符），非法值返回 None
+    # （FIX001.25：latin1 兼容层按"不留废弃方案"移除——该格式早于 V0.44，无存量依据）
     encoded = get_setting("window_geometry")
     if not encoded:
         return None
     try:
-        # 新版 base64 存储
-        return base64.b64decode(encoded)
+        return base64.b64decode(encoded, validate=True)
     except (ValueError, TypeError):
-        # 兼容旧版 latin1 字符串存储
-        try:
-            return encoded.encode("latin1")
-        except (UnicodeEncodeError, AttributeError):
-            return None
+        return None
 
 
 # ------------------- 闹钟配置管理 -------------------
@@ -127,15 +147,20 @@ def save_alarms(alarms: List[Any]) -> bool:
 
 # ===== config/settings.py 函数/常量说明 =====
 # UserConfig(dataclass): 用户配置聚合（可读写）
-#   to_dict(): JSON 序列化；from_dict(): 反序列化（仅取有效字段+默认值兜底）
+#   to_dict(): JSON 序列化；from_dict(): 反序列化（类型校验过滤+默认值兜底，FIX001.9）
 #   默认值：rate/theme/city/timezone 经 default_factory 从 static base.json 现取（零硬编码）；
 #   countdown_target/window_geometry/alarms 为结构默认（"用户未设置"兜底）
-# load_config() -> UserConfig: 缓存单例读取（经 utils/file_utils.py read_json_cached）
+# _resolve_config_file() -> Path: 配置路径解析（环境变量 ACCELWORLD_CONFIG_FILE 优先，
+#   子进程测试隔离用 FIX001.12；未设置时项目内 user_config.json）
+# CONFIG_FILE: 用户配置文件路径常量（模块导入期解析一次）
+# load_config() -> UserConfig: 缓存单例读取；损坏文件先转存 .bak 再回退默认（FIX001.2）
+# _backup_corrupted_config(path): 损坏配置转存同名 .bak（保留最近一次原始内容）
 # save_config(config) -> bool: 写盘并清理缓存
 # get_setting(key, default): 字段反射取值；set_setting(key, value): 未知键拒绝+落盘
 # save_window_geometry(geometry): base64 编码存储（修复 D3）
-# load_window_geometry(): base64 解码，兼容旧 latin1 格式
+# load_window_geometry(): base64 严格解码（validate=True），非法值返回 None
+#   （FIX001.25：latin1 兼容层移除）
 # get_alarms/save_alarms: 闹钟配置读写（增删改由 AlarmManager 负责，S9.2 去重清理）
 #   设计理由：配置聚合为 dataclass 避免魔法键；缓存单例避免重复 IO（修复 D4）
-#   异常处理：JSON 损坏/IO 错误在 file_utils 层兜底返回默认值
+#   异常处理：JSON 损坏/IO/编码错误在 file_utils 层兜底返回默认值；损坏文件转存 .bak 后重置
 #   关联配置：配置文件 config/user_config.json（项目内，S9.5 修正）；默认值来自 config/static/base.json

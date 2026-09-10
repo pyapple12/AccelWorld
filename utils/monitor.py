@@ -11,11 +11,11 @@ from pathlib import Path
 # Qt 消息管道（PyQt6 为项目硬依赖，main.py 顶层已加载，此处顶层 import 不增载重）
 from PyQt6.QtCore import QtMsgType, qInstallMessageHandler
 
+# 崩溃日志前缀单源常量（与 logger 清理逻辑共用一份，FIX001.24）
+from utils.logger import CRASH_LOG_PREFIX
+
 # 监控专用 logger（继承根 logger 的控制台+每日文件双通道）
 logger = logging.getLogger(__name__)
-
-# 崩溃栈文件名前缀（logs/crash-YYYY-MM-DD.log，与 app-*.log 每日文件同目录）
-_CRASH_LOG_PREFIX = "crash-"
 
 # Qt 消息级别 → Python 日志级别映射
 _QT_LEVEL_MAP = {
@@ -40,9 +40,15 @@ def _log_uncaught(exc_type: type, exc_value: BaseException, exc_tb, source: str)
 
 def install_excepthook() -> None:
     # 安装全局异常钩子：主线程 sys.excepthook + 子线程 threading.excepthook
-    # 原 Python 默认行为把堆栈打到 stderr，GUI 运行下不可见（修复 T002.1）
+    # 原 Python 默认行为把堆栈打到 stderr，GUI 运行下不可见（修复 T002.1）；
+    # 链式保留既有钩子（FIX001.24：直接覆盖会静默丢弃先行装配的钩子）
+    previous_sys_hook = sys.excepthook
+    previous_thread_hook = threading.excepthook
+
     def _hook(exc_type, exc_value, exc_tb):
         _log_uncaught(exc_type, exc_value, exc_tb, "sys.excepthook")
+        if previous_sys_hook is not None and previous_sys_hook is not sys.__excepthook__:
+            previous_sys_hook(exc_type, exc_value, exc_tb)
 
     def _thread_hook(args):
         # threading.excepthook 收到单个 ExcInfo 参数（exc_type/exc_value/exc_traceback/thread）
@@ -50,6 +56,11 @@ def install_excepthook() -> None:
             args.exc_type, args.exc_value, args.exc_traceback,
             f"threading/{getattr(args.thread, 'name', '?')}",
         )
+        if (
+            previous_thread_hook is not None
+            and previous_thread_hook is not threading.__excepthook__
+        ):
+            previous_thread_hook(args)
 
     sys.excepthook = _hook
     threading.excepthook = _thread_hook
@@ -69,7 +80,7 @@ def install_crash_handler(log_dir: Path) -> None:
     # 启用 faulthandler：原生崩溃（段错误等）栈自动写入 logs/crash-YYYY-MM-DD.log（修复 T002.3）
     log_dir = Path(log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
-    crash_path = log_dir / f"{_CRASH_LOG_PREFIX}{date.today().isoformat()}.log"
+    crash_path = log_dir / f"{CRASH_LOG_PREFIX}{date.today().isoformat()}.log"
     global _crash_log_file
     _crash_log_file = open(crash_path, "a", encoding="utf-8")
     faulthandler.enable(file=_crash_log_file)
@@ -77,13 +88,14 @@ def install_crash_handler(log_dir: Path) -> None:
 
 
 # ===== utils/monitor.py 函数/常量说明 =====
-# _CRASH_LOG_PREFIX: 崩溃栈文件名前缀常量（crash-YYYY-MM-DD.log）
+# CRASH_LOG_PREFIX: 自 utils/logger.py 导入（前缀单源，FIX001.24）
 # _QT_LEVEL_MAP: Qt 五级消息 → Python 日志级别映射
 # _crash_log_file: faulthandler 崩溃栈文件句柄（模块级持有防 GC 关闭）
 # _log_uncaught(exc_type, exc_value, exc_tb, source): 未捕获异常统一 critical 落盘（带堆栈）
 # install_excepthook(): 安装主线程/子线程双异常钩子（T002.1）
 #   设计理由：GUI 下 stderr 不可见，钩子把未捕获异常转进 logs/ 每日日志；
-#   只替换钩子不改异常流（钩子返回后按 Python/Qt 原有语义继续）
+#   链式调用既有钩子（FIX001.24，跳过 Python 内置默认钩子防重复输出），
+#   只补日志不改异常流（钩子返回后按 Python/Qt 原有语义继续）
 #   异常处理：钩子内部不抛错（logger.critical 落盘失败仅影响日志不影响退出流程）
 # install_qt_message_handler(): 安装 Qt 消息处理器（T002.2）
 #   设计理由：QSS 解析失败、属性警告等 Qt 原生输出默认走 stderr/调试器，GUI 下不可见

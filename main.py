@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 # 加速世界 - 主程序入口文件（CLI/GUI 统一分发，用法示例见 --help epilog，S10.12 F3 去重）
 import argparse
+import logging
 import sys
+from typing import Any, Dict
 
 from config.static.static_config import get_static_config
 from utils.file_utils import get_project_root
@@ -11,15 +13,15 @@ from modules.time_dilation import main_cli
 from ui.main_window import main_gui
 
 
+def _resolve_log_level(base: Dict[str, Any]) -> int:
+    # 从静态配置解析日志级别（base["log_level"]，如 "INFO"/"DEBUG"），非法值回退 INFO（FIX001.24）
+    level = logging.getLevelName(str(base.get("log_level", "INFO")).upper())
+    return level if isinstance(level, int) else logging.INFO
+
+
 def main() -> None:
     # 静态配置（倍率范围/默认值/日志路径等参数来源）
     base = get_static_config().base
-
-    # 初始化统一日志（日志目录/保留天数从静态配置传入，utils 层零业务依赖 S10.4 D1）
-    setup_logging(
-        log_dir=get_project_root() / base["logs_dir"],
-        backup_days=int(base["log_backup_days"]),
-    )
 
     parser = argparse.ArgumentParser(
         description=f"加速世界 - 时间膨胀时钟工具 {base['version']}",
@@ -40,13 +42,13 @@ def main() -> None:
     mode_group.add_argument("--gui", action="store_true", help="运行图形界面（默认）")
     mode_group.add_argument("--cli", action="store_true", help="运行命令行界面")
 
-    # 核心参数
+    # 核心参数（0.1 步进说明：生效值按 0.1 粒度吸附，FIX001.22）
     parser.add_argument(
         "--rate",
         "-R",
         type=float,
         default=None,
-        help=f"时间膨胀倍率（{base['rate_min']}-{base['rate_max']}，默认{base['default_rate']}）",
+        help=f"时间膨胀倍率（{base['rate_min']}-{base['rate_max']}，步进 0.1，默认{base['default_rate']}）",
     )
 
     # GUI 专属参数
@@ -74,6 +76,14 @@ def main() -> None:
         print(f"错误: --rate 参数必须在 {base['rate_min']} 到 {base['rate_max']} 之间")
         print("例如: python main.py --rate 2.0")
         sys.exit(1)
+
+    # 初始化统一日志（日志目录/保留天数/级别从静态配置传入，utils 层零业务依赖 S10.4 D1）
+    # 时机在参数解析后：--version/--help 等即刻返回的路径不产生日志文件副作用（FIX001.24）
+    setup_logging(
+        level=_resolve_log_level(base),
+        log_dir=get_project_root() / base["logs_dir"],
+        backup_days=int(base["log_backup_days"]),
+    )
 
     # 装配运行监控三层（未捕获异常/Qt 警告/原生崩溃统一进日志，T002）
     # 时机在参数解析后：--version/--help 等即刻返回的路径不产生崩溃栈文件
@@ -115,11 +125,12 @@ if __name__ == "__main__":
 #   及各 UI 显示均从静态配置读取（版本迁移方案，代码零硬编码版本字符串）
 # main() -> None: 主程序入口
 #   输入：命令行参数（argparse）
-#   逻辑步骤：读取静态配置 → 初始化日志 → 装配运行监控三层（T002：异常钩子/Qt 警告/崩溃栈）
-#            → 解析参数（--gui/--cli/--rate/--theme/--city/--hidden/--version）
-#            → 验证 --rate 范围 → 分发 CLI（main_cli(rate=...)）或 GUI（main_gui(**gui_args)）
+#   逻辑步骤：读取静态配置 → 解析参数（--gui/--cli/--rate/--theme/--city/--hidden/--version）
+#            → 验证 --rate 范围 → 初始化日志（级别/目录/保留期来自静态配置，FIX001.24 后移）
+#            → 装配运行监控三层（T002：异常钩子/Qt 警告/崩溃栈）
+#            → 分发 CLI（main_cli(rate=...)）或 GUI（main_gui(**gui_args)）
 #   设计理由：入口收编 CLI/GUI 分发；版本号从 base.json 读取（单一来源，代码零硬编码）；
-#   监控在日志初始化后立即装配，CLI/GUI 双模式均受保护
+#   日志与监控在参数解析后装配，--version/--help 即刻返回路径零副作用（FIX001.24）
 #   异常处理：rate 越界打印错误并 sys.exit(1)；监控装配失败（OSError）按严格抛错暴露
 #   关联配置：utils/logger.py 日志初始化；utils/monitor.py 运行监控；
 #     modules/time_dilation.py CLI；ui/main_window.py GUI

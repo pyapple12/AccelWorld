@@ -5,6 +5,8 @@
 import datetime
 from unittest import mock
 
+import pytest
+
 import modules.time_dilation as td
 from modules.time_dilation import AcceleratedWorld, TimeInfo
 from config.static.static_config import get_static_config
@@ -199,3 +201,21 @@ def test_main_cli_default(monkeypatch):
     monkeypatch.setattr(AcceleratedWorld, "run_live_clock", fake_run)
     td.main_cli()
     assert started.get("rate") == 2.0  # 与 static default_rate 一致
+
+
+def test_init_rate_max_rejected():
+    # 上限校验：超过 rate_max 拒绝构造（FIX001.7，与 rate_min 对称）
+    rate_max = float(get_static_config().base["rate_max"])
+    with pytest.raises(ValueError):
+        AcceleratedWorld(time_dilation_rate=rate_max + 0.1)
+    # 边界值本身合法
+    AcceleratedWorld(time_dilation_rate=rate_max)
+
+
+def test_cli_poll_interval_follows_tick():
+    # CLI 轮询周期消费 tick_interval_ms（FIX001.15：clock_tick_ms 不再被 CLI 旁路）
+    for rate in (1.0, 10.0, 20.0):
+        world = AcceleratedWorld(time_dilation_rate=rate)
+        assert world.cli_poll_interval_s() == pytest.approx(
+            world.tick_interval_ms / 1000
+        )

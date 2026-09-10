@@ -102,7 +102,7 @@ class ClockPanel(QWidget):
         input_layout.addWidget(self.rate_entry, 0, 1, Qt.AlignmentFlag.AlignLeft)
 
         rate_hint_label = QLabel(
-            f"（必须大于{_BASE['rate_min']}，默认值{_BASE['default_rate']}，最大值{_BASE['rate_max']}）"
+            f"（必须不小于{_BASE['rate_min']}，步进 0.1，最大值{_BASE['rate_max']}，默认{_BASE['default_rate']}）"
         )
         rate_hint_label.setFont(QFont(_UI["font_family"], 10))
         input_layout.addWidget(rate_hint_label, 0, 2, Qt.AlignmentFlag.AlignLeft)
@@ -210,9 +210,13 @@ class ClockPanel(QWidget):
                     f"加速倍率必须在{_BASE['rate_min']}到{_BASE['rate_max']}之间"
                 )
 
-            self.rate_changed.emit(rate)
-            # 同步滑杆（setValue 触发 on_slider_change 统一更新标签，界面与核心一致）
-            self.slider.setValue(int(rate * 10))
+            # 统一经滑杆信号链发一次 rate_changed（FIX001.23：消除"显式 emit + setValue
+            # 触发 emit"的双发冗余；值未变化时滑杆不发信号，此时显式补发一次）
+            new_slider_value = int(rate * 10)
+            if self.slider.value() != new_slider_value:
+                self.slider.setValue(new_slider_value)
+            else:
+                self.rate_changed.emit(rate)
             self.rate_entry.setText("")
         except ValueError as e:
             QMessageBox.critical(self, "错误", str(e))

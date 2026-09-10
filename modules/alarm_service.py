@@ -6,7 +6,7 @@ import uuid
 import winsound
 import logging
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from typing import List, Optional, Literal, Dict, Any
 from enum import Enum
 
@@ -81,6 +81,17 @@ class Alarm:
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
     def __post_init__(self) -> None:
+        # repeat_days 规范化：数字字符串强转 int、越界/非法/重复元素剔除
+        # （FIX001.9/21 脏配置防御：["1"] 此前静默恒不匹配、[9] 可致启动 IndexError）
+        normalized: List[int] = []
+        for day in self.repeat_days or []:
+            try:
+                day_int = int(day)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= day_int <= 6 and day_int not in normalized:
+                normalized.append(day_int)
+        self.repeat_days = normalized
         # 时间格式非法直接拒绝构造，保证后续匹配逻辑安全
         if not self._validate_time(self.time):
             raise ValueError(f"Invalid time format: {self.time}, expected HH:MM")
@@ -111,14 +122,24 @@ class Alarm:
         ):
             return False
 
-        # 一次性闹钟（无重复天数）：仅在创建当天触发（S8.4 语义澄清，与注释一致）
+        # 一次性闹钟（无重复天数）：按"计划触发日"匹配——创建时设定时间未过当日为创建当天，
+        # 已过当日自动顺延次日触发（FIX001.20 用户定案，替代 S8.4 的"仅创建当天"语义，
+        # 修复创建时已过时间永不触发的死角）
         if not self.repeat_days:
             try:
-                created_date = datetime.fromisoformat(self.created_at).date()
-            except ValueError:
-                # created_at 数据异常时保守不触发，避免意外每天响
+                created_dt = datetime.fromisoformat(self.created_at)
+            except (ValueError, TypeError):
+                # created_at 数据异常（缺失/非字符串，FIX001.8 补捕 TypeError）时保守不触发，
+                # 避免意外每天响
                 return False
-            return check_time.date() == created_date
+            scheduled_date = created_dt.date()
+            if (alarm_time.hour, alarm_time.minute) <= (
+                created_dt.hour,
+                created_dt.minute,
+            ):
+                # 创建时刻已到/过设定时分（同分钟视为已过，防创建后当分钟即响）
+                scheduled_date += timedelta(days=1)
+            return check_time.date() == scheduled_date
 
         # 重复闹钟：检查当前星期是否在重复设置中
         return check_time.weekday() in self.repeat_days
@@ -144,9 +165,7 @@ class Alarm:
 def play_preset_sound(preset: PresetSound) -> None:
     # 按预设频率/次数/间隔循环 Beep，调用方应经 audio_player 的 async 入口后台化
     try:
-        frequency, repeat_count, interval = _PRESET_SOUND_CONFIG.get(
-            preset, (800, 3, 500)
-        )
+        frequency, repeat_count, interval = _PRESET_SOUND_CONFIG[preset]
         duration = 200  # 每次蜂鸣持续时间（毫秒）
 
         for i in range(repeat_count):
@@ -173,7 +192,8 @@ class AlarmManager:
         self.max_alarms = int(get_static_config().base["max_alarms"])
         self._last_triggered: Dict[
             str, str
-        ] = {}  # alarm_id -> "YYYY-MM-DD HH:MM"（含日期维度，S8.1）
+        ] = {}  # alarm_id -> "YYYY-MM-DD HH:MM"（含日期维度，S8.1）；
+        # 仅内存不持久化：同分钟内重启理论上可重复响一次，窗口极窄接受（FIX001.21 P3#15）
 
     def add_alarm(self, alarm: Alarm) -> bool:
         # 上限校验 + 同时间同标签去重（失败经日志记录，GUI 弹窗提示由面板层负责）
@@ -248,7 +268,8 @@ class AlarmManager:
         return [alarm.to_dict() for alarm in self.alarms]
 
     def from_dict_list(self, data: List[Dict[str, Any] | None]) -> None:
-        # 空条目与构造失败（from_dict 返回 None）的闹钟过滤后加载
+        # 空条目与构造失败（from_dict 返回 None）的闹钟过滤后加载；
+        # 跳过条目记 warning 便于诊断（FIX001.21：静默丢弃不可诊断）
         loaded: List[Alarm] = []
         for item in data:
             if not item:
@@ -256,16 +277,19 @@ class AlarmManager:
             alarm = Alarm.from_dict(item)
             if alarm is not None:
                 loaded.append(alarm)
+            else:
+                logger.warning(f"跳过无法解析的闹钟条目: {item!r}")
         self.alarms = loaded
 
 
 # ===== modules/alarm_service.py 函数/类说明 =====
 # PresetSound(Enum): 预设铃声枚举；display_names 供下拉框，from_value 大小写不敏感匹配兜底 CLASSIC
 # Alarm(dataclass): 闹钟数据模型
-#   __post_init__: 时间格式校验（非法抛 ValueError 拒绝构造）
+#   __post_init__: repeat_days 规范化（字符串强转/越界剔除，FIX001.9/21）+ 时间格式校验
+#     （非法抛 ValueError 拒绝构造）
 #   should_trigger_on(check_time): 启用 → 时分匹配 → 重复规则
-#     （一次性仅创建当天触发，依据 created_at 日期；重复闹钟按星期）
-#   to_dict/from_dict: JSON 序列化往返；from_dict 容错（未知键过滤，非法数据返回 None）
+#     （一次性按计划触发日：创建时未过时间为当天、已过自动顺延次日 FIX001.20；重复闹钟按星期）
+#   to_dict/from_dict: JSON 序列化往返；from_dict 容错（类型校验过滤，非法数据返回 None）
 #   is_one_time: 无重复天数即一次性
 # play_preset_sound(preset): winsound.Beep 组合（阻塞，由 ui/audio_player.py async 入口后台化）
 # AlarmManager: 闹钟管理（上限 10、同时间同标签去重、同分钟触发去重 _last_triggered）

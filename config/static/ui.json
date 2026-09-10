@@ -12,6 +12,8 @@
     "disabled": "#888888",
     "text_main": "#333333",
     "text_light": "#e0e0e0",
+    "text_on_primary": "#ffffff",
+    "tray_hand": "#ffffff",
     "text_secondary": "#888888",
     "text_tertiary": "#666666",
     "text_muted": "#555555",

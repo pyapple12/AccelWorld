@@ -113,6 +113,10 @@ class WeatherPanel(QWidget):
         self.weather_timer.timeout.connect(self.update_weather)
         self.weather_timer.start(int(_BASE["weather_cache_ttl"]) * 1000)
 
+        # 启动即发起首次查询（FIX001.5：信号连接前的 setCurrentText 与恢复同值文本
+        # 都不会触发 currentTextChanged，此前默认城市启动悬挂"获取天气中..."最长 30 分钟）
+        self.update_weather()
+
     def update_weather(self) -> None:
         # 置过渡态后提交 QThreadPool 任务，UI 不阻塞
         self.weather_info_label.setText("获取天气中...")
@@ -141,12 +145,20 @@ class WeatherPanel(QWidget):
             self.weather_icon_label.setText("❓")
 
     def set_city(self, city_name: str) -> None:
-        # 列表内 setCurrentText 触发联动查询；列表外直设并发起查询
+        # 列表内 setCurrentText 触发联动查询；列表外补入下拉框后直设并发起查询
+        # （FIX001.23：此前列表外城市下拉框仍显示旧城市，与实际查询不一致）
         if city_name in CITIES:
             self.city_combo.setCurrentText(city_name)
-        else:
-            self.current_city = city_name
-            self.update_weather()
+            return
+        if self.city_combo.findText(city_name) < 0:
+            self.city_combo.blockSignals(True)
+            self.city_combo.addItem(city_name)
+            self.city_combo.blockSignals(False)
+        self.city_combo.blockSignals(True)
+        self.city_combo.setCurrentText(city_name)
+        self.city_combo.blockSignals(False)
+        self.current_city = city_name
+        self.update_weather()
 
     def set_theme_button(self, is_dark: bool) -> None:
         # 深色显示☀️（切换至浅色），浅色显示🌙（切换至深色）

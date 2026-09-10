@@ -42,6 +42,15 @@ _LON_RANGE = (-180.0, 180.0)
 _API_SCHEME = "https"
 _API_HOST = "api.open-meteo.com"
 
+# 必要响应字段（与请求 current 参数一致；缺失任一即视为失败，FIX001.14）
+_REQUIRED_FIELDS = (
+    "temperature_2m",
+    "relative_humidity_2m",
+    "weather_code",
+    "wind_speed_10m",
+    "apparent_temperature",
+)
+
 
 @dataclass
 class WeatherData:
@@ -62,14 +71,17 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
         return None
 
 
-# 禁止重定向的共享 opener
-_OPENER = urllib.request.build_opener(_NoRedirectHandler)
+# 禁止重定向的 handler 类（每次请求构建独立 opener，线程池并发下无共享可变状态，FIX001.22）
+def _build_no_redirect_opener() -> urllib.request.OpenerDirector:
+    # 构建禁止跟随重定向的 opener（重定向可能绕过主机白名单，V0.4.7.0 SSRF 防护）
+    return urllib.request.build_opener(_NoRedirectHandler)
 
 
 def _fetch_weather_data(url: str) -> dict:
     # 请求 Open-Meteo API 并解析 JSON（独立函数供 retry_call 重试）
     # SSRF 防护（V0.4.7.0）：协议/主机白名单 + 域名解析 IP 私网阻断 + 禁止重定向；
     # 剩余 TOCTOU 型 DNS rebinding 理论风险由域名固定为官方接口兜底（单机应用可接受）
+    # DNS 解析失败抛 gaierror（FIX001.3：由上层重试白名单与降级 except 统一处理）
     parts = urllib.parse.urlsplit(url)
     if parts.scheme != _API_SCHEME or parts.hostname != _API_HOST:
         raise ValueError(f"拒绝请求非 Open-Meteo 接口地址: {url}")
@@ -85,7 +97,10 @@ def _fetch_weather_data(url: str) -> dict:
             or ip.is_unspecified
         ):
             raise ValueError(f"接口域名解析到受限地址: {ip}")
-    with _OPENER.open(url, timeout=10) as response:
+    opener = _build_no_redirect_opener()
+    with opener.open(
+        url, timeout=float(get_static_config().base["weather_timeout_s"])
+    ) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
@@ -96,42 +111,53 @@ def get_weather_by_coords(lat: float, lon: float) -> Optional[WeatherData]:
     if not (lat_ok and lon_ok):
         raise ValueError(f"经纬度越界: lat={lat}, lon={lon}")
 
-    # 拼接 API URL，重试耗尽后统一返回 None；仅捕获网络/解析类异常，编程错误上抛
+    # 拼接 API URL（主机部分复用白名单常量单源，FIX001.22），重试耗尽后统一返回 None；
+    # 仅捕获网络/解析类异常，编程错误上抛
     try:
-        # 使用 Open-Meteo API
         url = (
-            f"https://api.open-meteo.com/v1/forecast?"
+            f"{_API_SCHEME}://{_API_HOST}/v1/forecast?"
             f"latitude={lat}&longitude={lon}"
-            f"&current=temperature_2m,relative_humidity_2m,weather_code,"
-            f"wind_speed_10m,apparent_temperature"
+            f"&current={','.join(_REQUIRED_FIELDS)}"
             f"&timezone=auto"
         )
 
-        # 网络错误自动重试（总尝试 3 次 = 首次 + 2 次重试）
+        # 网络错误自动重试（次数/间隔来自静态配置 FIX001.16；
+        # gaierror 为 V0.4.7.0 加固后 DNS 故障的抛出形态，FIX001.3 补入白名单）
+        base = get_static_config().base
         data = retry_call(
             _fetch_weather_data,
             url,
-            retries=3,
-            exceptions=(urllib.error.URLError, TimeoutError),
-            delay=1.0,
+            retries=int(base["weather_retries"]),
+            exceptions=(urllib.error.URLError, TimeoutError, socket.gaierror),
+            delay=float(base["weather_retry_delay"]),
         )
 
-        current = data.get("current", {})
-        weather_code = current.get("weather_code", 0)
+        # 响应结构/必要字段校验（FIX001.14：缺失不再以 0 值假数据兜底）
+        if not isinstance(data, dict):
+            logger.error(f"天气响应结构异常: {data!r}")
+            return None
+        current = data.get("current")
+        if not isinstance(current, dict) or any(
+            field_name not in current for field_name in _REQUIRED_FIELDS
+        ):
+            logger.error(f"天气响应缺少必要字段: {data!r}")
+            return None
+
+        weather_code = current["weather_code"]
         code_info = WEATHER_CODE_INFO.get(weather_code, UNKNOWN_WEATHER)
 
         return WeatherData(
-            temperature=current.get("temperature_2m", 0),
-            humidity=current.get("relative_humidity_2m", 0),
-            wind_speed=current.get("wind_speed_10m", 0),
-            apparent_temperature=current.get("apparent_temperature", 0),
+            temperature=current["temperature_2m"],
+            humidity=current["relative_humidity_2m"],
+            wind_speed=current["wind_speed_10m"],
+            apparent_temperature=current["apparent_temperature"],
             weather_code=weather_code,
             weather=code_info.name,
             description=code_info.description,
             icon=code_info.icon,
         )
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
-        # 网络/超时/JSON 解析失败：记录堆栈并降级返回 None
+    except (urllib.error.URLError, TimeoutError, socket.gaierror, json.JSONDecodeError) as e:
+        # 网络/超时/DNS 故障/JSON 解析失败：记录堆栈并降级返回 None（FIX001.3 补 gaierror）
         logger.exception(f"获取天气信息失败: {e}")
         return None
 
@@ -178,10 +204,13 @@ def format_weather_info(weather: Optional[WeatherData], city_name: str = "") -> 
 # _fetch_weather_data(url): 请求 API 并解析 JSON（供 retry_call 重试的可调用对象）；
 #   请求前校验 scheme/hostname 白名单并解析域名阻断私网/环回等受限 IP，
 #   非官方接口抛 ValueError（编程错误上抛，不被网络异常降级吞掉）
-# _NoRedirectHandler/_OPENER: 禁止重定向的共享 opener（重定向可能绕过主机白名单）
+# _NoRedirectHandler/_build_no_redirect_opener: 禁止重定向（重定向可能绕过主机白名单）；
+#   opener 每次请求独立构建，线程池并发下无共享可变状态（FIX001.22）
+# _REQUIRED_FIELDS: 必要响应字段（缺失即失败，FIX001.14）
 # _LAT_RANGE/_LON_RANGE: 经纬度合法定义域（地理常量），请求前校验防非法参数拼入 URL
 # get_weather_by_coords(lat, lon): 经纬度查询，越界抛 ValueError；
-#   URLError/TimeoutError 自动重试 2 次
+#   URLError/TimeoutError/gaierror 自动重试（次数与间隔来自静态配置，FIX001.3/16）；
+#   响应结构/必要字段缺失降级 None（FIX001.14）
 # get_weather_by_city(city_name): 城市查询，30 分钟缓存（仅缓存成功，失败可立即重试）
 # clear_weather_cache(): 清空缓存
 # format_weather_info(weather, city_name): 完整展示文本

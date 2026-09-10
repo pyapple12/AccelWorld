@@ -67,3 +67,21 @@ def test_lunar_info_string():
     assert "丙午年" in text
     assert "马" in text
     assert "拜财神" in text
+
+
+def test_public_holidays_translated_chinese():
+    # 法定节假日显示中文名，不泄漏英文（FIX001.4：HOLIDAY_TRANSLATION 补全映射）
+    cases = {
+        (2025, 1, 1): "元旦",
+        (2025, 1, 30): "春节",
+        (2025, 4, 4): "清明节",
+        (2025, 5, 2): "劳动节",
+        (2025, 6, 2): "端午节",
+        (2025, 10, 1): "国庆节",
+        (2025, 10, 6): "中秋节",
+    }
+    for (year, month, day), expected in cases.items():
+        info = get_chinese_lunar_calendar(year, month, day, 12)
+        assert info.public_holiday == expected, (
+            f"{year}-{month}-{day}: {info.public_holiday!r} != {expected!r}"
+        )

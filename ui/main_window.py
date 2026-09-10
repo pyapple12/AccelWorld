@@ -43,8 +43,17 @@ class AcceleratedWorldGUI(QMainWindow):
         # 静态配置（倍率范围/窗口几何/时钟周期等参数）
         base = get_static_config().base
 
-        # 加载配置
+        # 加载配置（持久化倍率脏值/越界值回退默认并记日志，FIX001.7）
         saved_rate = get_setting("time_dilation_rate", base["default_rate"])
+        try:
+            self.accel_world = AcceleratedWorld(time_dilation_rate=float(saved_rate))
+        except (TypeError, ValueError):
+            logger.warning(f"持久化倍率非法，已回退默认值: {saved_rate!r}")
+            self.accel_world = AcceleratedWorld()
+
+        # 倍率写盘去抖状态（FIX001.23：拖动滑杆高频变化仅停止后落盘一次）
+        self._rate_save_timer: QTimer | None = None
+        self._pending_rate: float | None = None
 
         self.setWindowTitle(f"加速世界 - 时间膨胀时钟 {base['version']}")
 
@@ -100,10 +109,10 @@ class AcceleratedWorldGUI(QMainWindow):
             get_setting("last_timezone", base["default_timezone"])
         )
 
-        # 恢复倒计时目标（S8.5：仅填充输入框显示，不自动启动计时）
+        # 恢复倒计时目标（解析内部态避免下次保存被清空的跨会话丢失，S8.5/FIX001.10）
         saved_countdown = get_setting("countdown_target", "")
         if saved_countdown:
-            self.countdown_panel.countdown_target.setText(saved_countdown)
+            self.countdown_panel.restore_target(saved_countdown)
 
         # 从配置加载闹钟
         self.alarm_panel.load_alarms(get_alarms())
@@ -113,8 +122,8 @@ class AcceleratedWorldGUI(QMainWindow):
         self.timer.timeout.connect(self.update_clock)
         self.timer.start(self.accel_world.tick_interval_ms)
 
-        # ------------------- 主题（默认浅色） -------------------
-        self.is_dark_theme = False
+        # ------------------- 主题（持久化恢复，FIX001.11） -------------------
+        self.is_dark_theme = get_setting("theme", base["default_theme"]) == "dark"
         self.apply_theme()
 
         # ------------------- 快捷键（键位来自静态配置，T004.1） -------------------
@@ -129,7 +138,7 @@ class AcceleratedWorldGUI(QMainWindow):
     # ------------------- 时钟调度 -------------------
 
     def update_clock(self) -> None:
-        # 100ms 定时器驱动，异常不外抛仅记录日志
+        # tick 定时器驱动（周期随倍率联动，T001.1），异常不外抛仅记录日志
         try:
             info = self.accel_world.get_custom_time()
             self.clock_panel.update_time(info)
@@ -156,18 +165,32 @@ class AcceleratedWorldGUI(QMainWindow):
         base = get_static_config().base
         if not (base["rate_min"] <= rate <= base["rate_max"]):
             return
-        # 更新加速世界实例
+        # 更新加速世界实例（重建立即生效，拖动滑杆保持实时响应）
         self.accel_world = AcceleratedWorld(time_dilation_rate=rate)
         # 刷新周期随倍率联动重启（加速秒周期 1000/倍率，修复 T001.1）
         self.timer.start(self.accel_world.tick_interval_ms)
-        # 同步保存倍率（滑杆/输入框/启动参数共用此路径）
-        set_setting("time_dilation_rate", rate)
+        # 持久化写盘去抖（FIX001.23：拖动 2.0→10.0 此前会写盘约 80 次，现仅停止后一次）
+        self._pending_rate = rate
+        if self._rate_save_timer is None:
+            self._rate_save_timer = QTimer(self)
+            self._rate_save_timer.setSingleShot(True)
+            self._rate_save_timer.timeout.connect(self._flush_pending_rate)
+        self._rate_save_timer.start(int(base["rate_save_debounce_ms"]))
+
+    def _flush_pending_rate(self) -> None:
+        # 去抖定时器回调：落盘最近一次倍率（退出路径 save_settings 仍会兜底保存）
+        if self._pending_rate is not None:
+            set_setting("time_dilation_rate", self._pending_rate)
+            self._pending_rate = None
 
     # ------------------- 闹钟处理 -------------------
 
     def _save_alarms(self) -> None:
-        # alarm_saved 信号回调，导出管理器列表写入配置
-        save_alarms(self.alarm_panel.to_dict_list())
+        # alarm_saved 信号回调，导出管理器列表写入配置；失败上浮托盘提示（FIX001.19）
+        if not save_alarms(self.alarm_panel.to_dict_list()):
+            self.tray.show_notification(
+                "保存失败", "闹钟写入失败，请检查磁盘空间或文件权限", "warning"
+            )
 
     def _on_alarm_triggered(self, alarm: Alarm) -> None:
         # 异步播放（预设铃声在后台线程，UI 不冻结）
@@ -186,9 +209,10 @@ class AcceleratedWorldGUI(QMainWindow):
     # ------------------- 主题 -------------------
 
     def toggle_theme(self) -> None:
-        # 翻转状态后应用样式
+        # 翻转状态、应用样式并持久化（FIX001.11：主题选择写回配置）
         self.is_dark_theme = not self.is_dark_theme
         self.apply_theme()
+        set_setting("theme", "dark" if self.is_dark_theme else "light")
 
     def apply_theme(self) -> None:
         # 深浅主题三处联动：窗口样式、进度条、按钮图标
@@ -249,15 +273,22 @@ class AcceleratedWorldGUI(QMainWindow):
             a0.accept()
 
     def save_settings(self) -> None:
-        # 合并字段单次写盘（E11：原 4 次 set_setting 各写一次，现 load 后改字段一次 save_config）
+        # 合并字段单次写盘（E11：原 4 次 set_setting 各写一次，现 load 后改字段一次 save_config）；
+        # 失败上浮托盘提示（FIX001.19：磁盘满/只读等静默失败不再无感）
         config = load_config()
         config.time_dilation_rate = self.accel_world.time_dilation_rate
         config.last_city = self.weather_panel.current_city_name()
         config.last_timezone = self.world_clock_panel.current_timezone()
         config.countdown_target = self.countdown_panel.get_target_text()
-        save_config(config)
+        save_ok = save_config(config)
         # 窗口几何经既有 base64 封装单独落盘（QByteArray 运行时支持 bytes()，stub 未标注 Buffer 协议）
-        save_window_geometry(bytes(self.saveGeometry()))  # pyright: ignore[reportArgumentType]
+        save_ok = (
+            save_window_geometry(bytes(self.saveGeometry())) and save_ok  # pyright: ignore[reportArgumentType]
+        )
+        if not save_ok:
+            self.tray.show_notification(
+                "保存失败", "配置写入失败，请检查磁盘空间或文件权限", "warning"
+            )
 
     def apply_startup_args(
         self,
@@ -273,10 +304,11 @@ class AcceleratedWorldGUI(QMainWindow):
         if city:
             self.weather_panel.set_city(city)
 
-        # 应用深色主题（直接设置状态后刷新样式）
+        # 应用深色主题（直接设置状态后刷新样式并持久化，FIX001.11）
         if theme == "dark":
             self.is_dark_theme = True
             self.apply_theme()
+            set_setting("theme", "dark")
 
 
 def main_gui(**kwargs: Any) -> None:
@@ -303,11 +335,13 @@ def main_gui(**kwargs: Any) -> None:
 # AcceleratedWorldGUI(QMainWindow): 主窗口装配器
 #   __init__: 加载配置 → 装配 6 个面板 → 连接信号 → 闹钟加载 → 定时器（周期随倍率）→ 主题 → 托盘
 #   update_clock(): tick 分发 TimeInfo 到时钟/日期/倒计时/世界时钟面板，并推送托盘悬停（T004.4）
-#   _on_rate_changed(rate): 倍率信号 → 重建核心实例 + 持久化 + 托盘更新
-#   _update_acceleration_rate(rate): 倍率验证/重建/保存/定时器重启共用路径（周期随倍率，T001.1）
-#   _save_alarms(): 闹钟变更持久化（alarm_saved 信号）
+#   _on_rate_changed(rate): 倍率信号 → 重建核心实例 + 托盘更新
+#   _update_acceleration_rate(rate): 倍率验证/重建/定时器重启共用路径（周期随倍率 T001.1）；
+#     写盘去抖（FIX001.23）经 _pending_rate/_rate_save_timer/_flush_pending_rate 落盘
+#   _flush_pending_rate(): 去抖定时器回调，落盘最近一次倍率（FIX001.23）
+#   _save_alarms(): 闹钟变更持久化（alarm_saved 信号；失败上浮托盘提示 FIX001.19）
 #   _on_alarm_triggered(alarm): 播放/通知/一次性禁用（alarm_triggered 信号）
-#   toggle_theme()/apply_theme(): 主题切换（窗口 QSS + 进度条样式 + 按钮图标）
+#   toggle_theme()/apply_theme(): 主题切换（窗口 QSS + 进度条样式 + 按钮图标；FIX001.11 持久化）
 #   _install_shortcuts(): 挂载窗口级快捷键（Ctrl+S 保存/Ctrl+Q 退出/Ctrl+T 主题，T004.1）
 #   hide_to_tray()/show_normal()/quit_app(): 托盘交互（SystemTray 信号回调）
 #   closeEvent(): 托盘可见时隐藏而非退出

@@ -6,7 +6,8 @@ from PyQt6.QtGui import QIcon, QAction, QPixmap, QPainter, QPen, QColor, QBrush
 
 from config.static.static_config import get_static_config
 
-# 静态配置（托盘图标颜色）
+# 静态配置（托盘图标颜色/默认倍率）
+_BASE = get_static_config().base
 _UI = get_static_config().ui
 
 
@@ -36,9 +37,10 @@ class SystemTray(QSystemTrayIcon):
         painter.setBrush(QBrush(tray_color))
         painter.drawEllipse(2, 2, 28, 28)  # 圆形背景
 
-        # 时钟指针
+        # 时钟指针（颜色经 ui.json 配置，FIX001.13）
         painter.setPen(
-            QPen(QColor("white"), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+            QPen(QColor(_UI["colors"]["tray_hand"]), 2, Qt.PenStyle.SolidLine,
+                 Qt.PenCapStyle.RoundCap)
         )
         painter.drawLine(16, 16, 16, 8)  # 分针
         painter.drawLine(16, 16, 22, 16)  # 时针
@@ -60,8 +62,8 @@ class SystemTray(QSystemTrayIcon):
 
         self.tray_menu.addSeparator()
 
-        # 当前倍率显示（只读）
-        self.rate_action = QAction("当前倍率: 2.0x", self)
+        # 当前倍率显示（只读；初始值取配置默认倍率，FIX001.23 P3#5）
+        self.rate_action = QAction(f"当前倍率: {float(_BASE['default_rate']):.1f}x", self)
         self.rate_action.setEnabled(False)
         self.tray_menu.addAction(self.rate_action)
 

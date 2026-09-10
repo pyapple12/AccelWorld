@@ -80,7 +80,8 @@ class WorldClockPanel(QWidget):
             world_time = now.astimezone(tz).strftime("%H:%M:%S")
             self.world_clock_label.setText(world_time)
         except Exception as e:
-            logger.error(f"更新世界时钟时出错: {e}")
+            # 统一 logger.exception 带堆栈（FIX001.23 P3#10：与其他面板回调风格一致）
+            logger.exception(f"更新世界时钟时出错: {e}")
             self.world_clock_label.setText("00:00:00")
 
     def set_timezone(self, tz_name: str) -> None:

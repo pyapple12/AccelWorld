@@ -55,6 +55,8 @@ class AlarmEditDialog(QDialog):
         sound_layout = QHBoxLayout()
         self.sound_combo = QComboBox()
         self.sound_combo.addItems(PresetSound.display_names())
+        # 下拉框选择预设时复位声音类型（FIX001.6：此前自定义闹钟选任何预设都被静默忽略）
+        self.sound_combo.currentIndexChanged.connect(self._on_sound_preset_selected)
         sound_layout.addWidget(self.sound_combo)
 
         self.custom_sound_button = QPushButton("自定义...")
@@ -66,6 +68,10 @@ class AlarmEditDialog(QDialog):
             if alarm.sound_type == "custom":
                 self.sound_type = "custom"
                 self.sound_value = alarm.sound_value
+                # 回填文件名到按钮文案（FIX001.6：修复打开自定义闹钟时当前铃声不可见）
+                self.custom_sound_button.setText(
+                    f"📁 {os.path.basename(alarm.sound_value)[:15]}"
+                )
             else:
                 # 预设声音：经 from_value 定位枚举（大小写不敏感兜底 CLASSIC），避免手写遍历（E2）
                 self.sound_value = alarm.sound_value
@@ -100,6 +106,10 @@ class AlarmEditDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
+
+    def _on_sound_preset_selected(self, index: int) -> None:
+        # 下拉框选择预设时复位声音类型为 preset（FIX001.6：自定义→预设切换不再被静默忽略）
+        self.sound_type = "preset"
 
     def select_custom_sound(self) -> None:
         # 文件选择器成功后切换声音类型并更新按钮文案
@@ -146,6 +156,8 @@ class AlarmEditDialog(QDialog):
 # ===== ui/alarm_dialog.py 函数/类说明 =====
 # AlarmEditDialog(QDialog): 闹钟添加/编辑对话框
 #   __init__(parent, alarm): 构建表单（标签/时间/声音/重复），编辑模式预填数据
+#     （自定义铃声回填文件名到按钮文案，FIX001.6）
+#   _on_sound_preset_selected(index): 下拉框选预设复位 sound_type（FIX001.6）
 #   select_custom_sound(): 文件选择器设置自定义铃声
 #   get_alarm(): 从表单构造 Alarm dataclass；编辑模式继承原 id/created_at/enabled
 #   设计理由：直接返回数据类避免 dict 魔法键；ID 保留保证 replace_alarm 定位正确

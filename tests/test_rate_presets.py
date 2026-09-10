@@ -1,7 +1,8 @@
 # 倍率预设测试（T004.2 引入）
 # 覆盖：预设定义合法性（来自 static 的范围校验）、预设按钮点击后配置与核心实例生效
-# Qt 相关断言放子进程执行：本机 GUI 进程退出期存在已知硬崩溃（见 y.problems），
-# 子进程隔离保证 pytest 主进程退出码不受污染（用 stdout 标记断言，不用退出码）
+# Qt 相关断言放子进程执行：本机 GUI 进程退出期存在已知硬崩溃（见 y.problems#6），
+# 子进程隔离保证 pytest 主进程退出码不受污染（用 stdout 标记断言，不用退出码）；
+# 配置经 ACCELWORLD_CONFIG_FILE 环境变量重定向到临时目录（FIX001.12），不污染真实配置
 
 import os
 import subprocess
@@ -16,12 +17,14 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _BASE = get_static_config().base
 
 # 子进程脚本：无头创建主窗口，逐个点击预设按钮，断言配置持久化与核心实例生效；
-# 另建独立 ClockPanel 验证按钮点击经信号链发出对应倍率
+# 另建独立 ClockPanel 验证按钮点击经信号链发出对应倍率。
+# 写盘断言前显式 flush 去抖定时器（FIX001.23 起倍率落盘经 500ms 去抖）
 _SUBPROCESS_SCRIPT = """
 import os
 import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ["ACCELWORLD_CONFIG_FILE"] = sys.argv[2]
 sys.path.insert(0, sys.argv[1])
 
 from PyQt6.QtWidgets import QApplication
@@ -39,6 +42,7 @@ assert set(window.clock_panel.preset_buttons) == set(presets), "预设按钮集�
 
 for name, rate in presets.items():
     window.clock_panel.preset_buttons[name].click()
+    window._flush_pending_rate()  # 立即落盘（正常由去抖定时器触发）
     assert abs(get_setting("time_dilation_rate") - float(rate)) < 1e-9, (
         f"预设 {name} 后配置未生效: {get_setting('time_dilation_rate')}"
     )
@@ -71,15 +75,17 @@ def test_presets_defined_and_in_range():
 
 def test_preset_switch_config_effect(tmp_path):
     # 完整主窗口路径：子进程内点击预设 → 配置持久化 + 核心生效 + 信号链发倍率
+    config_file = tmp_path / "user_config.json"
     script = tmp_path / "preset_switch_check.py"
     script.write_text(_SUBPROCESS_SCRIPT, encoding="utf-8")
     env = {
         **os.environ,
         "QT_QPA_PLATFORM": "offscreen",
         "PYTHONIOENCODING": "utf-8",
+        "ACCELWORLD_CONFIG_FILE": str(config_file),
     }
     result = subprocess.run(
-        [sys.executable, str(script), str(_PROJECT_ROOT)],
+        [sys.executable, str(script), str(_PROJECT_ROOT), str(config_file)],
         capture_output=True,
         text=True,
         encoding="utf-8",

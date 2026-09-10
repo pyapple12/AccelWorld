@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QCalendarWidget,
     QTimeEdit,
 )
-from PyQt6.QtCore import Qt, QDate, QTime
+from PyQt6.QtCore import QDate, QTime
 from PyQt6.QtGui import QFont
 
 from config.static.static_config import get_static_config
@@ -92,38 +92,46 @@ class CountdownPanel(QWidget):
         outer = QVBoxLayout(self)
         outer.addWidget(countdown_frame)
 
+    def _parse_target_text(self, target_text: str) -> datetime.datetime | None:
+        # 解析三种目标文本格式（19/16/10 位，日期格式默认 23:59:59）；非法返回 None
+        # （set_countdown 与启动恢复共用，FIX001.10）
+        try:
+            if len(target_text) == 19:  # YYYY-MM-DD HH:MM:SS
+                return datetime.datetime.strptime(target_text, "%Y-%m-%d %H:%M:%S")
+            if len(target_text) == 16:  # YYYY-MM-DD HH:MM
+                return datetime.datetime.strptime(target_text, "%Y-%m-%d %H:%M")
+            if len(target_text) == 10:  # YYYY-MM-DD
+                return datetime.datetime.strptime(
+                    target_text, "%Y-%m-%d"
+                ).replace(hour=23, minute=59, second=59)
+        except ValueError:
+            return None
+        return None
+
+    def restore_target(self, text: str) -> None:
+        # 启动恢复：回填输入框并解析内部目标态（FIX001.10）。
+        # 此前仅回填文本、countdown_target_date 保持 None，get_target_text 返回空串，
+        # 下一次正常退出即把持久化值清空（跨会话数据丢失）；解析失败时内部态为 None，
+        # 恢复"输入即存、点设置才倒计时"语义不变
+        self.countdown_target.setText(text)
+        self.countdown_target_date = self._parse_target_text(text.strip())
+
     def set_countdown(self) -> None:
-        # 三种长度格式解析；过期目标拒绝并置 None
+        # 解析目标文本并校验过期；过期目标拒绝并置 None
         target_text = self.countdown_target.text().strip()
         if not target_text:
             QMessageBox.warning(self, "警告", "请输入目标时间")
             return
 
-        try:
-            # 尝试解析时间格式
-            if len(target_text) == 19:  # YYYY-MM-DD HH:MM:SS
-                self.countdown_target_date = datetime.datetime.strptime(
-                    target_text, "%Y-%m-%d %H:%M:%S"
-                )
-            elif len(target_text) == 16:  # YYYY-MM-DD HH:MM
-                self.countdown_target_date = datetime.datetime.strptime(
-                    target_text, "%Y-%m-%d %H:%M"
-                )
-            elif len(target_text) == 10:  # YYYY-MM-DD
-                self.countdown_target_date = datetime.datetime.strptime(
-                    target_text, "%Y-%m-%d"
-                )
-                # 只有日期时默认当天 23:59:59
-                self.countdown_target_date = self.countdown_target_date.replace(
-                    hour=23, minute=59, second=59
-                )
-            else:
-                raise ValueError("时间格式不正确")
-        except ValueError as e:
+        parsed = self._parse_target_text(target_text)
+        if parsed is None:
             QMessageBox.critical(
-                self, "错误", f"时间格式不正确，请使用 YYYY-MM-DD HH:MM:SS 格式\n{e}"
+                self,
+                "错误",
+                "时间格式不正确，请使用 YYYY-MM-DD HH:MM:SS 格式",
             )
             return
+        self.countdown_target_date = parsed
 
         # 检查时间是否已过期
         if self.countdown_target_date <= datetime.datetime.now():
@@ -232,11 +240,14 @@ class CountdownPanel(QWidget):
         return dialog, calendar
 
     def show_date_picker(self) -> None:
-        # 弹窗选日期：日历点击/快捷按钮即时写回输入框，OK 按当前选中日期定稿
+        # 弹窗选日期：日历点击/快捷按钮即时写回输入框，OK 按当前选中日期定稿；
+        # exec 后 deleteLater 释放子对话框（FIX001.23：重复打开不再累积存活对象）
         dialog, calendar = self._build_date_dialog()
-
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self._set_target_date_part(calendar.selectedDate())
+        try:
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                self._set_target_date_part(calendar.selectedDate())
+        finally:
+            dialog.deleteLater()
 
     def _build_time_dialog(self, current_time: QTime) -> tuple[QDialog, QTimeEdit]:
         # 构建时间选择弹窗（尺寸交由 Qt sizeHint 自适应，修复 HH:mm:ss 在 120px 固定宽度内显示不全）
@@ -273,7 +284,7 @@ class CountdownPanel(QWidget):
         return dialog, time_edit
 
     def show_time_picker(self) -> None:
-        # 弹窗选时间，日期取输入框或今天
+        # 弹窗选时间，日期取输入框或今天；exec 后 deleteLater 释放（FIX001.23）
         # 使用输入框中的日期，为空则使用今天
         current_text = self.countdown_target.text().strip()
         if current_text and len(current_text) >= 10:
@@ -289,25 +300,30 @@ class CountdownPanel(QWidget):
                 current_time = parsed
 
         dialog, time_edit = self._build_time_dialog(current_time)
-
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            selected_time = time_edit.time()
-            time_str = selected_time.toString("HH:mm:ss")
-            self.countdown_target.setText(f"{date_str} {time_str}")
+        try:
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                selected_time = time_edit.time()
+                time_str = selected_time.toString("HH:mm:ss")
+                self.countdown_target.setText(f"{date_str} {time_str}")
+        finally:
+            dialog.deleteLater()
 
 
 # ===== ui/panels/countdown_panel.py 函数/类说明 =====
 # CountdownPanel(QWidget): 倒计时面板
-#   set_countdown(): 解析三种时间格式并校验过期，成功后刷新显示
+#   set_countdown(): 解析目标文本并校验过期，成功后刷新显示
 #   clear_countdown(): 清除目标与显示
 #   update_countdown(): 主窗口 tick 调用，计算剩余并着色（结束红/进行绿）
 #   get_target_text(): 供主窗口保存配置；未设置返回空串
+#   _parse_target_text(text): 三种目标文本格式解析（FIX001.10 抽取共用；非法返回 None）
+#   restore_target(text): 启动恢复（回填输入框并解析内部态，FIX001.10 修复跨会话清空）
 #   _set_target_date_part(selected_date): 选中日期写回输入框日期部分并保留时间部分
 #     （实时反馈不等 OK，修复 T001.2；日历点击/快捷按钮/OK 共用此路径）
 #   _apply_quick_date(calendar, days): 快捷日期按钮（今天/明天/一周后），勾选日历 + 即时写回
 #   _build_date_dialog()/_build_time_dialog(...): 弹窗构建器（接线实时反馈；时间弹窗尺寸
 #     交由 Qt sizeHint 自适应，修复 HH:mm:ss 显示不全，T001.3）
-#   show_date_picker()/show_time_picker(): 弹窗选择，仅改写输入框对应部分
+#   show_date_picker()/show_time_picker(): 弹窗选择，仅改写输入框对应部分；
+#     exec 后 deleteLater 释放子对话框（FIX001.23）
 #   设计理由：倒计时状态（目标时间）内聚在面板，主窗口只做 tick 驱动
 #   异常处理：格式解析 ValueError 弹窗提示；过期目标置 None
 #   关联配置：countdown_target 配置项由主窗口经 get_target_text 持久化

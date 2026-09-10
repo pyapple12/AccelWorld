@@ -138,17 +138,23 @@ def test_narrow_exception(monkeypatch):
 
 
 def test_programming_error_raised(monkeypatch):
-    # 编程错误（非网络类）上抛而非被吞（S9.1 回归）
-    def bad_data(url):
-        # 返回非 dict 数据（后续 .get 触发 AttributeError，验证编程错误上抛）
-        return "not-a-dict"
+    # 编程错误（非网络类异常）上抛而非被吞（S9.1 回归）
+    def bad_fetch(url):
+        # 模拟请求函数内部编程错误
+        raise RuntimeError("模拟编程错误")
 
-    _set_fetch(monkeypatch, bad_data)
+    _set_fetch(monkeypatch, bad_fetch)
     try:
         weather_service.get_weather_by_coords(39.9, 116.4)
         raise AssertionError("编程错误被吞")
-    except AttributeError:
+    except RuntimeError:
         pass
+
+
+def test_malformed_structure_returns_none(monkeypatch):
+    # 响应为非 dict 结构降级 None 并记日志（FIX001.14：结构异常不再以 AttributeError 形式上抛）
+    _set_fetch(monkeypatch, lambda url: "not-a-dict")
+    assert weather_service.get_weather_by_coords(39.9, 116.4) is None
 
 
 def test_unknown_city(monkeypatch):
@@ -188,3 +194,32 @@ def test_fetch_rejects_non_api_url():
         _REAL_FETCH("http://127.0.0.1:8080/forecast")
     with pytest.raises(ValueError):
         _REAL_FETCH("https://evil.example.com/v1")
+
+
+def test_gaierror_degrades_and_retried(monkeypatch):
+    # DNS 解析失败（gaierror）进入重试白名单并最终降级 None（FIX001.3）
+    import socket as socket_module
+
+    calls = {"n": 0}
+
+    def fake(url):
+        # 模拟断网/DNS 故障：getaddrinfo 抛 gaierror
+        calls["n"] += 1
+        raise socket_module.gaierror(8, "nodename nor servname provided")
+
+    _set_fetch(monkeypatch, fake)
+    monkeypatch.setattr(time, "sleep", lambda seconds: None)  # 重试间隔不实等
+    assert weather_service.get_weather_by_coords(30.0, 120.0) is None
+    assert calls["n"] == 3  # 重试白名单生效（首试 + 2 重试）
+
+
+def test_missing_required_fields_returns_none(monkeypatch):
+    # 响应缺必要字段返回 None，不再以 0 值假数据兜底（FIX001.14）
+    _set_fetch(monkeypatch, lambda url: {"current": {"temperature_2m": 20.0}})
+    assert weather_service.get_weather_by_coords(30.0, 120.0) is None
+
+
+def test_response_not_dict_returns_none(monkeypatch):
+    # 响应结构异常（非 dict）降级 None 不崩溃（FIX001.14）
+    _set_fetch(monkeypatch, lambda url: ["unexpected"])
+    assert weather_service.get_weather_by_coords(30.0, 120.0) is None

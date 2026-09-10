@@ -86,7 +86,7 @@ QProgressBar::chunk {
 
 QPushButton {
     background-color: @{primary}@;
-    color: white;
+    color: @{text_on_primary}@;
     border: none;
     border-radius: 6px;
     padding: 6px 12px;
@@ -177,7 +177,7 @@ QProgressBar::chunk {
 
 QPushButton {
     background-color: @{primary}@;
-    color: white;
+    color: @{text_on_primary}@;
     border: none;
     border-radius: 6px;
     padding: 6px 12px;

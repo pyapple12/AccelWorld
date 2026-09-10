@@ -1,5 +1,6 @@
 # 闹钟模块测试（S9.7 测试引入）
-# 覆盖：构造校验、重复/一次性触发、跨天去重、上限、容错、编辑保留 ID、预设铃声辅助
+# 覆盖：构造校验、重复/一次性触发、跨天去重、上限、容错、编辑保留 ID、预设铃声辅助；
+#       FIX001 补充：created_at=None 防崩、一次性顺延次日、repeat_days 规范化、类型校验剔除
 
 import datetime
 
@@ -93,10 +94,9 @@ def test_from_dict_null_time_skipped():
             {"label": "空标签", "label": None, "time": "08:00"},
         ]
     )
-    # 仅 null time 条目被跳过；label 无校验，null 标签条目按当前语义正常保留
-    assert len(m.alarms) == 2
+    # FIX001.9 语义变更：label=None 为类型不符必填字段 → 整条剔除（原语义保留 None 标签）
+    assert len(m.alarms) == 1
     assert m.alarms[0].label == "合法"
-    assert m.alarms[1].label is None
 
 
 def test_replace_keeps_id():
@@ -118,4 +118,36 @@ def test_preset_helpers():
     assert PresetSound.CLASSIC.index() == 0
     assert PresetSound.from_index(2) is PresetSound.BEEP
     assert PresetSound.from_value("CLASSIC") is PresetSound.CLASSIC
+
+
+def test_created_at_none_does_not_crash():
+    # created_at=None（脏配置）不抛 TypeError，保守不触发（FIX001.8）
+    alarm = _alarm()
+    alarm.created_at = None
+    assert alarm.should_trigger_on(datetime.datetime(2026, 8, 8, 7, 0)) is False
+
+
+def test_one_shot_past_time_rolls_to_next_day():
+    # 一次性闹钟创建时设定时间已过当日 → 自动顺延次日触发（FIX001.20 用户定案语义）
+    alarm = Alarm(label="顺延", time="06:00")
+    alarm.created_at = datetime.datetime(2026, 8, 8, 10, 0, 0).isoformat()
+    assert alarm.should_trigger_on(datetime.datetime(2026, 8, 8, 6, 0)) is False
+    assert alarm.should_trigger_on(datetime.datetime(2026, 8, 9, 6, 0)) is True
+    assert alarm.should_trigger_on(datetime.datetime(2026, 8, 10, 6, 0)) is False
+
+
+def test_one_shot_future_time_stays_same_day():
+    # 一次性闹钟设定时间未过当日 → 仍为当天触发（FIX001.20 不改变既有场景）
+    alarm = Alarm(label="当天", time="23:00")
+    alarm.created_at = datetime.datetime(2026, 8, 8, 10, 0, 0).isoformat()
+    assert alarm.should_trigger_on(datetime.datetime(2026, 8, 8, 23, 0)) is True
+    assert alarm.should_trigger_on(datetime.datetime(2026, 8, 9, 23, 0)) is False
+
+
+def test_repeat_days_normalized():
+    # repeat_days 规范化：数字字符串强转、越界/非法/重复元素剔除（FIX001.9/21）
+    alarm = Alarm(label="规范", time="07:00", repeat_days=["1", 9, -1, "abc", 2, 2, None])
+    assert alarm.repeat_days == [1, 2]
+    assert alarm.should_trigger_on(datetime.datetime(2026, 8, 4, 7, 0)) is True  # 周二
+    assert alarm.should_trigger_on(datetime.datetime(2026, 8, 8, 7, 0)) is False  # 周六
     assert PresetSound.from_value("不存在的") is PresetSound.CLASSIC  # 兜底

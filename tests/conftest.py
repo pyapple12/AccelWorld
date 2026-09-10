@@ -9,9 +9,9 @@ from utils.file_utils import clear_json_cache
 
 @pytest.fixture(autouse=True)
 def isolated_config(tmp_path, monkeypatch):
-    # 用户配置隔离：CONFIG_DIR/CONFIG_FILE 指向 pytest 临时目录，并清理 file_utils 缓存
+    # 用户配置隔离：CONFIG_FILE 指向 pytest 临时目录，并清理 file_utils 缓存
     # 设计理由：测试读写配置不污染项目内真实 user_config.json；缓存清理保证读到的始终是最新值
-    monkeypatch.setattr(settings, "CONFIG_DIR", tmp_path)
+    # （FIX001.12 起子进程隔离统一走 ACCELWORLD_CONFIG_FILE 环境变量，进程内隔离仍走此 fixture）
     monkeypatch.setattr(settings, "CONFIG_FILE", tmp_path / "user_config.json")
     clear_json_cache()
     yield

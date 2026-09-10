@@ -2,14 +2,13 @@
 
 import datetime
 from dataclasses import dataclass
-from typing import Tuple
 
 from lunar_python import Solar  # type: ignore
 from chinese_calendar import get_holiday_detail  # type: ignore
 
-# 时辰映射
+# 时辰映射（23-24 与 0-1 同属子时；23 <= hour < 1 恒 False 的旧写法已修正，FIX001.25）
 SHI_CHEN = [
-    (23, 1, "子时"),
+    (0, 1, "子时"),
     (1, 3, "丑时"),
     (3, 5, "寅时"),
     (5, 7, "卯时"),
@@ -21,6 +20,7 @@ SHI_CHEN = [
     (17, 19, "酉时"),
     (19, 21, "戌时"),
     (21, 23, "亥时"),
+    (23, 24, "子时"),
 ]
 
 # 拜财神方向（按月份）
@@ -56,8 +56,18 @@ CUSTOM_HOLIDAYS = {
     (12, 25): "圣诞节",
 }
 
-# 英文节日名称到中文的翻译映射
-HOLIDAY_TRANSLATION = {"New Year's Day": "元旦", "National Day": "国庆节"}
+# 英文节日名称到中文的翻译映射（chinese-calendar 库 Holiday 枚举英文名全集，
+# FIX001.4 补全——此前春节/清明/端午/中秋等泄漏英文到界面）
+HOLIDAY_TRANSLATION = {
+    "New Year's Day": "元旦",
+    "Spring Festival": "春节",
+    "Tomb-sweeping Day": "清明节",
+    "Labour Day": "劳动节",
+    "Dragon Boat Festival": "端午节",
+    "National Day": "国庆节",
+    "Mid-autumn Festival": "中秋节",
+    "Anti-Fascist 70th Day": "抗战胜利纪念日",
+}
 
 # 星期映射（中文日期格式化用，模块级常量避免每次调用重建，E6）
 _WEEKDAY_NAMES = {

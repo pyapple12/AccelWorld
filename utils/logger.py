@@ -11,8 +11,11 @@ from pathlib import Path
 # 日志格式（时间/级别/模块/消息）
 _LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] %(message)s"
 
-# 默认日志级别
+# 默认日志级别（main.py 经 base.json log_level 传入，FIX001.24；此默认值仅兜底）
 _DEFAULT_LEVEL = logging.INFO
+
+# 崩溃栈日志文件名前缀（单源常量，utils/monitor.py 引用同一份，FIX001.24）
+CRASH_LOG_PREFIX = "crash-"
 
 # 根 logger 配置标记（避免重复添加 handler）
 _setup_done = False
@@ -31,19 +34,29 @@ class _DailyFileHandler(logging.FileHandler):
         return str(self.log_dir / f"app-{self._today.isoformat()}.log")
 
     def emit(self, record: logging.LogRecord) -> None:
-        # 跨天检查：日期变化则关闭旧流并重建新日期文件
+        # 跨天检查：日期变化则关闭旧流并重建新日期文件。
+        # 重开失败（目录不可写/被占用等）回退旧路径且 _today 保持旧值——本次跳过文件写入
+        # （仅控制台通道），后续每次 emit 自动重试直至恢复
+        # （FIX001.18：修复重开失败后文件日志永久失效；Python 3.14 的 emit 不再吞 _open 异常，
+        # 故流为 None 时不得调用 super().emit）
         today = datetime.date.today()
         if today != self._today:
-            self.close()
-            self.baseFilename = self._today_path()
-            self._open()
-        super().emit(record)
+            old_path = self.baseFilename
+            try:
+                self.close()
+                self.baseFilename = str(self.log_dir / f"app-{today.isoformat()}.log")
+                self._open()
+                self._today = today
+            except OSError:
+                self.baseFilename = old_path
+        if self.stream is not None:
+            super().emit(record)
 
 
 def _cleanup_old_logs(log_dir: Path, backup_days: int) -> None:
     # 删除超过保留天数的 app-*.log 与 crash-*.log 文件（按文件名日期戳判断，T002 新增 crash 前缀）
     today = datetime.date.today()
-    for pattern in ("app-*.log", "crash-*.log"):
+    for pattern in ("app-*.log", f"{CRASH_LOG_PREFIX}*.log"):
         for f in Path(log_dir).glob(pattern):
             try:
                 file_date = datetime.date.fromisoformat(
