@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout
 from PyQt6.QtCore import QTimer
-from PyQt6.QtGui import QCloseEvent
+from PyQt6.QtGui import QCloseEvent, QKeySequence, QShortcut
 
 from config.settings import (
     load_config,
@@ -117,6 +117,9 @@ class AcceleratedWorldGUI(QMainWindow):
         self.is_dark_theme = False
         self.apply_theme()
 
+        # ------------------- 快捷键（键位来自静态配置，T004.1） -------------------
+        self._install_shortcuts()
+
         # ------------------- 系统托盘 -------------------
         self.tray = SystemTray(parent=self)
         self.tray.show_requested.connect(self.show_normal)
@@ -133,6 +136,10 @@ class AcceleratedWorldGUI(QMainWindow):
             self.date_panel.update_time(info)
             self.countdown_panel.update_countdown()
             self.world_clock_panel.update_world_clock()
+            # 托盘悬停随 tick 实时显示加速时间与倍率（文本未变时托盘内部跳过，T004.4）
+            self.tray.update_tooltip(
+                info.custom_time, self.accel_world.time_dilation_rate
+            )
         except Exception as e:
             # logger.exception 自带堆栈，单通道记录
             logger.exception(f"更新时钟时出错: {e}")
@@ -192,6 +199,20 @@ class AcceleratedWorldGUI(QMainWindow):
             self.setStyleSheet(LIGHT_THEME)
             self.clock_panel.set_progress_style(LIGHT_THEME_PROGRESS)
         self.weather_panel.set_theme_button(self.is_dark_theme)
+
+    # ------------------- 快捷键 -------------------
+
+    def _install_shortcuts(self) -> None:
+        # 窗口级三快捷键：保存/退出/主题切换（键位常量来自 base.json，T004.1）
+        shortcuts = get_static_config().base["shortcuts"]
+        bindings = (
+            (shortcuts["save"], self.save_settings),
+            (shortcuts["quit"], self.quit_app),
+            (shortcuts["theme"], self.toggle_theme),
+        )
+        for key, slot in bindings:
+            shortcut = QShortcut(QKeySequence(key), self)
+            shortcut.activated.connect(slot)
 
     # ------------------- 托盘/窗口 -------------------
 
@@ -281,12 +302,13 @@ def main_gui(**kwargs: Any) -> None:
 # ===== ui/main_window.py 函数/类说明 =====
 # AcceleratedWorldGUI(QMainWindow): 主窗口装配器
 #   __init__: 加载配置 → 装配 6 个面板 → 连接信号 → 闹钟加载 → 定时器（周期随倍率）→ 主题 → 托盘
-#   update_clock(): tick 分发 TimeInfo 到时钟/日期/倒计时/世界时钟面板
+#   update_clock(): tick 分发 TimeInfo 到时钟/日期/倒计时/世界时钟面板，并推送托盘悬停（T004.4）
 #   _on_rate_changed(rate): 倍率信号 → 重建核心实例 + 持久化 + 托盘更新
 #   _update_acceleration_rate(rate): 倍率验证/重建/保存/定时器重启共用路径（周期随倍率，T001.1）
 #   _save_alarms(): 闹钟变更持久化（alarm_saved 信号）
 #   _on_alarm_triggered(alarm): 播放/通知/一次性禁用（alarm_triggered 信号）
 #   toggle_theme()/apply_theme(): 主题切换（窗口 QSS + 进度条样式 + 按钮图标）
+#   _install_shortcuts(): 挂载窗口级快捷键（Ctrl+S 保存/Ctrl+Q 退出/Ctrl+T 主题，T004.1）
 #   hide_to_tray()/show_normal()/quit_app(): 托盘交互（SystemTray 信号回调）
 #   closeEvent(): 托盘可见时隐藏而非退出
 #   save_settings(): 汇总各面板当前状态持久化

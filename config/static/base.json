@@ -1,8 +1,18 @@
 {
-  "version": "0.4.7.2",
+  "version": "0.4.7.3",
   "rate_min": 1.0,
   "rate_max": 20.0,
   "default_rate": 2.0,
+  "rate_presets": {
+    "工作": 1.0,
+    "专注": 2.0,
+    "睡眠": 10.0
+  },
+  "shortcuts": {
+    "save": "Ctrl+S",
+    "quit": "Ctrl+Q",
+    "theme": "Ctrl+T"
+  },
   "default_theme": "light",
   "default_city": "北京",
   "default_timezone": "Asia/Shanghai",
@@ -12,6 +22,7 @@
   "window_width": 900,
   "window_height": 500,
   "clock_tick_ms": 100,
+  "progress_anim_ms": 200,
   "alarm_check_ms": 1000,
   "notification_duration_ms": 3000,
   "weather_cache_ttl": 1800,

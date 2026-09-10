@@ -82,6 +82,12 @@ class SystemTray(QSystemTrayIcon):
         # 倍率变化时同步只读菜单项文本
         self.rate_action.setText(f"当前倍率: {rate:.1f}x")
 
+    def update_tooltip(self, accelerated_time: str, rate: float) -> None:
+        # tick 推送悬停文本（加速时间+倍率，T004.4）；文本未变化时跳过，避免托盘重复重绘
+        text = f"加速世界 - {accelerated_time} @ {rate:.1f}x"
+        if text != self.toolTip():
+            self.setToolTip(text)
+
     def show_notification(
         self, title: str, message: str, icon_kind: str = "info"
     ) -> None:
@@ -105,6 +111,11 @@ class SystemTray(QSystemTrayIcon):
 #   _create_menu(): 显示/隐藏/倍率（只读）/退出菜单
 #   _on_activated(reason): 双击托盘显示窗口
 #   update_rate(rate): 倍率变化时更新菜单文本（主窗口经 rate 信号调用）
+#   update_tooltip(accelerated_time, rate): tick 推送悬停文本（T004.4）
+#     输入：加速时间字符串、当前倍率；输出：无（副作用为 setToolTip）
+#     设计理由：文本未变化时跳过 setToolTip（tick 高频调用，托盘悬停无需逐帧重绘）；
+#     只接收基础类型参数，托盘不依赖 modules 层
+#     异常处理：无
 #   show_notification(title, message, icon_kind): 封装 showMessage（时长来自 base.json）
 #   设计理由：托盘职责独立成类，主窗口不再持有图标/菜单/绘制逻辑
 #   关联配置：版本号来自 config/static/base.json base["version"]（版本迁移方案）；

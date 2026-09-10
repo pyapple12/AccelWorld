@@ -1,6 +1,6 @@
 # 时钟面板模块（S4 GUI 面板化拆分，含时钟显示 + 参数标签 + 倍率输入区）
 
-from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtCore import pyqtSignal, Qt, QPropertyAnimation
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -57,6 +57,9 @@ class ClockPanel(QWidget):
         self.progress_bar.setFormat("%v / %m 小时")
         self.progress_bar.setStyleSheet(LIGHT_THEME_PROGRESS)
         clock_layout.addWidget(self.progress_bar)
+
+        # 进度条平滑动画（T004.3，惰性创建于 _animate_progress）
+        self._progress_anim: QPropertyAnimation | None = None
 
         # 参数显示行（一天小时数/倍率/剩余小时数）
         params_layout = QGridLayout()
@@ -118,6 +121,18 @@ class ClockPanel(QWidget):
             self.slider_value_label, 2, 1, Qt.AlignmentFlag.AlignLeft
         )
 
+        # 预设快捷按钮行（预设定义来自静态配置，T004.2；点击经 set_rate 走滑杆信号链）
+        self.preset_buttons: dict[str, QPushButton] = {}
+        preset_row = QHBoxLayout()
+        for preset_name, preset_rate in _BASE["rate_presets"].items():
+            preset_button = QPushButton(f"{preset_name} {float(preset_rate):.1f}x")
+            preset_button.clicked.connect(
+                lambda checked=False, rate=float(preset_rate): self._apply_preset(rate)
+            )
+            self.preset_buttons[preset_name] = preset_button
+            preset_row.addWidget(preset_button)
+        input_layout.addLayout(preset_row, 3, 0, 1, 4)
+
         self.confirm_button = QPushButton("应用加速")
         self.confirm_button.setFont(QFont(_UI["font_family"], 12, QFont.Weight.Bold))
         self.confirm_button.setFixedSize(120, 50)
@@ -141,11 +156,23 @@ class ClockPanel(QWidget):
         self.rate_value_label.setText(f"{info.dilation_percentage:.0f}%")
         self.remaining_hours_value_label.setText(f"{info.remaining_hours:.2f}小时")
 
-        # 计算进度并更新进度条
+        # 计算进度并更新进度条（动画平滑过渡替代 setValue 跳变，T004.3）
         total_hours = int(info.expanded_hours_per_day)
         current_hour = info.custom_hour
         self.progress_bar.setMaximum(total_hours)
-        self.progress_bar.setValue(current_hour)
+        self._animate_progress(current_hour)
+
+    def _animate_progress(self, target: int) -> None:
+        # QPropertyAnimation 从当前值平滑推进到目标小时数（时长来自静态配置）
+        # 设计理由：每 tick 以当前动画值为起点重定目标，高频刷新下收敛自然、无跳变
+        if self._progress_anim is None:
+            self._progress_anim = QPropertyAnimation(self.progress_bar, b"value", self)
+        anim = self._progress_anim
+        anim.stop()
+        anim.setDuration(int(_BASE["progress_anim_ms"]))
+        anim.setStartValue(self.progress_bar.value())
+        anim.setEndValue(target)
+        anim.start()
 
     def set_progress_style(self, qss: str) -> None:
         # 直接应用传入的 QSS 常量
@@ -155,6 +182,10 @@ class ClockPanel(QWidget):
         # 滑杆 setValue 触发 on_slider_change → 信号链自动生效（标签由信号链统一更新）
         self.slider.setValue(int(round(rate * 10)))
         self.rate_entry.setText("")
+
+    def _apply_preset(self, rate: float) -> None:
+        # 预设按钮回调：与滑杆/手输共用 set_rate 信号链（校验/持久化统一在主窗口）
+        self.set_rate(rate)
 
     def on_slider_change(self, value: int) -> None:
         # 值÷10 还原倍率，输入框同步显示两位小数
@@ -188,13 +219,21 @@ class ClockPanel(QWidget):
 
 
 # ===== ui/panels/clock_panel.py 函数/类说明 =====
-# ClockPanel(QWidget): 时钟显示 + 参数标签 + 进度条 + 倍率设置（滑杆/输入框/按钮）
+# ClockPanel(QWidget): 时钟显示 + 参数标签 + 进度条 + 倍率设置（滑杆/输入框/预设按钮）
 #   信号：rate_changed(float) 倍率变化，主窗口据此重建实例并持久化
-#   update_time(info): 刷新时间/参数/进度条显示
+#   update_time(info): 刷新时间/参数显示，进度条经动画平滑推进到目标小时
+#   _animate_progress(target): QPropertyAnimation 平滑过渡（时长 progress_anim_ms，T004.3）
+#     输入：目标小时数；输出：无（副作用为进度条属性动画）
+#     设计理由：动画对象惰性创建并持有（防 GC）；每次以当前值为起点重定目标，
+#     tick 高频调用下动画连续收敛；stop() 防同对象重复启动告警
+#     异常处理：无（属性动画不抛业务异常）
 #   set_progress_style(qss): 主题切换时更新进度条样式
 #   set_rate(rate): 外部同步倍率（走滑杆触发信号，保证 UI 与核心一致）
+#   _apply_preset(rate): 预设按钮回调（T004.2），走 set_rate 统一信号链
+#     设计理由：预设只改倍率入口，校验/持久化仍归主窗口单一路径，避免双写
 #   on_slider_change(value): 滑杆回调，同步标签后发信号
 #   apply_acceleration(): 输入框解析/验证/发信号/同步滑杆
 #   设计理由：显示与设置同属"时钟域"；信号解耦面板与主窗口，无需反向引用
 #   异常处理：输入解析 ValueError 弹窗提示
-#   关联配置：进度条样式来自 ui/themes.py
+#   关联配置：进度条样式来自 ui/themes.py；预设/动画时长来自 base.json
+#     （rate_presets/progress_anim_ms）

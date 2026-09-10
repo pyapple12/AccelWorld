@@ -68,12 +68,12 @@ $env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWi
 
 ### T003: UI 美化方向决策 [problems#5]
 
-- [ ] T003.1 [P3] 体验 PyQt-Fluent-Widgets 官方 demo —— 安装并运行官方 demo 实际感受 Fluent 视觉与组件形态；验证：体验结论记录到 y.problems.md#5
-- [ ] T003.2 [P3] 定方向 —— 三选一：UI 2.0 立项（Fluent Widgets 重写 UI 层，呼应主题商店 F03c03）/ 低成本方案（PyQtDarkTheme 或 QtTheme 配合现有 themes.py 管线）/ 短期维持现状；验证：结论写入 y.problems.md 并更新状态，若立项则在 z.plan.md 建方案章节
+- [x] T003.1 [P3] 体验 PyQt-Fluent-Widgets 官方 demo —— 安装并运行官方 demo 实际感受 Fluent 视觉与组件形态；验证：体验结论记录到 y.problems.md#5（2026-09-10 完成：独立临时 venv 装 PyQt6-Fluent-Widgets 1.11.3 + [full] 扩展，官方仓库 PyQt6 分支 gallery demo 桌面实测运行，项目 .venv 零污染）
+- [x] T003.2 [P3] 定方向 —— 三选一：UI 2.0 立项（Fluent Widgets 重写 UI 层，呼应主题商店 F03c03）/ 低成本方案（PyQtDarkTheme 或 QtTheme 配合现有 themes.py 管线）/ 短期维持现状；验证：结论写入 y.problems.md 并更新状态，若立项则在 z.plan.md 建方案章节（2026-09-10 定案：**C. 维持现状**，UI 2.0 列为 1.0 大版本候选，未立项故 z.plan.md 不建新章节）
 
 ### T004: 短期功能项 [plan#未完成功能项路线图]
 
-- [ ] T004.1 [P2] 快捷键支持（M09c/F02a01） —— QShortcut 绑定 Ctrl+S 保存、Ctrl+Q 退出、Ctrl+T 主题切换，键位常量入 config/static；验证：GUI 无头初始化 + 手动核对三快捷键
-- [ ] T004.2 [P2] 倍率预设方案（M09e/F02a04） —— 预设工作/睡眠/专注模式（倍率组合），预设定义入 config/static，面板加快捷切换；验证：单元测试断言预设切换后配置生效
-- [ ] T004.3 [P3] 进度条动画（F01b02） —— QPropertyAnimation 平滑过渡替代 setValue 跳变，动画时长入 base.json；验证：GUI 无头 + 手动观察过渡效果
-- [ ] T004.4 [P3] 托盘 toolTip 实时化（F01c03/M09b） —— setToolTip 随时钟 tick 显示当前加速时间/倍率（当前为静态文本）；验证：手动核对托盘悬停内容随时间变化
+- [x] T004.1 [P2] 快捷键支持（M09c/F02a01） —— QShortcut 绑定 Ctrl+S 保存、Ctrl+Q 退出、Ctrl+T 主题切换，键位常量入 config/static；验证：GUI 无头初始化 + 手动核对三快捷键（2026-09-10 完成：`base.json` 新增 `shortcuts` 键位表，`main_window._install_shortcuts` 统一挂载；探针实测三快捷键触发保存/退出保存/主题翻转）
+- [x] T004.2 [P2] 倍率预设方案（M09e/F02a04） —— 预设工作/睡眠/专注模式（倍率组合），预设定义入 config/static，面板加快捷切换；验证：单元测试断言预设切换后配置生效（2026-09-10 完成：`base.json` 新增 `rate_presets`（工作 1.0/专注 2.0/睡眠 10.0），ClockPanel 预设按钮行走 `set_rate` 信号链与滑杆/手输共用校验持久化路径；`tests/test_rate_presets.py` 2 用例，GUI 断言走子进程隔离避免退出期硬崩溃污染 pytest 退出码）
+- [x] T004.3 [P3] 进度条动画（F01b02） —— QPropertyAnimation 平滑过渡替代 setValue 跳变，动画时长入 base.json；验证：GUI 无头 + 手动观察过渡效果（2026-09-10 完成：`_animate_progress` 每 tick 以当前动画值为起点重定目标，时长 `progress_anim_ms=200`；验收实测半程值 5 ∈ (-1, 13) 证明平滑非跳变，终值收敛）
+- [x] T004.4 [P3] 托盘 toolTip 实时化（F01c03/M09b） —— setToolTip 随时钟 tick 显示当前加速时间/倍率（当前为静态文本）；验证：手动核对托盘悬停内容随时间变化（2026-09-10 完成：`SystemTray.update_tooltip` 文本未变化时跳过重绘，主窗口 `update_clock` 逐 tick 推送；探针断言时间/倍率进入悬停文本且相同文本不重复 setToolTip）
