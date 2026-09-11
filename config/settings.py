@@ -52,6 +52,9 @@ class UserConfig:
     last_timezone: str = field(
         default_factory=lambda: get_static_config().base["default_timezone"]
     )  # 上次选择的时区
+    world_pins: List[str] = field(
+        default_factory=lambda: get_static_config().base["default_world_pins"]
+    )  # 世界时钟常驻城市集（IANA 标识列表，PL007.02）
     countdown_target: str = ""  # 上次设置的倒计时目标（结构默认：未设置）
     window_geometry: Optional[str] = None  # 窗口位置和大小（base64 编码）
     alarms: List[Any] = field(default_factory=list)  # 闹钟列表（结构默认：空）

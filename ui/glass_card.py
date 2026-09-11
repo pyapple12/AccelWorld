@@ -9,7 +9,7 @@
 
 import os
 
-from PyQt6.QtCore import QRectF, Qt
+from PyQt6.QtCore import QRectF, pyqtSignal, Qt
 from PyQt6.QtGui import QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
 from PyQt6.QtWidgets import QGraphicsDropShadowEffect, QWidget
 
@@ -93,13 +93,18 @@ def render_field_pixmap(size_w: int, size_h: int, field_tokens: dict, dark: bool
 
 class GlassCard(QWidget):
     # 玻璃卡片容器：对角 tint + 顶部镜面高光描边 + 柔投影（材质参数经接口读取）
-    # 用法：GlassCard(interface, radius_key="xl|lg|md")，向其 layout 内加内容控件
+    # 用法：GlassCard(interface, radius_key="xl|lg|md")，向其 layout 内加内容控件；
+    # clicked 信号供可点击卡（如世界时钟矩阵，PL007.02）；set_selected 切换金描边
+    clicked = pyqtSignal()
+
     def __init__(self, interface: AppInterface, radius_key: str = "lg",
                  parent: QWidget | None = None):
         super().__init__(parent)
         ui = interface.get_ui_static()
         self._glass_tokens = ui["glass"]
         self._radius = int(ui["radius"][radius_key])
+        self._accent = QColor(ui["colors"]["primary"])
+        self._selected = False
         self._pix: QPixmap | None = None
         if not _IS_OFFSCREEN:
             # 柔投影仅真实桌面启用（offscreen 探针定案：效果层参与崩溃面）
@@ -116,6 +121,19 @@ class GlassCard(QWidget):
         self._pix = None
         self.update()
 
+    def set_selected(self, selected: bool) -> None:
+        # 选中态（金描边）：世界时钟矩阵等可点卡的当前项指示（PL007.02）
+        if self._selected != selected:
+            self._selected = selected
+            self._pix = None
+            self.update()
+
+    def mousePressEvent(self, event) -> None:
+        # 左键点击发 clicked（可点卡契约；不可点卡无监听者无副作用）
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
+
     def _apply_effect_token(self) -> None:
         # 柔投影参数（颜色/模糊/纵向偏移）来自当前主题的 glass 节
         tokens = _theme_tokens(self._glass_tokens, isDarkTheme())
@@ -124,7 +142,8 @@ class GlassCard(QWidget):
         self._effect.setOffset(0, int(tokens["shadow_dy"]))
 
     def _render_texture(self) -> None:
-        # 玻璃纹理（真实桌面）：对角 QLinearGradient tint + 渐变描边笔（高光→淡边）
+        # 玻璃纹理（真实桌面）：对角 QLinearGradient tint + 渐变描边笔（高光→淡边）；
+        # 选中态描边换强调色金（世界时钟矩阵当前项，PL007.02）
         img = QImage(self.size(), QImage.Format.Format_ARGB32_Premultiplied)
         img.fill(0)
         painter = QPainter(img)
@@ -141,10 +160,16 @@ class GlassCard(QWidget):
         painter.setBrush(grad)
         painter.drawRoundedRect(path.boundingRect(), self._radius, self._radius)
         edge = QLinearGradient(0, 0, 0, h)
-        edge.setColorAt(0.0, QColor(tokens["highlight"]))
-        edge.setColorAt(1.0, QColor(tokens["border"]))
-        pen = QPen()
-        pen.setWidthF(1.2)
+        if self._selected:
+            edge.setColorAt(0.0, self._accent)
+            edge.setColorAt(1.0, self._accent)
+            pen = QPen()
+            pen.setWidthF(1.6)
+        else:
+            edge.setColorAt(0.0, QColor(tokens["highlight"]))
+            edge.setColorAt(1.0, QColor(tokens["border"]))
+            pen = QPen()
+            pen.setWidthF(1.2)
         pen.setBrush(edge)
         painter.setPen(pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)

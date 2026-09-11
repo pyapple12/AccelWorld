@@ -1,5 +1,5 @@
 {
-  "version": "0.5.1.0",
+  "version": "0.5.2.0",
   "rate_min": 1.0,
   "rate_max": 20.0,
   "default_rate": 2.0,
@@ -16,6 +16,21 @@
   "default_theme": "auto",
   "default_city": "北京",
   "default_timezone": "Asia/Shanghai",
+  "quick_countdown_targets": [
+    ["国庆节", "10-01"],
+    ["元旦", "01-01"],
+    ["春节", "2027-02-06"]
+  ],
+  "default_world_pins": [
+    "Asia/Shanghai",
+    "Asia/Tokyo",
+    "Australia/Sydney",
+    "Europe/London",
+    "Europe/Paris",
+    "America/New_York",
+    "America/Los_Angeles",
+    "Asia/Seoul"
+  ],
   "max_alarms": 10,
   "window_x": 100,
   "window_y": 100,

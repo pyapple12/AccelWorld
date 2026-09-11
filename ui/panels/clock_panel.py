@@ -3,7 +3,7 @@
 # 纯展示化（plan#UI2.0）：业务经 AppInterface，运算在 ui/tools，零后端 import
 
 from PyQt6.QtCore import pyqtSignal, Qt, QPropertyAnimation
-from PyQt6.QtGui import QDoubleValidator, QFont
+from PyQt6.QtGui import QDoubleValidator, QColor, QFont
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QGridLayout, QWidget
 
 from qfluentwidgets import (
@@ -13,7 +13,7 @@ from qfluentwidgets import (
     InfoBarPosition,
     LineEdit,
     PrimaryPushButton,
-    ProgressBar,
+    ProgressRing,
     PushButton,
     Slider,
     StrongBodyLabel,
@@ -84,14 +84,29 @@ class ClockPanel(QWidget):
         )
         percent_col.addWidget(self.rate_value_label)
         hero_layout.addLayout(percent_col)
+
+        # 今日膨胀进度环形表盘（PL007.01：横条改环，语义不变——加速小时/膨胀日小时）
+        ring_col = QVBoxLayout()
+        ring_col.addWidget(CaptionLabel("今日膨胀进度"))
+        ring_row = QHBoxLayout()
+        self.hours_ring_caption = StrongBodyLabel("-- / --")
+        ring_row.addWidget(self.hours_ring_caption)
+        self.progress_ring = ProgressRing()
+        self.progress_ring.setFixedSize(
+            int(layout_tokens["progress_ring_size"]), int(layout_tokens["progress_ring_size"])
+        )
+        self.progress_ring.setCustomBarColor(
+            QColor(self._interface.get_ui_static()["colors"]["primary"]),
+            QColor(self._interface.get_ui_static()["colors"]["primary"]),
+        )
+        self.progress_ring.setStrokeWidth(7)
+        self.progress_ring.setTextVisible(True)
+        ring_row.addWidget(self.progress_ring)
+        ring_col.addLayout(ring_row)
+        hero_layout.addLayout(ring_col)
         clock_layout.addLayout(hero_layout)
 
-        # 加速时间进度条（qfw ProgressBar，随主题自绘）
-        self.progress_bar = ProgressBar()
-        self.progress_bar.setFixedHeight(int(layout_tokens["progress_bar_height"]))
-        clock_layout.addWidget(self.progress_bar)
-
-        # 进度条平滑动画（T004.3，惰性创建于 _animate_progress）
+        # 环形进度平滑动画（T004.3 模式复用，惰性创建于 _animate_progress）
         self._progress_anim: QPropertyAnimation | None = None
 
         # 次要参数行：标准时间对照 + 一天小时数/剩余小时数（弱化色随主题）
@@ -167,21 +182,23 @@ class ClockPanel(QWidget):
         self.hours_per_day_value_label.setText(f"{info.expanded_hours_per_day:.2f}小时")
         self.remaining_hours_value_label.setText(f"{info.remaining_hours:.2f}小时")
 
-        # 计算进度并更新进度条（动画平滑过渡替代 setValue 跳变，T004.3）
+        # 计算环形进度并更新（动画平滑过渡替代 setValue 跳变，T004.3 模式；
+        # 语义与原横条等价：加速小时 / 膨胀日小时，PL007.01）
         total_hours = progress_bounds(info.expanded_hours_per_day)
         current_hour = info.custom_hour
-        self.progress_bar.setMaximum(total_hours)
-        self._animate_progress(current_hour)
+        percent = round(current_hour / total_hours * 100) if total_hours > 0 else 0
+        self.hours_ring_caption.setText(f"{current_hour} / {total_hours} 小时")
+        self._animate_progress(max(0, min(percent, 100)))
 
     def _animate_progress(self, target: int) -> None:
-        # QPropertyAnimation 从当前值平滑推进到目标小时数（时长来自静态配置）
+        # QPropertyAnimation 从当前值平滑推进到目标百分比（时长来自静态配置）
         # 设计理由：每 tick 以当前动画值为起点重定目标，高频刷新下收敛自然、无跳变
         if self._progress_anim is None:
-            self._progress_anim = QPropertyAnimation(self.progress_bar, b"value", self)
+            self._progress_anim = QPropertyAnimation(self.progress_ring, b"value", self)
         anim = self._progress_anim
         anim.stop()
         anim.setDuration(self._progress_anim_ms)
-        anim.setStartValue(self.progress_bar.value())
+        anim.setStartValue(self.progress_ring.value())
         anim.setEndValue(target)
         anim.start()
 

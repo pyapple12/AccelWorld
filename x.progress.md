@@ -1,7 +1,7 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告）
-> 当前版本：0.5.1.0（UI 2.0 完成 + UI 打磨 PL005 快赢 / PL006 玻璃材质「时之砂」落地）
+> 当前版本：0.5.2.0（UI 打磨 PL007 仪表化与信息密度落地，「时之砂」三期收官）
 > 状态：**S1-S10 全部完成**，无未完成项（重构期收官）
 > 更新（2026-09-10）：接入 DeepTransHub 工作流体系；自即日起新增任务按下文「未完成」区的新规则记录
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
@@ -208,9 +208,9 @@ $env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWi
 
 ### PL007: UI 打磨·仪表化与信息密度 [plan#UI2.0]
 
-- [ ] PL007.01 时钟页 hero 重组 —— 进度横条改 qfw ProgressRing 环形表盘（语义 custom_hour/expanded_hours_per_day 不变）；农历/节气/月相/财神升四枚玻璃 chips；date_panel 数据源不动纯 UI 重排（用户拍板：环形）；验证：环形进度数值与原横条等价 check + 子进程时钟 check
-- [ ] PL007.02 世界时钟矩阵 —— 4×2 城市卡 + 当地昼夜指示 + 选中态金描边；用户配置新增 world_pins（默认城市集走 base.json→default_factory 链路）；interface 最小扩展（优先复用 get_timezone_options/get_time_info）（用户拍板：矩阵化）；验证：test_interface 新增契约用例 + 子进程矩阵 check
-- [ ] PL007.03 倒计时仪表 —— 设定目标后升为居中大仪表（两级字重），输入/选取降为顶部工具行；新增常用目标 chips（日期静态定义入 base.json 零硬编码）；验证：子进程倒计时/常用目标 check
-- [ ] PL007.04 天气卡视觉化 —— 温度大数字 + 天气图标（weather_codes 映射表复用）；小时级预报依赖后端 WeatherData 扩展本轮不做并标注顺延；验证：子进程天气 check（打桩）+ 截图对照
-- [ ] PL007.05 动效收口 —— 进度环呼吸/闹钟行启用过渡，全部时长单源配置（延续 PL004 动效审计约定）；验证：rg 动效时长无硬编码 + GUI check
-- [ ] PL007.06 走查与收口 —— 全量 pytest + 拉起程序交用户走查清单（对照 mockups）+ 草拟 commit（含 user_config.json）；验证：走查逐项确认
+- [x] PL007.01 时钟页 hero 重组 —— 进度横条改 qfw ProgressRing 环形表盘（语义 custom_hour/expanded_hours_per_day 不变）；农历/节气/月相/财神升四枚玻璃 chips；date_panel 数据源不动纯 UI 重排（用户拍板：环形）；验证：环形进度数值与原横条等价 check + 子进程时钟 check（2026-09-12 完成：环形 88px 金环 + "加速小时/膨胀日" caption + 动画沿用 progress_anim_ms；农历串按既有"月相：/财神："标记拆三枚 chips（节气需 TimeInfo 扩展字段，顺延标注，实装农历/月相/财神三枚）；T004.3 用例改写为环形等价断言 10/27 收敛）
+- [x] PL007.02 世界时钟矩阵 —— 4×2 城市卡 + 当地昼夜指示 + 选中态金描边；用户配置新增 world_pins（默认城市集走 base.json→default_factory 链路）；interface 最小扩展 get_world_pins（优先复用 get_timezone_options/get_time_info）（用户拍板：矩阵化）；验证：test_interface 新增契约用例 + 子进程矩阵 check（2026-09-12 完成：面板重写为矩阵（默认 8 城恰为时区表全表），卡含城市名/时间（选中卡秒级）/星期/昼夜 ☾☀；点击卡片切换基准时区走既有 save_settings 链；GlassCard 增 clicked 信号与 set_selected 金描边；契约经 STAGE2 组合断言覆盖）
+- [x] PL007.03 倒计时仪表 —— 设定目标后升为居中大仪表（两级字重），输入/选取降为顶部工具行；新增常用目标 chips（日期静态定义入 base.json 零硬编码）；验证：子进程倒计时/常用目标 check（2026-09-12 完成：玻璃凸台"X 天 + HH:MM:SS"两级仪表 + 距离 caption；quick_countdown_targets 三条（国庆/元旦/春节），MM-DD 取下一个 occurrence 零点并直接设置）
+- [x] PL007.04 天气卡视觉化 —— 温度大数字 + 天气图标（weather_codes 映射表复用）；小时级预报依赖后端 WeatherData 扩展本轮不做并标注顺延；验证：子进程天气 check（打桩）+ 截图对照（2026-09-12 完成：玻璃卡 图标 34pt + 温度大数字 + 描述 + 湿度/风速 caption；WeatherData 结构化直填接口零扩展；offscreen 首查停"获取天气中"属正常过渡态）
+- [x] PL007.05 动效收口 —— 进度环呼吸/闹钟行启用过渡，全部时长单源配置（延续 PL004 动效审计约定）；验证：rg 动效时长无硬编码 + GUI check（2026-09-12 完成：环形动画沿用 progress_anim_ms；闹钟行启用过渡定案用 SwitchButton 内建动画（效果层入列表项有栈风险，不加新动效对象）；rg 动效时长零硬编码）
+- [x] PL007.06 走查与收口 —— 全量 pytest + 拉起程序交用户走查清单（对照 mockups）+ 草拟 commit（含 user_config.json）；验证：走查逐项确认（2026-09-12 完成：全量 131 用例绿；反向验收 + 毒化两批全过；版本 bump 0.5.2.0 五处同步 + m.milestone 条目；桌面已拉起待用户走查；commit 草拟见汇报）

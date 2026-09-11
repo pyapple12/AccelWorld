@@ -355,24 +355,24 @@ def c_progress_animation():
     info_a = TimeInfo(custom_time="05:00:00", **common)
     info_b = TimeInfo(custom_time="13:45:10", **common)
 
-    # 阶段一：收敛到已知值 5（排除前序 check 遗留的实时加速小时值）
+    # 阶段一：收敛到已知值 10（custom_hour=5 / 膨胀日 48 → round(5/48*100)，PL007.01 环形）
     window.clock_panel.update_time(info_a)
     process_events_ms(duration + 250)
-    assert window.clock_panel.progress_bar.value() == 5, (
-        f"阶段一未收敛: {window.clock_panel.progress_bar.value()}"
+    assert window.clock_panel.progress_ring.value() == 10, (
+        f"阶段一未收敛: {window.clock_panel.progress_ring.value()}"
     )
 
-    # 阶段二：目标 13 与当前 5 不同 → 动画必须处于 Running（跳变实现无动画对象/状态）
+    # 阶段二：目标 27 与当前 10 不同 → 动画必须处于 Running（跳变实现无动画对象/状态）
     window.clock_panel.update_time(info_b)
     anim = window.clock_panel._progress_anim
     assert anim.state() == QPropertyAnimation.State.Running, "更新后动画未运行"
     assert anim.duration() == duration, f"动画时长 {anim.duration()} != 配置"
     process_events_ms(duration + 250)
-    assert window.clock_panel.progress_bar.value() == 13, "动画终值未收敛"
-    return f"Running 态 + 时长 {duration}ms + 终值收敛（平滑非跳变）"
+    assert window.clock_panel.progress_ring.value() == 27, "动画终值未收敛"
+    return f"Running 态 + 时长 {duration}ms + 环形终值收敛（平滑非跳变）"
 
 
-check("T004.3 进度条动画沉淀", c_progress_animation)
+check("T004.3/PL007.01 环形进度动画沉淀", c_progress_animation)
 
 
 # T004 沉淀：托盘悬停
@@ -399,6 +399,38 @@ def c_tray_tooltip():
 
 
 check("T004.4 托盘悬停沉淀", c_tray_tooltip)
+
+
+# PL007.02/03/04 仪表化落位：世界矩阵/常用目标/天气卡（复用本阶段窗口）
+def c_pl007_instrumentation():
+    # 世界矩阵：常驻 8 城卡片 + 点击切换基准时区
+    assert len(window.world_clock_panel._cards) == 8, "世界矩阵卡片数异常"
+    window.world_clock_panel.set_timezone("Asia/Tokyo")
+    assert window.world_clock_panel.current_timezone() == "Asia/Tokyo", "点击切换基准时区失败"
+    window.world_clock_panel.set_timezone("Asia/Shanghai")
+
+    # 倒计时：常用目标一键设置（12-25 → 当年/次年零点）并填充两级仪表
+    window.countdown_panel._apply_quick_target("12-25")
+    assert window.countdown_panel.countdown_target_date is not None, "常用目标未设置"
+    assert window.countdown_panel.get_target_text().endswith("00:00:00"), "常用目标时间非零点"
+    window.countdown_panel.update_countdown()
+    assert window.countdown_panel.days_label.text() != "-- 天", "天数仪表未填充"
+
+    # 天气卡：结构化结果直填温度大数字（WeatherData 真实 DTO 行为验证）
+    from interface.types import WeatherData as _WD
+
+    weather = _WD(
+        temperature=24.0, humidity=60.0, wind_speed=9.5, apparent_temperature=25.0,
+        weather_code=0, weather="晴", description="晴朗无云", icon="☀️",
+    )
+    window.weather_panel.current_city = "上海"
+    window.weather_panel._on_weather_result("上海", weather)
+    assert window.weather_panel.weather_temp_label.text() == "24°", "温度大数字未填充"
+    assert window.weather_panel.humidity_label.text() == "湿度 60%", "湿度未填充"
+    return "世界 8 城矩阵/常用目标一键倒计时/天气卡结构化直填"
+
+
+check("PL007 仪表化落位", c_pl007_instrumentation)
 
 
 # FIX001.23 列表外城市显示一致

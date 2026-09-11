@@ -67,7 +67,7 @@
     "panel_margin": [4, 2, 4, 2],
     "card_padding": [16, 12, 16, 12],
     "clock_card_padding": [20, 14, 20, 12],
-    "progress_bar_height": 24,
+    "progress_ring_size": 88,
     "slider_height": 30,
     "rate_entry_width": 80,
     "confirm_button_size": [120, 40],

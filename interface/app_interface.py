@@ -131,6 +131,11 @@ class AppInterface:
         # 时区选项表（显示名, IANA 标识），副本出栈防调用方污染常量
         return list(TIMEZONES)
 
+    def get_world_pins(self) -> list[str]:
+        # 世界时钟常驻城市集（IANA 标识列表，用户配置，PL007.02）
+        pins = settings.get_setting("world_pins")
+        return list(pins) if isinstance(pins, list) else []
+
     # ------------------- 闹钟（PL001.05，AlarmManager 所有权在接口） -------------------
 
     def load_alarm_dicts(self) -> None:

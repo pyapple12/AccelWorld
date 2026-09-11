@@ -8,12 +8,14 @@ import logging
 from typing import Optional
 
 from PyQt6.QtCore import pyqtSignal, QTimer, QThreadPool, QRunnable, QObject
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from qfluentwidgets import BodyLabel, ComboBox, FluentIcon, PushButton
+from qfluentwidgets import BodyLabel, CaptionLabel, ComboBox, FluentIcon, PushButton
 
 from interface import AppInterface
 from interface.types import WeatherData
+from ui.glass_card import GlassCard, apply_capsule
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -59,12 +61,14 @@ class WeatherPanel(QWidget):
         self.current_city = initial_city or default_city
         self._weather_pool = QThreadPool.globalInstance()
 
-        weather_layout = QHBoxLayout(self)
-        weather_layout.setContentsMargins(*self._layout["panel_margin"])
+        page_layout = QVBoxLayout(self)
+        page_layout.setContentsMargins(*self._layout["panel_margin"])
+        page_layout.setSpacing(int(self._layout["page_spacing"]))
 
-        # 城市选择（qfw ComboBox，PL002.05）
+        # 顶部工具行：城市选择 + 刷新（PL007.04 顶行收敛）
+        top_row = QHBoxLayout()
         city_label = BodyLabel("城市:")
-        weather_layout.addWidget(city_label)
+        top_row.addWidget(city_label)
 
         city_names = interface.get_city_names()
         self.city_combo = ComboBox()
@@ -81,21 +85,51 @@ class WeatherPanel(QWidget):
             self.city_combo.setCurrentText(self.current_city)
             self.city_combo.blockSignals(False)
         self.city_combo.currentTextChanged.connect(self.on_city_changed)
-        weather_layout.addWidget(self.city_combo)
+        top_row.addWidget(self.city_combo)
 
-        # 天气图标与信息
-        self.weather_icon_label = QLabel("☀️")
-        weather_layout.addWidget(self.weather_icon_label)
+        top_row.addStretch()
 
-        self.weather_info_label = BodyLabel("获取天气中...")
-        weather_layout.addWidget(self.weather_info_label)
-
-        weather_layout.addStretch()
-
-        # 刷新天气按钮（qfw 图标按钮，PL002.05）
+        # 刷新天气按钮（qfw 图标按钮，PL002.05；胶囊造型 PL006.04）
         self.refresh_weather_button = PushButton(FluentIcon.SYNC, "刷新")
+        apply_capsule(self.refresh_weather_button)
         self.refresh_weather_button.clicked.connect(self.update_weather)
-        weather_layout.addWidget(self.refresh_weather_button)
+        top_row.addWidget(self.refresh_weather_button)
+        page_layout.addLayout(top_row)
+
+        # 天气卡（玻璃）：图标 + 温度大数字 + 描述 + 湿度/风速（PL007.04）
+        weather_card = GlassCard(interface, radius_key="lg")
+        card_lay = QHBoxLayout(weather_card)
+        card_lay.setContentsMargins(24, 20, 24, 20)
+
+        self.weather_icon_label = QLabel("☀️")
+        self.weather_icon_label.setFont(QFont(interface.get_ui_static()["font_family"], 34))
+        card_lay.addWidget(self.weather_icon_label)
+
+        temp_col = QVBoxLayout()
+        self.weather_temp_label = QLabel("--°")
+        self.weather_temp_label.setFont(
+            QFont(
+                interface.get_ui_static()["font_family_digits"],
+                int(interface.get_ui_static()["scale"]["city_time"]) + 14,
+                QFont.Weight.Bold,
+            )
+        )
+        temp_col.addWidget(self.weather_temp_label)
+        self.weather_info_label = BodyLabel("获取天气中...")
+        temp_col.addWidget(self.weather_info_label)
+        card_lay.addLayout(temp_col)
+
+        card_lay.addStretch()
+
+        stats_col = QVBoxLayout()
+        self.humidity_label = CaptionLabel("湿度 --%")
+        self.wind_label = CaptionLabel("风速 -- km/h")
+        stats_col.addWidget(self.humidity_label)
+        stats_col.addWidget(self.wind_label)
+        stats_col.addStretch()
+        card_lay.addLayout(stats_col)
+        page_layout.addWidget(weather_card)
+        page_layout.addStretch()
 
         # 自动刷新（周期 = 缓存 TTL 毫秒，经接口派生，单源配置避免双键漂移，E15）
         self.weather_timer: QTimer = QTimer(self)
@@ -108,8 +142,11 @@ class WeatherPanel(QWidget):
 
     def update_weather(self) -> None:
         # 置过渡态后提交 QThreadPool 任务（查询经接口），UI 不阻塞
+        self.weather_temp_label.setText("--°")
         self.weather_info_label.setText("获取天气中...")
         self.weather_icon_label.setText("⏳")
+        self.humidity_label.setText("湿度 --%")
+        self.wind_label.setText("风速 -- km/h")
         task = _WeatherTask(self._interface, self.current_city)
         task.signals.finished.connect(self._on_weather_result)
         # globalInstance 运行时恒非 None（stub 标注 Optional，行级压制）
@@ -123,10 +160,14 @@ class WeatherPanel(QWidget):
             return
         try:
             if weather:
+                # 结构化字段直填仪表（温度大数字/描述/湿度/风速，PL007.04）
+                self.weather_temp_label.setText(f"{weather.temperature:.0f}°")
                 self.weather_info_label.setText(
-                    self._interface.format_weather_display(city_name, weather)
+                    f"{weather.description} · {city_name}"
                 )
                 self.weather_icon_label.setText(weather.icon)
+                self.humidity_label.setText(f"湿度 {weather.humidity:.0f}%")
+                self.wind_label.setText(f"风速 {weather.wind_speed:.0f} km/h")
             else:
                 self.weather_info_label.setText("天气获取失败")
                 self.weather_icon_label.setText("❓")

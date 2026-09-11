@@ -106,6 +106,14 @@
 5. 可读性地板：深浅两主题最坏情形合成链对比度（深 16.1:1 / 浅 20.3:1，阈值 7:1 / 4.5:1）✅
 6. Acrylic 保持定案：qfw 主题重应用会把背板重置回 2（Mica），themeChanged 挂钩 + 首拍补挂双保险保持类型 3 ✅
 
+## 版本 0.5.2.0 的 MileStone（UI 打磨·仪表化与信息密度，任务组 PL007，2026-09-12 发布）
+
+1. 时钟页仪表化：横条改 ProgressRing 环形表盘（语义加速小时/膨胀日不变，动画复用 progress_anim_ms 单源）；农历/月相/财神升三枚玻璃 chips（lunar_info 既有格式拆解，数据源不动）✅
+2. 世界时钟矩阵：4×2 常驻城市玻璃卡（Bahnschrift 时间/星期/昼夜 ☾☀ 指示），点击卡片切换基准时区；新增 world_pins 用户配置（default_world_pins 默认全表，链路 base.json→default_factory→interface.get_world_pins）✅
+3. 倒计时仪表：输入/选取降为顶部工具行，居中玻璃凸台两级字重大仪表；常用目标 chips（MM-DD 下一个 occurrence 零点，base.json quick_countdown_targets）✅
+4. 天气卡：温度大数字 + 图标 + 描述 + 湿度/风速（WeatherData 结构化直填，接口零扩展）；小时级预报依赖后端扩展仍顺延 ✅
+5. 动效：环形进度动画沿用 progress_anim_ms 单源；开关过渡用 qfw SwitchButton 内建（无新增动效对象）✅
+
 ## 后续版本的 MileStone（暂不定版本号）
 
 1. 已知问题排查：GUI 进程退出期硬崩溃（y.problems#6，P3，不阻塞功能）
