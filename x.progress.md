@@ -1,7 +1,7 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告）
-> 当前版本：0.5.0.0（UI 2.0 完成：Fluent 重写 + 接口架构 + 多页导航 + Acrylic）
+> 当前版本：0.5.0.1（UI 2.0 完成 + UI 打磨 PL005 视觉快赢落地）
 > 状态：**S1-S10 全部完成**，无未完成项（重构期收官）
 > 更新（2026-09-10）：接入 DeepTransHub 工作流体系；自即日起新增任务按下文「未完成」区的新规则记录
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
@@ -186,3 +186,31 @@ $env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWi
 - [x] PL004.04 文档同步 —— README（UI 说明/截图占位）、w.study 架构章节（三大块+接口契约）、m.milestone 对齐、AGENTS（结构树/验证命令如涉变化）；验证：文档交叉核对（2026-09-11 完成：README 特性清单/GUI 操作说明/项目结构树（interface//ui/tools//backdrop/settings 面板，themes 移除）；w.study 目录结构与 3.6 GUI 分层章节改写为三大块+接口契约+Fluent 六页；AGENTS 结构与约定更新为 interface 三大块表述；m.milestone 0.4.7.8/0.5.0.0 条目齐）
 - [x] PL004.05 版本策略定案 —— 0.5.0.0 版本号/发布形态经用户定案后 bump 并草拟发布 commit；验证：base.json 与五处文档版本一致（2026-09-11 完成：bump 0.4.7.8 → 0.5.0.0（用户在任务单定案），base.json/README 徽章与状态行/AGENTS/x.progress 页眉/m.milestone 五处同步，--version 冒烟 0.5.0.0，rg 零陈旧残留）
 - [x] PL004.06 终验走查 —— 全量回归 + 手动验收清单（用户操作走查：启动/多页切换/时钟/倍率/预设/主题跟随/Acrylic 材质/天气/闹钟/倒计时/托盘/快捷键/退出）+ 配置零污染复验；验证：走查清单逐项确认（2026-09-11 完成：全量 pytest 131 用例绿；配置零污染 git status 复验无 user_config 变更；0.5.0.0 已拉起桌面；走查清单（启动/多页切换/时钟/倍率/预设/主题跟随/Acrylic 材质/天气/闹钟/倒计时/托盘/快捷键/退出）待用户逐项确认）
+
+### PL005: UI 打磨·视觉快赢与缺陷修正 [plan#UI2.0]
+
+- [x] PL005.01 倍率回显缺陷修复 —— clock_panel 初始化改 interface.get_rate()（输入框/滑杆/倍率小标签三处同步，现状用静态 default_rate 致控件与引擎脱节）；验证：test_gui_features 子进程断言启动后 entry 文本 == get_rate()（2026-09-12 完成：TDD 先 FAIL（预置 6.4 配置断言输入框 '2.0'≠6.4）修复后 PASS；反向验收确认三处回显 6.4/6.4/6.4x 与引擎一致）
+- [x] PL005.02 常驻校验文案移除 —— 删倍率卡静态 hint label（"必须不小于…"），非法输入提示维持现有 InfoBar；验证：rg hint 残留零结果 + 子进程非法输入 InfoBar check 保持通过（2026-09-12 完成：hint label 删除、输入框横跨两列占位；rg "必须不小于|rate_hint_label" 零结果，InfoBar 错误路径 check 保持通过）
+- [x] PL005.03 类型尺度收编 —— ui.json 新增 scale 六级字号（hero/倍率/页标题/城市时间/正文/说明），hero_time_font_size/hero_percent_font_size 迁入 scale 节；验证：rg 旧键与散落硬编码字号清零 + 全量回归（2026-09-12 完成：scale 节落地（64/30/21/20/14/12），clock_panel/world_clock_panel（city_time 20 字号升档）/settings_panel（page_title）三处消费；rg 旧键清零）
+- [x] PL005.04 构图统一 —— page_margin 16→24、page_spacing 10→14（仅改 token 值）；六页统一顶锚（消除闹钟页垂直居中/世界时钟页 1/4 高度异型锚点）；闹钟行按钮 32×24→36×32；验证：offscreen 六页抓图对照 .temp/design/current 存档（2026-09-12 完成：_make_page 显式 AlignTop + 闹钟尾部收撑；几何探针实测六页面板首项 y 全部=24 顶锚、spacer 沉底；offscreen 抓图存档于 .temp/design/current/；offscreen 对半透明窗口 grab 背景近透明（alpha=8）判定渲染不可信，以实时部件树几何为准）
+- [x] PL005.05 导航展开 —— FluentWindow 导航改"图标+文字"常开；先探 qfw 1.11.3 NavigationInterface.setExpand 可行性，不可行降级保留现状并记录；验证：可行性探针记录 + 子进程导航 check（2026-09-12 完成：探针矩阵定案——1.11.3 无 setExpand，正确 API 为 expand(useAni)/setExpandWidth；关键发现 __init__ 内 pre-show 调用污染 NavigationPanel 状态机（displayMode 卡 MENU 内容不让位），必须延后到 show 之后；落地 QTimer.singleShot(0) 触发，实测 nav 48→160 且 stackedWidget 让位 x=160；窄窗 qfw 自行走 MENU 覆盖模式不顶开内容）
+- [x] PL005.06 回归收口 —— 全量 pytest + offscreen 六页重抓对照 + 文档同步（如涉导航行为）+ 草拟 commit（含 user_config.json）；验证：回归全绿 + git diff 核对清单完整（2026-09-12 完成：全量 pytest 131 用例绿；反向验收 .temp/verify_pl005_accept.py 5/5；版本 bump 0.5.0.1 五处同步 + m.milestone 条目；抓图存档 .temp/design/current/；commit 草拟见汇报）
+
+### PL006: UI 打磨·玻璃材质系统「时之砂」[plan#UI2.0]
+
+- [ ] PL006.01 token 扩充 —— ui.json 新增 field（光场渐变+金/紫双晕，深浅两套）/glass（fill 起止/高光/描边/阴影/blur，深浅两套）/radius（24/18/14/胶囊四阶）三节 + font_family_digits；colors 节 accent 组直接替换鎏金并增 cool_cyan/on_accent（不留旧绿死值）（用户拍板：鎏金 + Bahnschrift）；验证：rg 旧 accent 值残留清零 + import 冒烟
+- [ ] PL006.02 GlassCard 组件 —— 新建 ui/glass_card.py 纯 QPainter（对角 tint 渐变 + 顶部 1px 高光描边 + 淡描边 + 缓存式柔投影），零 DWM 调用零新线程，offscreen 安全；验证：rg "DwmSetWindowAttribute|SetWindowCompositionAttribute" ui/glass_card.py 零结果 + offscreen 反复构造毒化探针过
+- [ ] PL006.03 窗内光场 —— 主窗铺半透明光场渐变层叠于 DWM Acrylic 之上（backdrop.py 定案不动），深浅参数全走 token；验证：DWM 读回=3 保持 + 主题切换双层刷新 check
+- [ ] PL006.04 控件胶囊化 —— 按钮/开关/分段/滑杆统一胶囊圆角与新配色（qfw 自定义样式不改第三方源码），托盘图标配色跟进；验证：子进程控件交互 check 全过 + rg "setStyleSheet" ui/ 保持零结果
+- [ ] PL006.05 试点→推广 —— 闹钟+设置两页先行玻璃化核对调参，再推广全六页（用户拍板吸收意见书"P1 范围"项）；验证：试点截图对照 mock-4 + 推广后六页截图对照 mock-1/mock-6
+- [ ] PL006.06 可读性地板验收 —— 深浅两主题六页正文/辅助文字对比度程序化断言（≥7:1/≥4.5:1），不达标回调 tint 密度；验证：对比度断言脚本入 .temp 验收 + 数值记录（iOS 26 透明过量教训）
+- [ ] PL006.07 回归收口 —— 全量 pytest + 毒化探针复跑 + 六页截图存档 + 草拟 commit（含 user_config.json）；验证：回归全绿 + git diff 核对
+
+### PL007: UI 打磨·仪表化与信息密度 [plan#UI2.0]
+
+- [ ] PL007.01 时钟页 hero 重组 —— 进度横条改 qfw ProgressRing 环形表盘（语义 custom_hour/expanded_hours_per_day 不变）；农历/节气/月相/财神升四枚玻璃 chips；date_panel 数据源不动纯 UI 重排（用户拍板：环形）；验证：环形进度数值与原横条等价 check + 子进程时钟 check
+- [ ] PL007.02 世界时钟矩阵 —— 4×2 城市卡 + 当地昼夜指示 + 选中态金描边；用户配置新增 world_pins（默认城市集走 base.json→default_factory 链路）；interface 最小扩展（优先复用 get_timezone_options/get_time_info）（用户拍板：矩阵化）；验证：test_interface 新增契约用例 + 子进程矩阵 check
+- [ ] PL007.03 倒计时仪表 —— 设定目标后升为居中大仪表（两级字重），输入/选取降为顶部工具行；新增常用目标 chips（日期静态定义入 base.json 零硬编码）；验证：子进程倒计时/常用目标 check
+- [ ] PL007.04 天气卡视觉化 —— 温度大数字 + 天气图标（weather_codes 映射表复用）；小时级预报依赖后端 WeatherData 扩展本轮不做并标注顺延；验证：子进程天气 check（打桩）+ 截图对照
+- [ ] PL007.05 动效收口 —— 进度环呼吸/闹钟行启用过渡，全部时长单源配置（延续 PL004 动效审计约定）；验证：rg 动效时长无硬编码 + GUI check
+- [ ] PL007.06 走查与收口 —— 全量 pytest + 拉起程序交用户走查清单（对照 mockups）+ 草拟 commit（含 user_config.json）；验证：走查逐项确认

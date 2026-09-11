@@ -56,6 +56,9 @@ class AlarmPanel(QWidget):
         self.alarm_list.setFixedHeight(int(self._layout["alarm_list_height"]))
         alarm_layout.addWidget(self.alarm_list)
 
+        # 尾部收撑（PL005.04）：富余空间归页尾，标题行不再被拉伸致视觉居中
+        alarm_layout.addStretch()
+
         # 每秒检查一次闹钟触发（周期来自静态配置，经接口读取）
         self.check_timer = QTimer(self)
         self.check_timer.timeout.connect(self.check_alarms)

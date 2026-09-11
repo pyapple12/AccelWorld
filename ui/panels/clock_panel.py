@@ -43,9 +43,11 @@ class ClockPanel(QWidget):
 
         ui = interface.get_ui_static()
         layout_tokens = ui["layout"]
+        scale_tokens = ui["scale"]
         base = interface.get_app_static()
         rate_min, rate_max = interface.get_rate_bounds()
-        default_rate = float(base["default_rate"])
+        # 启动回显持久化倍率（PL005.01）：控件初值跟引擎一致，静态 default_rate 不再进控件
+        current_rate = interface.get_rate()
         self._rate_min = rate_min  # 输入框应用加速校验用（apply_acceleration）
         self._rate_max = rate_max
         self._progress_anim_ms = int(base["progress_anim_ms"])  # 动画时长（T004.3）
@@ -66,7 +68,7 @@ class ClockPanel(QWidget):
         hero_col.addWidget(CaptionLabel("加速时间"))
         self.accelerated_time_label = DisplayLabel("00:00:00")
         self.accelerated_time_label.setFont(
-            _digit_font(self._font_family, int(ui["hero_time_font_size"]))
+            _digit_font(self._font_family, int(scale_tokens["hero_time"]))
         )
         hero_col.addWidget(self.accelerated_time_label)
         hero_layout.addLayout(hero_col)
@@ -77,7 +79,7 @@ class ClockPanel(QWidget):
         percent_col.addWidget(CaptionLabel("膨胀倍率"))
         self.rate_value_label = DisplayLabel("200%")
         self.rate_value_label.setFont(
-            _digit_font(self._font_family, int(ui["hero_percent_font_size"]))
+            _digit_font(self._font_family, int(scale_tokens["hero_percent"]))
         )
         percent_col.addWidget(self.rate_value_label)
         hero_layout.addLayout(percent_col)
@@ -114,25 +116,21 @@ class ClockPanel(QWidget):
         input_layout.addWidget(rate_input_label, 0, 0)
 
         self.rate_entry = LineEdit()
-        self.rate_entry.setText(str(default_rate))
+        self.rate_entry.setText(f"{current_rate:g}")
         self.rate_entry.setFixedWidth(int(layout_tokens["rate_entry_width"]))
         self.rate_entry.setValidator(QDoubleValidator(rate_min, rate_max, 2))
-        input_layout.addWidget(self.rate_entry, 0, 1)
-
-        rate_hint_label = CaptionLabel(
-            f"必须不小于{rate_min}，步进 0.1，最大值{rate_max}，默认{default_rate}"
-        )
-        input_layout.addWidget(rate_hint_label, 0, 2)
+        # 输入框横跨两列占住原校验文案位（PL005.02 移除常驻 hint，规则提示归 InfoBar）
+        input_layout.addWidget(self.rate_entry, 0, 1, 1, 2)
 
         self.slider = Slider(Qt.Orientation.Horizontal)
         self.slider.setMinimum(int(rate_min * 10))  # 倍率 ×10
         self.slider.setMaximum(int(rate_max * 10))
-        self.slider.setValue(int(default_rate * 10))
+        self.slider.setValue(int(current_rate * 10))
         self.slider.setFixedHeight(int(layout_tokens["slider_height"]))
         self.slider.valueChanged.connect(self.on_slider_change)
         input_layout.addWidget(self.slider, 1, 0, 1, 3)
 
-        self.slider_value_label = StrongBodyLabel(f"{default_rate:.1f}x")
+        self.slider_value_label = StrongBodyLabel(f"{current_rate:.1f}x")
         input_layout.addWidget(self.slider_value_label, 2, 1)
 
         # 预设快捷按钮行（紧凑收身 PL003.05；点击经 set_rate 走滑杆信号链，T004.2）
@@ -240,9 +238,11 @@ class ClockPanel(QWidget):
 # _digit_font(family, size) -> QFont: 数字字体工厂（雅黑数字天然等宽，走字不抖动；
 #   PyQt6 setFeature 实测毒化进程故弃用，详见 PL004.01 定案）
 # ClockPanel(QWidget): 时钟显示（英雄区）+ 倍率设置（滑杆/输入框/预设按钮）
-#   __init__(interface, parent): 范围/预设/默认倍率/动画时长/提示时长/英雄字号经接口读取
-#   PL003.04 英雄区：加速时间 DisplayLabel（hero_time_font_size）为绝对主角，
-#   膨胀倍率大数字（hero_percent_font_size）并列，标准时间退次要参数行
+#   __init__(interface, parent): 范围/预设/当前倍率/动画时长/提示时长/类型尺度经接口读取
+#   PL003.04 英雄区：加速时间 DisplayLabel（scale.hero_time）为绝对主角，
+#   膨胀倍率大数字（scale.hero_percent）并列，标准时间退次要参数行
+#   PL005.01/02：控件启动回显持久化倍率（interface.get_rate），常驻校验文案移除
+#   （规则提示归 InfoBar 按需弹出），滑杆/输入框/倍率小标签三处与引擎一致
 #   信号：rate_changed(float) 倍率变化，主窗口据此经接口重建实例并去抖持久化
 #   update_time(info): 英雄区/次要行 setText + 进度上界经 clock_tools.progress_bounds
 #   _animate_progress(target): QPropertyAnimation 平滑过渡（T004.3）
@@ -250,5 +250,5 @@ class ClockPanel(QWidget):
 #     倍率信号链（校验/持久化统一在主窗口；非法输入 InfoBar 非模态提示）
 #   设计理由：显示与设置同属"时钟域"；面板零业务运算零后端 import（plan#UI2.0 铁律 1/2）
 #   异常处理：输入解析 ValueError 弹 InfoBar 提示
-#   关联配置：范围/预设/默认倍率/动画时长/提示时长经 AppInterface（base.json）；
-#   字体族/英雄字号经 AppInterface（ui.json）
+#   关联配置：范围/预设/当前倍率/动画时长/提示时长经 AppInterface（base.json）；
+#   字体族/类型尺度（scale 节）经 AppInterface（ui.json）

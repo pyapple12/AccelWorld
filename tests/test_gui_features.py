@@ -85,6 +85,32 @@ def c_dirty_rate_startup():
 
 check("FIX002.1 越界倍率启动回退", c_dirty_rate_startup)
 
+# PL005.01 倍率回显：持久化非默认倍率启动时，输入框/滑杆/倍率小标签三处与引擎一致
+from utils.file_utils import clear_json_cache as _clear_cache_pl005  # noqa: E402
+
+Path(sys.argv[2]).write_text(
+    __import__("json").dumps({"time_dilation_rate": 6.4}), encoding="utf-8"
+)
+_clear_cache_pl005()
+
+
+def c_rate_echo_startup():
+    window = AcceleratedWorldGUI(AppInterface())
+    rate = window._interface.get_rate()
+    entry_text = window.clock_panel.rate_entry.text()
+    slider_value = window.clock_panel.slider.value() / 10.0
+    label_text = window.clock_panel.slider_value_label.text()
+    assert abs(rate - 6.4) < 1e-9, f"引擎倍率异常: {rate}"
+    assert entry_text and abs(float(entry_text) - 6.4) < 1e-9, (
+        f"输入框回显 {entry_text!r} != 持久化倍率 6.4"
+    )
+    assert abs(slider_value - 6.4) < 1e-9, f"滑杆回显 {slider_value} != 持久化倍率 6.4"
+    assert label_text == "6.4x", f"倍率小标签回显 {label_text!r} != '6.4x'"
+    return f"输入框 {entry_text}/滑杆 {slider_value}/标签 {label_text} 与引擎一致"
+
+
+check("PL005.01 倍率回显启动一致", c_rate_echo_startup)
+
 # FIX001.5 首次天气查询（interface 层打桩，PL001.14）
 weather_calls = []
 

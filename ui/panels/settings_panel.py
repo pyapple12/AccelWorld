@@ -2,6 +2,7 @@
 # 纯展示化：主题应用与持久化归主窗口（经 AppInterface），本页只发选择信号与同步选中态
 
 from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from qfluentwidgets import BodyLabel, CaptionLabel, CardWidget, SegmentedWidget, SubtitleLabel
@@ -26,7 +27,11 @@ class SettingsPanel(QWidget):
         layout.setContentsMargins(*self._layout["panel_margin"])
         layout.setSpacing(int(self._layout["page_spacing"]))
 
-        layout.addWidget(SubtitleLabel("设置"))
+        # 页标题字号走类型尺度（PL005.03：scale.page_title 单源）
+        page_title = SubtitleLabel("设置")
+        page_title.setFont(QFont(interface.get_ui_static()["font_family"],
+                                 int(interface.get_ui_static()["scale"]["page_title"])))
+        layout.addWidget(page_title)
 
         # ------------------- 主题卡片 -------------------
         theme_card = CardWidget(self)

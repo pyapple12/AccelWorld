@@ -10,7 +10,7 @@ from typing import Any
 # 配置日志
 logger = logging.getLogger(__name__)
 
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QCloseEvent, QColor, QKeySequence, QShortcut
 from PyQt6.QtWidgets import QApplication, QVBoxLayout, QWidget
 
@@ -99,6 +99,7 @@ class AcceleratedWorldGUI(FluentWindow):
 
         # 每页容器（统一页边距；addSubInterface 要求非空 objectName）
         page_tokens = interface.get_ui_static()["layout"]
+        self._layout_tokens = page_tokens  # 导航展开宽度等延后触发布局所需（PL005.05）
         self.addSubInterface(
             self._make_page("page-clock", page_tokens, self.clock_panel, self.date_panel),
             FluentIcon.HOME,
@@ -133,6 +134,12 @@ class AcceleratedWorldGUI(FluentWindow):
 
         # 面板就绪后同步设置页选中态（auto=跟随系统/light/dark）
         self.settings_panel.sync_theme(self.theme_pref)
+
+        # 导航常开（PL005.05）：延后到事件循环首拍（show 之后）触发；探针定案
+        # （.temp/probe_pl005_nav6）——__init__ 内 pre-show 调用会污染 qfw
+        # NavigationPanel 状态机（displayMode 卡 MENU，内容区不让位），show 后调用
+        # 则正常内联展开；窗口过窄时 qfw 自行走 MENU 覆盖模式，不顶开内容
+        QTimer.singleShot(0, self._expand_navigation)
 
         # ------------------- 信号连接 -------------------
         self.clock_panel.rate_changed.connect(self._on_rate_changed)
@@ -171,6 +178,12 @@ class AcceleratedWorldGUI(FluentWindow):
         self._theme_listener.systemThemeChanged.connect(self._on_system_theme_changed)
         self._theme_listener.start()
 
+    def _expand_navigation(self) -> None:
+        # 导航图标+文字常开（PL005.05）：由 __init__ 的 singleShot(0) 在事件循环
+        # 首拍（show 之后）调用；展开宽度入 ui.json layout 节 token
+        self.navigationInterface.setExpandWidth(int(self._layout_tokens["nav_expanded_width"]))
+        self.navigationInterface.expand(False)
+
     @staticmethod
     def _make_page(object_name: str, layout_tokens: dict, *widgets: QWidget) -> QWidget:
         # 包装导航页容器：统一页边距并设 objectName（addSubInterface 硬要求，PL003.01）；
@@ -181,7 +194,9 @@ class AcceleratedWorldGUI(FluentWindow):
         page_layout.setContentsMargins(*layout_tokens["page_margin"])
         page_layout.setSpacing(int(layout_tokens["page_spacing"]))
         for widget in widgets:
-            page_layout.addWidget(widget)
+            # 显式顶锚（PL005.04）：页面容器不再与尾部 spacer 均分富余空间，
+            # 消除各页内容锚点漂移（闹钟页居中/世界时钟页 1/4 高度等异型）
+            page_layout.addWidget(widget, 0, Qt.AlignmentFlag.AlignTop)
         page_layout.addStretch()
         return page
 
@@ -411,7 +426,10 @@ def main_gui(interface: AppInterface, **kwargs: Any) -> None:
 #   → SystemThemeListener（AUTO 深浅跟随，PL002.10）
 #   设计理由：窗口自身零后端 import（后端访问全部经 self._interface，PL001.08 保持）；
 #   深浅样式由 qfw 内建；Acrylic 背板经 ui/backdrop.py（PL003.03，随主题重铺）
-#   _make_page(object_name, *widgets): 导航页容器工厂（统一页边距 + objectName 硬要求）
+#   _make_page(object_name, *widgets): 导航页容器工厂（统一页边距 + objectName 硬要求；
+#   PL005.04 显式 AlignTop 顶锚，消除内容锚点漂移）
+#   _expand_navigation(): 导航图标+文字常开（PL005.05，singleShot(0) 延后到 show 后；
+#   pre-show 调用污染 qfw 状态机致内容不让位，探针定案见 .temp/probe_pl005_nav6）
 #   _apply_theme_preference(theme_pref): setTheme 三态映射 + setThemeColor +
 #   is_dark_theme 生效状态 + Acrylic 重铺 + 设置页选中态同步（构造期早应用经
 #   getattr 守卫跳过面板同步）
