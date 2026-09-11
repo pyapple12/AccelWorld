@@ -7,7 +7,7 @@
 
 import os
 
-from PyQt6.QtCore import pyqtSignal, QRectF, Qt
+from PyQt6.QtCore import QPoint, pyqtSignal, QRectF, Qt
 from PyQt6.QtGui import QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient
 from PyQt6.QtWidgets import QWidget
 
@@ -17,6 +17,9 @@ from interface import AppInterface
 
 # offscreen 判定（仅测试/探针环境）：与 backdrop.py 的短路约定同源
 _IS_OFFSCREEN = os.environ.get("QT_QPA_PLATFORM") == "offscreen"
+
+
+_NOISE_TILE: QImage | None = None
 
 
 def _rounded_path(w: int, h: int, radius: int) -> QPainterPath:
@@ -38,6 +41,32 @@ def apply_capsule(widget: QWidget) -> None:
     radius = max(widget.height() // 2, 0)
     qss = f"{name}{{border-radius: {radius}px}}"
     setCustomStyleSheet(widget, qss, qss)
+
+
+def _noise_tile() -> QImage:
+    # 全局噪点瓦片（128×128，随机明暗 ±4%）：叠加到光场上打散 8-bit 渐变色带
+    # （苹果 Liquid Glass 同款思路：材质混入 1~3% 噪点；固定种子保证视觉稳定）
+    global _NOISE_TILE
+    if _NOISE_TILE is None:
+        import random
+
+        rng = random.Random(20260912)
+        img = QImage(128, 128, QImage.Format.Format_ARGB32_Premultiplied)
+        img.fill(0)
+        painter = QPainter(img)
+        for y in range(128):
+            for x in range(128):
+                v = rng.randint(-10, 10)
+                if v >= 0:
+                    painter.setPen(Qt.PenStyle.NoPen)
+                    painter.setBrush(QColor(255, 255, 255, v))
+                else:
+                    painter.setPen(Qt.PenStyle.NoPen)
+                    painter.setBrush(QColor(0, 0, 0, -v))
+                painter.drawPoint(x, y)
+        painter.end()
+        _NOISE_TILE = img
+    return _NOISE_TILE
 
 
 def render_field_pixmap(size_w: int, size_h: int, field_tokens: dict, dark: bool,
@@ -76,6 +105,17 @@ def render_field_pixmap(size_w: int, size_h: int, field_tokens: dict, dark: bool
         radial.setColorAt(1.0, transparent)
         painter.setBrush(radial)
         painter.drawRect(0, 0, size_w, size_h)
+    # 噪点抖动叠加（约 ±2%）：打散 8-bit 渐变的同心色带（Apple 同款处理）
+    noise = _noise_tile()
+    painter.setOpacity(0.5)
+    x = 0
+    while x < size_w:
+        y = 0
+        while y < size_h:
+            painter.drawImage(x, y, noise)
+            y += 128
+        x += 128
+    painter.setOpacity(1.0)
     painter.end()
     return pix
 
@@ -91,6 +131,7 @@ class GlassCard(QWidget):
         super().__init__(parent)
         ui = interface.get_ui_static()
         self._glass_tokens = ui["glass"]
+        self._field_tokens = ui["field"]
         self._radius = int(ui["radius"][radius_key])
         self._accent = QColor(ui["colors"]["primary"])
         self._selected = False
@@ -116,9 +157,43 @@ class GlassCard(QWidget):
             self.clicked.emit()
         super().mousePressEvent(event)
 
+    def _sample_field_color(self, cx: float, cy: float) -> QColor:
+        # 解析采样卡片中心处的光场颜色（线性底色 + 双光晕贡献），并增饱和提亮——
+        # 玻璃"吃"环境色：同页不同位置的卡片色相随光场分布自然变化
+        tokens = _theme_tokens(self._field_tokens, isDarkTheme())
+        top = QColor(tokens["top"])
+        bottom = QColor(tokens["bottom"])
+        t = max(min(cy / max(self.window().height(), 1), 1.0), 0.0)
+        color = QColor(
+            round(top.red() + (bottom.red() - top.red()) * t),
+            round(top.green() + (bottom.green() - top.green()) * t),
+            round(top.blue() + (bottom.blue() - top.blue()) * t),
+        )
+        win_w = max(self.window().width(), 1)
+        win_h = max(self.window().height(), 1)
+        for key, rf in (("glow_a", "glow_a_r"), ("glow_b", "glow_b_r")):
+            glow = QColor(tokens[key])
+            gx = win_w * float(tokens[f"{key}_x"])
+            gy = win_h * float(tokens[f"{key}_y"])
+            gr = win_w * float(tokens[rf])
+            dist = ((cx - gx) ** 2 + (cy - gy) ** 2) ** 0.5
+            t2 = min(max(0.0, 1.0 - dist / max(gr, 1.0)) * (glow.alpha() / 255.0) * 2.2, 0.85)
+            color = QColor(
+                round(color.red() + (glow.red() - color.red()) * t2),
+                round(color.green() + (glow.green() - color.green()) * t2),
+                round(color.blue() + (glow.blue() - color.blue()) * t2),
+            )
+        hue, sat, val, _ = color.getHsvF()
+        if hue >= 0:
+            color.setHsvF(hue, min(1.0, sat * 1.6 + 0.12), min(1.0, val * 1.18 + 0.03))
+        return color
+
     def _render_texture(self) -> None:
-        # 玻璃纹理（T005 恢复原设计）：对角 QLinearGradient tint + 渐变描边笔
-        # （顶部镜面高光→底部淡边；选中态整圈换强调色金）；按设备像素比渲染消毛刺
+        # 液态玻璃纹理（热更新，向 Apple Liquid Glass 靠近）：
+        # ① 透镜层——光场在卡片正下方的区域围绕卡片中心放大 1.07 绘制（内容弯折感）
+        # ② 环境色渗染——采样卡片中心光场色，增饱和后低 alpha 染入（玻璃"吃"环境色）
+        # ③ bezel 环带——渗染色的加深版沿边缘 9px 聚光
+        # ④ 方向性描边——左上受光右下收暗（选中态整圈强调色金）；按 DPR 渲染消毛刺
         dpr = max(self.devicePixelRatioF(), 1.0)
         img = QImage(round(self.width() * dpr), round(self.height() * dpr),
                      QImage.Format.Format_ARGB32_Premultiplied)
@@ -129,27 +204,54 @@ class GlassCard(QWidget):
         w, h = self.width(), self.height()
         path = _rounded_path(w, h, self._radius)
         tokens = _theme_tokens(self._glass_tokens, isDarkTheme())
-        fill_from = QColor(tokens["fill_from"])
-        fill_to = QColor(tokens["fill_to"])
-        tint = QLinearGradient(0, 0, w, h)
-        tint.setColorAt(0.0, fill_from)
-        tint.setColorAt(1.0, fill_to)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(tint)
+
+        # ① 透镜层：主窗口光场位图中卡片正下方的区域，放大 1.07 绘制（内容弯折感）
+        win = self.window()
+        field_pix = getattr(win, "_field_pix", None)
+        painter.save()
+        painter.setClipPath(path)
+        if field_pix is not None:
+            origin = self.mapTo(win, QPoint(0, 0))
+            painter.translate(w / 2, h / 2)
+            painter.scale(1.07, 1.07)
+            painter.translate(-(origin.x() + w / 2), -(origin.y() + h / 2))
+            painter.drawPixmap(0, 0, field_pix)
+        else:
+            painter.fillRect(0, 0, w, h, QColor(tokens["fill_from"]))
+        painter.restore()
+
+        # ② 环境色渗染：白基膜 + 增饱和光场色（玻璃"吃"环境色）
+        tint = self._sample_field_color(origin.x() + w / 2, origin.y() + h / 2) \
+            if field_pix is not None else QColor(tokens["fill_from"])
+        painter.setBrush(QColor(255, 255, 255, 10))
         painter.drawPath(path)
-        edge = QLinearGradient(0, 0, 0, h)
+        painter.setBrush(QColor(tint.red(), tint.green(), tint.blue(), 30))
+        painter.drawPath(path)
+
+        # ③ bezel 环带：渗染色加深（边缘聚光）
+        edge = QLinearGradient(0, 0, w, h)
         if self._selected:
             edge.setColorAt(0.0, self._accent)
             edge.setColorAt(1.0, self._accent)
-            pen = QPen()
-            pen.setWidthF(1.4)
         else:
             edge.setColorAt(0.0, QColor(tokens["highlight"]))
+            edge.setColorAt(0.55, QColor(tint.red(), tint.green(), tint.blue(), 90))
             edge.setColorAt(1.0, QColor(tokens["border"]))
-            pen = QPen()
-            pen.setWidthF(1.0)
-        pen.setBrush(edge)
-        painter.setPen(pen)
+        painter.save()
+        painter.setClipPath(path)
+        band = QPen()
+        band.setWidthF(9.0)
+        band.setBrush(edge)
+        painter.setPen(band)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(path)
+        painter.restore()
+
+        # ④ 方向性描边（选中态整圈强调色金）
+        border_pen = QPen()
+        border_pen.setWidthF(1.4 if self._selected else 1.0)
+        border_pen.setBrush(edge)
+        painter.setPen(border_pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPath(path)
         painter.end()

@@ -13,11 +13,11 @@
     "dark": {
       "top": "#C00D1322",
       "bottom": "#C0090D16",
-      "glow_a": "#2CE4B36A",
+      "glow_a": "#4DE4B36A",
       "glow_a_x": 0.84,
       "glow_a_y": 0.0,
-      "glow_a_r": 0.45,
-      "glow_b": "#247C6EDE",
+      "glow_a_r": 0.38,
+      "glow_b": "#407C6EDE",
       "glow_b_x": 0.0,
       "glow_b_y": 1.0,
       "glow_b_r": 0.5
