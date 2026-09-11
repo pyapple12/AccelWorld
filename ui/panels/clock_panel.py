@@ -15,13 +15,13 @@ from qfluentwidgets import (
     PrimaryPushButton,
     ProgressBar,
     PushButton,
-    SimpleCardWidget,
     Slider,
     StrongBodyLabel,
 )
 
 from interface import AppInterface
 from interface.types import TimeInfo
+from ui.glass_card import GlassCard, apply_capsule
 from ui.tools.clock_tools import progress_bounds
 
 
@@ -53,12 +53,13 @@ class ClockPanel(QWidget):
         self._progress_anim_ms = int(base["progress_anim_ms"])  # 动画时长（T004.3）
         self._notify_ms = int(base["notification_duration_ms"])  # 错误提示条时长
         self._font_family = ui["font_family"]
+        self._font_family_digits = ui["font_family_digits"]
 
         layout = QVBoxLayout(self)
         layout.setSpacing(int(layout_tokens["page_spacing"]))
 
-        # ------------------- 时钟显示卡片（英雄区，PL003.04） -------------------
-        display_card = SimpleCardWidget(self)
+        # ------------------- 时钟显示卡片（英雄区，PL003.04；玻璃化 PL006.05） -------------------
+        display_card = GlassCard(interface, radius_key="xl")
         clock_layout = QVBoxLayout(display_card)
         clock_layout.setContentsMargins(*layout_tokens["clock_card_padding"])
 
@@ -68,7 +69,7 @@ class ClockPanel(QWidget):
         hero_col.addWidget(CaptionLabel("加速时间"))
         self.accelerated_time_label = DisplayLabel("00:00:00")
         self.accelerated_time_label.setFont(
-            _digit_font(self._font_family, int(scale_tokens["hero_time"]))
+            _digit_font(self._font_family_digits, int(scale_tokens["hero_time"]))
         )
         hero_col.addWidget(self.accelerated_time_label)
         hero_layout.addLayout(hero_col)
@@ -79,7 +80,7 @@ class ClockPanel(QWidget):
         percent_col.addWidget(CaptionLabel("膨胀倍率"))
         self.rate_value_label = DisplayLabel("200%")
         self.rate_value_label.setFont(
-            _digit_font(self._font_family, int(scale_tokens["hero_percent"]))
+            _digit_font(self._font_family_digits, int(scale_tokens["hero_percent"]))
         )
         percent_col.addWidget(self.rate_value_label)
         hero_layout.addLayout(percent_col)
@@ -108,8 +109,8 @@ class ClockPanel(QWidget):
 
         layout.addWidget(display_card)
 
-        # ------------------- 倍率设置卡片 -------------------
-        settings_card = SimpleCardWidget(self)
+        # ------------------- 倍率设置卡片（玻璃化 PL006.05） -------------------
+        settings_card = GlassCard(interface, radius_key="lg")
         input_layout = QGridLayout(settings_card)
 
         rate_input_label = StrongBodyLabel("加速倍率:")
@@ -140,6 +141,7 @@ class ClockPanel(QWidget):
         for preset_name, preset_rate in interface.get_rate_presets().items():
             preset_button = PushButton(f"{preset_name} {preset_rate:.1f}x")
             preset_button.setFixedSize(*layout_tokens["preset_button_size"])
+            apply_capsule(preset_button)  # 胶囊造型（PL006.04）
             preset_button.clicked.connect(
                 lambda checked=False, rate=preset_rate: self._apply_preset(rate)
             )
@@ -150,6 +152,7 @@ class ClockPanel(QWidget):
 
         self.confirm_button = PrimaryPushButton("应用加速")
         self.confirm_button.setFixedSize(*layout_tokens["confirm_button_size"])
+        apply_capsule(self.confirm_button)  # 胶囊造型（PL006.04）
         self.confirm_button.clicked.connect(self.apply_acceleration)
         input_layout.addWidget(self.confirm_button, 0, 3, 2, 1)
 

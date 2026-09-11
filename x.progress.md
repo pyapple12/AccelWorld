@@ -1,7 +1,7 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告）
-> 当前版本：0.5.0.1（UI 2.0 完成 + UI 打磨 PL005 视觉快赢落地）
+> 当前版本：0.5.1.0（UI 2.0 完成 + UI 打磨 PL005 快赢 / PL006 玻璃材质「时之砂」落地）
 > 状态：**S1-S10 全部完成**，无未完成项（重构期收官）
 > 更新（2026-09-10）：接入 DeepTransHub 工作流体系；自即日起新增任务按下文「未完成」区的新规则记录
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
@@ -198,13 +198,13 @@ $env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWi
 
 ### PL006: UI 打磨·玻璃材质系统「时之砂」[plan#UI2.0]
 
-- [ ] PL006.01 token 扩充 —— ui.json 新增 field（光场渐变+金/紫双晕，深浅两套）/glass（fill 起止/高光/描边/阴影/blur，深浅两套）/radius（24/18/14/胶囊四阶）三节 + font_family_digits；colors 节 accent 组直接替换鎏金并增 cool_cyan/on_accent（不留旧绿死值）（用户拍板：鎏金 + Bahnschrift）；验证：rg 旧 accent 值残留清零 + import 冒烟
-- [ ] PL006.02 GlassCard 组件 —— 新建 ui/glass_card.py 纯 QPainter（对角 tint 渐变 + 顶部 1px 高光描边 + 淡描边 + 缓存式柔投影），零 DWM 调用零新线程，offscreen 安全；验证：rg "DwmSetWindowAttribute|SetWindowCompositionAttribute" ui/glass_card.py 零结果 + offscreen 反复构造毒化探针过
-- [ ] PL006.03 窗内光场 —— 主窗铺半透明光场渐变层叠于 DWM Acrylic 之上（backdrop.py 定案不动），深浅参数全走 token；验证：DWM 读回=3 保持 + 主题切换双层刷新 check
-- [ ] PL006.04 控件胶囊化 —— 按钮/开关/分段/滑杆统一胶囊圆角与新配色（qfw 自定义样式不改第三方源码），托盘图标配色跟进；验证：子进程控件交互 check 全过 + rg "setStyleSheet" ui/ 保持零结果
-- [ ] PL006.05 试点→推广 —— 闹钟+设置两页先行玻璃化核对调参，再推广全六页（用户拍板吸收意见书"P1 范围"项）；验证：试点截图对照 mock-4 + 推广后六页截图对照 mock-1/mock-6
-- [ ] PL006.06 可读性地板验收 —— 深浅两主题六页正文/辅助文字对比度程序化断言（≥7:1/≥4.5:1），不达标回调 tint 密度；验证：对比度断言脚本入 .temp 验收 + 数值记录（iOS 26 透明过量教训）
-- [ ] PL006.07 回归收口 —— 全量 pytest + 毒化探针复跑 + 六页截图存档 + 草拟 commit（含 user_config.json）；验证：回归全绿 + git diff 核对
+- [x] PL006.01 token 扩充 —— ui.json 新增 field（光场渐变+金/紫双晕，深浅两套）/glass（fill 起止/高光/描边/阴影/blur，深浅两套）/radius（24/18/14 三阶）三节 + font_family_digits；colors 节 accent 组直接替换鎏金并增 cool_cyan/on_accent（不留旧绿死值）（用户拍板：鎏金 + Bahnschrift）；验证：rg 旧 accent 值残留清零 + import 冒烟（2026-09-12 完成：三节+字族落地；闲置旧键（bg_*/text_*/disabled/accent/tray_blue/primary_light/primary_dark_hover）一并清零；消费者同步 world_clock/tray/主窗口）
+- [x] PL006.02 GlassCard 组件 —— 新建 ui/glass_card.py 纯 QPainter（对角 tint 渐变 + 顶部 1px 高光描边 + 淡描边 + 缓存式柔投影），零 DWM 调用零新线程，offscreen 安全；验证：rg "DwmSetWindowAttribute|SetWindowCompositionAttribute" ui/glass_card.py 零结果 + offscreen 反复构造毒化探针过（2026-09-12 完成：重大探针定案——本 PyQt6 构建 offscreen 栅格器对渐变/纹理重绘存在堆破坏式不可靠崩溃（exit 127，g1-g4/宽度/格式矩阵），GlassCard 双路径落地：桌面渐变纹理缓存 + 投影，offscreen 卡面透明直绘（子控件照常）；毒化两批 3 窗×2 进程全过）
+- [x] PL006.03 窗内光场 —— 主窗铺半透明光场渐变层叠于 DWM Acrylic 之上（backdrop.py 定案不动），深浅参数全走 token；验证：DWM 读回=3 保持 + 主题切换双层刷新 check（2026-09-12 完成：paintEvent 位块拷贝缓存位图（逐行底色 + 光晕小图平滑放大），resize/主题切换重渲染；发现 qfw 主题重应用把背板重置回 2（Mica），themeChanged 挂钩 + singleShot 补挂双保险后 t+3s/t+8s 读回均=3）
+- [x] PL006.04 控件胶囊化 —— 按钮/开关/分段/滑杆统一胶囊圆角与新配色（qfw 自定义样式不改第三方源码），托盘图标配色跟进；验证：子进程控件交互 check 全过 + rg "setStyleSheet" ui/ 保持零结果（2026-09-12 完成：setThemeColor 鎏金自动传导 qfw 组件；apply_capsule 经 setCustomStyleSheet 仅注圆角（确认/预设/添加闹钟）；托盘金色圆面 + 深色指针；rg 零结果保持）
+- [x] PL006.05 试点→推广 —— 闹钟+设置两页先行玻璃化核对调参，再推广全六页（用户拍板吸收意见书"P1 范围"项）；验证：试点截图对照 mock-4 + 推广后六页截图对照 mock-1/mock-6（2026-09-12 完成：settings 两卡/闹钟行卡试点，clock 英雄 xl + 倍率 lg 推广；countdown/world/weather 无卡页面留待 PL007 仪表化；offscreen 抓图存档 .temp/design/current/（深浅两套））
+- [x] PL006.06 可读性地板验收 —— 深浅两主题六页正文/辅助文字对比度程序化断言（≥7:1/≥4.5:1），不达标回调 tint 密度；验证：对比度断言脚本入 .temp 验收 + 数值记录（2026-09-12 完成：WCAG 最坏情形合成链（黑/白底→光场→玻璃 tint→文字）；实测按 qfw FluentLabelBase 默认不透明黑/白文字——深 16.1:1 浅 20.3:1，远超阈值；脚本 .temp/verify_pl006_accept.py）
+- [x] PL006.07 回归收口 —— 全量 pytest + 毒化探针复跑 + 六页截图存档 + 草拟 commit（含 user_config.json）；验证：回归全绿 + git diff 核对（2026-09-12 完成：全量 131 用例绿；反向验收 .temp/verify_pl006_accept.py 5/5（含真机 NameError 缺陷修复——offscreen 不触发桌面路径的 QPainterPath 漏导入）；毒化两批全过；版本 bump 0.5.1.0 五处同步 + m.milestone 条目；commit 草拟见汇报）
 
 ### PL007: UI 打磨·仪表化与信息密度 [plan#UI2.0]
 

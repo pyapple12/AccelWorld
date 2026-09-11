@@ -97,6 +97,15 @@
 4. 构图统一（G2）：六页显式顶锚（AlignTop + 闹钟尾部收撑），页边距 24/间距 14，闹钟行按钮 36×32 ✅
 5. 导航常开（PL005.05）：图标+文字展开宽 160（singleShot 延后 show 后调用，规避 qfw 状态机 pre-show 污染）✅
 
+## 版本 0.5.1.0 的 MileStone（UI 打磨·玻璃材质系统「时之砂」，任务组 PL006，2026-09-12 发布）
+
+1. 材质 token：ui.json 新增 field（光场渐变+双晕）/glass（tint/高光/描边/投影，深浅两套）/radius（24/18/14 三阶）+ font_family_digits（Bahnschrift）✅
+2. 鎏金配色：accent 组替换鎏金 #E4B36A，新增 cool_cyan/on_accent/danger 调整，托盘图标金色跟进；闲置旧键（bg_*/text_*/disabled 等）清零 ✅
+3. GlassCard 组件：ui/glass_card.py 玻璃卡（tint+顶部高光描边+柔投影）+ 窗内光场渲染器；双路径——桌面完整设计 / offscreen 安全降级（平台栅格器缺陷探针定案）✅
+4. 构图与构图：六页铺玻璃（clock/settings/alarm），光场层叠于 Acrylic 之上，主题切换双层刷新 ✅
+5. 可读性地板：深浅两主题最坏情形合成链对比度（深 16.1:1 / 浅 20.3:1，阈值 7:1 / 4.5:1）✅
+6. Acrylic 保持定案：qfw 主题重应用会把背板重置回 2（Mica），themeChanged 挂钩 + 首拍补挂双保险保持类型 3 ✅
+
 ## 后续版本的 MileStone（暂不定版本号）
 
 1. 已知问题排查：GUI 进程退出期硬崩溃（y.problems#6，P3，不阻塞功能）

@@ -24,6 +24,7 @@ from qfluentwidgets import (
 from interface import AppInterface
 from interface.types import Alarm, PresetSound
 from ui.alarm_dialog import AlarmEditDialog
+from ui.glass_card import GlassCard, apply_capsule
 from ui.tools.alarm_text import format_repeat_display, format_sound_button_name
 
 class AlarmPanel(QWidget):
@@ -47,6 +48,7 @@ class AlarmPanel(QWidget):
         alarm_title_layout.addStretch()
 
         self.add_alarm_button = PushButton(FluentIcon.ADD, "添加闹钟")
+        apply_capsule(self.add_alarm_button)  # 胶囊造型（PL006.04）
         self.add_alarm_button.clicked.connect(self.show_add_alarm_dialog)
         alarm_title_layout.addWidget(self.add_alarm_button)
         alarm_layout.addLayout(alarm_title_layout)
@@ -88,8 +90,8 @@ class AlarmPanel(QWidget):
         return item
 
     def _make_row(self, alarm: Alarm) -> QWidget:
-        # 构建单行控件（启用开关/时间/标签/重复/声音/编辑/删除）
-        widget = QWidget()
+        # 构建单行控件（玻璃行卡 PL006.05 试点；启用开关/时间/标签/重复/声音/编辑/删除）
+        widget = GlassCard(self._interface, radius_key="md")
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(*self._layout["alarm_row_margin"])
 

@@ -47,9 +47,9 @@ class WorldClockPanel(QWidget):
         # 世界时钟显示（强调色经 QPalette，随深浅主题用同色值）
         self.world_clock_label = QLabel("00:00:00")
         self.world_clock_label.setFont(
-            QFont(ui["font_family"], int(ui["scale"]["city_time"]), QFont.Weight.Bold)
+            QFont(ui["font_family_digits"], int(ui["scale"]["city_time"]), QFont.Weight.Bold)
         )
-        accent = QColor(ui["colors"]["accent"])
+        accent = QColor(ui["colors"]["cool_cyan"])
         palette = self.world_clock_label.palette()
         palette.setColor(QPalette.ColorRole.WindowText, accent)
         self.world_clock_label.setPalette(palette)

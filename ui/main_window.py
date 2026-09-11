@@ -11,7 +11,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QCloseEvent, QColor, QKeySequence, QShortcut
+from PyQt6.QtGui import QCloseEvent, QColor, QKeySequence, QPaintEvent, QPainter, QShortcut
 from PyQt6.QtWidgets import QApplication, QVBoxLayout, QWidget
 
 from qfluentwidgets import (
@@ -21,6 +21,7 @@ from qfluentwidgets import (
     SystemThemeListener,
     Theme,
     isDarkTheme,
+    qconfig,
     setTheme,
     setThemeColor,
 )
@@ -29,6 +30,7 @@ from interface import AppInterface
 from interface.types import Alarm
 from ui.audio_player import play_alarm_sound_async
 from ui.backdrop import enable_acrylic
+from ui.glass_card import render_field_pixmap
 from ui.system_tray import SystemTray
 from ui.panels.clock_panel import ClockPanel
 from ui.panels.date_panel import DatePanel
@@ -86,6 +88,8 @@ class AcceleratedWorldGUI(FluentWindow):
         setThemeColor(QColor(self._colors["primary"]))
         self.theme_pref = prefs.theme
         self.is_dark_theme = bool(isDarkTheme())
+        self._field_pix = None  # 光场缓存位图（resize/主题变化时重渲染，PL006.03）
+        self._render_field()
 
         # ------------------- 面板装配（接口注入，单页拆多页，PL003.01） -------------------
         self.clock_panel = ClockPanel(interface)
@@ -177,12 +181,42 @@ class AcceleratedWorldGUI(FluentWindow):
         self._theme_listener = SystemThemeListener(self)
         self._theme_listener.systemThemeChanged.connect(self._on_system_theme_changed)
         self._theme_listener.start()
+        # Acrylic 补挂（PL006 定案）：qfw 主题体系重应用时会把背板重置回类型 2（Mica）。
+        # 挂接 themeChanged（与重应用同触发源）+ 事件循环首拍补挂，双保险保持类型 3
+        qconfig.themeChanged.connect(lambda *_: enable_acrylic(self))
+        QTimer.singleShot(0, lambda: enable_acrylic(self))
 
     def _expand_navigation(self) -> None:
         # 导航图标+文字常开（PL005.05）：由 __init__ 的 singleShot(0) 在事件循环
         # 首拍（show 之后）调用；展开宽度入 ui.json layout 节 token
         self.navigationInterface.setExpandWidth(int(self._layout_tokens["nav_expanded_width"]))
         self.navigationInterface.expand(False)
+
+    def _render_field(self) -> None:
+        # 窗内光场纹理（PL006.03）：垂直平滑底色 + 双光晕，参数走 ui.json field 节；
+        # 纹理预渲染为位图缓存，paintEvent 仅位块拷贝（安全图元方案，见 ui/glass_card.py）
+        if os.environ.get("ACCELWORLD_DISABLE_FIELD") == "1":
+            return  # 诊断开关：跳过光场渲染（仅排查用）
+        self._field_pix = render_field_pixmap(
+            max(self.width(), 1), max(self.height(), 1),
+            self._interface.get_ui_static()["field"], bool(self.is_dark_theme),
+        )
+        self.update()
+
+    def resizeEvent(self, event) -> None:
+        # 窗口尺寸变化重渲染光场（先走 FluentWindow 原生布局事件）
+        super().resizeEvent(event)
+        if hasattr(self, "_field_pix"):
+            self._render_field()
+
+    def paintEvent(self, event) -> None:
+        # 先走 FluentWindow 自绘（Acrylic 透明底座/实底），再叠加半透明光场层；
+        # 子控件在本方法返回后由 Qt 绘制，天然位于光场之上（PL006.03 分层模型）
+        super().paintEvent(event)
+        painter = QPainter(self)
+        if self._field_pix is not None:
+            painter.drawPixmap(0, 0, self._field_pix)
+        painter.end()
 
     @staticmethod
     def _make_page(object_name: str, layout_tokens: dict, *widgets: QWidget) -> QWidget:
@@ -209,6 +243,7 @@ class AcceleratedWorldGUI(FluentWindow):
         setThemeColor(QColor(self._colors["primary"]))
         self.theme_pref = theme_pref
         self.is_dark_theme = bool(isDarkTheme())
+        self._render_field()  # 光场随主题重取深浅参数组（PL006.03）
         enable_acrylic(self)  # 失败内部静默降级（无头/不支持环境）
         if getattr(self, "settings_panel", None) is not None:
             self.settings_panel.sync_theme(theme_pref)
@@ -227,10 +262,13 @@ class AcceleratedWorldGUI(FluentWindow):
         self._interface.save_theme(next_pref)
 
     def _on_system_theme_changed(self) -> None:
-        # 系统深浅色变更（侦听器线程信号）：AUTO 模式下重新解析生效主题并同步状态
+        # 系统深浅色变更（侦听器线程信号）：AUTO 模式下重新解析生效主题并同步状态；
+        # 光场重渲染 + Acrylic 重铺（qfw 主题重应用会把背板重置回 2，PL006 定案补挂）
         if self.theme_pref == "auto":
             setTheme(Theme.AUTO)
             self.is_dark_theme = bool(isDarkTheme())
+            self._render_field()
+            enable_acrylic(self)
 
     # ------------------- 时钟调度 -------------------
 

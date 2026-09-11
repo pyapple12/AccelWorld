@@ -5,9 +5,10 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
-from qfluentwidgets import BodyLabel, CaptionLabel, CardWidget, SegmentedWidget, SubtitleLabel
+from qfluentwidgets import BodyLabel, CaptionLabel, SegmentedWidget, SubtitleLabel
 
 from interface import AppInterface
+from ui.glass_card import GlassCard
 
 # 主题选项表（键与 UiPreferences.theme 三态一一对应，顺序即展示顺序）
 _THEME_OPTIONS = (("auto", "跟随系统"), ("light", "浅色"), ("dark", "深色"))
@@ -33,8 +34,8 @@ class SettingsPanel(QWidget):
                                  int(interface.get_ui_static()["scale"]["page_title"])))
         layout.addWidget(page_title)
 
-        # ------------------- 主题卡片 -------------------
-        theme_card = CardWidget(self)
+        # ------------------- 主题卡片（玻璃化试点 PL006.05） -------------------
+        theme_card = GlassCard(interface, radius_key="lg")
         theme_layout = QHBoxLayout(theme_card)
         theme_layout.setContentsMargins(*self._layout["card_padding"])
 
@@ -53,8 +54,8 @@ class SettingsPanel(QWidget):
 
         layout.addWidget(theme_card)
 
-        # ------------------- 关于卡片 -------------------
-        about_card = CardWidget(self)
+        # ------------------- 关于卡片（玻璃化试点 PL006.05） -------------------
+        about_card = GlassCard(interface, radius_key="lg")
         about_layout = QHBoxLayout(about_card)
         about_layout.setContentsMargins(*self._layout["card_padding"])
         about_layout.addWidget(BodyLabel("关于"))

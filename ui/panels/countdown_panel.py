@@ -133,7 +133,7 @@ class CountdownPanel(QWidget):
         self.countdown_label = QLabel("--天 --:--:--:--")
         self.countdown_label.setFont(
             QFont(
-                interface.get_ui_static()["font_family"],
+                interface.get_ui_static()["font_family_digits"],
                 int(self._layout["countdown_font_size"]),
                 QFont.Weight.Bold,
             )

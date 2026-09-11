@@ -33,10 +33,10 @@ class SystemTray(QSystemTrayIcon):
         pixmap = QPixmap(32, 32)
         pixmap.fill(Qt.GlobalColor.transparent)  # 透明背景
 
-        tray_color = QColor(self._ui["colors"]["tray_blue"])
+        tray_color = QColor(self._ui["colors"]["tray_accent"])
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(tray_color, 2))  # 蓝色边框
+        painter.setPen(QPen(tray_color, 2))  # 金色边框（PL006.04 配色跟进）
         painter.setBrush(QBrush(tray_color))
         painter.drawEllipse(2, 2, 28, 28)  # 圆形背景
 
@@ -116,7 +116,7 @@ class SystemTray(QSystemTrayIcon):
 # SystemTray(QSystemTrayIcon): 系统托盘类
 #   信号：show_requested/hide_requested/quit_requested（主窗口连接并处理）
 #   __init__(interface, parent): 版本号经 AppInterface.get_version()、颜色经 get_ui_static()
-#   _create_icon(): 用 QPainter 绘制蓝色圆形时钟图标（颜色来自 ui.json tray_blue/tray_hand）
+#   _create_icon(): 用 QPainter 绘制金色圆形时钟图标（颜色来自 ui.json tray_accent/tray_hand）
 #   _create_menu(): qfw RoundMenu 菜单重建（显示/隐藏/倍率只读/退出，PL002.08）；
 #     不调 setContextMenu，由 _on_activated 在右键时 popup 到光标处
 #   _on_activated(reason): Context 弹菜单、DoubleClick 显示窗口
