@@ -11,8 +11,8 @@
   },
   "field": {
     "dark": {
-      "top": "#F00D1322",
-      "bottom": "#F0090D16",
+      "top": "#C00D1322",
+      "bottom": "#C0090D16",
       "glow_a": "#2CE4B36A",
       "glow_a_x": 0.84,
       "glow_a_y": 0.0,
@@ -23,8 +23,8 @@
       "glow_b_r": 0.5
     },
     "light": {
-      "top": "#EFE7EEF7",
-      "bottom": "#EBF2ECDC",
+      "top": "#D9E7EEF7",
+      "bottom": "#CCF2ECDC",
       "glow_a": "#40C99A4E",
       "glow_a_x": 0.84,
       "glow_a_y": 0.0,

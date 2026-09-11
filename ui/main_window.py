@@ -193,13 +193,13 @@ class AcceleratedWorldGUI(FluentWindow):
         self.navigationInterface.expand(False)
 
     def _render_field(self) -> None:
-        # 窗内光场纹理（PL006.03）：垂直平滑底色 + 双光晕，参数走 ui.json field 节；
-        # 纹理预渲染为位图缓存，paintEvent 仅位块拷贝（安全图元方案，见 ui/glass_card.py）
-        if os.environ.get("ACCELWORLD_DISABLE_FIELD") == "1":
-            return  # 诊断开关：跳过光场渲染（仅排查用）
+        # 窗内光场纹理（PL006.03；T005 恢复原设计）：垂直线性底色 + 双径向光晕，
+        # 按设备像素比渲染，半透明叠加于 Acrylic 之上（磨砂感来源）；
+        # 纹理预渲染为位图缓存，paintEvent 仅位块拷贝
         self._field_pix = render_field_pixmap(
             max(self.width(), 1), max(self.height(), 1),
             self._interface.get_ui_static()["field"], bool(self.is_dark_theme),
+            self.devicePixelRatioF(),
         )
         self.update()
 

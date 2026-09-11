@@ -3,7 +3,17 @@
     "theme": "auto",
     "last_city": "上海",
     "last_timezone": "Australia/Sydney",
+    "world_pins": [
+        "Asia/Shanghai",
+        "Asia/Tokyo",
+        "Australia/Sydney",
+        "Europe/London",
+        "Europe/Paris",
+        "America/New_York",
+        "America/Los_Angeles",
+        "Asia/Seoul"
+    ],
     "countdown_target": "",
-    "window_geometry": "AdnQywADAAAAAAH9AAAAcgAABXsAAALCAAAB9gAAAHIAAAWCAAACyQAAAAAAAAAABgAAAAH2AAAAcgAABYIAAALJ",
+    "window_geometry": "AdnQywADAAAAAAGWAAAAggAABRQAAALSAAABjwAAAIIAAAUbAAAC2QAAAAAAAAAABgAAAAGPAAAAggAABRsAAALZ",
     "alarms": []
 }
