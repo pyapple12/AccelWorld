@@ -13,11 +13,14 @@ from interface.types import TimeInfo
 
 class DatePanel(QWidget):
     def __init__(self, interface: AppInterface, parent: QWidget | None = None):
-        # 构建日期/农历显示行，初始为占位文案（qfw 标签组件自带深浅色适配）
+        # 构建日期/农历显示行，初始为占位文案（qfw 标签组件自带深浅色适配）；
+        # 页边距经 layout tokens（PL004.01）
         super().__init__(parent)
 
         date_layout = QVBoxLayout(self)
-        date_layout.setContentsMargins(4, 2, 4, 2)
+        date_layout.setContentsMargins(
+            *interface.get_ui_static()["layout"]["panel_margin"]
+        )
 
         # 中文日期标签（中性占位，首帧 tick 后刷新为真实日期，F4）
         self.date_label = SubtitleLabel("----年--月--日")

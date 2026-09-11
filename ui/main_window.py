@@ -4,6 +4,7 @@
 # 保留 UI 编排：去抖定时器、闹钟播放/通知编排、快捷键、托盘接线、系统主题侦听
 
 import logging
+import os
 from typing import Any
 
 # 配置日志
@@ -97,33 +98,34 @@ class AcceleratedWorldGUI(FluentWindow):
         self.settings_panel = SettingsPanel(interface)
 
         # 每页容器（统一页边距；addSubInterface 要求非空 objectName）
+        page_tokens = interface.get_ui_static()["layout"]
         self.addSubInterface(
-            self._make_page("page-clock", self.clock_panel, self.date_panel),
+            self._make_page("page-clock", page_tokens, self.clock_panel, self.date_panel),
             FluentIcon.HOME,
             "时钟",
         )
         self.addSubInterface(
-            self._make_page("page-countdown", self.countdown_panel),
+            self._make_page("page-countdown", page_tokens, self.countdown_panel),
             FluentIcon.STOP_WATCH,
             "倒计时",
         )
         self.addSubInterface(
-            self._make_page("page-world", self.world_clock_panel),
+            self._make_page("page-world", page_tokens, self.world_clock_panel),
             FluentIcon.GLOBE,
             "世界时钟",
         )
         self.addSubInterface(
-            self._make_page("page-weather", self.weather_panel),
+            self._make_page("page-weather", page_tokens, self.weather_panel),
             FluentIcon.CLOUD,
             "天气",
         )
         self.addSubInterface(
-            self._make_page("page-alarm", self.alarm_panel),
+            self._make_page("page-alarm", page_tokens, self.alarm_panel),
             FluentIcon.RINGER,
             "闹钟",
         )
         self.addSubInterface(
-            self._make_page("page-settings", self.settings_panel),
+            self._make_page("page-settings", page_tokens, self.settings_panel),
             FluentIcon.SETTING,
             "设置",
             position=NavigationItemPosition.BOTTOM,
@@ -170,13 +172,14 @@ class AcceleratedWorldGUI(FluentWindow):
         self._theme_listener.start()
 
     @staticmethod
-    def _make_page(object_name: str, *widgets: QWidget) -> QWidget:
-        # 包装导航页容器：统一页边距并设 objectName（addSubInterface 硬要求，PL003.01）
+    def _make_page(object_name: str, layout_tokens: dict, *widgets: QWidget) -> QWidget:
+        # 包装导航页容器：统一页边距并设 objectName（addSubInterface 硬要求，PL003.01）；
+        # 边距/间距经 layout tokens（PL004.01）
         page = QWidget()
         page.setObjectName(object_name)
         page_layout = QVBoxLayout(page)
-        page_layout.setContentsMargins(16, 16, 16, 16)
-        page_layout.setSpacing(10)
+        page_layout.setContentsMargins(*layout_tokens["page_margin"])
+        page_layout.setSpacing(int(layout_tokens["page_spacing"]))
         for widget in widgets:
             page_layout.addWidget(widget)
         page_layout.addStretch()
@@ -392,6 +395,11 @@ def main_gui(interface: AppInterface, **kwargs: Any) -> None:
         window.show()
 
     app.exec()
+    # 事件循环正常结束后必须绕过 Python 退出析构（y.problems#6：实测 Qt 对象在
+    # 解释器退出阶段析构顺序错误导致 0xC0000409 硬崩，温和清理/deleteLater 均无效，
+    # 唯一有效缓解为 os._exit，PL004.03 矩阵实验定案）。数据无丢失风险：
+    # 配置/闹钟/几何已在 quit 前经接口落盘（write_json 原子写、日志逐条 flush）
+    os._exit(0)
 
 
 # ===== ui/main_window.py 函数/类说明 =====

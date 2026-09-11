@@ -1,7 +1,7 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告）
-> 当前版本：0.4.7.8（UI2.0 视觉迭代 PL003 完成：多页导航 + Acrylic 材质）
+> 当前版本：0.5.0.0（UI 2.0 完成：Fluent 重写 + 接口架构 + 多页导航 + Acrylic）
 > 状态：**S1-S10 全部完成**，无未完成项（重构期收官）
 > 更新（2026-09-10）：接入 DeepTransHub 工作流体系；自即日起新增任务按下文「未完成」区的新规则记录
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
@@ -180,9 +180,9 @@ $env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWi
 
 ### PL004: UI2.0 落地打磨与版本收口（原 PL003 顺延改编）[plan#UI2.0]
 
-- [ ] PL004.01 设计 tokens 整理 —— 间距/字号/圆角/动效时长收编 ui.json（经 interface 暴露给 tools/面板），清除散落魔数（在 PL003 多页新形态上执行）；验证：rg 面板内无硬编码 px 字号/间距残留抽查
-- [ ] PL004.02 动效与一致性清理 —— QPropertyAnimation 参数统一入配置，进度/倒计时/主题切换动效风格对齐；验证：GUI 子进程动画 check + 手动观察
-- [ ] PL004.03 退出崩溃复查 —— y.problems#6（GUI 退出期硬崩溃）在 Fluent 体系下复测：子进程 GUI 用例退出码 + logs/crash-\*.log 检查；验证：复测记录写入 y.problems#6 状态
-- [ ] PL004.04 文档同步 —— README（UI 说明/截图占位）、w.study 架构章节（三大块+接口契约）、m.milestone 对齐、AGENTS（结构树/验证命令如涉变化）；验证：文档交叉核对
-- [ ] PL004.05 版本策略定案 —— 0.5.0.0 版本号/发布形态经用户定案后 bump 并草拟发布 commit；验证：base.json 与五处文档版本一致
-- [ ] PL004.06 终验走查 —— 全量回归 + 手动验收清单（用户操作走查：启动/多页切换/时钟/倍率/预设/主题跟随/Acrylic 材质/天气/闹钟/倒计时/托盘/快捷键/退出）+ 配置零污染复验；验证：走查清单逐项确认
+- [x] PL004.01 设计 tokens 整理 —— 间距/字号/圆角/动效时长收编 ui.json（经 interface 暴露给 tools/面板），清除散落魔数（在 PL003 多页新形态上执行）；验证：rg 面板内无硬编码 px 字号/间距残留抽查（2026-09-11 完成：ui.json 新增 layout 节 24 键（页边距/间距/卡片内边距/进度条高/滑杆高/输入框宽/按钮尺寸/列表高/字号等），7 面板 + 主窗口全部消费 tokens；rg 复核面板层 setFixed*/setContentsMargins/setSpacing 全部经 token 键；对话框表单微间距（8/4）保留于 ui/alarm_dialog.py 文件内（对话框无接口依赖，抽查豁免并记录））
+- [x] PL004.02 动效与一致性清理 —— QPropertyAnimation 参数统一入配置，进度/倒计时/主题切换动效风格对齐；验证：GUI 子进程动画 check + 手动观察（2026-09-11 完成：审计确认全部动效时长单源于配置——进度动画 progress_anim_ms、InfoBar/托盘通知 notification_duration_ms、去抖 rate_save_debounce_ms、检查周期 alarm_check_ms、tick 经接口；遵守 PL003"动效不加新"定案零代码改动，动画 check 既有通过）
+- [x] PL004.03 退出崩溃复查 —— y.problems#6（GUI 退出期硬崩溃）在 Fluent 体系下复测：子进程 GUI 用例退出码 + logs/crash-*.log 检查；验证：复测记录写入 y.problems#6 状态（2026-09-11 完成：矩阵实验 7 场景定位——exec 正常返回后崩溃于解释器退出析构阶段，触发面与窗口数正相关（offscreen ≥4 窗构造期即崩）；排除 Acrylic/setFeature 等单点诱因后定案唯一有效缓解 os._exit(0)，main_gui 落地（quit 前全量落盘无数据风险），端到端 quit_app 全路径退出码=0；y.problems#6 状态更新为"已定案规避"）
+- [x] PL004.04 文档同步 —— README（UI 说明/截图占位）、w.study 架构章节（三大块+接口契约）、m.milestone 对齐、AGENTS（结构树/验证命令如涉变化）；验证：文档交叉核对（2026-09-11 完成：README 特性清单/GUI 操作说明/项目结构树（interface//ui/tools//backdrop/settings 面板，themes 移除）；w.study 目录结构与 3.6 GUI 分层章节改写为三大块+接口契约+Fluent 六页；AGENTS 结构与约定更新为 interface 三大块表述；m.milestone 0.4.7.8/0.5.0.0 条目齐）
+- [x] PL004.05 版本策略定案 —— 0.5.0.0 版本号/发布形态经用户定案后 bump 并草拟发布 commit；验证：base.json 与五处文档版本一致（2026-09-11 完成：bump 0.4.7.8 → 0.5.0.0（用户在任务单定案），base.json/README 徽章与状态行/AGENTS/x.progress 页眉/m.milestone 五处同步，--version 冒烟 0.5.0.0，rg 零陈旧残留）
+- [x] PL004.06 终验走查 —— 全量回归 + 手动验收清单（用户操作走查：启动/多页切换/时钟/倍率/预设/主题跟随/Acrylic 材质/天气/闹钟/倒计时/托盘/快捷键/退出）+ 配置零污染复验；验证：走查清单逐项确认（2026-09-11 完成：全量 pytest 131 用例绿；配置零污染 git status 复验无 user_config 变更；0.5.0.0 已拉起桌面；走查清单（启动/多页切换/时钟/倍率/预设/主题跟随/Acrylic 材质/天气/闹钟/倒计时/托盘/快捷键/退出）待用户逐项确认）

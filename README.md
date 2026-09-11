@@ -1,6 +1,6 @@
 # AccelWorld —— 加速世界世界钟
 
-[![Version](https://img.shields.io/badge/Version-0.4.7.8-blue.svg)](config/static/base.json)
+[![Version](https://img.shields.io/badge/Version-0.5.0.0-blue.svg)](config/static/base.json)
 [![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
@@ -10,7 +10,7 @@
 
 基于时间膨胀倍率的自定义小时制时钟应用。根据设定的加速倍率（1.0x - 20.0x），实时显示加速后的时间，同时保留标准时间对照。灵感来自《加速世界》，界面以中文为主，提供农历、生肖、节气等中华传统文化元素。
 
-> 当前状态：S1-S10 重构完成；两轮审计修复完成；UI 2.0 视觉迭代完成（0.4.7.8，多页导航 + Acrylic 材质）；任务清单见 `x.progress.md`，已知问题见 `y.problems.md`，版本路线见 `m.milestone.md`。
+> 当前状态：S1-S10 重构完成；两轮审计修复完成；**UI 2.0 完成（0.5.0.0）**——Fluent 重写 + 接口层架构 + 多页导航 + Acrylic 材质；任务清单见 `x.progress.md`，已知问题见 `y.problems.md`，版本路线见 `m.milestone.md`。
 
 ## 目录
 
@@ -34,15 +34,17 @@
 ## 特性
 
 - **时间膨胀计算**：根据可配置的加速倍率（1.0x - 20.0x）计算自定义时间流速
-- **双界面支持**：同时支持命令行界面和图形界面（PyQt6）
-- **实时时钟**：同时显示标准时间和加速时间，带进度条可视化
+- **双界面支持**：同时支持命令行界面和图形界面（PyQt6 + Fluent Widgets）
+- **实时时钟**：加速时间大字英雄区 + 标准时间对照 + 进度条可视化
+- **侧栏多页导航**：时钟 / 倒计时 / 世界时钟 / 天气 / 闹钟 独立页面，设置页置底
 - **农历信息**：显示天干地支年、生肖、时辰、月相、节气、公历节日、拜财神方向
 - **世界时钟**：支持查看北京、东京、首尔、伦敦、巴黎、纽约、洛杉矶、悉尼等城市时间
 - **倒计时功能**：支持设置目标时间倒计时显示
 - **天气显示**：支持北京、上海、广州、深圳等 18 个主要城市天气（使用 Open-Meteo API）
 - **闹钟功能**：支持设置多个闹钟，预设/自定义铃声，系统通知提醒
-- **主题切换**：支持浅色和深色主题一键切换
-- **系统托盘**：支持隐藏到托盘后台运行，关闭按钮最小化到托盘而非退出
+- **三态主题**：跟随系统（实时切换）/ 浅色 / 深色，设置页选择器或 Ctrl+T 循环
+- **Acrylic 材质**：Windows 11 毛玻璃背板（不支持环境自动降级实底）
+- **系统托盘**：支持隐藏到托盘后台运行，Fluent 风格右键菜单
 - **配置持久化**：自动保存加速倍率、主题、城市、时区、闹钟等设置
 
 ## 快速开始
@@ -108,18 +110,24 @@ python main.py --cli --rate 2.0
 
 ### GUI 操作说明
 
-- **调节倍率**：拖动滑杆或输入数值后点击"应用加速"
-- **切换主题**：点击天气区域的 🌙/☀️ 按钮
-- **选择城市**：从下拉框选择城市查看天气
-- **设置倒计时**：输入目标时间（支持 `YYYY-MM-DD`、`YYYY-MM-DD HH:MM` 或 `YYYY-MM-DD HH:MM:SS` 格式）
-- **查看世界时钟**：从下拉框选择时区
-- **托盘操作**：双击托盘图标显示窗口，点击关闭按钮隐藏到托盘
+- **侧栏导航**：左侧边栏切换 时钟 / 倒计时 / 世界时钟 / 天气 / 闹钟 / 设置 六个页面
+- **调节倍率**：时钟页拖动滑杆或输入数值后点击"应用加速"，也可点击工作/专注/睡眠预设
+- **切换主题**：设置页选择 跟随系统/浅色/深色，或快捷键 Ctrl+T 三态循环；跟随系统时随 Windows 深浅色实时切换
+- **毛玻璃**：Windows 11 下窗口自动启用 Acrylic 材质（壁纸渗透，失焦短暂收起属系统行为）
+- **选择城市**：天气页从下拉框选择城市查看天气
+- **设置倒计时**：倒计时页输入目标时间（支持 `YYYY-MM-DD`、`YYYY-MM-DD HH:MM` 或 `YYYY-MM-DD HH:MM:SS` 格式）
+- **查看世界时钟**：世界时钟页从下拉框选择时区
+- **托盘操作**：双击托盘图标显示窗口，右键弹出 Fluent 菜单，点击关闭按钮隐藏到托盘
+- **快捷键**：Ctrl+S 保存 / Ctrl+Q 退出 / Ctrl+T 切换主题
 
 ## 项目结构
 
 ```
 AccelWorld/
-├── main.py                    # 主入口：CLI/GUI 分发，版本号从 config/static/base.json 读取
+├── main.py                    # 主入口：装配 AppInterface → GUI（注入接口）/ CLI 分发
+├── interface/                 # 接口层（UI 访问后端的唯一契约，无 Qt 依赖）
+│   ├── app_interface.py       # AppInterface：时钟/倍率/天气/闹钟/时区/配置/几何七域方法
+│   └── types.py               # 类型转出（TimeInfo/WeatherData/Alarm/PresetSound/UiPreferences）
 ├── modules/                   # 业务核心层（无 GUI 依赖，可独立测试）
 │   ├── time_dilation.py       # 时间膨胀算法与 CLI 实时钟
 │   ├── chinese_calendar.py    # 农历、干支、生肖、节气、节日
@@ -131,16 +139,17 @@ AccelWorld/
 │   └── static/                # 应用静态配置（参数/UI 常量，json 驱动，零硬编码）
 │       ├── config.json        # 引导映射表
 │       ├── base.json          # 应用参数
-│       ├── ui.json            # 字体/颜色
+│       ├── ui.json            # 字体/布局 tokens/颜色
 │       └── static_config.py   # StaticConfig + get_static_config() 单例
 ├── logs/                      # 运行日志（app-*.log 每日文件 + crash-*.log 崩溃栈）
-├── ui/                        # GUI 层
-│   ├── main_window.py         # 主窗口装配器（面板 + 信号 + 托盘）
-│   ├── system_tray.py         # 系统托盘（图标/菜单/通知）
-│   ├── alarm_dialog.py        # 闹钟编辑对话框
+├── ui/                        # GUI 层（Fluent Widgets，零后端 import）
+│   ├── main_window.py         # 主窗口装配器（FluentWindow 六导航页 + 三态主题）
+│   ├── backdrop.py            # Acrylic 毛玻璃背板（DWM，Win11）
+│   ├── system_tray.py         # 系统托盘（自绘图标/RoundMenu 菜单/原生通知）
+│   ├── alarm_dialog.py        # 闹钟编辑对话框（MessageBoxBase）
 │   ├── audio_player.py        # 闹钟音频播放（自定义铃声/异步分发）
-│   ├── themes.py              # 浅色/深色主题 QSS
-│   └── panels/                # 6 个功能面板（时钟/日期/倒计时/世界时钟/天气/闹钟）
+│   ├── tools/                 # UI 层纯函数运算（倒计时解析/进度换算/文案格式化）
+│   └── panels/                # 7 个面板（时钟/日期/倒计时/世界时钟/天气/闹钟/设置）
 ├── data/                      # 静态数据
 │   ├── cities.py              # 城市经纬度表
 │   ├── timezones.py           # 时区表（含夏令时标注）

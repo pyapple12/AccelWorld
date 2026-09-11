@@ -52,6 +52,7 @@ class WeatherPanel(QWidget):
         # initial_city 为恢复的持久化城市（FIX002.18：首查即用恢复值，消除启动双请求）
         super().__init__(parent)
         self._interface = interface
+        self._layout = interface.get_ui_static()["layout"]
 
         default_city = interface.get_app_static()["default_city"]
 
@@ -59,7 +60,7 @@ class WeatherPanel(QWidget):
         self._weather_pool = QThreadPool.globalInstance()
 
         weather_layout = QHBoxLayout(self)
-        weather_layout.setContentsMargins(4, 2, 4, 2)
+        weather_layout.setContentsMargins(*self._layout["panel_margin"])
 
         # 城市选择（qfw ComboBox，PL002.05）
         city_label = BodyLabel("城市:")
@@ -67,7 +68,7 @@ class WeatherPanel(QWidget):
 
         city_names = interface.get_city_names()
         self.city_combo = ComboBox()
-        self.city_combo.setFixedWidth(130)
+        self.city_combo.setFixedWidth(int(self._layout["city_combo_width"]))
         self.city_combo.addItems(city_names)
         # 初始城市写入下拉框：列表内直接选中；列表外补入并屏蔽信号
         # （FIX002.18：替换原 default_city 占位 setText，避免恢复路径二次查询）

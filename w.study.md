@@ -9,7 +9,7 @@
 ```
 [输入]   用户设定加速倍率（rate_min 1.0 - rate_max 20.0，来自 base.json）
 [引擎]   AcceleratedWorld 按倍率换算：加速时钟 1 秒 = 现实 1/rate 秒
-[展示]   GUI（6 面板 + 系统托盘，QTimer 100ms tick）/ CLI（--cli 轮询输出）
+[展示]   GUI（FluentWindow 六导航页 + 设置页，QTimer tick 随倍率联动，Acrylic 背板）/ CLI（--cli 轮询输出）
 [周边]   农历干支节气 / 世界时钟 / 倒计时 / 天气（Open-Meteo）/ 闹钟 / 主题切换
 [持久化] 用户配置 config/user_config.json（倍率/主题/城市/时区/倒计时/窗口几何/闹钟）
 ```
@@ -23,7 +23,10 @@
 ## 2. 目录结构与模块职责
 
 ```
-main.py                    # CLI/GUI 分发入口，--version 从 config/static/base.json 读取
+main.py                    # 装配入口：GUI 分支构造 AppInterface 注入 main_gui；CLI 直连后端（例外）
+interface/                 # 接口层（UI 访问后端的唯一契约，无 Qt 依赖；plan#UI2.0 三大块）
+  app_interface.py         # AppInterface：时钟/倍率/天气/闹钟/时区/配置/几何七域方法
+  types.py                 # 类型转出（TimeInfo/WeatherData/Alarm/PresetSound/UiPreferences）
 modules/                   # 业务核心层（无 GUI 依赖，可独立测试）
   time_dilation.py         # TimeInfo dataclass + AcceleratedWorld 引擎 + CLI 实时时钟
   chinese_calendar.py      # LunarInfo dataclass + 农历/干支/生肖/节气/节日
@@ -35,15 +38,16 @@ config/
   static/                  # 应用静态配置层（零硬编码）
     config.json            # 引导映射表（分类名 → json 相对路径）
     base.json              # 应用参数（version/倍率范围/定时器周期/日志路径等）
-    ui.json                # 字体/颜色常量
+    ui.json                # 字体/布局 tokens/颜色
     static_config.py       # StaticConfig + get_static_config() 单例加载器
-ui/                        # GUI 层（PyQt6）
-  main_window.py           # 主窗口装配器（面板装配 + QTimer 调度 + 信号连接 + 主题/托盘）
-  panels/                  # 6 个功能面板（时钟/日期/倒计时/世界时钟/天气/闹钟）
-  system_tray.py           # 系统托盘（图标/菜单/通知）
-  alarm_dialog.py          # 闹钟编辑对话框
+ui/                        # GUI 层（Fluent Widgets；零后端 import，类型走 interface.types）
+  main_window.py           # 主窗口装配器（FluentWindow 六导航页 + 三态主题 + QTimer 调度）
+  backdrop.py              # Acrylic 毛玻璃背板（DWM，Win11；offscreen 短路降级）
+  panels/                  # 7 个面板（时钟/日期/倒计时/世界时钟/天气/闹钟/设置）
+  tools/                   # UI 层纯函数运算（倒计时解析/剩余拆解/进度换算/文案格式化）
+  system_tray.py           # 系统托盘（自绘图标/RoundMenu 菜单/原生通知）
+  alarm_dialog.py          # 闹钟编辑对话框（MessageBoxBase + qfw 组件）
   audio_player.py          # 闹钟音频播放（自定义铃声 + 异步分发，防 GC 中断）
-  themes.py                # 浅色/深色主题 QSS 模板 + ui.json 颜色注入
 data/                      # 静态数据表
   cities.py                # 城市经纬度表
   timezones.py             # 时区表（含夏令时标注）
@@ -53,11 +57,11 @@ utils/                     # 通用工具层（无业务依赖）
   file_utils.py            # JSON 读写 + 缓存单例 + 项目根定位
   dataclass_utils.py       # dataclass 反序列化通用工具（字段白名单过滤）
   retry.py                 # 泛型重试函数 retry_call
-tests/                     # pytest 单元测试（44 用例，依赖 tests/requirements-dev.txt）
+tests/                     # pytest 测试（131 用例，依赖 tests/requirements-dev.txt）
 logs/                      # 运行日志（app-YYYY-MM-DD.log 每日独立文件）
 ```
 
-架构一句话：依赖单向分层 `utils(L0) ← config(L1) ← modules(L2) ← ui(L3)`，`data/` 为纯数据表被各层引用；`main.py` 顶层分发，模块间顶层 import。
+架构一句话（UI 2.0 三大块，plan#UI2.0）：`后端(modules/config/utils/data) ← 接口(interface) ← UI(ui)`，依赖单向；UI 不 import 后端（类型经 interface.types、参数经 AppInterface），接口无 Qt 依赖（后端+接口测试可脱离 Qt 运行）；`main.py` 只做装配，CLI 直连后端为唯一例外。
 
 ## 3. 核心设计模式
 
@@ -128,12 +132,13 @@ def get_weather_by_city(city_name: str) -> Optional[WeatherData]:
 - GUI 侧查询移入 `QThreadPool` 后台线程（S5 后台化），不阻塞主线程
 - 失败返回 `None`，`format_weather_info()` 统一格式化展示文案
 
-### 3.6 GUI 分层 — 面板化 + signal/slot 解耦
+### 3.6 GUI 分层 — 三大块接口契约 + Fluent 面板化 + signal/slot 解耦（UI 2.0 后）
 
-- `main_window.AcceleratedWorldGUI` 为纯装配器：面板装配 + `QTimer`（clock_tick_ms=100ms）调度 + 信号连接 + 主题/托盘
-- 6 个面板独立类（`ui/panels/`），跨面板通信走信号：`rate_changed`/`theme_toggled`/`alarm_saved`/`alarm_triggered`
-- `SystemTray` 独立类：图标/菜单/通知，关闭按钮最小化到托盘而非退出
-- 主题：`themes.py` QSS 模板 + `_apply_colors()` 注入 `ui.json` 颜色常量（浅色/深色两套）
+- **三大块架构**（plan#UI2.0）：后端（modules/config/utils/data）→ 接口（interface/AppInterface 七域契约）→ UI（ui/）；UI 零后端 import，接口无 Qt 依赖——后端+接口测试可脱离 Qt 运行，UI 可整体替换
+- `main_window.AcceleratedWorldGUI(FluentWindow)` 为纯装配器：接口注入 + 六导航页（时钟/倒计时/世界时钟/天气/闹钟 + 设置置底）+ `QTimer`（tick 随倍率联动）+ 三态主题（auto 跟随系统/light/dark）+ Acrylic 背板 + 托盘
+- 7 个面板独立类（`ui/panels/`），纯展示化：数据经接口拉取，运算在 `ui/tools/`，跨面板通信走信号：`rate_changed`/`theme_selected`/`alarm_saved`/`alarm_triggered`
+- `SystemTray` 独立类：自绘图标/RoundMenu 菜单/原生通知，关闭按钮最小化到托盘而非退出
+- 主题：qfw `setTheme` 三态 + `setThemeColor`（ui.json primary）+ SystemThemeListener 系统深浅侦听；QSS 管线已退役（原 themes.py 删除）
 - 闹钟音频独立 `audio_player.py`：异步分发播放（防局部变量 GC 中断播放）
 
 ### 3.7 日志 — 每日独立文件 + 过期清理

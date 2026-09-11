@@ -1,9 +1,9 @@
 {
-    "time_dilation_rate": 1.0,
-    "theme": "light",
+    "time_dilation_rate": 6.4,
+    "theme": "dark",
     "last_city": "上海",
     "last_timezone": "Australia/Sydney",
     "countdown_target": "",
-    "window_geometry": "AdnQywADAAAAAAELAAAAHQAABOQAAAO5AAABCwAAADsAAATkAAADuQAAAAAAAAAABgAAAAELAAAAOwAABOQAAAO5",
+    "window_geometry": "AdnQywADAAAAAAFFAAAAgAAABL4AAAKGAAABPgAAAIAAAATFAAACjQAAAAAAAAAABgAAAAE+AAAAgAAABMUAAAKN",
     "alarms": []
 }

@@ -26,10 +26,6 @@ from interface.types import Alarm, PresetSound
 from ui.alarm_dialog import AlarmEditDialog
 from ui.tools.alarm_text import format_repeat_display, format_sound_button_name
 
-# 列表行内控件尺寸（行高紧凑，px 常量属布局细节，PL003.01 设计 tokens 收编候选）
-_ROW_WIDGET_HEIGHT = 24
-
-
 class AlarmPanel(QWidget):
     alarm_saved = pyqtSignal()  # 列表变更，主窗口负责经接口持久化
     alarm_triggered = pyqtSignal(object)  # 闹钟触发（携带 Alarm 对象）
@@ -38,10 +34,11 @@ class AlarmPanel(QWidget):
         # 构建列表 UI 并启动触发检查定时器（周期经接口读取）
         super().__init__(parent)
         self._interface = interface
+        self._layout = interface.get_ui_static()["layout"]
         self._notify_ms = int(interface.get_app_static()["notification_duration_ms"])
 
         alarm_layout = QVBoxLayout(self)
-        alarm_layout.setContentsMargins(4, 2, 4, 2)
+        alarm_layout.setContentsMargins(*self._layout["panel_margin"])
 
         # 标题行
         alarm_title_layout = QHBoxLayout()
@@ -56,7 +53,7 @@ class AlarmPanel(QWidget):
 
         # 闹钟列表（qfw ListWidget，随主题深浅自绘，PL002.07）
         self.alarm_list = ListWidget()
-        self.alarm_list.setFixedHeight(120)
+        self.alarm_list.setFixedHeight(int(self._layout["alarm_list_height"]))
         alarm_layout.addWidget(self.alarm_list)
 
         # 每秒检查一次闹钟触发（周期来自静态配置，经接口读取）
@@ -91,7 +88,7 @@ class AlarmPanel(QWidget):
         # 构建单行控件（启用开关/时间/标签/重复/声音/编辑/删除）
         widget = QWidget()
         layout = QHBoxLayout(widget)
-        layout.setContentsMargins(5, 2, 5, 2)
+        layout.setContentsMargins(*self._layout["alarm_row_margin"])
 
         # 启用开关（SwitchButton：先 setChecked 后连接，防构建期误触发翻转）
         switch = SwitchButton()
@@ -105,12 +102,12 @@ class AlarmPanel(QWidget):
 
         # 时间
         time_label = BodyLabel(alarm.time)
-        time_label.setFixedWidth(60)
+        time_label.setFixedWidth(int(self._layout["alarm_time_width"]))
         layout.addWidget(time_label)
 
         # 标签
         label_label = BodyLabel(alarm.label)
-        label_label.setFixedWidth(150)
+        label_label.setFixedWidth(int(self._layout["alarm_label_width"]))
         layout.addWidget(label_label)
 
         # 重复信息（弱化色 CaptionLabel 随主题）
@@ -125,7 +122,7 @@ class AlarmPanel(QWidget):
 
         # 编辑/删除按钮
         edit_btn = ToolButton(FluentIcon.EDIT)
-        edit_btn.setFixedSize(_ROW_WIDGET_HEIGHT + 8, _ROW_WIDGET_HEIGHT)
+        edit_btn.setFixedSize(*self._layout["alarm_row_button_size"])
         edit_btn.setToolTip("编辑")
         edit_btn.clicked.connect(
             lambda checked, a_id=alarm.id: self.show_edit_alarm_dialog(a_id)
@@ -133,7 +130,7 @@ class AlarmPanel(QWidget):
         layout.addWidget(edit_btn)
 
         delete_btn = ToolButton(FluentIcon.DELETE)
-        delete_btn.setFixedSize(_ROW_WIDGET_HEIGHT + 8, _ROW_WIDGET_HEIGHT)
+        delete_btn.setFixedSize(*self._layout["alarm_row_button_size"])
         delete_btn.setToolTip("删除")
         delete_btn.clicked.connect(
             lambda checked, a_id=alarm.id: self.delete_alarm(a_id)

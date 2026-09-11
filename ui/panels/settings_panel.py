@@ -19,18 +19,19 @@ class SettingsPanel(QWidget):
         # 构建设置页：主题卡片（三段选择器）+ 关于卡片（版本号经接口读取）
         super().__init__(parent)
         self._interface = interface
+        self._layout = interface.get_ui_static()["layout"]
         self._current_theme = ""  # 当前选中态（sync_theme/选择信号共同维护，供读取）
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 2, 4, 2)
-        layout.setSpacing(10)
+        layout.setContentsMargins(*self._layout["panel_margin"])
+        layout.setSpacing(int(self._layout["page_spacing"]))
 
         layout.addWidget(SubtitleLabel("设置"))
 
         # ------------------- 主题卡片 -------------------
         theme_card = CardWidget(self)
         theme_layout = QHBoxLayout(theme_card)
-        theme_layout.setContentsMargins(16, 12, 16, 12)
+        theme_layout.setContentsMargins(*self._layout["card_padding"])
 
         theme_text_col = QVBoxLayout()
         theme_text_col.addWidget(BodyLabel("主题"))
@@ -50,7 +51,7 @@ class SettingsPanel(QWidget):
         # ------------------- 关于卡片 -------------------
         about_card = CardWidget(self)
         about_layout = QHBoxLayout(about_card)
-        about_layout.setContentsMargins(16, 12, 16, 12)
+        about_layout.setContentsMargins(*self._layout["card_padding"])
         about_layout.addWidget(BodyLabel("关于"))
         about_layout.addStretch()
         self.version_label = CaptionLabel(f"加速世界 · 版本 {interface.get_version()}")

@@ -24,9 +24,6 @@ from interface import AppInterface
 from interface.types import TimeInfo
 from ui.tools.clock_tools import progress_bounds
 
-# 预设紧凑按钮尺寸（PL003.05 收身：去全宽拉伸；字号归 PL004 tokens）
-_PRESET_BUTTON_SIZE = (96, 32)
-
 
 def _digit_font(family: str, size: int) -> QFont:
     # 时间/百分比数字字体：微软雅黑数字本身即等宽（实测 11:11:11 与 58:25:39 同宽），
@@ -45,6 +42,7 @@ class ClockPanel(QWidget):
         self._interface = interface
 
         ui = interface.get_ui_static()
+        layout_tokens = ui["layout"]
         base = interface.get_app_static()
         rate_min, rate_max = interface.get_rate_bounds()
         default_rate = float(base["default_rate"])
@@ -55,12 +53,12 @@ class ClockPanel(QWidget):
         self._font_family = ui["font_family"]
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
+        layout.setSpacing(int(layout_tokens["page_spacing"]))
 
         # ------------------- 时钟显示卡片（英雄区，PL003.04） -------------------
         display_card = SimpleCardWidget(self)
         clock_layout = QVBoxLayout(display_card)
-        clock_layout.setContentsMargins(20, 14, 20, 12)
+        clock_layout.setContentsMargins(*layout_tokens["clock_card_padding"])
 
         # 英雄行：加速时间（绝对主角）+ 膨胀倍率大数字
         hero_layout = QHBoxLayout()
@@ -87,7 +85,7 @@ class ClockPanel(QWidget):
 
         # 加速时间进度条（qfw ProgressBar，随主题自绘）
         self.progress_bar = ProgressBar()
-        self.progress_bar.setFixedHeight(24)
+        self.progress_bar.setFixedHeight(int(layout_tokens["progress_bar_height"]))
         clock_layout.addWidget(self.progress_bar)
 
         # 进度条平滑动画（T004.3，惰性创建于 _animate_progress）
@@ -117,7 +115,7 @@ class ClockPanel(QWidget):
 
         self.rate_entry = LineEdit()
         self.rate_entry.setText(str(default_rate))
-        self.rate_entry.setFixedWidth(80)
+        self.rate_entry.setFixedWidth(int(layout_tokens["rate_entry_width"]))
         self.rate_entry.setValidator(QDoubleValidator(rate_min, rate_max, 2))
         input_layout.addWidget(self.rate_entry, 0, 1)
 
@@ -130,7 +128,7 @@ class ClockPanel(QWidget):
         self.slider.setMinimum(int(rate_min * 10))  # 倍率 ×10
         self.slider.setMaximum(int(rate_max * 10))
         self.slider.setValue(int(default_rate * 10))
-        self.slider.setFixedHeight(30)
+        self.slider.setFixedHeight(int(layout_tokens["slider_height"]))
         self.slider.valueChanged.connect(self.on_slider_change)
         input_layout.addWidget(self.slider, 1, 0, 1, 3)
 
@@ -143,7 +141,7 @@ class ClockPanel(QWidget):
         preset_row.addStretch()
         for preset_name, preset_rate in interface.get_rate_presets().items():
             preset_button = PushButton(f"{preset_name} {preset_rate:.1f}x")
-            preset_button.setFixedSize(*_PRESET_BUTTON_SIZE)
+            preset_button.setFixedSize(*layout_tokens["preset_button_size"])
             preset_button.clicked.connect(
                 lambda checked=False, rate=preset_rate: self._apply_preset(rate)
             )
@@ -153,7 +151,7 @@ class ClockPanel(QWidget):
         input_layout.addLayout(preset_row, 3, 0, 1, 4)
 
         self.confirm_button = PrimaryPushButton("应用加速")
-        self.confirm_button.setFixedSize(120, 40)
+        self.confirm_button.setFixedSize(*layout_tokens["confirm_button_size"])
         self.confirm_button.clicked.connect(self.apply_acceleration)
         input_layout.addWidget(self.confirm_button, 0, 3, 2, 1)
 
@@ -239,9 +237,8 @@ class ClockPanel(QWidget):
 
 
 # ===== ui/panels/clock_panel.py 函数/类说明 =====
-# _PRESET_BUTTON_SIZE: 预设紧凑按钮尺寸（PL003.05 收身）
-# _digit_font(family, size) -> QFont: 数字字体工厂（tnum 等宽数字特性，走字不抖动；
-#   实测雅黑数字本身等宽，特性为跨字体保险）
+# _digit_font(family, size) -> QFont: 数字字体工厂（雅黑数字天然等宽，走字不抖动；
+#   PyQt6 setFeature 实测毒化进程故弃用，详见 PL004.01 定案）
 # ClockPanel(QWidget): 时钟显示（英雄区）+ 倍率设置（滑杆/输入框/预设按钮）
 #   __init__(interface, parent): 范围/预设/默认倍率/动画时长/提示时长/英雄字号经接口读取
 #   PL003.04 英雄区：加速时间 DisplayLabel（hero_time_font_size）为绝对主角，

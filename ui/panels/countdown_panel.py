@@ -93,35 +93,36 @@ class CountdownPanel(QWidget):
         # 目标时间内部态初始为 None；选择器只改写输入框文本；提示时长经接口读取
         super().__init__(parent)
         self._interface = interface
+        self._layout = interface.get_ui_static()["layout"]
         self._notify_ms = int(interface.get_app_static()["notification_duration_ms"])
         self._date_dialog: _DatePickDialog | None = None  # 当前打开的日期选择器
 
         self.countdown_target_date: datetime.datetime | None = None  # 倒计时目标时间
 
         countdown_layout = QHBoxLayout(self)
-        countdown_layout.setContentsMargins(4, 2, 4, 2)
+        countdown_layout.setContentsMargins(*self._layout["panel_margin"])
 
         countdown_title_label = BodyLabel("倒计时:")
         countdown_layout.addWidget(countdown_title_label)
 
         # 目标时间输入框和选择器（水平排列）
         countdown_input_layout = QHBoxLayout()
-        countdown_input_layout.setSpacing(5)
+        countdown_input_layout.setSpacing(int(self._layout["input_spacing"]))
 
         self.countdown_target = LineEdit()
         self.countdown_target.setPlaceholderText("YYYY-MM-DD HH:MM:SS")
-        self.countdown_target.setFixedWidth(200)
+        self.countdown_target.setFixedWidth(int(self._layout["countdown_input_width"]))
         countdown_input_layout.addWidget(self.countdown_target)
 
         # 日期/时间选择器按钮（qfw ToolButton + Fluent 图标，PL002.06）
         self.date_picker_button = ToolButton(FluentIcon.CALENDAR)
-        self.date_picker_button.setFixedSize(32, 32)
+        self.date_picker_button.setFixedSize(*self._layout["picker_button_size"])
         self.date_picker_button.setToolTip("选择日期")
         self.date_picker_button.clicked.connect(self.show_date_picker)
         countdown_input_layout.addWidget(self.date_picker_button)
 
         self.time_picker_button = ToolButton(FluentIcon.DATE_TIME)
-        self.time_picker_button.setFixedSize(32, 32)
+        self.time_picker_button.setFixedSize(*self._layout["picker_button_size"])
         self.time_picker_button.setToolTip("选择时间")
         self.time_picker_button.clicked.connect(self.show_time_picker)
         countdown_input_layout.addWidget(self.time_picker_button)
@@ -131,7 +132,11 @@ class CountdownPanel(QWidget):
         # 倒计时显示（着色经 QPalette：结束红/进行中主题色，QSS 管线已退役 PL002.09）
         self.countdown_label = QLabel("--天 --:--:--:--")
         self.countdown_label.setFont(
-            QFont(interface.get_ui_static()["font_family"], 14, QFont.Weight.Bold)
+            QFont(
+                interface.get_ui_static()["font_family"],
+                int(self._layout["countdown_font_size"]),
+                QFont.Weight.Bold,
+            )
         )
         self._set_countdown_color("primary")
         countdown_layout.addWidget(self.countdown_label)

@@ -27,11 +27,12 @@ class WorldClockPanel(QWidget):
         super().__init__(parent)
         self._interface = interface
         self._options = interface.get_timezone_options()
+        self._layout = interface.get_ui_static()["layout"]
 
         ui = interface.get_ui_static()
 
         world_clock_layout = QHBoxLayout(self)
-        world_clock_layout.setContentsMargins(4, 2, 4, 2)
+        world_clock_layout.setContentsMargins(*self._layout["panel_margin"])
 
         # 世界时钟标题
         world_clock_title = BodyLabel("世界时钟:")
@@ -39,13 +40,15 @@ class WorldClockPanel(QWidget):
 
         # 时区选择（qfw ComboBox；选项表顺序与下拉索引一一对应）
         self.timezone_combo = ComboBox()
-        self.timezone_combo.setFixedWidth(170)
+        self.timezone_combo.setFixedWidth(int(self._layout["world_combo_width"]))
         self.timezone_combo.addItems([name for name, _ in self._options])
         world_clock_layout.addWidget(self.timezone_combo)
 
         # 世界时钟显示（强调色经 QPalette，随深浅主题用同色值）
         self.world_clock_label = QLabel("00:00:00")
-        self.world_clock_label.setFont(QFont(ui["font_family"], 14, QFont.Weight.Bold))
+        self.world_clock_label.setFont(
+            QFont(ui["font_family"], int(self._layout["world_time_font_size"]), QFont.Weight.Bold)
+        )
         accent = QColor(ui["colors"]["accent"])
         palette = self.world_clock_label.palette()
         palette.setColor(QPalette.ColorRole.WindowText, accent)
