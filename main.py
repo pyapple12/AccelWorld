@@ -17,8 +17,9 @@ from ui.main_window import main_gui
 
 
 def _resolve_log_level(base: Dict[str, Any]) -> int:
-    # 从静态配置解析日志级别（base["log_level"]，如 "INFO"/"DEBUG"），非法值回退 INFO（FIX001.24）
-    level = logging.getLevelName(str(base.get("log_level", "INFO")).upper())
+    # 从静态配置解析日志级别（base["log_level"]，如 "INFO"/"DEBUG"），非法值回退 INFO（FIX001.24）；
+    # 直接索引单源（FIX003.13：兜底字面量与 base.json 构成双源漂移，键缺失由静态配置校验暴露）
+    level = logging.getLevelName(str(base["log_level"]).upper())
     return level if isinstance(level, int) else logging.INFO
 
 

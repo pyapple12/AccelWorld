@@ -74,16 +74,17 @@ def test_custom_hour_bounds():
 
 
 def test_timeinfo_properties():
-    # TimeInfo 计算属性与手工 split 结果一致（S10.11 C2：standard_second 已删，其检测路径用 now.second）
+    # TimeInfo 计算属性与手工 split 结果一致（S10.11 C2：standard_second 已删；
+    # FIX003.17 custom_second 属性随之删除，秒值经 custom_time 尾段 split 等价获取）
     info = AcceleratedWorld(2.0).get_custom_time()
     assert info.standard_time == info.standard_datetime.split()[1]
     assert info.custom_hour == int(info.custom_time.split(":")[0])
-    assert info.custom_second == int(info.custom_time.split(":")[-1])
+    assert info.custom_time.count(":") == 2  # HH:MM:SS 格式
     # 手工构造验证固定值
     t = TimeInfo("2026-08-08 12:34:56", "24:12:34", "d", "l", 200.0, 48.0, 24.0)
     assert t.standard_time == "12:34:56"
     assert t.custom_hour == 24
-    assert t.custom_second == 34
+    assert int(t.custom_time.split(":")[-1]) == 34
 
 
 def test_lunar_second_cache(monkeypatch):
@@ -131,11 +132,11 @@ def test_lunar_cache_cross_second(monkeypatch):
 
 
 def test_accelerated_second_cadence_rate_2(monkeypatch):
-    # 加速秒节奏：rate 2.0 下现实 0.5 秒 = 加速 1 秒，custom_second 每步变化（T001.1）
+    # 加速秒节奏：rate 2.0 下现实 0.5 秒 = 加速 1 秒，秒段每步变化（T001.1）
     aw = AcceleratedWorld(2.0)
     base = datetime.datetime(2026, 9, 10, 10, 0, 0, 500000)
     _fake_now(monkeypatch, [base + datetime.timedelta(seconds=i * 0.5) for i in range(4)])
-    seq = [aw.get_custom_time().custom_second for _ in range(4)]
+    seq = [aw.get_custom_time().custom_time.split(':')[-1] for _ in range(4)]
     assert len(set(seq)) == 4  # 每个加速秒边界均被刷新
 
 
@@ -144,7 +145,7 @@ def test_accelerated_second_cadence_rate_10(monkeypatch):
     aw = AcceleratedWorld(10.0)
     base = datetime.datetime(2026, 9, 10, 10, 0, 0, 500000)
     _fake_now(monkeypatch, [base + datetime.timedelta(seconds=i * 0.1) for i in range(5)])
-    seq = [aw.get_custom_time().custom_second for _ in range(5)]
+    seq = [aw.get_custom_time().custom_time.split(':')[-1] for _ in range(5)]
     assert len(set(seq)) == 5
 
 
@@ -153,7 +154,7 @@ def test_accelerated_second_no_flap(monkeypatch):
     aw = AcceleratedWorld(2.0)
     base = datetime.datetime(2026, 9, 10, 10, 0, 0, 500000)
     _fake_now(monkeypatch, [base + datetime.timedelta(seconds=i * 0.25) for i in range(4)])
-    seq = [aw.get_custom_time().custom_second for _ in range(4)]
+    seq = [aw.get_custom_time().custom_time.split(':')[-1] for _ in range(4)]
     assert seq[0] == seq[1] and seq[2] == seq[3] and seq[1] != seq[2]
 
 

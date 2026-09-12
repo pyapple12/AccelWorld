@@ -1,7 +1,7 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告）
-> 当前版本：0.5.3.0（「时之砂」玻璃渲染迭代收官：单 rim + 动态采样 + 加色环境光）
+> 当前版本：0.5.3.2（第 3 轮审计修复：FIX003 十八项收口）
 > 状态：**S1-S10 全部完成**，无未完成项（重构期收官）
 > 更新（2026-09-10）：接入 DeepTransHub 工作流体系；自即日起新增任务按下文「未完成」区的新规则记录
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
@@ -167,8 +167,8 @@ $env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWi
 
 ### PL003: UI2.0 视觉迭代——多页导航与 Acrylic 材质 [plan#UI2.0]
 
-- [x] PL003.01 多页装配改造 —— main_window 拆单页为 FluentWindow 六导航页：时钟（ClockPanel+DatePanel，倍率控制留同页）/倒计时/世界时钟/天气/闹钟 + 设置页置底（addSubInterface position=Bottom）；每页独立 QWidget 容器并设 objectName（addSubInterface 硬要求），侧栏图标成员名探针实测（HOME/TIMER/ALARM/CLOUD/SETTING 等，缺失就近替代）；tick 分发逻辑不变（隐藏页照常更新，开销可忽略）；验证：子进程用例断言六页存在且可轮转切换（stackedWidget currentWidget）（2026-09-11 完成：_make_page 页容器工厂；图标定案 HOME/STOP_WATCH/GLOBE/CLOUD/RINGER/SETTING（TIMER/ALARM/WORLD 不存在，探针全量成员表选定）；六页切换 check 过）
-- [x] PL003.02 设置页新建与主题控制搬家 —— 新建 ui/panels/settings_panel.py：主题三段选择器（SegmentedWidget 成员名探针确认，缺失则 PillToolButton 组替代）发 theme_selected(str) 信号，main_window 应用并经接口持久化；_apply_theme_preference 的按钮外观同步改设置页选中态同步；weather_panel 的 theme_button/theme_toggled/set_theme_button 全链路退役；验证：子进程用例（选择器三态切换持久化往返 + 快捷键 Ctrl+T 循环后选择器选中态同步）；rg "theme_toggled|set_theme_button" ui/ 零结果（2026-09-11 完成：SegmentedWidget 实测 currentItemChanged(str) 信号可用；双路径 check 过——选择器直达 + 快捷键循环互相同步）
+- [x] PL003.01 多页装配改造 —— main_window 拆单页为 FluentWindow 六导航页：时钟（ClockPanel+DatePanel，倍率控制留同页）/倒计时/世界时钟/天气/闹钟 + 设置页置底（addSubInterface position=Bottom）；每页独立 QWidget 容器并设 objectName（addSubInterface 硬要求），侧栏图标成员名探针实测（HOME/TIMER/ALARM/CLOUD/SETTING 等，缺失就近替代）；tick 分发逻辑不变（隐藏页照常更新，开销可忽略）；验证：子进程用例断言六页存在且可轮转切换（stackedWidget currentWidget）（2026-09-11 完成：\_make_page 页容器工厂；图标定案 HOME/STOP_WATCH/GLOBE/CLOUD/RINGER/SETTING（TIMER/ALARM/WORLD 不存在，探针全量成员表选定）；六页切换 check 过）
+- [x] PL003.02 设置页新建与主题控制搬家 —— 新建 ui/panels/settings_panel.py：主题三段选择器（SegmentedWidget 成员名探针确认，缺失则 PillToolButton 组替代）发 theme_selected(str) 信号，main_window 应用并经接口持久化；\_apply_theme_preference 的按钮外观同步改设置页选中态同步；weather_panel 的 theme_button/theme_toggled/set_theme_button 全链路退役；验证：子进程用例（选择器三态切换持久化往返 + 快捷键 Ctrl+T 循环后选择器选中态同步）；rg "theme_toggled|set_theme_button" ui/ 零结果（2026-09-11 完成：SegmentedWidget 实测 currentItemChanged(str) 信号可用；双路径 check 过——选择器直达 + 快捷键循环互相同步）
 - [x] PL003.03 Acrylic 背板落地 —— 新建 ui/backdrop.py：enable_acrylic(window) 封装（qfw 透明底座 + ctypes DwmSetWindowAttribute DWMWA_SYSTEMBACKDROP_TYPE=38 值 3=TRANSIENTWINDOW；HWND 取 int(window.winId())，调用置于窗口 show 后）；OSError/不支持环境窄捕获静默降级纯色；只做 Acrylic 不做 Mica（用户定案）；验证：DWM 属性读回断言（读回=3）子进程用例 + 真机材质肉眼验收（DWM 材质不进截图，如实声明）（2026-09-11 完成：真机窗口 DWM 读回=3 实测；重大实测发现——offscreen 假句柄上的 DWM 试探会毒化进程，致后续窗口构造硬崩 0xC0000409，修复为 offscreen 平台最先短路并固化教训注释；主题切换时重铺刷新深浅 tint）
 - [x] PL003.04 英雄区强化 —— clock_panel 显示卡重构：加速时间升绝对主角（DisplayLabel 加大字号），标准时间退右侧次要小字，膨胀百分比大数字化；等宽数字防走字抖动（QFont 数字特性探针验证 PyQt6 setFeature/tnum 可用性，缺失则固定宽度右对齐方案）；验证：子进程探针连续 tick 断言时间文本宽度稳定（QFontMetrics.horizontalAdvance）+ 视觉走查（2026-09-11 完成：加速时间 56px 绝对主角 + 倍率 30px 大数字并列，字号入 ui.json hero_time_font_size/hero_percent_font_size；等宽数字定案弃用 QFont.setFeature——实测该 API 毒化进程致后续窗口构造硬崩，而雅黑数字天然等宽（600px 同宽实测）收益为零；宽度稳定 check 过）
 - [x] PL003.05 预设按钮收身 —— clock_panel 设置卡预设三按钮改紧凑小按钮组（去全宽拉伸）；字号数值不动（tokens 归 PL004）；验证：子进程预设点击 check（test_rate_presets 的 preset_buttons 契约保持）通过（2026-09-11 完成：96×32 紧凑组居中排布）
@@ -180,9 +180,9 @@ $env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWi
 
 ### PL004: UI2.0 落地打磨与版本收口（原 PL003 顺延改编）[plan#UI2.0]
 
-- [x] PL004.01 设计 tokens 整理 —— 间距/字号/圆角/动效时长收编 ui.json（经 interface 暴露给 tools/面板），清除散落魔数（在 PL003 多页新形态上执行）；验证：rg 面板内无硬编码 px 字号/间距残留抽查（2026-09-11 完成：ui.json 新增 layout 节 24 键（页边距/间距/卡片内边距/进度条高/滑杆高/输入框宽/按钮尺寸/列表高/字号等），7 面板 + 主窗口全部消费 tokens；rg 复核面板层 setFixed*/setContentsMargins/setSpacing 全部经 token 键；对话框表单微间距（8/4）保留于 ui/alarm_dialog.py 文件内（对话框无接口依赖，抽查豁免并记录））
+- [x] PL004.01 设计 tokens 整理 —— 间距/字号/圆角/动效时长收编 ui.json（经 interface 暴露给 tools/面板），清除散落魔数（在 PL003 多页新形态上执行）；验证：rg 面板内无硬编码 px 字号/间距残留抽查（2026-09-11 完成：ui.json 新增 layout 节 24 键（页边距/间距/卡片内边距/进度条高/滑杆高/输入框宽/按钮尺寸/列表高/字号等），7 面板 + 主窗口全部消费 tokens；rg 复核面板层 setFixed\*/setContentsMargins/setSpacing 全部经 token 键；对话框表单微间距（8/4）保留于 ui/alarm_dialog.py 文件内（对话框无接口依赖，抽查豁免并记录））
 - [x] PL004.02 动效与一致性清理 —— QPropertyAnimation 参数统一入配置，进度/倒计时/主题切换动效风格对齐；验证：GUI 子进程动画 check + 手动观察（2026-09-11 完成：审计确认全部动效时长单源于配置——进度动画 progress_anim_ms、InfoBar/托盘通知 notification_duration_ms、去抖 rate_save_debounce_ms、检查周期 alarm_check_ms、tick 经接口；遵守 PL003"动效不加新"定案零代码改动，动画 check 既有通过）
-- [x] PL004.03 退出崩溃复查 —— y.problems#6（GUI 退出期硬崩溃）在 Fluent 体系下复测：子进程 GUI 用例退出码 + logs/crash-*.log 检查；验证：复测记录写入 y.problems#6 状态（2026-09-11 完成：矩阵实验 7 场景定位——exec 正常返回后崩溃于解释器退出析构阶段，触发面与窗口数正相关（offscreen ≥4 窗构造期即崩）；排除 Acrylic/setFeature 等单点诱因后定案唯一有效缓解 os._exit(0)，main_gui 落地（quit 前全量落盘无数据风险），端到端 quit_app 全路径退出码=0；y.problems#6 状态更新为"已定案规避"）
+- [x] PL004.03 退出崩溃复查 —— y.problems#6（GUI 退出期硬崩溃）在 Fluent 体系下复测：子进程 GUI 用例退出码 + logs/crash-\*.log 检查；验证：复测记录写入 y.problems#6 状态（2026-09-11 完成：矩阵实验 7 场景定位——exec 正常返回后崩溃于解释器退出析构阶段，触发面与窗口数正相关（offscreen ≥4 窗构造期即崩）；排除 Acrylic/setFeature 等单点诱因后定案唯一有效缓解 os.\_exit(0)，main_gui 落地（quit 前全量落盘无数据风险），端到端 quit_app 全路径退出码=0；y.problems#6 状态更新为"已定案规避"）
 - [x] PL004.04 文档同步 —— README（UI 说明/截图占位）、w.study 架构章节（三大块+接口契约）、m.milestone 对齐、AGENTS（结构树/验证命令如涉变化）；验证：文档交叉核对（2026-09-11 完成：README 特性清单/GUI 操作说明/项目结构树（interface//ui/tools//backdrop/settings 面板，themes 移除）；w.study 目录结构与 3.6 GUI 分层章节改写为三大块+接口契约+Fluent 六页；AGENTS 结构与约定更新为 interface 三大块表述；m.milestone 0.4.7.8/0.5.0.0 条目齐）
 - [x] PL004.05 版本策略定案 —— 0.5.0.0 版本号/发布形态经用户定案后 bump 并草拟发布 commit；验证：base.json 与五处文档版本一致（2026-09-11 完成：bump 0.4.7.8 → 0.5.0.0（用户在任务单定案），base.json/README 徽章与状态行/AGENTS/x.progress 页眉/m.milestone 五处同步，--version 冒烟 0.5.0.0，rg 零陈旧残留）
 - [x] PL004.06 终验走查 —— 全量回归 + 手动验收清单（用户操作走查：启动/多页切换/时钟/倍率/预设/主题跟随/Acrylic 材质/天气/闹钟/倒计时/托盘/快捷键/退出）+ 配置零污染复验；验证：走查清单逐项确认（2026-09-11 完成：全量 pytest 131 用例绿；配置零污染 git status 复验无 user_config 变更；0.5.0.0 已拉起桌面；走查清单（启动/多页切换/时钟/倍率/预设/主题跟随/Acrylic 材质/天气/闹钟/倒计时/托盘/快捷键/退出）待用户逐项确认）
@@ -192,13 +192,13 @@ $env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWi
 - [x] PL005.01 倍率回显缺陷修复 —— clock_panel 初始化改 interface.get_rate()（输入框/滑杆/倍率小标签三处同步，现状用静态 default_rate 致控件与引擎脱节）；验证：test_gui_features 子进程断言启动后 entry 文本 == get_rate()（2026-09-12 完成：TDD 先 FAIL（预置 6.4 配置断言输入框 '2.0'≠6.4）修复后 PASS；反向验收确认三处回显 6.4/6.4/6.4x 与引擎一致）
 - [x] PL005.02 常驻校验文案移除 —— 删倍率卡静态 hint label（"必须不小于…"），非法输入提示维持现有 InfoBar；验证：rg hint 残留零结果 + 子进程非法输入 InfoBar check 保持通过（2026-09-12 完成：hint label 删除、输入框横跨两列占位；rg "必须不小于|rate_hint_label" 零结果，InfoBar 错误路径 check 保持通过）
 - [x] PL005.03 类型尺度收编 —— ui.json 新增 scale 六级字号（hero/倍率/页标题/城市时间/正文/说明），hero_time_font_size/hero_percent_font_size 迁入 scale 节；验证：rg 旧键与散落硬编码字号清零 + 全量回归（2026-09-12 完成：scale 节落地（64/30/21/20/14/12），clock_panel/world_clock_panel（city_time 20 字号升档）/settings_panel（page_title）三处消费；rg 旧键清零）
-- [x] PL005.04 构图统一 —— page_margin 16→24、page_spacing 10→14（仅改 token 值）；六页统一顶锚（消除闹钟页垂直居中/世界时钟页 1/4 高度异型锚点）；闹钟行按钮 32×24→36×32；验证：offscreen 六页抓图对照 .temp/design/current 存档（2026-09-12 完成：_make_page 显式 AlignTop + 闹钟尾部收撑；几何探针实测六页面板首项 y 全部=24 顶锚、spacer 沉底；offscreen 抓图存档于 .temp/design/current/；offscreen 对半透明窗口 grab 背景近透明（alpha=8）判定渲染不可信，以实时部件树几何为准）
-- [x] PL005.05 导航展开 —— FluentWindow 导航改"图标+文字"常开；先探 qfw 1.11.3 NavigationInterface.setExpand 可行性，不可行降级保留现状并记录；验证：可行性探针记录 + 子进程导航 check（2026-09-12 完成：探针矩阵定案——1.11.3 无 setExpand，正确 API 为 expand(useAni)/setExpandWidth；关键发现 __init__ 内 pre-show 调用污染 NavigationPanel 状态机（displayMode 卡 MENU 内容不让位），必须延后到 show 之后；落地 QTimer.singleShot(0) 触发，实测 nav 48→160 且 stackedWidget 让位 x=160；窄窗 qfw 自行走 MENU 覆盖模式不顶开内容）
+- [x] PL005.04 构图统一 —— page_margin 16→24、page_spacing 10→14（仅改 token 值）；六页统一顶锚（消除闹钟页垂直居中/世界时钟页 1/4 高度异型锚点）；闹钟行按钮 32×24→36×32；验证：offscreen 六页抓图对照 .temp/design/current 存档（2026-09-12 完成：\_make_page 显式 AlignTop + 闹钟尾部收撑；几何探针实测六页面板首项 y 全部=24 顶锚、spacer 沉底；offscreen 抓图存档于 .temp/design/current/；offscreen 对半透明窗口 grab 背景近透明（alpha=8）判定渲染不可信，以实时部件树几何为准）
+- [x] PL005.05 导航展开 —— FluentWindow 导航改"图标+文字"常开；先探 qfw 1.11.3 NavigationInterface.setExpand 可行性，不可行降级保留现状并记录；验证：可行性探针记录 + 子进程导航 check（2026-09-12 完成：探针矩阵定案——1.11.3 无 setExpand，正确 API 为 expand(useAni)/setExpandWidth；关键发现 **init** 内 pre-show 调用污染 NavigationPanel 状态机（displayMode 卡 MENU 内容不让位），必须延后到 show 之后；落地 QTimer.singleShot(0) 触发，实测 nav 48→160 且 stackedWidget 让位 x=160；窄窗 qfw 自行走 MENU 覆盖模式不顶开内容）
 - [x] PL005.06 回归收口 —— 全量 pytest + offscreen 六页重抓对照 + 文档同步（如涉导航行为）+ 草拟 commit（含 user_config.json）；验证：回归全绿 + git diff 核对清单完整（2026-09-12 完成：全量 pytest 131 用例绿；反向验收 .temp/verify_pl005_accept.py 5/5；版本 bump 0.5.0.1 五处同步 + m.milestone 条目；抓图存档 .temp/design/current/；commit 草拟见汇报）
 
 ### PL006: UI 打磨·玻璃材质系统「时之砂」[plan#UI2.0]
 
-- [x] PL006.01 token 扩充 —— ui.json 新增 field（光场渐变+金/紫双晕，深浅两套）/glass（fill 起止/高光/描边/阴影/blur，深浅两套）/radius（24/18/14 三阶）三节 + font_family_digits；colors 节 accent 组直接替换鎏金并增 cool_cyan/on_accent（不留旧绿死值）（用户拍板：鎏金 + Bahnschrift）；验证：rg 旧 accent 值残留清零 + import 冒烟（2026-09-12 完成：三节+字族落地；闲置旧键（bg_*/text_*/disabled/accent/tray_blue/primary_light/primary_dark_hover）一并清零；消费者同步 world_clock/tray/主窗口）
+- [x] PL006.01 token 扩充 —— ui.json 新增 field（光场渐变+金/紫双晕，深浅两套）/glass（fill 起止/高光/描边/阴影/blur，深浅两套）/radius（24/18/14 三阶）三节 + font*family_digits；colors 节 accent 组直接替换鎏金并增 cool_cyan/on_accent（不留旧绿死值）（用户拍板：鎏金 + Bahnschrift）；验证：rg 旧 accent 值残留清零 + import 冒烟（2026-09-12 完成：三节+字族落地；闲置旧键（bg*_/text\__/disabled/accent/tray_blue/primary_light/primary_dark_hover）一并清零；消费者同步 world_clock/tray/主窗口）
 - [x] PL006.02 GlassCard 组件 —— 新建 ui/glass_card.py 纯 QPainter（对角 tint 渐变 + 顶部 1px 高光描边 + 淡描边 + 缓存式柔投影），零 DWM 调用零新线程，offscreen 安全；验证：rg "DwmSetWindowAttribute|SetWindowCompositionAttribute" ui/glass_card.py 零结果 + offscreen 反复构造毒化探针过（2026-09-12 完成：重大探针定案——本 PyQt6 构建 offscreen 栅格器对渐变/纹理重绘存在堆破坏式不可靠崩溃（exit 127，g1-g4/宽度/格式矩阵），GlassCard 双路径落地：桌面渐变纹理缓存 + 投影，offscreen 卡面透明直绘（子控件照常）；毒化两批 3 窗×2 进程全过）
 - [x] PL006.03 窗内光场 —— 主窗铺半透明光场渐变层叠于 DWM Acrylic 之上（backdrop.py 定案不动），深浅参数全走 token；验证：DWM 读回=3 保持 + 主题切换双层刷新 check（2026-09-12 完成：paintEvent 位块拷贝缓存位图（逐行底色 + 光晕小图平滑放大），resize/主题切换重渲染；发现 qfw 主题重应用把背板重置回 2（Mica），themeChanged 挂钩 + singleShot 补挂双保险后 t+3s/t+8s 读回均=3）
 - [x] PL006.04 控件胶囊化 —— 按钮/开关/分段/滑杆统一胶囊圆角与新配色（qfw 自定义样式不改第三方源码），托盘图标配色跟进；验证：子进程控件交互 check 全过 + rg "setStyleSheet" ui/ 保持零结果（2026-09-12 完成：setThemeColor 鎏金自动传导 qfw 组件；apply_capsule 经 setCustomStyleSheet 仅注圆角（确认/预设/添加闹钟）；托盘金色圆面 + 深色指针；rg 零结果保持）
@@ -222,3 +222,24 @@ $env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWi
 - [x] T005.03 磨砂感恢复 —— ui.json field 深色 alpha 0.94→0.75、浅色 0.94/0.92→0.85/0.80，DWM Acrylic 壁纸模糊重新透出；验证：对比度复测（黑底合成链下正文对比度不降反升，白底浅色 ≥17:1）（2026-09-12 完成：verify_pl006_accept 数值记录）
 - [x] T005.04 圆角毛刺根除 —— 弃 QGraphicsDropShadowEffect（中间缓冲重采样为毛刺来源），玻璃纹理按设备像素比（devicePixelRatioF）渲染，描边回 1.0px（选中 1.4px）；验证：offscreen 探针存活 + 缩放屏真机目测（2026-09-12 完成）
 - [x] T005.05 收口 —— 全量回归 + 真机重启崩溃栈检查 + DWM 读回 + 版本 bump 0.5.2.1 五处同步 + m.milestone 条目；验证：回归 131 绿 + DWM=3 + 崩溃日志无新增（2026-09-12 完成：修复过程中真机抓到 QPainterPath 漏导入 NameError（崩溃栈监控捕获），已修；commit 草拟见汇报）
+
+### FIX003: 第3轮审计修复 [audit#A003]
+
+- [x] FIX003.1 [P0] 倒计时常用目标"春节"chip 点击确定性失效 —— countdown_panel._apply_quick_target 支持 `YYYY-MM-DD` 三段格式（含年份则用该年，已过顺延次年同月日），base.json:22 保持 2027-02-06 不动；验证：offscreen 探针点击春节 chip 断言倒计时设置成功（2026-09-13 完成：TDD 探针 FAIL→PASS）
+- [x] FIX003.2 [P0] dataclass_utils isfinite 对超大 int 抛 OverflowError 穿透容错 —— :34 改 int/float 分流（int 恒有限不走 isfinite）；验证：test_settings 补 400 位整数字面量用例 + TDD 探针（2026-09-13 完成）
+- [x] FIX003.3 [P0] world_pins 非串元素致世界时钟构造崩溃 —— UserConfig 加 `__post_init__` 剔除 world_pins 非串元素（对齐 repeat_days 模式）；验证：test_settings 补 `[1]` 用例 + 世界时钟无头构造（2026-09-13 完成）
+- [x] FIX003.4 [P0] 时间膨胀日长双口径 —— expanded_hours_per_day/remaining 与钟面回绕统一取整数日长 custom_hours_per_day，尾段钳 0 防负值；验证：rate=1.1 探针断言 expanded==int 日长且 remaining ≥0（2026-09-13 完成）
+- [x] FIX003.5 [P0] 农历串反解析被节气/节日段污染 —— get_lunar_info 移除"节气：/公历节日："段（无 chip 消费且插中段必污染月相；节气 chips 落地后以结构化字段恢复，DTO 方案顺延）；验证：探针以 2026-09-23 秋分断言月相 chip 无"节气/公历节日"字样（2026-09-13 完成）
+- [x] FIX003.6 [P1] 天气手动刷新 TTL 内静默 no-op —— interface.fetch_weather 增 force 参数（穿透缓存），weather_panel 刷新按钮走 force 路径、自动定时器保持缓存路径；验证：打桩探针 + STAGE1 首查用例同步桩签名（2026-09-13 完成）
+- [x] FIX003.7 [P1] replace_alarm 绕过去重与上限 —— 复用 add_alarm 去重检查（排除自身 id）；验证：test_alarm_service 补"编辑成重复"用例断言拒绝且条目数不变（2026-09-13 完成）
+- [x] FIX003.8 [P1] created_at 非法静默重建致一次性闹钟复活 —— from_dict 对 created_at 键存在但类型非法整条拒绝（键缺失走默认重建保持旧配置兼容）；验证：test_alarm_service 补两分支用例（2026-09-13 完成）
+- [x] FIX003.9 [P1] chinese-calendar 节假日数据时效 —— 实测 1.11.0（上游最新）数据覆盖至 2026-12-31，子审计"截止 2026-10-07"系误读最后一条节假日为边界，已纠正；requirements >=1.8.0 已满足无需改；验证：逐日探针测得覆盖边界 + 版本核对（2026-09-13 完成；**12 月底前复查 2027 年数据发布**）
+- [x] FIX003.10 [P1] 损坏转存绕过写白名单 —— file_utils 抽公开 is_write_allowed（write_json 同步复用），settings._backup_corrupted_config 白名单外跳过转存仅告警；验证：test_settings 补白名单外损坏配置用例断言无 .bak 落盘（2026-09-13 完成）
+- [x] FIX003.11 [P2] 闹钟对话框间距双源硬编码 —— AlarmEditDialog 增必填关键字 interface，两处 setSpacing 改读 ui.json dialog_form_spacing/dialog_repeat_spacing；alarm_panel 两处构造与 STAGE2 测试同步传参；验证：改 ui.json 值无头构造断言跟随（2026-09-13 完成）
+- [x] FIX003.12 [P2] ui.json 死键清理 —— 删 scale.body/caption、layout.rate_entry_width/confirm_button_size/preset_button_size/world_combo_width、colors.primary_hover/primary_pressed/cool_cyan/on_accent、glass 双主题 fill_to/highlight/border 共 16 键（dialog_* 两键随 FIX003.11 接线保留）；验证：逐键 rg 零引用 + 无头初始化（2026-09-13 完成）
+- [x] FIX003.13 [P2] main.py log_level 兜底字面量双源 —— 改直接索引（键缺失由静态配置校验暴露）；验证：改 base.json 值断言日志级别跟随（2026-09-13 完成）
+- [x] FIX003.14 [P3] 规范批次 —— glass_card QRadialGradient 重复 import 去重；_noise_tile `import random` 提顶层；_with_alpha 升公开名 with_alpha（clock_panel 同步）；world_clock_panel 补 `from typing import Any`；验证：rg 零残留 + 导入冒烟（2026-09-13 完成）
+- [x] FIX003.15 [P3] 说明区与注释失实 —— alarm_panel:223 已收编 token 条目删除+类前空行补齐、weather_panel:213 改"结构化直填"、main_window:471 补 _make_page 签名、test_gui_features:69 "2 窗"改"3 窗"；验证：通读核对（2026-09-13 完成）
+- [x] FIX003.16 [P3] 版本文档滞后 —— README.md:3 徽章与 x.progress.md:4 同步 0.5.3.1；验证：rg 五处版本一致（2026-09-13 完成）
+- [x] FIX003.17 [P3] 后端清理批次 —— 删 TimeInfo.custom_second、getCurrentJieQi 无效回落、weather_codes.english 字段（29 项）、cities 说明区补 interface 消费方、interface 三个零调用契约方法（get_rate_presets/format_weather_display/get_system_theme_hint 连带 winreg import 与注册表常量）及对应退役测试；验证：全量回归 + rg 零引用（2026-09-13 完成）
+- [x] FIX003.18 [P3] 验证收尾 —— TDD 探针 9/9 PASS（先 0/9 FAIL 基线）；全量回归 134 用例全绿（131−2 退役 +5 新增）；GUI 无头初始化 OK；真机拉起走查（2026-09-13 完成；A003 三路并行审计，interface 层首次纳入）

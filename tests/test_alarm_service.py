@@ -159,3 +159,22 @@ def test_repeat_days_bool_and_decimal_consistent():
     assert Alarm(label="c", time="07:00", repeat_days=["1.5"]).repeat_days == []
     assert Alarm(label="d", time="07:00", repeat_days=[1.0]).repeat_days == [1]
     assert PresetSound.from_value("不存在的") is PresetSound.CLASSIC  # 兜底
+
+
+def test_replace_alarm_rejects_duplicate():
+    # 编辑成与现有闹钟同时间同标签：拒绝且不产生重复条目（FIX003.7：封堵 replace 旁路）
+    mgr = AlarmManager()
+    a = Alarm(label="晨间", time="07:00")
+    b = Alarm(label="夜间", time="22:00")
+    assert mgr.add_alarm(a) and mgr.add_alarm(b)
+    edited = Alarm(label="晨间", time="07:00", id=b.id)
+    assert mgr.replace_alarm(edited) is False
+    assert len(mgr.alarms) == 2
+
+
+def test_created_at_invalid_type_rejects_entry():
+    # created_at 键存在但类型非法：整条拒绝防一次性闹钟按载入时刻"复活"（FIX003.8）；
+    # 键缺失（旧版本配置）仍走默认重建保持兼容
+    assert Alarm.from_dict({"label": "x", "time": "07:00", "created_at": 123}) is None
+    ok = Alarm.from_dict({"label": "x", "time": "07:00"})
+    assert ok is not None and ok.created_at

@@ -1,6 +1,6 @@
 # AccelWorld —— 加速世界世界钟
 
-[![Version](https://img.shields.io/badge/Version-0.5.3.0-blue.svg)](config/static/base.json)
+[![Version](https://img.shields.io/badge/Version-0.5.3.2-blue.svg)](config/static/base.json)
 [![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 

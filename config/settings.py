@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # 通用文件读写工具（缓存单例 + 项目根定位）
-from utils.file_utils import read_json_cached, write_json, get_project_root
+from utils.file_utils import read_json_cached, write_json, get_project_root, is_write_allowed
 
 # dataclass 反序列化通用工具（S9.4 抽象）
 from utils.dataclass_utils import dataclass_from_dict
@@ -59,6 +59,11 @@ class UserConfig:
     window_geometry: Optional[str] = None  # 窗口位置和大小（base64 编码）
     alarms: List[Any] = field(default_factory=list)  # 闹钟列表（结构默认：空）
 
+    def __post_init__(self) -> None:
+        # world_pins 元素级防御：非串元素剔除（FIX003.3：手改 [1] 穿透 →
+        # 世界时钟 _city_name 调 rsplit 构造期崩溃），对齐 Alarm.repeat_days 模式
+        self.world_pins = [p for p in self.world_pins if isinstance(p, str)]
+
     def to_dict(self) -> Dict[str, Any]:
         # asdict 递归转 dict（标准库一行调用，无需包装层）
         return asdict(self)
@@ -87,7 +92,11 @@ def load_config() -> UserConfig:
 
 
 def _backup_corrupted_config(path: Path) -> None:
-    # 损坏配置转存同名 .bak，保留最近一次原始内容供人工恢复
+    # 损坏配置转存同名 .bak，保留最近一次原始内容供人工恢复；
+    # env 注入写白名单外路径时跳过转存（防白名单外落盘，FIX003.10：与 write_json 策略对齐）
+    if not is_write_allowed(path):
+        logger.warning(f"配置路径在写白名单之外，跳过损坏转存: {path}")
+        return
     backup = path.with_name(path.name + ".bak")
     try:
         shutil.copyfile(path, backup)

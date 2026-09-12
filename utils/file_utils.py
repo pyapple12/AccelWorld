@@ -29,6 +29,12 @@ def get_project_root() -> Path:
     return _PROJECT_ROOT
 
 
+def is_write_allowed(path: Path) -> bool:
+    # 路径是否位于写白名单内（项目根/系统临时目录）；供写路径与转存旁路防护复用（FIX003.10）
+    resolved = path.resolve()
+    return any(resolved.is_relative_to(root) for root in _WRITE_ALLOWED_ROOTS)
+
+
 def read_json(path: Path | str, default: Any = None) -> Any:
     # 读取 JSON 文件，失败或文件不存在时返回 default
     # （FIX001.1：补捕 UnicodeDecodeError——非 UTF-8 字节文件此前会穿透崩溃）
@@ -55,7 +61,7 @@ def write_json(path: Path | str, data: Any) -> bool:
     # 写入 JSON 文件（UTF-8、ensure_ascii=False、缩进 4），成功后刷新缓存
     # 安全约束：路径规范化后必须位于项目根/系统临时目录内，越界视为编程错误抛 ValueError
     resolved = Path(path).resolve()
-    if not any(resolved.is_relative_to(root) for root in _WRITE_ALLOWED_ROOTS):
+    if not is_write_allowed(resolved):
         raise ValueError(f"拒绝写入允许目录之外的路径: {resolved}")
     # tmp 名带进程号：多进程同时保存不共享同一中间文件（FIX002.7）
     tmp_path = resolved.with_name(f"{resolved.name}.{os.getpid()}.tmp")

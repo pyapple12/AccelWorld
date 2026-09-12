@@ -153,6 +153,11 @@ class Alarm:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> Optional["Alarm"]:
+        # created_at 语义必填：键存在但类型非法时整条拒绝（FIX003.8：防一次性闹钟
+        # 按载入时刻重建"复活"）；键缺失走默认重建（旧版本配置兼容）
+        if "created_at" in data and not isinstance(data["created_at"], str):
+            logger.warning(f"闹钟 created_at 类型非法，整条跳过: {data.get('created_at')!r}")
+            return None
         # 委托通用工具（容错模式）：非法 time 返回 None 由调用方跳过
         return dataclass_from_dict(cls, data, tolerant=True)
 
@@ -230,7 +235,16 @@ class AlarmManager:
         return None
 
     def replace_alarm(self, alarm: Alarm) -> bool:
-        # 编辑对话框保留原 ID 构造新对象，此处原位替换
+        # 编辑对话框保留原 ID 构造新对象，此处原位替换；
+        # 复用 add_alarm 的去重检查（排除自身 id，FIX003.7：防编辑成重复条目绕过 add 路径）
+        for existing in self.alarms:
+            if (
+                existing.id != alarm.id
+                and existing.time == alarm.time
+                and existing.label == alarm.label
+            ):
+                logger.warning("已存在相同时间和标签的闹钟")
+                return False
         for i, existing in enumerate(self.alarms):
             if existing.id == alarm.id:
                 self.alarms[i] = alarm

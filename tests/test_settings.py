@@ -195,3 +195,32 @@ def test_get_alarms_copy():
     alarms = settings.get_alarms()
     alarms.append({"id": "污染"})
     assert len(settings.get_alarms()) == 1
+
+
+def test_huge_int_rate_does_not_crash():
+    # 超出 float 表示范围的 int 字面量：int 恒有限不走 isfinite（FIX003.2 防回归：
+    # ca6bfbb 的 isfinite 守卫对超大 int 抛 OverflowError 穿透容错致启动崩）
+    cfg = settings.UserConfig.from_dict({"time_dilation_rate": 10**400})
+    assert isinstance(cfg.time_dilation_rate, int)  # 构造不崩；越界由世界回退兜底
+
+
+def test_world_pins_non_string_elements_filtered():
+    # world_pins 混入非串元素：__post_init__ 元素级剔除（FIX003.3：防世界时钟构造崩溃）
+    cfg = settings.UserConfig.from_dict({"world_pins": [1, "Asia/Seoul", None]})
+    assert cfg.world_pins == ["Asia/Seoul"]
+
+
+def test_corrupted_backup_skipped_outside_whitelist(tmp_path, monkeypatch):
+    # env 注入白名单外路径且配置损坏：跳过转存不在白名单外落盘 .bak（FIX003.10）
+    outside = settings.get_project_root().parent / "越界损坏配置.json"
+    outside.write_text("{ 损坏", encoding="utf-8")
+    monkeypatch.setattr(settings, "CONFIG_FILE", outside)
+    from utils.file_utils import clear_json_cache
+
+    clear_json_cache()
+    try:
+        settings.load_config()
+        assert not (settings.get_project_root().parent / "越界损坏配置.json.bak").exists()
+    finally:
+        outside.unlink(missing_ok=True)
+        clear_json_cache()

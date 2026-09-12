@@ -66,7 +66,7 @@ def clear_and_reload():
 # 销毁无边框窗口会立即硬崩 0xC0000409（y.problems#6 家族）；窗口随进程退出释放
 """
 
-# ------------------- 阶段 1：启动语义（2 窗） -------------------
+# ------------------- 阶段 1：启动语义（3 窗：window0/window/天气窗） -------------------
 _STAGE1 = _STAGE_PRELUDE + """
 
 # FIX002.1 越界持久化倍率启动不崩：窗口创建前写入越界倍率，主窗口必须回退默认存活
@@ -118,8 +118,8 @@ check("PL005.01 倍率回显启动一致", c_rate_echo_startup)
 weather_calls = []
 
 
-def fake_fetch_weather(self, city_name):
-    weather_calls.append(city_name)
+def fake_fetch_weather(self, city_name, force=False):
+    weather_calls.append((city_name, force))
     return None
 
 
@@ -130,7 +130,7 @@ def c_first_weather_query():
     window = AcceleratedWorldGUI(AppInterface())
     process_events_ms(1500)
     assert weather_calls, "启动后未发起首次天气查询"
-    return f"启动即查询 {weather_calls[0]!r}"
+    return f"启动即查询 {weather_calls[0][0]!r}"
 
 
 check("FIX001.5 启动首次天气查询", c_first_weather_query)
@@ -224,7 +224,7 @@ def c_sound_switch_back_to_preset():
     host = QWidget()  # MessageBoxBase 遮罩依赖父窗口（PL002.07）
     custom = Alarm(label="自定义", time="07:00", sound_type="custom",
                    sound_value=r"C:/music/wake.wav")
-    dialog = AlarmEditDialog(host, alarm=custom)
+    dialog = AlarmEditDialog(host, alarm=custom, interface=AppInterface())
     assert "wake.wav" in dialog.custom_sound_button.text(), "自定义铃声未回填按钮文案"
     dialog.sound_combo.setCurrentIndex(3)  # Chime
     out = dialog.get_alarm()

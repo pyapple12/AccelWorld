@@ -27,12 +27,13 @@ def _value_matches(annotation: Any, value: Any) -> bool:
     if isinstance(annotation, type):
         if annotation is float:
             # JSON 数字可整可浮；布尔是 int 子类需显式排除；
-            # NaN/Infinity 经 json.load 默认放行，须拒绝（FIX002.3：防 int(nan) 启动崩溃）
-            return (
-                isinstance(value, (int, float))
-                and not isinstance(value, bool)
-                and math.isfinite(value)
-            )
+            # NaN/Infinity 经 json.load 默认放行，须拒绝（FIX002.3：防 int(nan) 启动崩溃）；
+            # int 恒为有限值不走 isfinite（FIX003.2：超大 int 转 float 抛 OverflowError 穿透容错）
+            if isinstance(value, bool):
+                return False
+            if isinstance(value, int):
+                return True
+            return isinstance(value, float) and math.isfinite(value)
         if annotation is int:
             return isinstance(value, int) and not isinstance(value, bool)
         if annotation is bool:

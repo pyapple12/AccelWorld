@@ -27,6 +27,7 @@ from ui.alarm_dialog import AlarmEditDialog
 from ui.glass_card import GlassCard, apply_capsule
 from ui.tools.alarm_text import format_repeat_display, format_sound_button_name
 
+
 class AlarmPanel(QWidget):
     alarm_saved = pyqtSignal()  # 列表变更，主窗口负责经接口持久化
     alarm_triggered = pyqtSignal(object)  # 闹钟触发（携带 Alarm 对象）
@@ -169,7 +170,7 @@ class AlarmPanel(QWidget):
 
     def show_add_alarm_dialog(self) -> None:
         # 确认后经接口添加，失败（上限/重复）InfoBar 提示用户
-        dialog = AlarmEditDialog(self)
+        dialog = AlarmEditDialog(self, interface=self._interface)
         if dialog.exec():
             if self._interface.add_alarm(dialog.get_alarm()):
                 self.save_and_refresh()
@@ -186,7 +187,7 @@ class AlarmPanel(QWidget):
         if not alarm:
             return
 
-        dialog = AlarmEditDialog(self, alarm)
+        dialog = AlarmEditDialog(self, alarm, interface=self._interface)
         if dialog.exec():
             if self._interface.replace_alarm(dialog.get_alarm()):
                 self.save_and_refresh()
@@ -220,7 +221,6 @@ class AlarmPanel(QWidget):
 
 
 # ===== ui/panels/alarm_panel.py 函数/类说明 =====
-# _ROW_WIDGET_HEIGHT: 列表行内小按钮高度（布局细节，PL003.01 tokens 收编候选）
 # AlarmPanel(QWidget): 闹钟面板
 #   信号：alarm_saved 列表变更（主窗口经接口持久化）；alarm_triggered(Alarm) 触发
 #   __init__(interface, parent): 检查周期/提示时长经接口读取（PL002.07 Fluent 重写：

@@ -18,6 +18,7 @@ from qfluentwidgets import (
     TimePicker,
 )
 
+from interface.app_interface import AppInterface
 from interface.types import Alarm, PresetSound
 from ui.tools.alarm_text import format_sound_button_name
 
@@ -31,20 +32,28 @@ _WEEKDAY_LABELS = ("周一", "周二", "周三", "周四", "周五", "周六", "
 
 
 class AlarmEditDialog(MessageBoxBase):
-    def __init__(self, parent: QWidget, alarm: Optional[Alarm] = None):
-        # 构建表单并预填数据；编辑模式回填时间/声音/重复（MessageBoxBase 需父窗口）
+    def __init__(
+        self,
+        parent: QWidget,
+        alarm: Optional[Alarm] = None,
+        *,
+        interface: AppInterface,
+    ):
+        # 构建表单并预填数据；编辑模式回填时间/声音/重复（MessageBoxBase 需父窗口）；
+        # interface 必填（关键字传参）：读取 ui.json 间距 token（FIX003.11：消除双源硬编码）
         super().__init__(parent)
         self.alarm = alarm
         self.sound_type: Literal["preset", "custom"] = "preset"
         self.sound_value: str = "classic"
         self.repeat_checkboxes: List[CheckBox] = []
+        dialog_layout = interface.get_ui_static()["layout"]
 
         self.titleLabel = SubtitleLabel("编辑闹钟" if alarm else "添加闹钟", self)
         self.viewLayout.addWidget(self.titleLabel)
 
         form_host = QWidget(self)
         form = QFormLayout(form_host)
-        form.setSpacing(8)
+        form.setSpacing(int(dialog_layout["dialog_form_spacing"]))
 
         # 标签
         self.label_edit = LineEdit()
@@ -93,7 +102,7 @@ class AlarmEditDialog(MessageBoxBase):
 
         # 重复设置
         repeat_layout = QHBoxLayout()
-        repeat_layout.setSpacing(4)
+        repeat_layout.setSpacing(int(dialog_layout["dialog_repeat_spacing"]))
         for i, day in enumerate(_WEEKDAY_LABELS):
             checkbox = CheckBox(day)
             if alarm and i in alarm.repeat_days:

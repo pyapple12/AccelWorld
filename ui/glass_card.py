@@ -7,8 +7,9 @@
 
 import os
 
+import random
 from PyQt6.QtCore import QPoint, QPointF, pyqtSignal, QRectF, Qt
-from PyQt6.QtGui import QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient, QRadialGradient
+from PyQt6.QtGui import QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient
 from PyQt6.QtWidgets import QWidget
 
 from qfluentwidgets import Slider, Theme, isDarkTheme, qconfig, setCustomStyleSheet
@@ -50,8 +51,6 @@ def _noise_tile() -> QImage:
     # （苹果 Liquid Glass 同款思路：材质混入 1~3% 噪点；固定种子保证视觉稳定）
     global _NOISE_TILE
     if _NOISE_TILE is None:
-        import random
-
         rng = random.Random(20260912)
         img = QImage(128, 128, QImage.Format.Format_ARGB32_Premultiplied)
         img.fill(0)
@@ -122,8 +121,9 @@ def render_field_pixmap(size_w: int, size_h: int, field_tokens: dict, dark: bool
     return pix
 
 
-def _with_alpha(color: QColor, alpha: float) -> QColor:
-    # 返回同 RGB、指定 alpha（0~1 浮点）的颜色副本
+def with_alpha(color: QColor, alpha: float) -> QColor:
+    # 返回同 RGB、指定 alpha（0~1 浮点）的颜色副本；
+    # 公开名（FIX003.14：clock_panel 跨模块使用，取消 _ 私有前缀违例）
     return QColor(color.red(), color.green(), color.blue(), round(255 * alpha))
 
 
@@ -335,8 +335,8 @@ class GlassCard(QWidget):
             intensity = min(presence * 1.4, 1.0)
             radius = min(min(w, h) * 0.6, 120)
             radial = QRadialGradient(corner_x, corner_y, radius)
-            radial.setColorAt(0.0, _with_alpha(glow, round(140 * intensity)))
-            radial.setColorAt(1.0, _with_alpha(glow, 0))
+            radial.setColorAt(0.0, with_alpha(glow, round(140 * intensity)))
+            radial.setColorAt(1.0, with_alpha(glow, 0))
             # 加色混合（CompositionMode_Plus）：光只加不盖，深底上不产生浑浊色斑
             painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Plus)
             painter.setPen(Qt.PenStyle.NoPen)
@@ -400,7 +400,7 @@ class GlassCard(QWidget):
 # render_field_pixmap(size_w, size_h, field_tokens, dark, dpr): 窗内光场位图
 #   （垂直线性底色 + QRadialGradient 双光晕 + 噪点瓦片；按设备像素比渲染；
 #   供主窗口 paintEvent 位块拷贝，PL006.03/T005）
-# _with_alpha(color, alpha): 返回带透明度的同色 QColor（alpha 为 0~1 浮点，
+# with_alpha(color, alpha): 返回带透明度的同色 QColor（alpha 为 0~1 浮点，
 #   内部 ×255；误传 0~255 整数会溢出非法颜色 → qFatal 崩溃）
 # _mix_color(a, b, t): 双色按 t 线性插值（含 alpha）
 # _CapsuleHandle(SliderHandle): 居中绘制旋钮（外圆/内点浮点坐标画在控件几何中心，

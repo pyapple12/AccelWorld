@@ -65,15 +65,13 @@ def test_get_version_matches_base_json():
     assert iface.get_version() == _BASE_JSON["version"]
 
 
-def test_get_rate_bounds_and_presets_match_base_json():
+def test_get_rate_bounds_match_base_json():
     iface = AppInterface()
     assert iface.get_rate_bounds() == (
         float(_BASE_JSON["rate_min"]),
         float(_BASE_JSON["rate_max"]),
     )
-    assert iface.get_rate_presets() == {
-        name: float(v) for name, v in _BASE_JSON["rate_presets"].items()
-    }
+    # get_rate_presets 已随预设按钮移除（FIX003.13），base.json 键留待配置清理评估
 
 
 def test_apply_rate_valid_applies_and_persists():
@@ -164,36 +162,7 @@ def test_ui_preferences_theme_invalid_falls_back(tmp_path):
     assert iface.get_ui_preferences().theme == _BASE_JSON["default_theme"]
 
 
-def test_get_system_theme_hint(monkeypatch):
-    # Windows 注册表 AppsUseLightTheme 侦测：1=浅色 0=深色，读取失败回退 "light"
-    import interface.app_interface as ai
-
-    class _FakeKey:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            return False
-
-    def make_openkey(return_value):
-        def fake_openkey(key, sub_key):
-            assert "Personalize" in sub_key
-            return _FakeKey()
-
-        return fake_openkey
-
-    monkeypatch.setattr(ai.winreg, "OpenKey", make_openkey(None))
-    monkeypatch.setattr(ai.winreg, "QueryValueEx", lambda key, name: (1, 4))
-    assert ai.AppInterface().get_system_theme_hint() == "light"
-
-    monkeypatch.setattr(ai.winreg, "QueryValueEx", lambda key, name: (0, 4))
-    assert ai.AppInterface().get_system_theme_hint() == "dark"
-
-    def raise_missing(key, sub_key):
-        raise FileNotFoundError("no personalize key")
-
-    monkeypatch.setattr(ai.winreg, "OpenKey", raise_missing)
-    assert ai.AppInterface().get_system_theme_hint() == "light"
+# test_get_system_theme_hint 已删（FIX003.13：方法随三态主题 setTheme(AUTO) 内建跟随退役）
 
 
 def test_window_geometry_base64_roundtrip():
@@ -253,21 +222,8 @@ def test_fetch_weather_cached_queries_once(monkeypatch):
     assert len(calls) == 1  # 只发起一次网络查询
 
 
-def test_format_weather_display_with_and_without_data():
-    iface = AppInterface()
-    assert "获取失败" in iface.format_weather_display("北京", None)
-    weather = WeatherData(
-        temperature=20.0,
-        humidity=50.0,
-        wind_speed=5.0,
-        apparent_temperature=21.0,
-        weather_code=0,
-        weather="晴",
-        description="晴",
-        icon="☀️",
-    )
-    text = iface.format_weather_display("北京", weather)
-    assert "北京" in text and "20.0" in text
+# test_format_weather_display_with_and_without_data 已删（FIX003.13：方法随天气卡
+# 结构化直填退役，format_weather_info 保留为 modules 独立展示工具）
 
 
 def test_get_timezone_options_non_empty_with_known_pair():

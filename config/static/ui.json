@@ -6,9 +6,7 @@
     "page_title": 21,
     "city_time": 20,
     "std_time": 34,
-    "slider_value": 28,
-    "body": 14,
-    "caption": 12
+    "slider_value": 28
   },
   "field": {
     "dark": {
@@ -39,16 +37,10 @@
   "glass": {
     "dark": {
       "fill_from": "#16FFFFFF",
-      "fill_to": "#0AFFFFFF",
-      "highlight": "#99FFFFFF",
-      "border": "#66FFFFFF",
       "lift": 8
     },
     "light": {
       "fill_from": "#C6FFFFFF",
-      "fill_to": "#85FFFFFF",
-      "highlight": "#F2FFFFFF",
-      "border": "#2E1E2D46",
       "lift": 10
     }
   },
@@ -66,14 +58,10 @@
     "clock_card_padding": [20, 14, 20, 12],
     "progress_ring_size": 88,
     "slider_track": 24,
-    "rate_entry_width": 80,
-    "confirm_button_size": [120, 40],
-    "preset_button_size": [96, 32],
     "countdown_input_width": 200,
     "countdown_font_size": 14,
     "picker_button_size": [32, 32],
     "input_spacing": 5,
-    "world_combo_width": 170,
     "city_combo_width": 130,
     "alarm_list_height": 120,
     "alarm_row_margin": [5, 2, 5, 2],
@@ -85,11 +73,7 @@
   },
   "colors": {
     "primary": "#E4B36A",
-    "primary_hover": "#EFC381",
-    "primary_pressed": "#D9A95C",
     "danger": "#E4756A",
-    "cool_cyan": "#7FB4E8",
-    "on_accent": "#221703",
     "tray_accent": "#E4B36A",
     "tray_hand": "#221703"
   }

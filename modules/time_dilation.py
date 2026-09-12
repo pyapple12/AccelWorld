@@ -40,11 +40,6 @@ class TimeInfo:
         # 自定义时间小时数（进度条用）
         return int(self.custom_time.split(":")[0])
 
-    @property
-    def custom_second(self) -> int:
-        # 自定义时间秒数（秒变化检测用）
-        return int(self.custom_time.split(":")[-1])
-
 
 class AcceleratedWorld:
     time_dilation_rate: float  # 时间膨胀倍率（下限/上限来自静态配置，默认 default_rate）
@@ -129,13 +124,17 @@ class AcceleratedWorld:
         # 计算时间膨胀倍率百分比
         dilation_percentage = self.time_dilation_rate * 100
 
-        # 计算膨胀后一天的小时数（精确到两位小数）
-        expanded_hours_per_day = 24.0 * self.time_dilation_rate
+        # 计算膨胀后一天的小时数（与钟面回绕同口径取整数日长，FIX003.4：
+        # 24.0*rate 浮点口径下 rate=1.1 时钟面 26 点回绕而日长显示 26.40，剩余/进度互相矛盾）
+        expanded_hours_per_day = float(self.custom_hours_per_day)
 
         # 计算加速后当天剩余的小时数（精确到两位小数）
-        # 总自定义时间秒数 - 当前自定义时间秒数 = 剩余秒数（rate≤20 时当前值恒小于一天总量，无需取模）
-        total_custom_seconds_per_day = expanded_hours_per_day * 3600
-        remaining_seconds = total_custom_seconds_per_day - custom_total_seconds
+        # 总自定义时间秒数 - 当前自定义时间秒数 = 剩余秒数；整数日长回绕吞掉的尾段
+        # （<1 标准小时）钳 0 防负值（FIX003.4 同口径）
+        total_custom_seconds_per_day = self.custom_hours_per_day * 3600
+        remaining_seconds = max(
+            0.0, total_custom_seconds_per_day - custom_total_seconds
+        )
         remaining_hours = remaining_seconds / 3600
 
         return TimeInfo(

@@ -26,17 +26,19 @@ class _WeatherTaskSignals(QObject):
 
 
 class _WeatherTask(QRunnable):
-    def __init__(self, interface: AppInterface, city_name: str):
-        # 记录接口引用与目标城市并创建信号载体（查询经接口同步拉取，线程由本任务承载）
+    def __init__(self, interface: AppInterface, city_name: str, force: bool = False):
+        # 记录接口引用与目标城市并创建信号载体（查询经接口同步拉取，线程由本任务承载）；
+        # force=True 穿透缓存强制请求（手动刷新，FIX003.6）
         super().__init__()
         self._interface = interface
         self.city_name = city_name
+        self._force = force
         self.signals = _WeatherTaskSignals()
 
     def run(self) -> None:
         # 在线程池中执行查询（经接口），异常兜底记录并降级返回，保证 UI 不卡"获取天气中..."
         try:
-            result = self._interface.fetch_weather(self.city_name)
+            result = self._interface.fetch_weather(self.city_name, force=self._force)
         except Exception as e:
             logger.exception(f"后台天气查询异常: {e}")
             result = None
@@ -89,10 +91,12 @@ class WeatherPanel(QWidget):
 
         top_row.addStretch()
 
-        # 刷新天气按钮（qfw 图标按钮，PL002.05；胶囊造型 PL006.04）
+        # 刷新天气按钮（qfw 图标按钮，PL002.05；胶囊造型 PL006.04；手动刷新穿透缓存 FIX003.6）
         self.refresh_weather_button = PushButton(FluentIcon.SYNC, "刷新")
         apply_capsule(self.refresh_weather_button)
-        self.refresh_weather_button.clicked.connect(self.update_weather)
+        self.refresh_weather_button.clicked.connect(
+            lambda: self.update_weather(force=True)
+        )
         top_row.addWidget(self.refresh_weather_button)
         page_layout.addLayout(top_row)
 
@@ -140,14 +144,15 @@ class WeatherPanel(QWidget):
         # main_window 不再二次 set_city，启动期仅此一次请求）
         self.update_weather()
 
-    def update_weather(self) -> None:
-        # 置过渡态后提交 QThreadPool 任务（查询经接口），UI 不阻塞
+    def update_weather(self, force: bool = False) -> None:
+        # 置过渡态后提交 QThreadPool 任务（查询经接口），UI 不阻塞；
+        # force=True 仅手动刷新按钮使用（穿透缓存强制请求，FIX003.6）
         self.weather_temp_label.setText("--°")
         self.weather_info_label.setText("获取天气中...")
         self.weather_icon_label.setText("⏳")
         self.humidity_label.setText("湿度 --%")
         self.wind_label.setText("风速 -- km/h")
-        task = _WeatherTask(self._interface, self.current_city)
+        task = _WeatherTask(self._interface, self.current_city, force=force)
         task.signals.finished.connect(self._on_weather_result)
         # globalInstance 运行时恒非 None（stub 标注 Optional，行级压制）
         self._weather_pool.start(task)  # pyright: ignore[reportOptionalMemberAccess]
@@ -208,8 +213,10 @@ class WeatherPanel(QWidget):
 # _WeatherTaskSignals(QObject): 任务信号载体（跨线程排队回 GUI 线程）
 # WeatherPanel(QWidget): 天气面板
 #   __init__(interface, parent, initial_city): 城市表/默认城市/刷新周期经接口读取
-#   update_weather(): 提交后台任务立即返回，UI 不因网络阻塞（修复 D5）
+#   update_weather(force=False): 提交后台任务立即返回，UI 不因网络阻塞（修复 D5）；
+#     force=True 手动刷新穿透缓存（FIX003.6）
 #   _on_weather_result(city, weather): 回调更新标签；城市已切换则丢弃过期结果；
+#     字段经 WeatherData 结构化直填（PL007.04 起，format_weather_display 已不消费）
 #     展示文本经 AppInterface.format_weather_display 格式化
 #   set_city()/on_city_changed()/current_city_name(): 见 S4
 #   设计理由：QThreadPool 全局实例复用线程；信号跨线程自动排队，避免手动锁；

@@ -25,4 +25,5 @@ CITIES = {
 # CITIES: dict[str, tuple[float, float]]，城市名到经纬度的映射表
 #   输入：城市名；输出：经纬度元组
 #   设计理由：天气查询以城市为维度，集中管理避免 GUI 与天气服务重复定义
-#   关联配置：无外部依赖，供 modules/weather_service.py 使用
+#   关联配置：无外部依赖，供 modules/weather_service.py 与 interface/app_interface.py
+#   （get_city_names 城市下拉/列表内外判定）使用

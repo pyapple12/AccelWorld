@@ -468,8 +468,8 @@ def main_gui(interface: AppInterface, **kwargs: Any) -> None:
 #   → SystemThemeListener（AUTO 深浅跟随，PL002.10）
 #   设计理由：窗口自身零后端 import（后端访问全部经 self._interface，PL001.08 保持）；
 #   深浅样式由 qfw 内建；Acrylic 背板经 ui/backdrop.py（PL003.03，随主题重铺）
-#   _make_page(object_name, *widgets): 导航页容器工厂（统一页边距 + objectName 硬要求；
-#   PL005.04 显式 AlignTop 顶锚，消除内容锚点漂移）
+#   _make_page(object_name, layout_tokens, *widgets): 导航页容器工厂（统一页边距 +
+#   objectName 硬要求；PL005.04 显式 AlignTop 顶锚，消除内容锚点漂移）
 #   _expand_navigation(): 导航图标+文字常开（PL005.05，singleShot(0) 延后到 show 后；
 #   pre-show 调用污染 qfw 状态机致内容不让位，探针定案见 .temp/probe_pl005_nav6）
 #   _apply_theme_preference(theme_pref): setTheme 三态映射 + setThemeColor +

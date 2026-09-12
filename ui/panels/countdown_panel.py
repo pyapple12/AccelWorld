@@ -200,12 +200,20 @@ class CountdownPanel(QWidget):
             label.setPalette(palette)
 
     def _apply_quick_target(self, month_day: str) -> None:
-        # 常用目标 chips：MM-DD 取下一个 occurrence（当年已过取次年）零点并直接设置
-        month, day = (int(part) for part in month_day.split("-"))
+        # 常用目标 chips：MM-DD 取下一个 occurrence（当年已过取次年）零点并直接设置；
+        # YYYY-MM-DD 三段为指定年份（已过顺延次年同月日，FIX003.1：春节为固定公历日期）
+        parts = month_day.split("-")
         today = datetime.date.today()
-        candidate = datetime.date(today.year, month, day)
-        if candidate <= today:
-            candidate = datetime.date(today.year + 1, month, day)
+        if len(parts) == 3:
+            year, month, day = (int(part) for part in parts)
+            candidate = datetime.date(year, month, day)
+            if candidate <= today:
+                candidate = datetime.date(year + 1, month, day)
+        else:
+            month, day = (int(part) for part in parts)
+            candidate = datetime.date(today.year, month, day)
+            if candidate <= today:
+                candidate = datetime.date(today.year + 1, month, day)
         self.countdown_target.setText(f"{candidate.isoformat()} 00:00:00")
         self.set_countdown()
 

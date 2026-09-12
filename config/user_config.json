@@ -1,5 +1,5 @@
 {
-    "time_dilation_rate": 1.0,
+    "time_dilation_rate": 17.8,
     "theme": "dark",
     "last_city": "上海",
     "last_timezone": "Asia/Seoul",
@@ -14,6 +14,6 @@
         "Asia/Seoul"
     ],
     "countdown_target": "",
-    "window_geometry": "AdnQywADAAAAAAJTAAAAtwAABVwAAAMOAAACTAAAALcAAAVjAAADFQAAAAAAAAAABgAAAAJMAAAAtwAABWMAAAMV",
+    "window_geometry": "AdnQywADAAAAAAHYAAAAigAABOEAAALhAAAB0QAAAIoAAAToAAAC6AAAAAAAAAAABgAAAAHRAAAAigAABOgAAALo",
     "alarms": []
 }

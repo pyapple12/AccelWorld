@@ -15,7 +15,7 @@ from qfluentwidgets import (
 
 from interface import AppInterface
 from interface.types import TimeInfo
-from ui.glass_card import CapsuleSlider, GlassCard, _with_alpha
+from ui.glass_card import CapsuleSlider, GlassCard, with_alpha
 from ui.tools.clock_tools import progress_bounds
 
 
@@ -101,7 +101,7 @@ class ClockPanel(QWidget):
 
         # 胶囊粗轨滑杆（样式 B，用户选定）：整行铺满，强调色已过段，零进度保留橙圆槽
         self.slider = CapsuleSlider(
-            _with_alpha(QColor(255, 255, 255), 0.15),
+            with_alpha(QColor(255, 255, 255), 0.15),
             QColor(self._interface.get_ui_static()["colors"]["primary"]),
             track_h=float(layout_tokens["slider_track"]),
         )

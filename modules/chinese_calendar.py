@@ -123,11 +123,9 @@ def get_chinese_lunar_calendar(year: int, month: int, day: int, hour: int) -> Lu
     # 获取月相
     yue_phase = lunar.getYueXiang() + "月"
 
-    # 获取节气
+    # 获取节气（仅节气日有值；FIX003.17 删除无效的 getCurrentJieQi 回落——
+    # lunar 1.4.8 中其判定与 getJieQi 完全相同，非节气日恒 None，回落永远产出空串）
     jieqi = lunar.getJieQi()
-    if not jieqi:
-        # 如果当天不是节气日，获取当前节气（如果有的话）
-        jieqi = lunar.getCurrentJieQi()
     # 确保节气值是字符串类型
     jieqi = str(jieqi) if jieqi else ""
 
@@ -176,7 +174,9 @@ def get_chinese_date(now: datetime.datetime) -> str:
 
 
 def get_lunar_info(now: datetime.datetime) -> str:
-    # 委托 get_chinese_lunar_calendar 后按固定格式拼接，空字段跳过
+    # 委托 get_chinese_lunar_calendar 后按固定格式拼接，空字段跳过；
+    # 节气/公历节日暂不入串：无对应 chip 消费，插在中段会被 date_panel 反解析
+    # 污染月相 chip（FIX003.5），待节气 chips 落地后以结构化字段恢复
     year = now.year
     month = now.month
     day = now.day
@@ -190,12 +190,6 @@ def get_lunar_info(now: datetime.datetime) -> str:
         f"{info.lunar_month}{info.lunar_day}{info.shichen}"
     )
     lunar_info += f" 月相：{info.yue_phase}"
-
-    if info.jieqi:
-        lunar_info += f" 节气：{info.jieqi}"
-
-    if info.public_holiday:
-        lunar_info += f" 公历节日：{info.public_holiday}"
 
     lunar_info += f" 拜财神：{info.cai_shen_dir}方向（{info.position}）"
 

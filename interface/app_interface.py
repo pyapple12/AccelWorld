@@ -4,7 +4,6 @@
 # UI 编排一律留在 ui 层（plan#UI2.0 铁律 3/PL001.02）
 
 import logging
-import winreg
 from datetime import datetime
 from typing import Any
 
@@ -25,14 +24,13 @@ from modules.alarm_service import (
     play_preset_sound,
 )
 from modules.time_dilation import AcceleratedWorld, TimeInfo
-from modules.weather_service import WeatherData, format_weather_info, get_weather_by_city
+from modules.weather_service import WeatherData, clear_weather_cache, get_weather_by_city
 
 logger = logging.getLogger(__name__)
 
-# 主题偏好合法取值（PL002.02 三态：跟随系统/浅色/深色）与 Windows 深浅色注册表位置
+# 主题偏好合法取值（PL002.02 三态：跟随系统/浅色/深色）
+# （系统深浅色注册表读取已随 get_system_theme_hint 删除，FIX003.13：qfw AUTO 内建跟随）
 _THEME_CHOICES = ("auto", "light", "dark")
-_SYSTEM_THEME_SUB_KEY = r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
-_SYSTEM_THEME_VALUE = "AppsUseLightTheme"
 
 
 class AppInterface:
@@ -85,12 +83,8 @@ class AppInterface:
         base = get_static_config().base
         return (float(base["rate_min"]), float(base["rate_max"]))
 
-    def get_rate_presets(self) -> dict[str, float]:
-        # 预设方案（工作/专注/睡眠），值统一 float
-        return {
-            name: float(value)
-            for name, value in get_static_config().base["rate_presets"].items()
-        }
+    # get_rate_presets 已删（FIX003.13：预设按钮随时钟页减法移除，方法生产零调用；
+    # base.json rate_presets 键随下轮配置清理一并评估删除）
 
     def set_rate(self, rate: float) -> bool:
         # 轻量路径：范围校验 + 世界重建，不落盘——UI 滑杆拖动的实时生效路径，
@@ -113,17 +107,19 @@ class AppInterface:
         # 城市名有序列表（下拉框填充与列表内外判定共用）
         return sorted(CITIES.keys())
 
-    def fetch_weather(self, city: str) -> WeatherData | None:
-        # 城市天气查询（含缓存/重试/降级）；失败返回 None，网络异常不外抛
+    def fetch_weather(self, city: str, force: bool = False) -> WeatherData | None:
+        # 城市天气查询（含缓存/重试/降级）；force=True 穿透缓存强制请求（手动刷新，FIX003.6）；
+        # 失败返回 None，网络异常不外抛
+        if force:
+            clear_weather_cache()
         return get_weather_by_city(city)
 
     def get_weather_refresh_interval_ms(self) -> int:
         # 自动刷新周期 = 缓存 TTL 秒 × 1000（单源派生，E15）
         return int(get_static_config().base["weather_cache_ttl"]) * 1000
 
-    def format_weather_display(self, city: str, weather: WeatherData | None) -> str:
-        # 展示文本格式化（空数据返回失败文案）
-        return format_weather_info(weather, city)
+    # format_weather_display 已删（FIX003.13：天气卡 PL007.04 起结构化字段直填，
+    # 方法生产零调用；modules.format_weather_info 保留为独立展示工具）
 
     # ------------------- 时区（PL001.04） -------------------
 
@@ -198,18 +194,8 @@ class AppInterface:
             countdown_target=str(settings.get_setting("countdown_target", "")),
         )
 
-    def get_system_theme_hint(self) -> str:
-        # 读取系统深浅色（Windows 注册表 AppsUseLightTheme：1=浅色 0=深色）；
-        # 键缺失/读取失败等 OSError 回退 "light"，AUTO 模式跟随由 UI 层 setTheme(AUTO) 内建
-        try:
-            with winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER, _SYSTEM_THEME_SUB_KEY
-            ) as reg_key:
-                value, _ = winreg.QueryValueEx(reg_key, _SYSTEM_THEME_VALUE)
-            return "light" if int(value) == 1 else "dark"
-        except OSError:
-            logger.warning("系统深浅色读取失败，回退浅色")
-            return "light"
+    # get_system_theme_hint 已删（FIX003.13：三态主题改由 qfw setTheme(AUTO) 内建跟随，
+    # 方法生产零调用；连带注销 winreg 依赖与注册表常量）
 
     def save_theme(self, theme: str) -> bool:
         # 主题偏好落盘（light/dark；PL002 扩展 auto）
