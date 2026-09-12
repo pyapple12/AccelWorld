@@ -85,7 +85,8 @@ def c_dirty_rate_startup():
 
 check("FIX002.1 越界倍率启动回退", c_dirty_rate_startup)
 
-# PL005.01 倍率回显：持久化非默认倍率启动时，输入框/滑杆/倍率小标签三处与引擎一致
+# PL005.01 倍率回显：持久化非默认倍率启动时，滑杆/倍率小标签与引擎一致
+# （热更新减法轮：输入框已移除，回显面收敛为滑杆+标签）
 from utils.file_utils import clear_json_cache as _clear_cache_pl005  # noqa: E402
 
 Path(sys.argv[2]).write_text(
@@ -97,16 +98,18 @@ _clear_cache_pl005()
 def c_rate_echo_startup():
     window = AcceleratedWorldGUI(AppInterface())
     rate = window._interface.get_rate()
-    entry_text = window.clock_panel.rate_entry.text()
     slider_value = window.clock_panel.slider.value() / 10.0
     label_text = window.clock_panel.slider_value_label.text()
+    percent_text = window.clock_panel.percent_label.text()
     assert abs(rate - 6.4) < 1e-9, f"引擎倍率异常: {rate}"
-    assert entry_text and abs(float(entry_text) - 6.4) < 1e-9, (
-        f"输入框回显 {entry_text!r} != 持久化倍率 6.4"
-    )
     assert abs(slider_value - 6.4) < 1e-9, f"滑杆回显 {slider_value} != 持久化倍率 6.4"
     assert label_text == "6.4x", f"倍率小标签回显 {label_text!r} != '6.4x'"
-    return f"输入框 {entry_text}/滑杆 {slider_value}/标签 {label_text} 与引擎一致"
+    assert percent_text == "膨胀倍率 640%", f"百分比回显 {percent_text!r} != '膨胀倍率 640%'"
+    # 拖动跟随：滑杆变更后倍率大字与百分比同步刷新（热更新修复回归）
+    window.clock_panel.slider.setValue(75)
+    assert window.clock_panel.slider_value_label.text() == "7.5x", "倍率大字未跟随滑杆"
+    assert window.clock_panel.percent_label.text() == "膨胀倍率 750%", "百分比未跟随滑杆"
+    return f"滑杆 {slider_value}/标签 {label_text} 与引擎一致，拖动读数同步"
 
 
 check("PL005.01 倍率回显启动一致", c_rate_echo_startup)
@@ -321,18 +324,18 @@ def c_slider_write_debounce():
         immediate = len(write_calls)
         process_events_ms(int(_BASE["rate_save_debounce_ms"]) + 250)
 
-        # 双发消除：应用加速按钮路径
-        window.clock_panel.rate_entry.setText("6.0")
-        window.clock_panel.confirm_button.click()
+        # 双发消除：滑杆驱动路径（应用加速按钮已随减法移除）
+        window.clock_panel.slider.setValue(60)
         process_events_ms(int(_BASE["rate_save_debounce_ms"]) + 250)
     finally:
         cs.set_setting = original_set_setting
         window.clock_panel.rate_changed.disconnect(sink)
 
     assert immediate == 0, f"拖动未去抖，立即写盘 {immediate} 次"
-    assert emit_calls.count(6.0) == 1, f"应用加速双发: {emit_calls}"
+    # 滑杆驱动单次变更单发，写盘由去抖归并单次
+    assert emit_calls.count(6.0) == 1, f"应用加速发次数异常: {emit_calls}"
     assert write_calls and write_calls[-1] == 6.0, f"去抖后未落盘: {write_calls}"
-    return "拖动 0 次立即写盘、去抖后单次落盘、应用加速单发"
+    return "滑杆驱动单次变更、写盘去抖归并"
 
 
 check("FIX001.23 写盘去抖与双发消除", c_slider_write_debounce)

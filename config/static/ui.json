@@ -3,9 +3,10 @@
   "font_family_digits": "Bahnschrift",
   "scale": {
     "hero_time": 64,
-    "hero_percent": 30,
     "page_title": 21,
     "city_time": 20,
+    "std_time": 34,
+    "slider_value": 28,
     "body": 14,
     "caption": 12
   },
@@ -64,7 +65,7 @@
     "card_padding": [16, 12, 16, 12],
     "clock_card_padding": [20, 14, 20, 12],
     "progress_ring_size": 88,
-    "slider_height": 30,
+    "slider_track": 24,
     "rate_entry_width": 80,
     "confirm_button_size": [120, 40],
     "preset_button_size": [96, 32],

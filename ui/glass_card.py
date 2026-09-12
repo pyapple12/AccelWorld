@@ -7,11 +7,13 @@
 
 import os
 
-from PyQt6.QtCore import QPoint, pyqtSignal, QRectF, Qt
+from PyQt6.QtCore import QPoint, QPointF, pyqtSignal, QRectF, Qt
 from PyQt6.QtGui import QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient, QRadialGradient
 from PyQt6.QtWidgets import QWidget
 
-from qfluentwidgets import Theme, isDarkTheme, qconfig, setCustomStyleSheet
+from qfluentwidgets import Slider, Theme, isDarkTheme, qconfig, setCustomStyleSheet
+from qfluentwidgets.common.color import autoFallbackThemeColor
+from qfluentwidgets.components.widgets.slider import SliderHandle
 
 from interface import AppInterface
 
@@ -133,6 +135,89 @@ def _mix_color(a: QColor, b: QColor, t: float) -> QColor:
         round(a.blue() + (b.blue() - a.blue()) * t),
         round(a.alpha() + (b.alpha() - a.alpha()) * t),
     )
+
+
+class _CapsuleHandle(SliderHandle):
+    # 居中绘制旋钮：外圆与内点用浮点坐标画在控件几何中心——qfw 原版按 22×22
+    # 控件硬编码圆心，轨高为奇数（如 23）时整数 move 无法垂直居中，
+    # 半像素差交由抗锯齿均分，任意轨高下旋钮都视觉居中
+    def paintEvent(self, e) -> None:
+        painter = QPainter(self)
+        painter.setRenderHints(QPainter.RenderHint.Antialiasing)
+        cx, cy = self.width() / 2, self.height() / 2
+        # 画径 = 短边 - 1：描边 1px 补进直径 → 可见外缘 22px（= 轨高 - 上下各 1px 橙缝）
+        d = min(self.width(), self.height()) - 1
+        painter.setPen(QColor(0, 0, 0, 90 if isDarkTheme() else 25))
+        painter.setBrush(QColor(69, 69, 69) if isDarkTheme() else Qt.GlobalColor.white)
+        painter.drawEllipse(QPointF(cx, cy), d / 2, d / 2)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(autoFallbackThemeColor(self.lightHandleColor, self.darkHandleColor))
+        painter.drawEllipse(QPointF(cx, cy), self.radius, self.radius)
+
+
+class CapsuleSlider(Slider):
+    # 杆子四周透明边距（设计定值，非手调参数）：防圆弧与控件边缘相切处
+    # 被抗锯齿量化裁平（"左/上不是圆弧"的根源），控件高 = 轨高 + 2×TRACK_PAD
+    TRACK_PAD = 1
+    # 胶囊粗轨滑杆（样式 B）：双段胶囊轨道（灰底轨 + 强调色已过段），轨高经 track_h 传入
+    # （任意轨高皆可，数值走 ui.json layout.slider_track）；
+    # 覆写 qfw 私有绘制钩子 _drawHorizonGroove（仅水平方向使用，1.11.3 实测结构）
+    def __init__(self, track_color: QColor, fill_color: QColor,
+                 track_h: float = 22.0, parent: QWidget | None = None):
+        # 显式水平方向：QSlider 默认垂直，不传方向会得到竖向滑杆（挤压成点）
+        super().__init__(Qt.Orientation.Horizontal, parent)
+        self._track_color = track_color
+        self._fill_color = fill_color
+        self._track_h = track_h
+        # 换装居中绘制旋钮：qfw 的 pressed/released 连接在原实例上需重接，
+        # 颜色经 self.handle 转发（setThemeColor）后续主题切换不受影响；
+        # 旋钮控件高度拉满轨高，绘制层再居中，y=0 即铺满无对齐假设
+        old_handle = self.handle
+        self.handle = _CapsuleHandle(self)
+        self.handle.setHandleColor(old_handle.lightHandleColor, old_handle.darkHandleColor)
+        self.handle.pressed.connect(self.sliderPressed)
+        self.handle.released.connect(self.sliderReleased)
+        self.handle.setFixedSize(22, int(track_h))
+        old_handle.deleteLater()
+
+    def _adjustHandlePos(self) -> None:
+        # 覆写 qfw 行程定位：旋钮圆心在底轨两端帽圆心之间移动（圆心 x: pad+ry →
+        # w-pad-ry）——最左/最右时旋钮圆心恰与端帽圆心重合，橙缝四周均匀；
+        # 旋钮位置随杆子整体偏移 TRACK_PAD
+        pad = self.TRACK_PAD
+        ry = self._track_h / 2
+        r = self.handle.width() / 2
+        f = (self.value() - self.minimum()) / max(self.maximum() - self.minimum(), 1)
+        self.handle.move(
+            round(pad + ry + f * (self.width() - 2 * pad - 2 * ry) - r), pad
+        )
+
+    def _drawHorizonGroove(self, painter: QPainter) -> None:
+        # 几何约定（行程两端内缩后旋钮圆心为 pad+ry + f*(w-2pad-2ry)，与两端帽
+        # 圆心重合）：底轨四周留 TRACK_PAD 透明边距、可见尺寸不变；填充 = 左右
+        # 两个直径 = 轨高的正半圆端帽组成的胶囊——左端帽贴杆左缘（零进度时
+        # 两端帽重合为整正圆），右端帽圆心随旋钮、包住旋钮；
+        # 旋钮可见圆外缘 22px → 橙缝四周恰 1px（用户定案）
+        w = self.width()
+        pad = self.TRACK_PAD
+        ry = self._track_h / 2
+        y = (self.height() - self._track_h) / 2
+        span = self.maximum() - self.minimum()
+        f = (self.value() - self.minimum()) / span if span else 0.0
+        knob_cx = pad + ry + f * (w - 2 * pad - 2 * ry)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(self._track_color)
+        painter.drawRoundedRect(QRectF(pad, y, w - 2 * pad, self._track_h), ry, ry)
+        if span == 0:
+            return
+        path = QPainterPath()
+        path.moveTo(knob_cx, y)
+        path.arcTo(QRectF(knob_cx - ry, y, ry * 2, self._track_h), 90, -180)
+        path.lineTo(pad + ry, y + self._track_h)
+        path.arcTo(QRectF(pad, y, ry * 2, self._track_h), 270, -180)
+        path.closeSubpath()
+        painter.setBrush(self._fill_color)
+        painter.drawPath(path)
 
 
 class GlassCard(QWidget):
@@ -310,9 +395,26 @@ class GlassCard(QWidget):
 # _theme_tokens(tokens, dark): 按生效主题取 dark/light 参数组
 # apply_capsule(widget): 胶囊圆角（半径=高度一半；经 qfw setCustomStyleSheet 注入，
 #   仅圆角属性不设背景，PL006.04）
+# _noise_tile(): 128×128 噪点瓦片（固定种子随机明暗，setOpacity 平铺），
+#   固定种子系刻意行为（视觉纹理可复现，非加密用途，Mimosa 提示豁免）
 # render_field_pixmap(size_w, size_h, field_tokens, dark, dpr): 窗内光场位图
-#   （垂直线性底色 + QRadialGradient 双光晕；按设备像素比渲染；供主窗口
-#   paintEvent 位块拷贝，PL006.03/T005）
+#   （垂直线性底色 + QRadialGradient 双光晕 + 噪点瓦片；按设备像素比渲染；
+#   供主窗口 paintEvent 位块拷贝，PL006.03/T005）
+# _with_alpha(color, alpha): 返回带透明度的同色 QColor（alpha 为 0~1 浮点，
+#   内部 ×255；误传 0~255 整数会溢出非法颜色 → qFatal 崩溃）
+# _mix_color(a, b, t): 双色按 t 线性插值（含 alpha）
+# _CapsuleHandle(SliderHandle): 居中绘制旋钮（外圆/内点浮点坐标画在控件几何中心，
+#   奇数轨高半像素由抗锯齿均分；替换 qfw 旋钮需重接 pressed/released，
+#   主题色经 self.handle 属性转发不受影响）
+# CapsuleSlider(Slider): 胶囊粗轨滑杆（样式 B）
+#   __init__(track_color, fill_color, track_h=22.0, parent): 显式水平方向
+#   （QSlider 默认垂直）+ 双轨颜色与任意轨高（ui.json layout.slider_track）；
+#   _drawHorizonGroove 覆写 qfw 私有绘制钩子：底轨全宽铺满，填充右端极点
+#   knob_cx + ry 与旋钮同心——圆槽包住旋钮，零进度保留整圆槽垫底（用户定案）；
+#   _adjustHandlePos 覆写行程定位：两端各内缩 1px，旋钮不与底轨端点贴边；
+#   旋钮控件高度拉满轨高（y=0 即铺满），居中交给绘制层；
+#   异常处理：量程为零时只画底轨直接返回（除零防护）；
+#   关联配置：ui.json layout.slider_track、colors.primary（已过段色，clock_panel 传入）
 # GlassCard(QWidget): 玻璃卡片容器
 #   纹理：对角 tint 渐变 + 渐变描边笔（顶部镜面高光→底部淡边；选中整圈强调色金），
 #   resize/主题变化失效重渲染，paintEvent 位块拷贝；按 DPR 渲染消缩放毛刺；

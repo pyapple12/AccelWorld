@@ -1,5 +1,5 @@
-# 倍率预设测试（T004.2 引入）
-# 覆盖：预设定义合法性（来自 static 的范围校验）、预设按钮点击后配置与核心实例生效
+# 倍率滑杆驱动测试（T004.2 引入；减法轮热更新：预设按钮移除，改滑杆驱动等价覆盖）
+# 覆盖：预设定义合法性（来自 static 的范围校验）、滑杆驱动后配置与核心实例生效
 # Qt 相关断言放子进程执行：本机 GUI 进程退出期存在已知硬崩溃（见 y.problems#6），
 # 子进程隔离保证 pytest 主进程退出码不受污染（用 stdout 标记断言，不用退出码）；
 # 配置经 ACCELWORLD_CONFIG_FILE 环境变量重定向到临时目录（FIX001.12），不污染真实配置
@@ -16,8 +16,8 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 _BASE = get_static_config().base
 
-# 子进程脚本：无头创建主窗口，逐个点击预设按钮，断言配置持久化与接口内核心生效；
-# 另建独立 ClockPanel 验证按钮点击经信号链发出对应倍率。
+# 子进程脚本：无头创建主窗口，驱动滑杆至预设数值代表点，断言配置持久化与接口内核心生效；
+# 另建独立 ClockPanel 验证滑杆变更经信号链发出对应倍率。
 # 写盘断言前等待去抖定时器触发（FIX001.23 去抖；FIX002.19 以事件等待替代私有方法调用）；
 # 天气查询打桩在 interface 层（PL001.14：AppInterface.fetch_weather 类级替换，
 # 覆盖全部实例，避免真实网络请求引入尾延迟与外部依赖）
@@ -44,8 +44,6 @@ app = QApplication([])
 window = AcceleratedWorldGUI(AppInterface())
 presets = get_static_config().base["rate_presets"]
 
-assert set(window.clock_panel.preset_buttons) == set(presets), "预设按钮集合不符"
-
 
 def flush_rate_save():
     # 等待倍率写盘去抖定时器触发（FIX002.19：不调用私有 _flush_pending_rate）
@@ -56,13 +54,13 @@ def flush_rate_save():
 
 
 for name, rate in presets.items():
-    window.clock_panel.preset_buttons[name].click()
+    window.clock_panel.slider.setValue(int(round(float(rate) * 10)))
     flush_rate_save()
     assert abs(get_setting("time_dilation_rate") - float(rate)) < 1e-9, (
-        f"预设 {name} 后配置未生效: {get_setting('time_dilation_rate')}"
+        f"滑杆 {name} 后配置未生效: {get_setting('time_dilation_rate')}"
     )
     assert abs(window._interface.get_rate() - float(rate)) < 1e-9, (
-        f"预设 {name} 后核心实例未生效"
+        f"滑杆 {name} 后核心实例未生效"
     )
 
 panel = ClockPanel(AppInterface())
@@ -70,8 +68,8 @@ captured: list[float] = []
 panel.rate_changed.connect(captured.append)
 for name, rate in presets.items():
     captured.clear()
-    panel.preset_buttons[name].click()
-    assert captured and abs(captured[0] - float(rate)) < 1e-9, f"预设 {name} 未发倍率"
+    panel.slider.setValue(int(round(float(rate) * 10)))
+    assert captured and abs(captured[0] - float(rate)) < 1e-9, f"滑杆 {name} 未发倍率"
 
 print("PRESET_OK", flush=True)
 """

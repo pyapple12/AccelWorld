@@ -104,8 +104,12 @@ class AcceleratedWorldGUI(FluentWindow):
         # 每页容器（统一页边距；addSubInterface 要求非空 objectName）
         page_tokens = interface.get_ui_static()["layout"]
         self._layout_tokens = page_tokens  # 导航展开宽度等延后触发布局所需（PL005.05）
+        # 时钟页序（热更新减法轮）：标准时计卡置顶 → 加速时间/倍率 → 农历 chips 行居底
         self.addSubInterface(
-            self._make_page("page-clock", page_tokens, self.clock_panel, self.date_panel),
+            self._make_page(
+                "page-clock", page_tokens,
+                self.date_panel, self.clock_panel, self.date_panel.chips_host,
+            ),
             FluentIcon.HOME,
             "时钟",
         )
