@@ -1,6 +1,7 @@
 {
   "font_family": "Microsoft YaHei",
   "font_family_digits": "Bahnschrift",
+  "gl_enabled": false,
   "scale": {
     "hero_time": 64,
     "page_title": 21,

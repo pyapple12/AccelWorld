@@ -5,9 +5,10 @@
 # offscreen 仅作功能参考：卡面不绘制、光场以实底近似（该平台栅格器有随机崩溃缺陷）
 # 零 DWM 调用、零新线程、零样式表（plan#UI2.0 铁律；backdrop.py 定案不涉本模块）
 
+import logging
 import os
-
 import random
+
 from PyQt6.QtCore import QPoint, QPointF, pyqtSignal, QRectF, Qt
 from PyQt6.QtGui import QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient
 from PyQt6.QtWidgets import QWidget
@@ -17,6 +18,8 @@ from qfluentwidgets.common.color import autoFallbackThemeColor
 from qfluentwidgets.components.widgets.slider import SliderHandle
 
 from interface import AppInterface
+from ui.gl.capability import gl_active
+from ui.gl.glass_scene import SCENE, GlassSurface
 
 # offscreen 判定（仅测试/探针环境）：与 backdrop.py 的短路约定同源
 _IS_OFFSCREEN = os.environ.get("QT_QPA_PLATFORM") == "offscreen"
@@ -142,17 +145,22 @@ class _CapsuleHandle(SliderHandle):
     # 控件硬编码圆心，轨高为奇数（如 23）时整数 move 无法垂直居中，
     # 半像素差交由抗锯齿均分，任意轨高下旋钮都视觉居中
     def paintEvent(self, e) -> None:
-        painter = QPainter(self)
-        painter.setRenderHints(QPainter.RenderHint.Antialiasing)
-        cx, cy = self.width() / 2, self.height() / 2
-        # 画径 = 短边 - 1：描边 1px 补进直径 → 可见外缘 22px（= 轨高 - 上下各 1px 橙缝）
-        d = min(self.width(), self.height()) - 1
-        painter.setPen(QColor(0, 0, 0, 90 if isDarkTheme() else 25))
-        painter.setBrush(QColor(69, 69, 69) if isDarkTheme() else Qt.GlobalColor.white)
-        painter.drawEllipse(QPointF(cx, cy), d / 2, d / 2)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(autoFallbackThemeColor(self.lightHandleColor, self.darkHandleColor))
-        painter.drawEllipse(QPointF(cx, cy), self.radius, self.radius)
+        # Qt 回调防护（AGENTS.md 约定）：绘制异常跳过本帧并记录，绝不外抛
+        # （PyQt6 回调内未捕获异常触发 fail-fast 终止进程）
+        try:
+            painter = QPainter(self)
+            painter.setRenderHints(QPainter.RenderHint.Antialiasing)
+            cx, cy = self.width() / 2, self.height() / 2
+            # 画径 = 短边 - 1：描边 1px 补进直径 → 可见外缘 22px（= 轨高 - 上下各 1px 橙缝）
+            d = min(self.width(), self.height()) - 1
+            painter.setPen(QColor(0, 0, 0, 90 if isDarkTheme() else 25))
+            painter.setBrush(QColor(69, 69, 69) if isDarkTheme() else Qt.GlobalColor.white)
+            painter.drawEllipse(QPointF(cx, cy), d / 2, d / 2)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(autoFallbackThemeColor(self.lightHandleColor, self.darkHandleColor))
+            painter.drawEllipse(QPointF(cx, cy), self.radius, self.radius)
+        except Exception:  # noqa: BLE001 — 防御：旋钮绘制失败仅跳过本帧，不上抛
+            logging.getLogger(__name__).exception("_CapsuleHandle 绘制失败，跳过本帧")
 
 
 class CapsuleSlider(Slider):
@@ -236,6 +244,15 @@ class GlassCard(QWidget):
         self._accent = QColor(ui["colors"]["primary"])
         self._selected = False
         self._pix: QPixmap | None = None
+        # GL 模式（PL008.07）：gl_active 时自身不画纹理、几何注册 glass_scene，
+        # 玻璃视觉由 GL 画布统一绘制；栅格模式（默认关）走原 _render_texture 路径
+        self._gl_mode = gl_active()
+        if self._gl_mode:
+            SCENE.register(GlassSurface(
+                surface_id=f"glass-card-{id(self)}",
+                rect=QRectF(self.geometry()),
+                radius=float(self._radius),
+            ))
         # 主题变化：失效纹理缓存（重渲染惰性于 paintEvent；析构时由 PyQt 自动断连）
         qconfig.themeChanged.connect(self._on_theme_changed)
 
@@ -301,10 +318,12 @@ class GlassCard(QWidget):
         # ① 透镜层：主窗口光场位图中卡片正下方的区域，放大 1.07 绘制（内容弯折感）
         win = self.window()
         field_pix = getattr(win, "_field_pix", None)
+        # 卡片在窗口的原点：①透镜对位与②④受光采样共用（提前定义，
+        # 避免 field_pix 为 None 时后续②直接引用未绑定局部变量）
+        origin = self.mapTo(win, QPoint(0, 0))
         painter.save()
         painter.setClipPath(path)
         if field_pix is not None:
-            origin = self.mapTo(win, QPoint(0, 0))
             # 不透明度补偿（热更新定案）：窗口层已画过 0.75 光场，透镜层按 0.43
             # 叠加使卡内光场总覆盖率 ≈ 卡外，消除"卡内比底色深"的双重叠暗
             painter.setOpacity(0.43)
@@ -351,7 +370,6 @@ class GlassCard(QWidget):
         # ④ 动态 rim + 渐进羽化环带：颜色不再固定白，而是随边缘处光场采样色变化
         # （背景变则 rim 变）；三层缓坡把卡缘亮度台阶软化成过渡（治直角光斑）；
         # 受光侧（左上）加权更亮，背光侧保最低可见度；选中态整圈强调色金
-        origin = self.mapTo(win, QPoint(0, 0))
         c_tl = self._field_color_at(origin.x() + w * 0.18, origin.y() + h * 0.18)
         c_br = self._field_color_at(origin.x() + w * 0.82, origin.y() + h * 0.82)
         rim_tl = _mix_color(c_tl, QColor(255, 255, 255), 0.65)
@@ -372,20 +390,36 @@ class GlassCard(QWidget):
         self._pix = QPixmap.fromImage(img)
 
     def resizeEvent(self, event) -> None:
-        # 尺寸变化失效纹理缓存（重渲染惰性于 paintEvent）
-        self._pix = None
+        # 尺寸变化失效纹理缓存（重渲染惰性于 paintEvent）；GL 模式同步场景几何；
+        # Qt 回调防护：场景同步异常仅记录不上抛（超类调用在防护外，布局生命周期
+        # 不受异常影响）
+        try:
+            self._pix = None
+            if self._gl_mode:
+                SCENE.update_geometry(
+                    f"glass-card-{id(self)}", QRectF(self.geometry())
+                )
+        except Exception:  # noqa: BLE001 — 防御：几何同步失败不外抛（fail-fast 防护）
+            logging.getLogger(__name__).exception("GlassCard 场景几何同步失败")
         super().resizeEvent(event)
 
     def paintEvent(self, event) -> None:
-        if _IS_OFFSCREEN:
-            # offscreen 仅作功能参考：卡面不绘制（透明，子控件照常自绘）——
-            # 该平台栅格器有随机崩溃缺陷，视觉实测以用户桌面为准（T005 定案）
-            return
-        if self._pix is None:
-            self._render_texture()
-        painter = QPainter(self)
-        painter.drawPixmap(0, 0, self._pix)
-        painter.end()
+        # Qt 回调防护（AGENTS.md 约定）：纹理渲染/绘制异常跳过本帧并记录，绝不外抛
+        try:
+            if self._gl_mode:
+                # GL 模式：玻璃视觉由画布统一绘制，控件保持透明（文字仍由子控件渲染）
+                return
+            if _IS_OFFSCREEN:
+                # offscreen 仅作功能参考：卡面不绘制（透明，子控件照常自绘）——
+                # 该平台栅格器有随机崩溃缺陷，视觉实测以用户桌面为准（T005 定案）
+                return
+            if self._pix is None:
+                self._render_texture()
+            painter = QPainter(self)
+            painter.drawPixmap(0, 0, self._pix)
+            painter.end()
+        except Exception:  # noqa: BLE001 — 防御：卡面绘制失败跳过本帧，不上抛
+            logging.getLogger(__name__).exception("GlassCard 绘制失败，跳过本帧")
 
 
 # ===== ui/glass_card.py 函数/类说明 =====
@@ -406,6 +440,8 @@ class GlassCard(QWidget):
 # _CapsuleHandle(SliderHandle): 居中绘制旋钮（外圆/内点浮点坐标画在控件几何中心，
 #   奇数轨高半像素由抗锯齿均分；替换 qfw 旋钮需重接 pressed/released，
 #   主题色经 self.handle 属性转发不受影响）
+#   paintEvent: Qt 回调 try/except 全包——失败跳过本帧并 exception 级日志
+#   （PyQt6 回调内未捕获异常触发 fail-fast 终止进程，AGENTS.md「Qt 回调防护约定」）
 # CapsuleSlider(Slider): 胶囊粗轨滑杆（样式 B）
 #   __init__(track_color, fill_color, track_h=22.0, parent): 显式水平方向
 #   （QSlider 默认垂直）+ 双轨颜色与任意轨高（ui.json layout.slider_track）；
@@ -419,6 +455,10 @@ class GlassCard(QWidget):
 #   纹理：对角 tint 渐变 + 渐变描边笔（顶部镜面高光→底部淡边；选中整圈强调色金），
 #   resize/主题变化失效重渲染，paintEvent 位块拷贝；按 DPR 渲染消缩放毛刺；
 #   柔投影效果弃用（QGraphicsDropShadowEffect 中间缓冲为圆角毛刺来源，T005 定案）
+#   _render_texture: 卡片原点 origin 在函数前部统一定义（①透镜对位与②④受光采样
+#     共用，修复 field_pix 为 None 时 UnboundLocalError 隐患）
+#   resizeEvent/paintEvent: Qt 回调 try/except 全包——纹理失效与场景同步、卡面
+#   绘制异常仅记录不上抛；resizeEvent 的超类调用置于防护外（布局生命周期不受影响）
 #   设计理由：玻璃观感 = tint + 高光 + 透出的 Acrylic（field 低不透明度）；
 #   零 DWM 调用零新线程零样式表（plan#UI2.0 铁律）
 #   异常处理：无外部 IO/DWM 调用，无异常路径；主题信号回调由 PyQt 生命周期管理

@@ -159,6 +159,13 @@
 3. 清理与规范：ui.json 死键清理、闹钟对话框间距接线、interface 零调用契约方法与后端死代码批次删除、import 规范批次、说明区与版本文档同步 ✅
 4. 方法沉淀：自绘圆弧留边定案入 AGENTS（TRACK_PAD 模式）；调优全过程复盘入 t.hint.md ✅
 
+## 版本 0.5.5.0 的 MileStone（UI3.0 GL 地基：GlassCanvas/场景模型/能力探测，2026-09-13 发布）
+
+1. ui/gl 包骨架：GlassCanvas（整窗 QOpenGLWidget 单 pass 玻璃绘制）、GlassScene（玻璃面注册表 + dirty 标记）、capability（gl_enabled 开关 × 环境探测与运算）✅
+2. 着色器管线：程序化光场背景（夜空渐变 + 云雾 + 双晕 + 颗粒）+ SDF 圆角玻璃面（折射/色散/rim/高光）✅
+3. GlassCard GL 模式分支：GL 激活时自绘跳过、几何注册场景；栅格路径原样保留为永久降级 ✅
+4. **探针发现（重要）**：本机 glDrawArrays 驱动层 GPF（进程 127 硬崩，与 y.problems#6 同家族环境问题）——gl_enabled 默认 false 保持关闭，栅格路径不受影响；待驱动/环境复查后重测（.temp/probe_pl008_gl.py）✅
+
 ## 后续版本的 MileStone（暂不定版本号）
 
 1. 已知问题排查：GUI 进程退出期硬崩溃（y.problems#6，P3，不阻塞功能）

@@ -4,7 +4,7 @@
 
 ## 运行与验证
 
-- 入口 `main.py`：GUI 为默认模式，CLI 用 `--cli`；版本号单一来源在 `config/static/base.json`（`base["version"]`，当前 `0.5.3.2`），各模块（main.py --version/窗口标题/托盘 toolTip）一律从配置读取，代码中不得出现版本字符串
+- 入口 `main.py`：GUI 为默认模式，CLI 用 `--cli`；版本号单一来源在 `config/static/base.json`（`base["version"]`，当前 `0.5.5.0`），各模块（main.py --version/窗口标题/托盘 toolTip）一律从配置读取，代码中不得出现版本字符串
 - **版本体系**（2026-09-10 切换）：自 `0.4.7.0` 起启用四段式纯数字 `X.Y.Z.P`（无 `ver ` 前缀）；历史存量 `ver 0.4x` 为旧三段式带前缀格式，仅存留于历史文档与提交记录，不回溯改写
 - 没有测试/lint 命令。改动后验证：`.\.venv\Scripts\python.exe -c "import main, modules.time_dilation, modules.chinese_calendar, modules.weather_service, modules.alarm_service, config.settings, config.static.static_config, ui.main_window, ui.alarm_dialog, ui.audio_player, ui.system_tray, data.cities, data.timezones, data.weather_codes, utils.logger, utils.file_utils, utils.retry, interface, ui.tools.countdown_tools, ui.tools.clock_tools, ui.tools.alarm_text"`。不要直接跑 GUI 验证（会弹窗阻塞）
 - GUI 无头初始化验证（不弹窗）：`$env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWidgets import QApplication; from interface import AppInterface; from ui.main_window import AcceleratedWorldGUI; app = QApplication([]); w = AcceleratedWorldGUI(AppInterface()); print('GUI init OK')"`（进程退出码可能为已知退出期崩溃所污染，以 stdout 输出为准）
@@ -22,6 +22,7 @@
 - 包结构按依赖单向分层（UI 2.0 三大块，plan#UI2.0）：`interface/` 接口层（AppInterface 七域契约 + types 类型转出，无 Qt 依赖；UI 访问后端的唯一入口）→ 后端 `utils/` 通用工具（logger/file_utils/retry/dataclass_utils/monitor 运行监控，无业务依赖）+ `config/` 配置（settings 用户配置 + static/ 应用静态配置层，用户配置存项目内 `config/user_config.json`，日志存项目内 `logs/app-YYYY-MM-DD.log` 每日独立文件、崩溃栈 `logs/crash-YYYY-MM-DD.log`）+ `modules/` 业务核心（time_dilation 时间膨胀、chinese_calendar 农历/干支/节气、weather_service Open-Meteo 天气、alarm_service 闹钟）+ `data/` 静态数据（cities/timezones/weather_codes）→ `ui/` 界面（Fluent Widgets：main_window 主窗口装配器 FluentWindow 六导航页、panels/ 7 面板含设置页、tools/ 展示运算纯函数、backdrop.py Acrylic 背板、system_tray 托盘、alarm_dialog 闹钟对话框、audio_player 音频；**ui/ 零后端 import，一切经 interface**）
 - 代码零硬编码原则：业务参数（倍率范围/默认值/定时器周期/窗口几何/字体颜色/日志路径等）全部从 `config/static/` 的 json 读取（`get_static_config()` 单例，映射表 config.json 由 static_config.py 的 `__file__` 自定位——唯一结构约定）；用户配置默认值经 `default_factory` 从 base.json 现取
 - **自绘圆弧留边**（2026-09-12 定案）：自绘圆/圆弧与控件裁剪边界相切时，抗锯齿会把切点处的圆弧量化成平边（125% 缩放等非整数 DPR 下更明显）。自绘圆形/圆弧元素的控件须比可见图形四周各大 ≥1px 透明边距，定位偏移同步计入——参照 `ui/glass_card.py` CapsuleSlider 的 `TRACK_PAD` 模式（杆子/橙槽/旋钮三层同心几何）与 `ui/system_tray.py` 托盘图标的 2px 边距；玻璃卡自身圆角为容器轮廓、属固有贴边，不适用
+- **Qt 回调必须 try/except 防护**（2026-09-13 定案）：paintGL/paintEvent/resizeEvent 等 Qt 回调内抛出的未捕获 Python 异常会触发 PyQt6 fail-fast 直接终止进程（0xC0000409，零输出）。所有回调主体必须有 try/except 包裹，异常降级为纯色/跳过绘制 + logger.error，绝不外抛。与显卡无关
 - `main.py` 收编 CLI/GUI 分发与版本读取；模块间顶层 import，不要使用函数内延迟 import
 - 提交信息规范见下文「Commit 提交规范」节；功能开发先走 OpenSpec 提案流程
 - 工作流文档四件套（2026-09-10 接入 DeepTransHub 工作流体系）：`w.study.md` 项目分析报告 / `x.progress.md` 任务清单（已完成在前、未完成在后；审计修复组 `FIX{NNN}`）/ `y.problems.md` 已知问题 / `z.plan.md` 方案记录与审计附录（含豁免定案清单，附录 `A{NNN}` 递增）；另有 `m.milestone.md` 版本里程碑清单
