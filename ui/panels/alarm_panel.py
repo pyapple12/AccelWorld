@@ -25,6 +25,7 @@ from interface import AppInterface
 from interface.types import Alarm, PresetSound
 from ui.alarm_dialog import AlarmEditDialog
 from ui.glass_card import GlassCard, apply_capsule
+from ui.gl.glass_scene import SCENE
 from ui.tools.alarm_text import format_repeat_display, format_sound_button_name
 
 
@@ -74,7 +75,14 @@ class AlarmPanel(QWidget):
 
     def refresh_list(self) -> None:
         # 清空后逐闹钟构建行（开关/时间/标签/重复/声音/编辑/删除）；
-        # 数据经接口只读遍历，重复/铃声文案经 ui/tools 格式化
+        # 数据经接口只读遍历，重复/铃声文案经 ui/tools 格式化；
+        # GL 幽灵面清理（FIX004.1）：清空前显式注销旧行卡的场景玻璃面——
+        # setItemWidget 场景 destroyed 信号延迟不可靠（实证：clear+deleteLater
+        # 多轮事件循环后 Qt 仍持视口 widget），占满 _MAX_SURFACES 后新卡被截断
+        for i in range(self.alarm_list.count()):
+            row = self.alarm_list.itemWidget(self.alarm_list.item(i))
+            if row is not None and getattr(row, "_gl_mode", False):
+                SCENE.unregister(f"glass-card-{id(row)}")
         self.alarm_list.clear()
 
         for alarm in self._interface.get_alarms():

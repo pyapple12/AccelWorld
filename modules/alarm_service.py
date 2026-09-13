@@ -7,7 +7,7 @@ import winsound
 import logging
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, time, timedelta
-from typing import List, Optional, Literal, Dict, Any
+from typing import Any, Literal
 from enum import Enum
 
 # dataclass 反序列化通用工具（S9.4 抽象）
@@ -27,7 +27,7 @@ class PresetSound(Enum):
     CHIME = "chime"
 
     @classmethod
-    def display_names(cls) -> List[str]:
+    def display_names(cls) -> list[str]:
         # 按枚举顺序自动生成（value.title()），避免硬编码列表与枚举顺序错位（E3）
         return [m.value.title() for m in cls]
 
@@ -74,7 +74,7 @@ class Alarm:
     time: str  # HH:MM 格式
     sound_type: Literal["preset", "custom"] = "preset"
     sound_value: str = "classic"
-    repeat_days: List[int] = field(default_factory=list)  # 0-6, 空=不重复
+    repeat_days: list[int] = field(default_factory=list)  # 0-6, 空=不重复
     enabled: bool = True
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
@@ -82,7 +82,7 @@ class Alarm:
     def __post_init__(self) -> None:
         # repeat_days 规范化：数字字符串强转 int、布尔剔除（int(True)=1 穿透防御）、
         # 非整数值剔除（[1.7] 与 ["1.5"] 行为一致，FIX002.17）、越界/重复剔除
-        normalized: List[int] = []
+        normalized: list[int] = []
         for day in self.repeat_days or []:
             if isinstance(day, bool):
                 continue
@@ -103,7 +103,7 @@ class Alarm:
     def _validate_time(t: str) -> bool:
         # 无冒号时补 :00 再走 fromisoformat 校验
         try:
-            time.fromisoformat(t if ":" in t else t + ":00")
+            _parse_alarm_hhmm(t)
             return True
         except ValueError:
             return False
@@ -113,10 +113,8 @@ class Alarm:
         if not self.enabled:
             return False
 
-        # 检查时间是否匹配
-        alarm_time = time.fromisoformat(
-            self.time if ":" in self.time else self.time + ":00"
-        )
+        # 检查时间是否匹配（HH:MM 归一化单源 _parse_alarm_hhmm，FIX004.17）
+        alarm_time = _parse_alarm_hhmm(self.time)
         current_time = check_time.time()
 
         if (
@@ -147,12 +145,12 @@ class Alarm:
         # 重复闹钟：检查当前星期是否在重复设置中
         return check_time.weekday() in self.repeat_days
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         # asdict 递归转 dict（标准库一行调用，无需包装层）
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> Optional["Alarm"]:
+    def from_dict(cls, data: dict[str, Any]) -> "Alarm" | None:
         # created_at 语义必填：键存在但类型非法时整条拒绝（FIX003.8：防一次性闹钟
         # 按载入时刻重建"复活"）；键缺失走默认重建（旧版本配置兼容）
         if "created_at" in data and not isinstance(data["created_at"], str):
@@ -190,17 +188,30 @@ def _trigger_key(check_time: datetime) -> str:
     return check_time.strftime("%Y-%m-%d %H:%M")
 
 
+def _parse_alarm_hhmm(t: str) -> time:
+    # HH:MM / HH:MM:SS 归一化解析（无冒号补 :00；FIX004.17 单源：
+    # 原 _validate_time 与 should_trigger_on 两处内联逻辑合并，防格式规则漂移）；
+    # 非法抛 ValueError
+    return time.fromisoformat(t if ":" in t else t + ":00")
+
+
+def _parse_alarm_time_key(iso_text: str) -> datetime | None:
+    # created_at ISO 串解析（失败返回 None；FIX004.14 过期判定辅助）
+    try:
+        return datetime.fromisoformat(iso_text)
+    except (ValueError, TypeError):
+        return None
+
+
 # ------------------- 闹钟管理器 -------------------
 
 
 class AlarmManager:
     def __init__(self) -> None:
         # 空列表启动；上限来自静态配置；_last_triggered 存"日期+分钟"触发去重记录
-        self.alarms: List[Alarm] = []
+        self.alarms: list[Alarm] = []
         self.max_alarms = int(get_static_config().base["max_alarms"])
-        self._last_triggered: Dict[
-            str, str
-        ] = {}  # alarm_id -> "YYYY-MM-DD HH:MM"（含日期维度，S8.1）；
+        self._last_triggered: dict[str, str] = {}  # alarm_id -> "YYYY-MM-DD HH:MM"（含日期维度，S8.1）；
         # 仅内存不持久化：同分钟内重启理论上可重复响一次，窗口极窄接受（FIX001.21 P3#15）
 
     def add_alarm(self, alarm: Alarm) -> bool:
@@ -227,7 +238,7 @@ class AlarmManager:
                 return True
         return False
 
-    def get_alarm(self, alarm_id: str) -> Optional[Alarm]:
+    def get_alarm(self, alarm_id: str) -> Alarm | None:
         # 线性查找，未命中返回 None
         for alarm in self.alarms:
             if alarm.id == alarm_id:
@@ -259,7 +270,7 @@ class AlarmManager:
             return True
         return False
 
-    def check_alarms(self, check_time: datetime) -> List[Alarm]:
+    def check_alarms(self, check_time: datetime) -> list[Alarm]:
         # 去重键含日期维度（经 _trigger_key），跨天不误判；命中即标记
         time_str = _trigger_key(check_time)
         triggered = []
@@ -280,14 +291,14 @@ class AlarmManager:
 
         return triggered
 
-    def to_dict_list(self) -> List[Dict[str, Any]]:
+    def to_dict_list(self) -> list[dict[str, Any]]:
         # 逐闹钟 to_dict 收集
         return [alarm.to_dict() for alarm in self.alarms]
 
-    def from_dict_list(self, data: List[Dict[str, Any] | None]) -> None:
+    def from_dict_list(self, data: list[dict[str, Any] | None]) -> None:
         # 空条目与构造失败（from_dict 返回 None）的闹钟过滤后加载；
         # 跳过条目记 warning 便于诊断（FIX001.21：静默丢弃不可诊断）
-        loaded: List[Alarm] = []
+        loaded: list[Alarm] = []
         for item in data:
             if not item:
                 continue
@@ -296,6 +307,22 @@ class AlarmManager:
                 loaded.append(alarm)
             else:
                 logger.warning(f"跳过无法解析的闹钟条目: {item!r}")
+        # 装载上限对齐 add 路径（FIX004.15）：外部手改配置可写入任意多条，
+        # 超限截断 + 告警（保留前 max_alarms 条，与 add 拒绝语义一致）
+        if len(loaded) > self.max_alarms:
+            logger.warning(
+                f"闹钟数量超限，已截断: {len(loaded)} → {self.max_alarms}")
+            loaded = loaded[: self.max_alarms]
+        # 过期一次性闹钟自动禁用（FIX004.14）：程序关闭期间越过计划触发日的条目
+        # 永不触发也不清理，成为死条目——禁用保留供用户查看，消除"永久等待"假象
+        now = datetime.now()
+        for alarm in loaded:
+            if alarm.enabled and alarm.is_one_time() and not alarm.should_trigger_on(now):
+                created = _parse_alarm_time_key(alarm.created_at)
+                if created is not None and created.date() < now.date():
+                    alarm.enabled = False
+                    logger.warning(
+                        f"一次性闹钟已过期（计划日 {created.date()}），自动禁用: {alarm.label}")
         self.alarms = loaded
 
 

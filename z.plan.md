@@ -567,6 +567,96 @@ Acrylic 技术要点：
 
 ---
 
+## 附录 A004：全量代码审计报告（第 4 轮，2026-09-13）
+
+> 范围：63 个 .py + JSON 全文（三路并行子审计 + 主会话亲核裁决）；审计基线 HEAD `3bf9603`（V0.5.6.0），重点为 A003 后新增的 GL 渲染链路约 1000 行（提交 e8c3ced/3bf9603，首次被审计）
+> 方式：只读审计，未修改任何代码
+> 状态：📌 待修复（FIX004 任务清单见 x.progress.md）
+
+### 零、上轮（A003 / FIX003）修复复核清单
+
+主会话全局 grep + 三路子审计 `git show dd16497` 逐 hunk 对比。
+
+| A003 条目 | 现状 | 证据 |
+|---|---|---|
+| P0-1 春节三段解析 / P0-3 world_pins | ✅ 在位 | countdown_panel.py:205-213；settings.py:62-65 |
+| P0-2 超大 int isfinite | ⚠️ dataclass 层在位但**崩溃链位移**：app_interface.py:43 `float(saved_rate)` 抛 OverflowError 穿透 except(TypeError, ValueError)（→ 一、P1-2） | dataclass_utils.py:34-36；app_interface.py:43-44 |
+| P1-1 日长口径 / P1-3 天气 force / P1-4 replace 去重 / P1-5 created_at / P1-7 转存白名单 | ✅ 在位 | time_dilation.py:62,128；app_interface.py:110-115；alarm_service.py:239,156；settings.py:97-99 |
+| P2-1 死键 / P2-3 log_level / P3 各批次 | ✅ 在位；P2-1 有残留死键 rate_presets（→ P2-6）、interface 说明区漏改（→ P3-6） | main.py:22；base.json:6；app_interface.py:234,238-239 |
+| A003 观察项 glass_card origin 条件绑定 | ✅ 已消除 | glass_card.py:350 提前定义 |
+
+**结论：十八项修复 17 项完好在位，1 项位移未消除（升格本轮 P1-2）。**
+
+### 一、P 级修复清单（按严重度）
+
+#### P1（确定性缺陷，均有代码实证）
+
+| # | 文件:行号 | 类型 | 描述 | 建议 | 性质 | 影响面 |
+|---|---|---|---|---|---|---|
+| 1 | ui/glass_card.py（全类）+ ui/gl/glass_scene.py:33-35 + ui/panels/alarm_panel.py:78-85 | 1+5+9 | GL 模式 GlassCard 销毁不注销场景 → 幽灵玻璃面累积：全仓零调用 SCENE.unregister；闹钟页每次 refresh_list（开关/增删/编辑）clear() 销毁行卡重建，旧 GlassSurface 以旧 rect、visible=True 残留每帧绘制；闹钟上限 10 + 药丸 6 = 16 恰满 _MAX_SURFACES，一次刷新即超限截断——幽灵面保留、新行卡反被剔除渲染（gl_enabled 默认 true，确定性复现） | GlassCard 接销毁生命周期调 SCENE.unregister（destroyed 信号或宿主清理钩子） | 新增（PL009 引入注册未接销毁） | GL 模式闹钟页/动态卡 |
+| 2 | interface/app_interface.py:43（except :44） | 1+2 | 超大 int 崩溃链位移未消除：float(saved_rate) 抛 OverflowError 穿透 except (TypeError, ValueError) → 手改 user_config 即 GUI 启动确定性崩溃（子审计实证） | except 补 OverflowError + 更正 tests/test_settings.py:200-204 失实断言并补接口层用例 | 新增（dd16497 修复不完整） | GUI 启动/配置体系 |
+| 3 | modules/chinese_calendar.py:194 + ui/panels/date_panel.py:15-16,80-87 | 1+11 | 月相 chip 全年显示"蛾眉新月 拜"：modules 拼接"月相：X 拜财神：Y"，date_panel 以"财神："拆分命中"拜财神："内部，月相值捕获尾字"拜"（探针实证每天可见） | modules 侧去"拜"字（最小改）或根治走 LunarInfo 结构化 DTO | 遗留（A003 P1-2 修复不彻底） | 日期页农历 chip |
+
+#### P2（确定性显示不一致/功能失效）
+
+| # | 文件:行号 | 类型 | 描述 | 建议 | 性质 | 影响面 |
+|---|---|---|---|---|---|---|
+| 1 | ui/glass_card.py:291-296 | 1 | 世界时钟选中金描边 GL 失效：set_selected 只失效栅格 _pix；GL 模式 paintEvent 直接 return，场景面 selected 恒 0 | set_selected 在 gl_mode 下写场景面 selected + touch | 新增 | GL 世界时钟页 |
+| 2 | ui/panels/glass_nav.py:178-183 + ui/main_window.py:238 | 1 | 药丸初始选中态丢失：装配期 set_current 时药丸未注册，强度无处落；首次注册不回填 _selected → 启动时时钟药丸无金描边 | _sync_geometry 注册时回填 selected | 新增 | GL 导航 |
+| 3 | config/static/base.json:22 + countdown_panel.py:205-213 | 1 | 春节 chip 2027-02-06 过期后确定性错值：顺延逻辑使 2027 年末点击设 2028-02-06，实测 2028 春节为 01-26 | 登记年末数据维护；根治 lunar 库派生 | 新增（时间门控） | 倒计时面板 |
+| 4 | ui/gl/capability.py:39 | 1+2 | makeCurrent(...) is not None 恒真（PyQt6 返回 bool）→ 探测层误报可用，靠画布降级兜底 | bool(ctx.makeCurrent(surface)) | 新增 | GL 能力探测 |
+| 5 | ui/panels/glass_nav.py:18,111 + ui/gl/glass_canvas.py:29 | 1+9 | hover 呼吸实际 ~6.7fps：药丸 33ms touch 但画布 150ms 轮询重绘，帧率错配 | 呼吸期缩短轮询或 touch 直连 update | 新增 | GL hover 观感 |
+| 6 | config/static/base.json:6 | 12 | rate_presets 死键残留（get_rate_presets 已删） | 删除 | A003 P2-1 遗留 | 配置体系 |
+
+#### P3（卫生/规范/防御）
+
+| # | 文件:行号 | 类型 | 描述 | 性质 |
+|---|---|---|---|---|
+| 1 | modules/alarm_service.py:138-145 | 1 | 过期一次性闹钟（关机跨过触发时刻）永久死条目不清理 | 新增 |
+| 2 | modules/alarm_service.py:287-299 | 2 | from_dict_list 装载不校验 max_alarms 上限（与 add 路径不一致） | 新增 |
+| 3 | ui/main_window.py:282-289 | 2+13 | 窗口 paintEvent 无 try/except（防护矩阵应一致；_field_pix 赋值 :95 早于首帧，触发路径当前不可达） | 新增 |
+| 4 | ui/glass_card.py + ui/panels/glass_nav.py | 2+13 | 回调防护矩阵不一致（仅 resize/paint 有 try/except，hide/show/move/enter/leave 无），与 AGENTS 约定口径需统一或定案豁免 | 新增 |
+| 5 | ui/gl/glass_canvas.py:161-165 + shaders.py:50 vs glass_card.py:372 | 1 | 光晕 y 语义双径镜像：栅格 Qt 顶原点 / GL 底原点直传，同一配置键两径观感颠倒 | 新增（返工只对齐 GL 单径） |
+| 6 | interface/app_interface.py:234,238-239 | 6 | 说明区引用已删方法、fetch_weather 签名漏 force | 新增（dd16497 残留） |
+| 7 | ui/gl/glass_canvas.py:211,216-218 + glass_nav.py:201-202 | 6 | 说明区失实三处（"长度 8"实为 16 / init 签名漏 glass_tokens / _rail_navigate 已不存在） | 新增 |
+| 8 | ui/gl/glass_scene.py:33 + glass_nav.py:183-190 | 5 | 死代码：unregister 零调用（P1-1 修复后转正）、pill_for_page 零调用 | 新增 |
+| 9 | ui/gl/capability.py:34-41 | 2 | 探测未按 PL008 定案校验 GL 版本 ≥2.1 | 新增 |
+| 10 | tests/test_gui_features.py:17-67 | 10+12 | GL 链路零测试覆盖；子进程未固定 ACCELWORLD_FORCE_NO_GL，回归路径随机器漂移 | 新增 |
+| 11 | modules/alarm_service.py:106,117-118 | 4 | HH:MM 归一化两处重复实现 | 新增 |
+| 12 | modules/alarm_service.py:10 + weather_service.py:15 | 6 | 旧式 List/Dict/Optional 注解与全仓风格不一致 | 遗留（FIX003 未覆盖） |
+| 13 | modules/chinese_calendar.py:144,177-179,209 | 6 | 注释/说明区失实（数据边界硬编码、"空字段跳过"过时） | 新增 |
+| 14 | ui/glass_card.py:13 + glass_nav.py:9-10 | 6 | import 样式（单行 13 名/连续两行 QtCore） | 新增 |
+
+### 二、参考级观察项（记录不修，含回落理由）
+
+**A003 携带项**：monitor crash 日期 / get_type_hints 重解析 / tmp pid / 额外分类丢弃 / json.dumps TypeError / 空 __init__ / weather NaN·DNS·TTL / duration=200 / 干支立春 / _posToValue 2px / resize 全量重渲 / 每 tick 重启动画 / chips_host reparent / 硬编码边距 / ":" 恒真断言——原样保留维持观察级。
+
+**本轮新增**：
+
+| 位置 | 描述 | 回落理由 |
+|---|---|---|
+| ui/gl/shaders.py 各系数 | 云雾/rim/bezel/spec/投影/色散/veil/alpha 材质常量 | GLSL 微调常量，注释在位 |
+| ui/gl/glass_canvas.py:53-55 | 轮询 QTimer 启动后无 stop（隐藏期空转布尔比较） | 开销可忽略 |
+| ui/gl/glass_canvas.py:134 | monotonic % 3600 每小时呼吸相位跳变 | 可见性极低 |
+| ui/gl/glass_nav.py:160-173 | 悬浮 rail 高度未显式设定，窗口过矮可能裁切 | 【已提升 P2 处理】 |
+| ui/gl/glass_scene.py:17 | GL tint 硬编码不读 ui.json | 【已提升 P2 处理】 |
+| ui/gl/shaders.py:78 | r_cap 量纲混合 | 纯理论【需验证】 |
+| modules/alarm_service.py:54 | PresetSound.from_index 越界无防护 | 调用点有界【需验证】 |
+| ui/panels/countdown_panel.py:205 | chips 解析对非法日期值无防护 | 配置受控【需验证】 |
+| utils/monitor.py:71-74 | Qt 消息回调无 try/except | 无可达异常路径【需验证】 |
+| chinese-calendar 数据 | 覆盖至 2026-12-31，2027 起优雅降级 | 年末依赖升级任务（A003 #6 延续） |
+
+**豁免清单**：本轮无新增豁免定案建议（alarm_service `_last_triggered` 永久豁免维持）。
+
+### 三、亮点
+
+- ui.json 双向核对零死键零缺键（含 PL009 新增 7 键全部被消费）——零硬编码原则执行良好
+- A003 十八项修复 17 项完好，dd16497 修复质量整体过硬
+- GlassCanvas uniform 与 GLSL 声明逐一匹配、paintGL/initializeGL 防护完整、GL 装配降级分支对称性全覆盖
+- 版本四源一致（base.json = README = x.progress = AGENTS）
+
+---
+
 ## UI3.0 进化总纲：GLSL 液态玻璃（2026-09-13 立项，接替「时之砂」）
 
 > 愿景（用户拍板）：整窗液态玻璃——窗口本体是一块大玻璃面板，左侧栏为玻璃药丸按钮组，内容卡片为嵌套玻璃面板（参考 Liquid Glass UI Kit 形态图）；现状整窗仅磨砂 Acrylic + 实底背景，达不到该观感
@@ -580,12 +670,13 @@ Acrylic 技术要点：
 **1. 单画布合成（核心决策）**：整窗只建一个 QOpenGLWidget（`ui/gl/glass_canvas.py` GlassCanvas），lower() 压在所有页面控件底层；六页的 qfw 控件保持现有父子结构、透明底叠在其上。GL 画布负责画全部"玻璃视觉"（一次全屏 pass 画完所有玻璃面），Qt 负责画文字与鼠标命中——规避多 GL 上下文的性能与层序灾难
 
 **2. 两 pass 着色管线**：
+
 - 背景 pass（FBO 离屏）：光场渲染成纹理（夜空 `#0D1322→#090D16` / 晨光 `#E7EEF7→#F2ECDC` 渐变 + 双晕 + 云雾 fbm + 颗粒抖动，配色取 ui.json field 节），尺寸 = 画布 × DPR
 - 玻璃 pass（全屏）：片元着色器对场景内每块玻璃面执行四步——①SDF 圆角盒 `sdRoundBox(p, halfSize, r)` 定形 ②折射 = 面板内像素沿 SDF 梯度方向偏移采样**模糊纹理**（偏移 ∝ (1−smoothstep(0, 软边, −d))²，软边宽由 blur 参数映射）③色散 = RGB 三通道各用 1.3/1.0/0.7 缩放的偏移分别采样 ④fresnel rim（|d|∈[0,1.5px] 亮线）+ 顶部镜面高光带 + 颗粒抖动去色带
 
 **3. 玻璃面描述模型**：glass_scene 维护 GlassSurface 列表（rect: QRectF、radius、tint、refraction、blur、elevation），面板在 resizeEvent/moveEvent/showEvent 时把自身几何同步进场景；z 序按 elevation 与注册顺序
 
-**4. 文字与交互**：qfw/Qt 控件保持现有父子结构与布局，透明底叠在画布上方（raise_），Qt 负责全部文字渲染与鼠标命中；GL 画布鼠标事件穿透
+**4. 文字与交互**：qfw/Qt 控件保持现有父子结构与布局，透明底叠在画布上方（raise\_），Qt 负责全部文字渲染与鼠标命中；GL 画布鼠标事件穿透
 
 **5. Acrylic 共存**：GL 画布 QSurfaceFormat 申请 alpha 8bit，顶层 WA_TranslucentBackground；探针第一项验证合成正确性——失败走 B 方案（GL 画布自绘背景，放弃桌面透出）
 
@@ -601,10 +692,11 @@ Acrylic 技术要点：
 
 > 交付物（全部新建，不动现有业务代码）：探针脚本 `.temp/probe_pl008_gl.py`（已产出待走查）+ `ui/gl/` 包四文件 + ui.json 增 `gl_enabled` 开关（默认 false）
 > 技术要点：
+
 - GlassCanvas(QOpenGLWidget)：initializeGL 编译背景/玻璃两套着色器程序；paintGL 单 pass；静态帧缓存（glass_scene 无 dirty 直接 return）；QTimer 仅动画期启动
 - 玻璃着色器核心数学：折射偏移 = SDF 梯度方向 × (1−smoothstep(0, 软边, −d))² × lensStrength（曲率从 0 渐入，无折角）；色散 = 三通道偏移 1.3/1.0/0.7；rim = abs(d)∈[0,1.5px]
 - 路径判定矩阵：gl_enabled=False → 栅格（默认）；True 且 gl_available → GL；True 且不可用 → 栅格 + 日志告警
-> 出口标准：①探针样例真机走查用户认可 ②栅格模式全量回归 134 绿 ③GL 模式帧时间 <8ms 记录入档
+  > 出口标准：①探针样例真机走查用户认可 ②栅格模式全量回归 134 绿 ③GL 模式帧时间 <8ms 记录入档
 
 #### Qt5→PyQt6 迁移与回调防护（一次性根治，2026-09-13 定案）
 
@@ -613,14 +705,21 @@ Acrylic 技术要点：
 > 三层根治方案：①全仓排查 Qt5 遗留 API 逐个替换为 PyQt6 正确写法 ②所有 Qt 回调（paintGL/paintEvent/initializeGL/resizeEvent 等）一律 try/except 包裹，异常降级为纯色/跳过绘制 + logger.error，绝不外抛 ③每条降级都落日志，问题可查
 > 验收：回调防护探针（故意触发异常 → 进程存活 + 降级生效）+ 栅格回归 134 绿 + GL 模式真机走查
 
+### PL008 完成记录（2026-09-13）
+
+- 探针三验证：GL 上下文/文字叠层/玻璃样例全部实现（.temp/probe_pl008_gl.py）；**发现本机 glDrawArrays 驱动层 GPF（进程 127 硬崩，零输出）**，二分定位：透明窗/QOpenGLWidget 显示/离屏着色器编译均正常，崩溃在首次绘制调用原生层——与 y.problems#6 同家族环境问题
+- 处置（按用户定案"探针仅建议、不设止损"）：gl_enabled 默认 false 保持关闭，栅格路径不受影响（回归 134 绿）；GL 代码全量保留，待驱动/环境复查后重测（probe_pl008_gl.py 一键复测）
+- 版本 bump 0.5.5.0 五处同步 + m.milestone 条目
+
 ### PL009：UI3.0 铺开——侧栏药丸 + 六页迁移（V0.5.6.0）
 
 > 交付物：ui/panels/glass_nav.py（GlassNavRail）+ 六页 GlassCard 切 GL 模式 + main_window 装配分支
 > 技术要点：
+
 - GlassNavRail(QWidget)：竖排玻璃药丸（icon + 文字 Qt 叠层、SDF 玻璃面 GL 绘制），选中金描边 #E4B36A，hover/选中呼吸着色器化；点击发 navigate(page_id) 信号，main_window 现有 switchTo 逻辑接收——只换皮不换交互
 - 六页迁移 = GlassCard 构造加 gl_mode 参数逐页切换（时钟→倒计时→世界时钟→天气→闹钟→设置），每页迁移后真机走查再进下一页
 - 主题联动：设置页切深浅色 → glass_canvas.set_light_field(theme) 重上传纹理（配色仍取 ui.json field 双套）；降级模式自动回 qfw 导航
-> 出口标准：六页真机逐页走查确认 + 全量回归绿 + 关 GL 降级模式六页功能无损
+  > 出口标准：六页真机逐页走查确认 + 全量回归绿 + 关 GL 降级模式六页功能无损
 
 ### PL009 返工：玻璃渲染修复——预乘合成、量纲归一与立体感补齐（2026-09-13 定案，并入 V0.5.6.0）
 
@@ -631,6 +730,7 @@ Acrylic 技术要点：
 > Acrylic 被 100% 盖死，透壁纸全链失效。另：光晕 y 语义颠倒、主 shader 缺立体感
 > 三要素、多页卡面叠画、面数截断（18 面 > 8 上限）。
 > 返工要点（任务组 PL009.09-.14）：
+
 - 预乘 alpha：gl_FragColor 输出 col×alpha（Qt 合成假定预乘；普通合成模式不变、
   画布保持子控件下层）——背景≈0.55 / 玻璃面≈0.88 双档半透明，壁纸模糊按比例透出，
   厚玻璃微透；文字在画布上层清晰度天然不受影响（否决 onTop 路线：玻璃面会雾化盖字）
@@ -640,11 +740,11 @@ Acrylic 技术要点：
   SDF 偏移投影（厚玻璃体积感，对照 Liquid Glass 参考图）
 - 光晕 y 语义：ui.json 为 Qt 坐标（0=顶），注入前 1-y 翻转对齐 GL
 - 场景可见性：GlassSurface.visible + GlassCard show/hideEvent 同步，隐藏页不参与
-  绘制；_MAX_SURFACES 8→16
+  绘制；\_MAX_SURFACES 8→16
 - 质量门：真机渲染断言探针（FBO 分区采样量化阈值）全过才进走查——PL009 首轮跳过
   渲染断言致量纲缺陷漏网，本环节升级为强制门
-> 返工出口：渲染断言探针全 PASS + 回归绿 + 冒烟 + 真机逐页走查（PL009.01-.08 随
-> 返工一并确认）；并入 V0.5.6.0 一次提交
+  > 返工出口：渲染断言探针全 PASS + 回归绿 + 冒烟 + 真机逐页走查（PL009.01-.08 随
+  > 返工一并确认）；并入 V0.5.6.0 一次提交
 
 ### PL009 完成记录（2026-09-13）
 
@@ -662,11 +762,12 @@ Acrylic 技术要点：
 ### PL010：UI3.0 收口定版（V0.6.0.0）
 
 > 收口三笔 + 文档：
+
 1. 性能：paintGL 内 QElapsedTimer 计时（GL/栅格两模式各录 100 帧均值入档）；静态帧缓存断言（glass_scene 无 dirty 时跳过重绘）；tick/交互重绘 <8ms 实测
-2. 崩溃：y.problems#6 带 GL 复测（GL 开关开/关 × 反复启停 20 次 × 多窗口），崩溃栈监控比对 logs/crash-*.log
+2. 崩溃：y.problems#6 带 GL 复测（GL 开关开/关 × 反复启停 20 次 × 多窗口），崩溃栈监控比对 logs/crash-\*.log
 3. 回归：全量绿 + 降级模式六页功能断言
 4. 文档：AGENTS 增"GL 渲染约定"节、t.hint 补 UI3.0 复盘、m.milestone 0.6.0.0 条目、版本五处同步
-> 出口标准：回归全绿 + 用户定版走查确认
+   > 出口标准：回归全绿 + 用户定版走查确认
 
 ## 临时记录：后续候选事项（2026-09-12 随手记，未立项、未排期）
 

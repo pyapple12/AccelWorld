@@ -2,6 +2,7 @@
 # 画布按列表统一绘制玻璃光学；z 序按 elevation 与注册顺序（FIX/PL008.04）
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from PyQt6.QtCore import QRectF
 
@@ -14,6 +15,8 @@ class GlassSurface:
     surface_id: str
     rect: QRectF
     radius: float = 12.0
+    # tint 由 GlassCard 构造时从 ui.json glass.gl_tint 注入（FIX004.10 配置化）；
+    # 此默认仅兜底配置缺键场景
     tint: tuple[float, float, float] = (0.16, 0.14, 0.20)
     refraction: float = 0.035  # uv 空间中心弯曲上限（PL008 探针验证量纲，PL009 返工）
     elevation: int = 0
@@ -27,6 +30,19 @@ class GlassScene:
     def __init__(self) -> None:
         self._surfaces: dict[str, GlassSurface] = {}
         self._dirty = True
+        self._repaint_hook: Any | None = None  # 直连重绘回调（画布 update，FIX004.7）
+
+    def set_repaint_hook(self, hook: Any | None) -> None:
+        # 注入直连重绘回调（画布 update）：touch 时立即调度一帧——替代"被动等
+        # 画布 150ms 轮询"，hover 呼吸帧率从 ~6.7fps 回到节拍表帧率（FIX004.7）
+        self._repaint_hook = hook
+
+    def touch(self) -> None:
+        # 置脏（动画驱动入口）：hover 呼吸等连续重绘期由导航以 33ms 高频调用，
+        # 直连回调立即调度重绘；静态期无调用即零重绘（静态帧缓存约定）
+        self._dirty = True
+        if self._repaint_hook is not None:
+            self._repaint_hook()
 
     def register(self, surface: GlassSurface) -> None:
         # 注册或整体替换（同 id 幂等）

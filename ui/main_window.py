@@ -107,6 +107,7 @@ class AcceleratedWorldGUI(FluentWindow):
                     SCENE, bool(self.is_dark_theme), ui_static["field"],
                     self._colors["primary"], ui_static["glass"], parent=self,
                 )
+                SCENE.set_repaint_hook(self._gl_canvas.update)  # touch 直连重绘（FIX004.7）
                 self._gl_canvas.setGeometry(0, 0, self.width(), self.height())
                 self._gl_canvas.start()
             except Exception:
@@ -272,21 +273,29 @@ class AcceleratedWorldGUI(FluentWindow):
         self.update()
 
     def resizeEvent(self, event) -> None:
-        # 窗口尺寸变化：GL 画布铺满整窗（先于光场重渲）；再走 FluentWindow 原生布局事件
+        # 窗口尺寸变化：GL 画布铺满整窗 + 药丸栏高度随窗（先于光场重渲）；
+        # 再走 FluentWindow 原生布局事件
         super().resizeEvent(event)
         if getattr(self, "_gl_canvas", None) is not None:
             self._gl_canvas.setGeometry(0, 0, self.width(), self.height())
+        if getattr(self, "_nav_rail", None) is not None:
+            self._nav_rail.setFixedHeight(self.height())  # 悬浮栏随窗（FIX004.9）
         if hasattr(self, "_field_pix"):
             self._render_field()
 
     def paintEvent(self, event) -> None:
         # 先走 FluentWindow 自绘（Acrylic 透明底座/实底），再叠加半透明光场层；
-        # 子控件在本方法返回后由 Qt 绘制，天然位于光场之上（PL006.03 分层模型）
-        super().paintEvent(event)
-        painter = QPainter(self)
-        if self._field_pix is not None:
-            painter.drawPixmap(0, 0, self._field_pix)
-        painter.end()
+        # 子控件在本方法返回后由 Qt 绘制，天然位于光场之上（PL006.03 分层模型）；
+        # Qt 回调防护（FIX004.13，AGENTS 约定）：绘制异常跳过本帧记录，绝不外抛
+        try:
+            super().paintEvent(event)
+            painter = QPainter(self)
+            pix = getattr(self, "_field_pix", None)
+            if pix is not None:
+                painter.drawPixmap(0, 0, pix)
+            painter.end()
+        except Exception:  # noqa: BLE001 — 防御：绘制失败跳过本帧，不上抛
+            logger.exception("主窗口光场绘制失败，跳过本帧")
 
     @staticmethod
     def _make_page(object_name: str, layout_tokens: dict, *widgets: QWidget,

@@ -6,8 +6,7 @@
 
 import logging
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtCore import QPoint, QPointF, QSizeF, QRectF
+from PyQt6.QtCore import QPoint, QPointF, QRectF, QSizeF, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
@@ -119,24 +118,36 @@ class GlassNavPill(QWidget):
 
     def _sync_geometry(self) -> None:
         # 场景几何同步（show/move/resize 驱动）；注册缺失（首次 show 前）则注册
+        # （注册时回填当前选中强度，FIX004.5：装配期 set_current 早于首 show，
+        # 强度无处落致启动时选中药丸无金描边）
         rect = self._window_rect()
         known = any(s.surface_id == self._surface_id for s in SCENE.surfaces())
         if known:
             SCENE.update_geometry(self._surface_id, rect)
         else:
+            strength = 1.0 if self._selected else (0.35 if self._hover else 0.0)
             SCENE.register(GlassSurface(
                 surface_id=self._surface_id,
                 rect=rect,
                 radius=max(self.height() / 2, 1.0),  # 胶囊：端帽半径 = 高度一半
+                selected=strength,
             ))
         SCENE.touch()
 
     def showEvent(self, event) -> None:
-        self._sync_geometry()
+        # Qt 回调防护（FIX004.13，AGENTS 约定）：同步异常仅记录不上抛
+        try:
+            self._sync_geometry()
+        except Exception:  # noqa: BLE001 — 防御：几何同步失败不外抛
+            logging.getLogger(__name__).exception("GlassNavPill 场景几何同步失败")
         super().showEvent(event)
 
     def moveEvent(self, event) -> None:
-        self._sync_geometry()
+        # Qt 回调防护（FIX004.13）
+        try:
+            self._sync_geometry()
+        except Exception:  # noqa: BLE001 — 防御：几何同步失败不外抛
+            logging.getLogger(__name__).exception("GlassNavPill 场景几何同步失败")
         super().moveEvent(event)
 
     def resizeEvent(self, event) -> None:
@@ -158,6 +169,12 @@ class GlassNavRail(QWidget):
         super().__init__(parent)
         tokens = interface.get_ui_static()["layout"]
         self.setFixedWidth(int(tokens["nav_rail_width"]))
+        # 高度下限 = 内容自然高度（六药丸 + 顶部留白 + 间距，FIX004.9：悬浮栏
+        # 无布局约束，窗口过矮时内容被裁切）；resize 随父窗拉满由宿主负责
+        content_h = (int(tokens["nav_rail_margin_top"])
+                     + len(items) * int(tokens["nav_pill_height"])
+                     + max(len(items) - 1, 0) * int(tokens["nav_pill_spacing"]))
+        self.setMinimumHeight(content_h)
         self.setObjectName("glass-nav-rail")
 
         body = QVBoxLayout(self)
@@ -198,8 +215,7 @@ class GlassNavRail(QWidget):
 #   _refresh_icon(): FluentIcon 按主题深浅渲染位图（2x 取样 + DPR 降比，缩放屏不糊）
 #   set_selected(selected)/_apply_selection(): 选中强度写场景面（1.0 选中金 /
 #     0.35 hover / 0 复位）+ touch 场景触发重绘
-#   _rail_navigate(): 经 window().findChild(GlassNavRail) 上浮导航信号
-#     （药丸自身不持 rail 引用，避免装配期环依赖）
+#   mousePressEvent(): 左键点击经 parent()（即 GlassNavRail）直发 navigate 信号
 #   enterEvent/leaveEvent: hover 呼吸启停（Qt 回调；离开即回归静态零重绘）
 #   _window_rect()/_sync_geometry(): 窗口坐标换算与场景注册/更新
 #     （show/move/resize 驱动；注册缺失时按 胶囊半径=高/2 补注册）
@@ -209,7 +225,6 @@ class GlassNavRail(QWidget):
 #     图标尺寸/顶部留白均读 ui.json layout 导航键（零硬编码）
 #   set_current(page_id): 选中态切换（宿主切页后调用）
 #   on_theme_changed(): 主题联动（宿主 _apply_theme_preference 转发）
-#   pill_for_page(page_id): 按页面标识取药丸
 #   navigate(str) 信号: 宿主接现有 switchTo 切页逻辑（只换皮不换交互）
 #   异常处理：仅 Qt 回调 resizeEvent 防护包裹；其余路径不吞异常正常上抛
 #   关联配置：ui.json layout 节导航键（nav_rail_width/nav_pill_height/

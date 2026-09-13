@@ -204,6 +204,20 @@ def test_huge_int_rate_does_not_crash():
     assert isinstance(cfg.time_dilation_rate, int)  # 构造不崩；越界由世界回退兜底
 
 
+def test_huge_int_rate_interface_fallback(monkeypatch, tmp_path):
+    # 接口层兜底（FIX004.2）：超大 int 穿透 dataclass 层后 float() 抛 OverflowError，
+    # AppInterface 构造必须捕获并回退默认倍率（A004 P1-2：dd16497 修复位移残留）
+    cfg_path = tmp_path / "user_config.json"
+    cfg_path.write_text(
+        json.dumps({"time_dilation_rate": 10**400}), encoding="utf-8")
+    monkeypatch.setenv("ACCELWORLD_CONFIG_FILE", str(cfg_path))
+    from interface import AppInterface
+
+    iface = AppInterface()
+    default_rate = AppInterface.get_app_static()["default_rate"]
+    assert iface.get_rate() == default_rate
+
+
 def test_world_pins_non_string_elements_filtered():
     # world_pins 混入非串元素：__post_init__ 元素级剔除（FIX003.3：防世界时钟构造崩溃）
     cfg = settings.UserConfig.from_dict({"world_pins": [1, "Asia/Seoul", None]})

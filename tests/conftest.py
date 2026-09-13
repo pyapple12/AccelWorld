@@ -1,10 +1,16 @@
 # pytest 共享 fixture（S9.7 测试引入）
 # 隔离策略：用户配置重定向到临时目录（不污染真实 user_config.json）+ 天气网络打桩（不发真实请求）
+# GL 路径固定（FIX004.17）：回归统一走栅格（ACCELWORLD_FORCE_NO_GL）——gl_enabled
+# 现默认 true，不固定则 GL/栅格路径随机器能力漂移，断言不确定；GL 链路专属断言走探针
+
+import os
 
 import pytest
 
 import config.settings as settings
 from utils.file_utils import clear_json_cache
+
+os.environ.setdefault("ACCELWORLD_FORCE_NO_GL", "1")
 
 
 @pytest.fixture(autouse=True)

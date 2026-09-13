@@ -71,7 +71,6 @@ def test_get_rate_bounds_match_base_json():
         float(_BASE_JSON["rate_min"]),
         float(_BASE_JSON["rate_max"]),
     )
-    # get_rate_presets 已随预设按钮移除（FIX003.13），base.json 键留待配置清理评估
 
 
 def test_apply_rate_valid_applies_and_persists():

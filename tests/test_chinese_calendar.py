@@ -62,11 +62,13 @@ def test_year_out_of_range():
 
 
 def test_lunar_info_string():
-    # get_lunar_info 展示字符串包含关键信息
+    # get_lunar_info 展示字符串包含关键信息；
+    # 财神段标记为"财神："（FIX004.3：去"拜"前缀，防混入月相值段）
     text = get_lunar_info(datetime.datetime(2026, 8, 8, 12))
     assert "丙午年" in text
     assert "马" in text
-    assert "拜财神" in text
+    assert "财神：" in text
+    assert "拜财神" not in text
 
 
 def test_public_holidays_translated_chinese():

@@ -39,12 +39,14 @@
     "dark": {
       "fill_from": "#16FFFFFF",
       "lift": 8,
-      "gl_lift": 26
+      "gl_lift": 26,
+      "gl_tint": "#29222E33"
     },
     "light": {
       "fill_from": "#C6FFFFFF",
       "lift": 10,
-      "gl_lift": 34
+      "gl_lift": 34,
+      "gl_tint": "#293A3E4E"
     }
   },
   "radius": {

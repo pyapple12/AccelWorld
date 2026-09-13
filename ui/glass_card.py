@@ -10,7 +10,16 @@ import os
 import random
 
 from PyQt6.QtCore import QPoint, QPointF, QSizeF, pyqtSignal, QRectF, Qt
-from PyQt6.QtGui import QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient
+from PyQt6.QtGui import (
+    QColor,
+    QImage,
+    QLinearGradient,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QRadialGradient,
+)
 from PyQt6.QtWidgets import QWidget
 
 from qfluentwidgets import Slider, Theme, isDarkTheme, qconfig, setCustomStyleSheet
@@ -100,7 +109,9 @@ def render_field_pixmap(size_w: int, size_h: int, field_tokens: dict, dark: bool
     for key, rf in (("glow_a", "glow_a_r"), ("glow_b", "glow_b_r")):
         glow = QColor(tokens[key])
         cx = size_w * float(tokens[f"{key}_x"])
-        cy = size_h * float(tokens[f"{key}_y"])
+        # glow_y 语义单源（FIX004.12）：uv 底原点（y=0=窗口底，与 GL 路径直传
+        # 一致——PL009 定稿观感基准）；栅格 Qt 顶原点坐标取 1-y 换算
+        cy = size_h * (1.0 - float(tokens[f"{key}_y"]))
         radius = size_w * float(tokens[rf])
         radial = QRadialGradient(cx, cy, radius)
         radial.setColorAt(0.0, glow)
@@ -249,11 +260,33 @@ class GlassCard(QWidget):
         # 玻璃视觉由 GL 画布统一绘制；栅格模式（默认关）走原 _render_texture 路径；
         # gl_mode 参数供页级控制/降级探针（None = 全局自动判定）
         self._gl_mode = gl_active() if gl_mode is None else (gl_mode and gl_active())
+        # GL tint 配置化（FIX004.10）：ui.json glass.gl_tint（#AARRGGBB）按主题
+        # 解析为归一化三通道；缺键回退走查定案值（0.16, 0.14, 0.20）
+        self._gl_tint = self._parse_gl_tint(ui)
         # 注册延迟到首次 showEvent（PL009 返工修正）：隐藏页卡片从未 show，构造期
         # 注册会留下 rect=(0,0,640,480) 的僵尸面叠画在窗口左上角（真机取证定案）
         self._registered = False
+
+    def _parse_gl_tint(self, ui: dict) -> tuple[float, float, float]:
+        # 解析当前主题 gl_tint（QColor #AARRGGBB → rgbF 三通道）；缺键/解析失败
+        # 回退走查定案值（GL 观感基准，与 glass_scene 默认一致）
+        try:
+            theme = "dark" if isDarkTheme() else "light"
+            color = QColor(ui["glass"][theme]["gl_tint"])
+            return (color.redF(), color.greenF(), color.blueF())
+        except Exception:  # noqa: BLE001 — 防御：配置缺键回退定案观感值
+            return (0.16, 0.14, 0.20)
         # 主题变化：失效纹理缓存（重渲染惰性于 paintEvent；析构时由 PyQt 自动断连）
         qconfig.themeChanged.connect(self._on_theme_changed)
+        # GL 幽灵面防护（FIX004.1）：控件销毁时注销场景面——闹钟页 refresh_list
+        # 会 clear() 重建全部行卡，不注销则旧 GlassSurface 以旧 rect 残留每帧绘制
+        # （累积至 _MAX_SURFACES 后新卡反被截断剔除）
+        if self._gl_mode:
+            self.destroyed.connect(self._unregister_surface)
+
+    def _unregister_surface(self, *_) -> None:
+        # 销毁注销（destroyed 信号回调；重复注销由 scene.unregister 幂等保证）
+        SCENE.unregister(f"glass-card-{id(self)}")
 
     def _window_rect(self) -> QRectF:
         # 卡片在窗口坐标系的矩形：GL 画布铺整窗，场景几何一律窗口坐标——
@@ -272,6 +305,7 @@ class GlassCard(QWidget):
                     surface_id=sid,
                     rect=self._window_rect(),
                     radius=float(self._radius),
+                    tint=self._gl_tint,
                 ))
                 self._registered = True
             else:
@@ -279,8 +313,12 @@ class GlassCard(QWidget):
             SCENE.set_visible(sid, self.isVisible())
 
     def hideEvent(self, event) -> None:
-        # 切页隐藏：卡面从场景剔除（Qt 回调；重入显示由 showEvent 恢复）
-        self._sync_geometry()
+        # 切页隐藏：卡面从场景剔除（Qt 回调；重入显示由 showEvent 恢复）；
+        # Qt 回调防护（FIX004.13）
+        try:
+            self._sync_geometry()
+        except Exception:  # noqa: BLE001 — 防御：几何同步失败不外抛
+            logging.getLogger(__name__).exception("GlassCard 场景几何同步失败")
         super().hideEvent(event)
 
     def _on_theme_changed(self, theme: Theme) -> None:
@@ -289,10 +327,17 @@ class GlassCard(QWidget):
         self.update()
 
     def set_selected(self, selected: bool) -> None:
-        # 选中态（金描边）：世界时钟矩阵等可点卡的当前项指示（PL007.02）
+        # 选中态（金描边）：世界时钟矩阵等可点卡的当前项指示（PL007.02）；
+        # GL 模式写场景面 selected 强度（着色器 u_sel 染金），FIX004.4
         if self._selected != selected:
             self._selected = selected
             self._pix = None
+            if self._gl_mode:
+                surface = SCENE.surfaces()
+                for s in surface:
+                    if s.surface_id == f"glass-card-{id(self)}":
+                        s.selected = 1.0 if selected else 0.0
+                SCENE.touch()
             self.update()
 
     def mousePressEvent(self, event) -> None:
@@ -369,7 +414,8 @@ class GlassCard(QWidget):
         glow = QColor(field_tokens["glow_a"])
         corner_x, corner_y = w - 10, 10
         glow_center_x = win.width() * float(field_tokens["glow_a_x"])
-        glow_center_y = win.height() * float(field_tokens["glow_a_y"])
+        # glow_y 语义单源（FIX004.12）：同 render_field_pixmap，1-y 对齐 GL 底原点
+        glow_center_y = win.height() * (1.0 - float(field_tokens["glow_a_y"]))
         glow_radius = max(win.width() * float(field_tokens["glow_a_r"]), 1.0)
         corner_win_x = origin.x() + corner_x
         corner_win_y = origin.y() + corner_y
@@ -417,13 +463,21 @@ class GlassCard(QWidget):
         self._pix = QPixmap.fromImage(img)
 
     def moveEvent(self, event) -> None:
-        # 移动同步场景几何（GL 模式；画布按窗口坐标绘制，位置变化即失配）
-        self._sync_geometry()
+        # 移动同步场景几何（GL 模式；画布按窗口坐标绘制，位置变化即失配）；
+        # Qt 回调防护（FIX004.13，AGENTS 约定）：同步异常仅记录不上抛
+        try:
+            self._sync_geometry()
+        except Exception:  # noqa: BLE001 — 防御：几何同步失败不外抛
+            logging.getLogger(__name__).exception("GlassCard 场景几何同步失败")
         super().moveEvent(event)
 
     def showEvent(self, event) -> None:
-        # 首次显示/切页重入时同步场景几何（布局期 mapTo 窗口坐标才收敛）
-        self._sync_geometry()
+        # 首次显示/切页重入时同步场景几何（布局期 mapTo 窗口坐标才收敛）；
+        # Qt 回调防护（FIX004.13）
+        try:
+            self._sync_geometry()
+        except Exception:  # noqa: BLE001 — 防御：几何同步失败不外抛
+            logging.getLogger(__name__).exception("GlassCard 场景几何同步失败")
         super().showEvent(event)
 
     def resizeEvent(self, event) -> None:

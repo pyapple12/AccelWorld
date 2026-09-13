@@ -12,7 +12,6 @@ import logging
 import socket
 import time
 from dataclasses import dataclass
-from typing import Optional
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -123,7 +122,7 @@ def _fetch_weather_data(url: str) -> dict:
         return json.loads(response.read().decode("utf-8"))
 
 
-def get_weather_by_coords(lat: float, lon: float) -> Optional[WeatherData]:
+def get_weather_by_coords(lat: float, lon: float) -> WeatherData | None:
     # 经纬度定义域校验：越界属编程错误直接上抛（城市坐标来自 data/cities.py 静态表）
     lat_ok = _LAT_RANGE[0] <= lat <= _LAT_RANGE[1]
     lon_ok = _LON_RANGE[0] <= lon <= _LON_RANGE[1]
@@ -189,7 +188,7 @@ def get_weather_by_coords(lat: float, lon: float) -> Optional[WeatherData]:
         return None
 
 
-def get_weather_by_city(city_name: str) -> Optional[WeatherData]:
+def get_weather_by_city(city_name: str) -> WeatherData | None:
     # 命中缓存直接返回
     cached = _weather_cache.get(city_name)
     if cached and time.time() - cached[0] < CACHE_TTL_SECONDS:
@@ -211,7 +210,7 @@ def clear_weather_cache() -> None:
     _weather_cache.clear()
 
 
-def format_weather_info(weather: Optional[WeatherData], city_name: str = "") -> str:
+def format_weather_info(weather: WeatherData | None, city_name: str = "") -> str:
     # 空数据返回失败文案；否则拼装完整展示文本
     if not weather:
         return "天气信息获取失败"

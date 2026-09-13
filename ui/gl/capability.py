@@ -36,7 +36,12 @@ def _detect_gl_available() -> bool:
     surface.create()
     if not ctx.create() or not surface.isValid():
         return False
-    ok = ctx.makeCurrent(surface) is not None
+    # makeCurrent 返回 bool（PyQt6 非 Optional，"is not None" 恒真——FIX004.6）
+    ok = bool(ctx.makeCurrent(surface))
+    if ok:
+        # GL 版本校验（FIX004.16，PL008 定案 ≥2.1）：旧驱动旧上下文在探测期拦截
+        version = ctx.format().version()
+        ok = version[0] > 2 or (version[0] == 2 and version[1] >= 1)
     ctx.doneCurrent()
     return ok
 

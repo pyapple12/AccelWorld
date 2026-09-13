@@ -208,14 +208,15 @@ class GlassCanvas(QOpenGLWidget):
 
 # ===== ui/gl/glass_canvas.py 函数/模块级常量说明 =====
 # 模块级常量：
-#   _MAX_SURFACES: 单帧玻璃面上限（与 shaders.py uniform 数组长度 8 一致，超出截断）
+#   _MAX_SURFACES: 单帧玻璃面上限（与 shaders.py uniform 数组长度 16 一致，超出截断）
 #   _GL_FLOAT / _GL_COLOR_BUFFER_BIT: OpenGL 固定枚举数值（Qt6 宏不透出到 PyQt6）
 #   _DEGRADE_COLOR: 渲染失败降级纯色（深空底 RGBA，与暗色主题 u_top 同源）
 #   _DIRTY_POLL_MS: 场景脏标记轮询周期（空闲期仅布尔比较，开销可忽略）
 # GlassCanvas(QOpenGLWidget): 整窗 GL 画布
-#   __init__(scene, dark, field_tokens, accent, parent): 持场景/主题/ui.json field
-#     双套配色与强调色（零硬编码注入）；预建着色器程序/VBO 对象（无 GL 上下文，
-#     不可编译上传）；_ready 初始 False；轮询定时器构造不启动（宿主 start()）
+#   __init__(scene, dark, field_tokens, accent, glass_tokens=None, parent=None):
+#     持场景/主题/ui.json field 双套配色 + glass 节（gl_lift 提亮）+ 强调色
+#     （零硬编码注入）；预建着色器程序/VBO 对象（无 GL 上下文，不可编译上传）；
+#     _ready 初始 False；轮询定时器构造不启动（宿主 start()）
 #   _parse_theme_colors(): 解析当前主题 field 四色（hex 含 alpha，#AARRGGBB）；
 #     配置缺键回退默认深空配色（异常仅记录，装配不被打断）
 #   set_dark(dark): 主题切换联动（PL009.07）——重解析配色并 touch 场景触发重绘

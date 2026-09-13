@@ -41,7 +41,9 @@ class AppInterface:
         saved_rate = settings.get_setting("time_dilation_rate", base["default_rate"])
         try:
             self._world = AcceleratedWorld(time_dilation_rate=float(saved_rate))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
+            # OverflowError：手改配置超大 int 经 dataclass 层放行后 float() 爆范围
+            # （FIX004.2：A003 P0-2 修复位移至此的残留崩溃链）
             logger.warning(f"持久化倍率非法，已回退默认值: {saved_rate!r}")
             self._world = AcceleratedWorld()
         self._alarm_manager = AlarmManager()
@@ -82,9 +84,6 @@ class AppInterface:
         # 倍率合法区间 (rate_min, rate_max)，滑杆/输入框校验共用
         base = get_static_config().base
         return (float(base["rate_min"]), float(base["rate_max"]))
-
-    # get_rate_presets 已删（FIX003.13：预设按钮随时钟页减法移除，方法生产零调用；
-    # base.json rate_presets 键随下轮配置清理一并评估删除）
 
     def set_rate(self, rate: float) -> bool:
         # 轻量路径：范围校验 + 世界重建，不落盘——UI 滑杆拖动的实时生效路径，
@@ -231,12 +230,12 @@ class AppInterface:
 #   静态配置域：get_app_static()/get_ui_static()（staticmethod，无实例副作用，main.py 装配期
 #     即可用）；get_version()
 #   时钟域：get_time_info()/get_tick_interval_ms()——UI 定时器拉取式驱动
-#   倍率域：get_rate()/get_rate_bounds()/get_rate_presets()；
+#   倍率域：get_rate()/get_rate_bounds()；
 #     set_rate(rate) 轻量路径（校验+重建不落盘，滑杆拖动实时生效）；
 #     apply_rate(rate) 内聚动作（校验+重建+持久化，去抖 flush/退出保存/单发场景）
 #     设计理由：拆两档是为了 FIX001.23 去抖语义留在 UI 层时重建仍可实时——拖动期零写盘
-#   天气域：get_city_names()/fetch_weather(city)/get_weather_refresh_interval_ms()/
-#     format_weather_display(city, weather)——缓存与重试由后端 weather_service 承担
+#   天气域：get_city_names()/fetch_weather(city, force=False)/
+#     get_weather_refresh_interval_ms()——缓存与重试由后端 weather_service 承担
 #   时区域：get_timezone_options()（TIMEZONES 副本）
 #   闹钟域：AlarmManager 所有权迁入接口（plan#UI2.0 迁移要点）——load_alarm_dicts()/
 #     save_alarm_dicts()/check_alarms(now)/get_max_alarms() 契约方法 + CRUD 转发

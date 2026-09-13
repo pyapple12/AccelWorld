@@ -141,7 +141,8 @@ def get_chinese_lunar_calendar(year: int, month: int, day: int, hour: int) -> Lu
             # get_holiday_detail返回(Boolean, String)元组，第二个元素是节日名称
             public_holiday = holiday_detail[1] if holiday_detail[0] else ""
         except NotImplementedError:
-            # 年份超出 chinese-calendar 支持范围（2004-2026）时降级跳过
+            # 年份超出 chinese-calendar 当前版本数据范围（随依赖版本漂移，1.11.0
+            # 实测覆盖 2004-2026）时降级跳过
             public_holiday = ""
 
     # 如果chinese-calendar没有找到节日，检查自定义节日列表
@@ -174,7 +175,9 @@ def get_chinese_date(now: datetime.datetime) -> str:
 
 
 def get_lunar_info(now: datetime.datetime) -> str:
-    # 委托 get_chinese_lunar_calendar 后按固定格式拼接，空字段跳过；
+    # 委托 get_chinese_lunar_calendar 后按固定格式无条件拼接月相/财神两段
+    # （FIX004.3 契约：值段不含拆分标记字样；"空字段跳过"描述已过时——
+    # FIX003.5 移除节气/节日段后无空值分支）；
     # 节气/公历节日暂不入串：无对应 chip 消费，插在中段会被 date_panel 反解析
     # 污染月相 chip（FIX003.5），待节气 chips 落地后以结构化字段恢复
     year = now.year
@@ -184,14 +187,15 @@ def get_lunar_info(now: datetime.datetime) -> str:
 
     info = get_chinese_lunar_calendar(year, month, day, hour)
 
-    # 构建农历信息字符串
+    # 构建农历信息字符串（字段标记契约：date_panel 以"月相："/"财神："拆分，
+    # 值段内不得混入标记字样——FIX004.3：去"拜"字前缀，其曾混入月相值段尾部）
     lunar_info = (
         f"{info.lunar_year}（{info.shengxiao}年）"
         f"{info.lunar_month}{info.lunar_day}{info.shichen}"
     )
     lunar_info += f" 月相：{info.yue_phase}"
 
-    lunar_info += f" 拜财神：{info.cai_shen_dir}方向（{info.position}）"
+    lunar_info += f" 财神：{info.cai_shen_dir}方向（{info.position}）"
 
     return lunar_info
 
