@@ -9,7 +9,7 @@ import logging
 import os
 import random
 
-from PyQt6.QtCore import QPoint, QPointF, pyqtSignal, QRectF, Qt
+from PyQt6.QtCore import QPoint, QPointF, QSizeF, pyqtSignal, QRectF, Qt
 from PyQt6.QtGui import QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient
 from PyQt6.QtWidgets import QWidget
 
@@ -235,6 +235,7 @@ class GlassCard(QWidget):
     clicked = pyqtSignal()
 
     def __init__(self, interface: AppInterface, radius_key: str = "lg",
+                 gl_mode: bool | None = None,
                  parent: QWidget | None = None):
         super().__init__(parent)
         ui = interface.get_ui_static()
@@ -244,17 +245,43 @@ class GlassCard(QWidget):
         self._accent = QColor(ui["colors"]["primary"])
         self._selected = False
         self._pix: QPixmap | None = None
-        # GL 模式（PL008.07）：gl_active 时自身不画纹理、几何注册 glass_scene，
-        # 玻璃视觉由 GL 画布统一绘制；栅格模式（默认关）走原 _render_texture 路径
-        self._gl_mode = gl_active()
-        if self._gl_mode:
-            SCENE.register(GlassSurface(
-                surface_id=f"glass-card-{id(self)}",
-                rect=QRectF(self.geometry()),
-                radius=float(self._radius),
-            ))
+        # GL 模式（PL008.07/PL009）：gl_active 时自身不画纹理、几何注册 glass_scene，
+        # 玻璃视觉由 GL 画布统一绘制；栅格模式（默认关）走原 _render_texture 路径；
+        # gl_mode 参数供页级控制/降级探针（None = 全局自动判定）
+        self._gl_mode = gl_active() if gl_mode is None else (gl_mode and gl_active())
+        # 注册延迟到首次 showEvent（PL009 返工修正）：隐藏页卡片从未 show，构造期
+        # 注册会留下 rect=(0,0,640,480) 的僵尸面叠画在窗口左上角（真机取证定案）
+        self._registered = False
         # 主题变化：失效纹理缓存（重渲染惰性于 paintEvent；析构时由 PyQt 自动断连）
         qconfig.themeChanged.connect(self._on_theme_changed)
+
+    def _window_rect(self) -> QRectF:
+        # 卡片在窗口坐标系的矩形：GL 画布铺整窗，场景几何一律窗口坐标——
+        # 嵌套布局下 geometry() 是父相对坐标，必须 mapTo 窗口换算（PL009 修正）
+        origin = self.mapTo(self.window(), QPoint(0, 0))
+        return QRectF(QPointF(origin), QSizeF(self.size()))
+
+    def _sync_geometry(self) -> None:
+        # 同步场景几何与可见性（show/hide/move/resize 驱动：布局期可能只触发其一）；
+        # GL 模式切页时隐藏页卡面剔除绘制（PL009.13）；首次调用时才注册
+        # （showEvent 时布局已收敛，rect 即窗口坐标终值）
+        if self._gl_mode:
+            sid = f"glass-card-{id(self)}"
+            if not self._registered:
+                SCENE.register(GlassSurface(
+                    surface_id=sid,
+                    rect=self._window_rect(),
+                    radius=float(self._radius),
+                ))
+                self._registered = True
+            else:
+                SCENE.update_geometry(sid, self._window_rect())
+            SCENE.set_visible(sid, self.isVisible())
+
+    def hideEvent(self, event) -> None:
+        # 切页隐藏：卡面从场景剔除（Qt 回调；重入显示由 showEvent 恢复）
+        self._sync_geometry()
+        super().hideEvent(event)
 
     def _on_theme_changed(self, theme: Theme) -> None:
         # 深浅切换：失效纹理缓存（重渲染惰性于 paintEvent）
@@ -389,16 +416,23 @@ class GlassCard(QWidget):
         painter.end()
         self._pix = QPixmap.fromImage(img)
 
+    def moveEvent(self, event) -> None:
+        # 移动同步场景几何（GL 模式；画布按窗口坐标绘制，位置变化即失配）
+        self._sync_geometry()
+        super().moveEvent(event)
+
+    def showEvent(self, event) -> None:
+        # 首次显示/切页重入时同步场景几何（布局期 mapTo 窗口坐标才收敛）
+        self._sync_geometry()
+        super().showEvent(event)
+
     def resizeEvent(self, event) -> None:
         # 尺寸变化失效纹理缓存（重渲染惰性于 paintEvent）；GL 模式同步场景几何；
         # Qt 回调防护：场景同步异常仅记录不上抛（超类调用在防护外，布局生命周期
         # 不受异常影响）
         try:
             self._pix = None
-            if self._gl_mode:
-                SCENE.update_geometry(
-                    f"glass-card-{id(self)}", QRectF(self.geometry())
-                )
+            self._sync_geometry()
         except Exception:  # noqa: BLE001 — 防御：几何同步失败不外抛（fail-fast 防护）
             logging.getLogger(__name__).exception("GlassCard 场景几何同步失败")
         super().resizeEvent(event)
@@ -455,6 +489,11 @@ class GlassCard(QWidget):
 #   纹理：对角 tint 渐变 + 渐变描边笔（顶部镜面高光→底部淡边；选中整圈强调色金），
 #   resize/主题变化失效重渲染，paintEvent 位块拷贝；按 DPR 渲染消缩放毛刺；
 #   柔投影效果弃用（QGraphicsDropShadowEffect 中间缓冲为圆角毛刺来源，T005 定案）
+#   __init__(interface, radius_key, gl_mode=None, parent): gl_mode 供页级控制/
+#   降级探针（None = 全局 gl_active 自动判定）；GL 模式注册 GlassSurface 进场景，
+#   几何以窗口坐标为准（_window_rect mapTo 换算，PL009 修正父相对坐标失配）
+#   _window_rect()/_sync_geometry(): 场景几何换算与同步（show/hide/move/resize
+#   四事件驱动；隐藏页卡面 set_visible(False) 剔除绘制，PL009.13）
 #   _render_texture: 卡片原点 origin 在函数前部统一定义（①透镜对位与②④受光采样
 #     共用，修复 field_pix 为 None 时 UnboundLocalError 隐患）
 #   resizeEvent/paintEvent: Qt 回调 try/except 全包——纹理失效与场景同步、卡面

@@ -1,7 +1,7 @@
 {
   "font_family": "Microsoft YaHei",
   "font_family_digits": "Bahnschrift",
-  "gl_enabled": false,
+  "gl_enabled": true,
   "scale": {
     "hero_time": 64,
     "page_title": 21,
@@ -11,8 +11,8 @@
   },
   "field": {
     "dark": {
-      "top": "#8C0D1322",
-      "bottom": "#8C090D16",
+      "top": "#230D1322",
+      "bottom": "#23090D16",
       "glow_a": "#4DE4B36A",
       "glow_a_x": 0.84,
       "glow_a_y": 0.0,
@@ -23,8 +23,8 @@
       "glow_b_r": 0.5
     },
     "light": {
-      "top": "#99E7EEF7",
-      "bottom": "#8CF2ECDC",
+      "top": "#2CE7EEF7",
+      "bottom": "#28F2ECDC",
       "glow_a": "#40C99A4E",
       "glow_a_x": 0.84,
       "glow_a_y": 0.0,
@@ -38,11 +38,13 @@
   "glass": {
     "dark": {
       "fill_from": "#16FFFFFF",
-      "lift": 8
+      "lift": 8,
+      "gl_lift": 26
     },
     "light": {
       "fill_from": "#C6FFFFFF",
-      "lift": 10
+      "lift": 10,
+      "gl_lift": 34
     }
   },
   "radius": {
@@ -54,6 +56,12 @@
     "page_margin": [24, 24, 24, 24],
     "page_spacing": 14,
     "nav_expanded_width": 160,
+    "nav_rail_width": 84,
+    "nav_pill_height": 62,
+    "nav_pill_spacing": 10,
+    "nav_pill_pad": 6,
+    "nav_icon_size": 24,
+    "nav_rail_margin_top": 56,
     "panel_margin": [4, 2, 4, 2],
     "card_padding": [16, 12, 16, 12],
     "clock_card_padding": [20, 14, 20, 12],

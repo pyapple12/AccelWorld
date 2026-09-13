@@ -31,6 +31,9 @@ from interface.types import Alarm
 from ui.audio_player import play_alarm_sound_async
 from ui.backdrop import enable_acrylic
 from ui.glass_card import render_field_pixmap
+from ui.gl.capability import gl_active
+from ui.gl.glass_canvas import GlassCanvas
+from ui.gl.glass_scene import SCENE
 from ui.system_tray import SystemTray
 from ui.panels.clock_panel import ClockPanel
 from ui.panels.date_panel import DatePanel
@@ -38,6 +41,7 @@ from ui.panels.countdown_panel import CountdownPanel
 from ui.panels.world_clock_panel import WorldClockPanel
 from ui.panels.weather_panel import WeatherPanel
 from ui.panels.alarm_panel import AlarmPanel
+from ui.panels.glass_nav import GlassNavRail
 from ui.panels.settings_panel import SettingsPanel
 
 # 主题偏好 → qfw Theme 映射与三态循环顺序（跟随系统 → 浅色 → 深色 → 跟随系统，PL002.03）
@@ -89,6 +93,29 @@ class AcceleratedWorldGUI(FluentWindow):
         self.theme_pref = prefs.theme
         self.is_dark_theme = bool(isDarkTheme())
         self._field_pix = None  # 光场缓存位图（resize/主题变化时重渲染，PL006.03）
+
+        # ------------------- GL 玻璃装配（PL009：gl_enabled × 环境探测与运算） -------------------
+        # 画布铺整窗最底层：光场 + 玻璃面着色器绘制，半透明输出透 DWM Acrylic；
+        # 装配兜底降级：GL 环境异常即回栅格（能力探测之外的最后一道网）
+        self._gl_mode = gl_active()
+        self._gl_canvas: GlassCanvas | None = None
+        self._nav_rail: GlassNavRail | None = None
+        if self._gl_mode:
+            try:
+                ui_static = interface.get_ui_static()
+                self._gl_canvas = GlassCanvas(
+                    SCENE, bool(self.is_dark_theme), ui_static["field"],
+                    self._colors["primary"], ui_static["glass"], parent=self,
+                )
+                self._gl_canvas.setGeometry(0, 0, self.width(), self.height())
+                self._gl_canvas.start()
+            except Exception:
+                logger.exception("GL 画布装配失败，回退栅格渲染")
+                self._gl_mode = False
+                if self._gl_canvas is not None:
+                    self._gl_canvas.deleteLater()
+                self._gl_canvas = None
+
         self._render_field()
 
         # ------------------- 面板装配（接口注入，单页拆多页，PL003.01） -------------------
@@ -104,50 +131,53 @@ class AcceleratedWorldGUI(FluentWindow):
         # 每页容器（统一页边距；addSubInterface 要求非空 objectName）
         page_tokens = interface.get_ui_static()["layout"]
         self._layout_tokens = page_tokens  # 导航展开宽度等延后触发布局所需（PL005.05）
-        # 时钟页序（热更新减法轮）：标准时计卡置顶 → 加速时间/倍率 → 农历 chips 行居底
-        self.addSubInterface(
-            self._make_page(
+        # 导航页规格表（顺序即 GL 药丸顺序；设置页置底由 position 表达，PL003.01）
+        # 时钟页序（热更新减法轮）：标准时计卡置顶 → 加速时间/倍率 → 农历 chips 行居底；
+        # GL 模式页左侧让位悬浮药丸栏（不占布局宽，右缘不裁切）
+        nav_pad = int(page_tokens["nav_rail_width"]) if self._gl_mode else 0
+        self._nav_specs: list[tuple[str, QWidget, Any, str, dict]] = [
+            ("page-clock", self._make_page(
                 "page-clock", page_tokens,
                 self.date_panel, self.clock_panel, self.date_panel.chips_host,
-            ),
-            FluentIcon.HOME,
-            "时钟",
-        )
-        self.addSubInterface(
-            self._make_page("page-countdown", page_tokens, self.countdown_panel),
-            FluentIcon.STOP_WATCH,
-            "倒计时",
-        )
-        self.addSubInterface(
-            self._make_page("page-world", page_tokens, self.world_clock_panel),
-            FluentIcon.GLOBE,
-            "世界时钟",
-        )
-        self.addSubInterface(
-            self._make_page("page-weather", page_tokens, self.weather_panel),
-            FluentIcon.CLOUD,
-            "天气",
-        )
-        self.addSubInterface(
-            self._make_page("page-alarm", page_tokens, self.alarm_panel),
-            FluentIcon.RINGER,
-            "闹钟",
-        )
-        self.addSubInterface(
-            self._make_page("page-settings", page_tokens, self.settings_panel),
-            FluentIcon.SETTING,
-            "设置",
-            position=NavigationItemPosition.BOTTOM,
-        )
+                left_extra=nav_pad,
+            ), FluentIcon.HOME, "时钟", {}),
+            ("page-countdown", self._make_page(
+                "page-countdown", page_tokens, self.countdown_panel,
+                left_extra=nav_pad,
+            ), FluentIcon.STOP_WATCH, "倒计时", {}),
+            ("page-world", self._make_page(
+                "page-world", page_tokens, self.world_clock_panel,
+                left_extra=nav_pad,
+            ), FluentIcon.GLOBE, "世界时钟", {}),
+            ("page-weather", self._make_page(
+                "page-weather", page_tokens, self.weather_panel,
+                left_extra=nav_pad,
+            ), FluentIcon.CLOUD, "天气", {}),
+            ("page-alarm", self._make_page(
+                "page-alarm", page_tokens, self.alarm_panel,
+                left_extra=nav_pad,
+            ), FluentIcon.RINGER, "闹钟", {}),
+            ("page-settings", self._make_page(
+                "page-settings", page_tokens, self.settings_panel,
+                left_extra=nav_pad,
+            ), FluentIcon.SETTING, "设置",
+             {"position": NavigationItemPosition.BOTTOM}),
+        ]
+        for _page_id, _page, _icon, _text, _kw in self._nav_specs:
+            self.addSubInterface(_page, _icon, _text, **_kw)
+
+        # GL 路径导航替换（PL009.01：唯一替换的 qfw 组件；栅格降级保留 qfw 导航）
+        if self._gl_mode and self._gl_canvas is not None:
+            self._setup_glass_navigation()
+        else:
+            # 导航常开（PL005.05）：延后到事件循环首拍（show 之后）触发；探针定案
+            # （.temp/probe_pl005_nav6）——__init__ 内 pre-show 调用会污染 qfw
+            # NavigationPanel 状态机（displayMode 卡 MENU，内容区不让位），show 后调用
+            # 则正常内联展开；窗口过窄时 qfw 自行走 MENU 覆盖模式，不顶开内容
+            QTimer.singleShot(0, self._expand_navigation)
 
         # 面板就绪后同步设置页选中态（auto=跟随系统/light/dark）
         self.settings_panel.sync_theme(self.theme_pref)
-
-        # 导航常开（PL005.05）：延后到事件循环首拍（show 之后）触发；探针定案
-        # （.temp/probe_pl005_nav6）——__init__ 内 pre-show 调用会污染 qfw
-        # NavigationPanel 状态机（displayMode 卡 MENU，内容区不让位），show 后调用
-        # 则正常内联展开；窗口过窄时 qfw 自行走 MENU 覆盖模式，不顶开内容
-        QTimer.singleShot(0, self._expand_navigation)
 
         # ------------------- 信号连接 -------------------
         self.clock_panel.rate_changed.connect(self._on_rate_changed)
@@ -190,16 +220,50 @@ class AcceleratedWorldGUI(FluentWindow):
         qconfig.themeChanged.connect(lambda *_: enable_acrylic(self))
         QTimer.singleShot(0, lambda: enable_acrylic(self))
 
+    def _setup_glass_navigation(self) -> None:
+        # GL 路径导航替换（PL009.01）：隐藏 qfw 导航（栅格降级才回归），玻璃药丸栏
+        # 悬浮于窗口左缘（不占布局宽度——插入布局会挤压固定尺寸内容致右缘裁切，
+        # 真机取证定案）；navigate 接现有 switchTo 逻辑——只换皮不换交互；
+        # 页面左侧留出药丸宽度（_make_page 的 GL 左让位），画布压到全部子控件之下
+        self._nav_rail = GlassNavRail(
+            self._interface,
+            [(page_id, icon, text)
+             for page_id, _, icon, text, _ in self._nav_specs],
+        )
+        self._nav_rail.navigate.connect(self._navigate_to)
+        self.navigationInterface.hide()
+        self._nav_rail.setParent(self)
+        self._nav_rail.move(0, 0)
+        self._nav_rail.raise_()
+        self._nav_rail.set_current(self._nav_specs[0][0])
+        self._gl_canvas.lower()
+
+    def _navigate_to(self, page_id: str) -> None:
+        # 玻璃药丸导航路径（PL009.01）：复用 switchTo 切页（stackedWidget 与
+        # qrouter 保持现有交互），并同步药丸选中态（qfw 高亮已隐藏无回写）
+        for spec_page_id, page, *_rest in self._nav_specs:
+            if spec_page_id == page_id:
+                self.switchTo(page)
+                break
+        if self._nav_rail is not None:
+            self._nav_rail.set_current(page_id)
+
     def _expand_navigation(self) -> None:
         # 导航图标+文字常开（PL005.05）：由 __init__ 的 singleShot(0) 在事件循环
-        # 首拍（show 之后）调用；展开宽度入 ui.json layout 节 token
+        # 首拍（show 之后）调用；展开宽度入 ui.json layout 节 token；
+        # GL 模式下 qfw 导航已隐藏（玻璃药丸栏接管），直接跳过
+        if self._gl_mode:
+            return
         self.navigationInterface.setExpandWidth(int(self._layout_tokens["nav_expanded_width"]))
         self.navigationInterface.expand(False)
 
     def _render_field(self) -> None:
         # 窗内光场纹理（PL006.03；T005 恢复原设计）：垂直线性底色 + 双径向光晕，
         # 按设备像素比渲染，半透明叠加于 Acrylic 之上（磨砂感来源）；
-        # 纹理预渲染为位图缓存，paintEvent 仅位块拷贝
+        # 纹理预渲染为位图缓存，paintEvent 仅位块拷贝；
+        # GL 模式跳过：光场由画布着色器绘制（同一 ui.json field 配色，PL009 装配）
+        if getattr(self, "_gl_canvas", None) is not None:
+            return
         self._field_pix = render_field_pixmap(
             max(self.width(), 1), max(self.height(), 1),
             self._interface.get_ui_static()["field"], bool(self.is_dark_theme),
@@ -208,8 +272,10 @@ class AcceleratedWorldGUI(FluentWindow):
         self.update()
 
     def resizeEvent(self, event) -> None:
-        # 窗口尺寸变化重渲染光场（先走 FluentWindow 原生布局事件）
+        # 窗口尺寸变化：GL 画布铺满整窗（先于光场重渲）；再走 FluentWindow 原生布局事件
         super().resizeEvent(event)
+        if getattr(self, "_gl_canvas", None) is not None:
+            self._gl_canvas.setGeometry(0, 0, self.width(), self.height())
         if hasattr(self, "_field_pix"):
             self._render_field()
 
@@ -223,13 +289,16 @@ class AcceleratedWorldGUI(FluentWindow):
         painter.end()
 
     @staticmethod
-    def _make_page(object_name: str, layout_tokens: dict, *widgets: QWidget) -> QWidget:
+    def _make_page(object_name: str, layout_tokens: dict, *widgets: QWidget,
+                   left_extra: int = 0) -> QWidget:
         # 包装导航页容器：统一页边距并设 objectName（addSubInterface 硬要求，PL003.01）；
-        # 边距/间距经 layout tokens（PL004.01）
+        # 边距/间距经 layout tokens（PL004.01）；GL 模式左侧加让位（悬浮药丸栏宽度）
         page = QWidget()
         page.setObjectName(object_name)
         page_layout = QVBoxLayout(page)
-        page_layout.setContentsMargins(*layout_tokens["page_margin"])
+        margins = list(layout_tokens["page_margin"])
+        margins[0] += left_extra
+        page_layout.setContentsMargins(*margins)
         page_layout.setSpacing(int(layout_tokens["page_spacing"]))
         for widget in widgets:
             # 显式顶锚（PL005.04）：页面容器不再与尾部 spacer 均分富余空间，
@@ -247,8 +316,13 @@ class AcceleratedWorldGUI(FluentWindow):
         setThemeColor(QColor(self._colors["primary"]))
         self.theme_pref = theme_pref
         self.is_dark_theme = bool(isDarkTheme())
-        self._render_field()  # 光场随主题重取深浅参数组（PL006.03）
+        self._render_field()  # 光场随主题重取深浅参数组（PL006.03；GL 模式内部跳过）
         enable_acrylic(self)  # 失败内部静默降级（无头/不支持环境）
+        # GL 联动（PL009.07）：画布配色重解析重上传 + 药丸图标文字色随深浅重取
+        if self._gl_canvas is not None:
+            self._gl_canvas.set_dark(bool(self.is_dark_theme))
+        if self._nav_rail is not None:
+            self._nav_rail.on_theme_changed()
         if getattr(self, "settings_panel", None) is not None:
             self.settings_panel.sync_theme(theme_pref)
 
@@ -267,12 +341,17 @@ class AcceleratedWorldGUI(FluentWindow):
 
     def _on_system_theme_changed(self) -> None:
         # 系统深浅色变更（侦听器线程信号）：AUTO 模式下重新解析生效主题并同步状态；
-        # 光场重渲染 + Acrylic 重铺（qfw 主题重应用会把背板重置回 2，PL006 定案补挂）
+        # 光场重渲染 + Acrylic 重铺（qfw 主题重应用会把背板重置回 2，PL006 定案补挂）；
+        # GL 联动同设置页路径（画布配色重解析 + 药丸图标重取，PL009.07）
         if self.theme_pref == "auto":
             setTheme(Theme.AUTO)
             self.is_dark_theme = bool(isDarkTheme())
             self._render_field()
             enable_acrylic(self)
+            if self._gl_canvas is not None:
+                self._gl_canvas.set_dark(bool(self.is_dark_theme))
+            if self._nav_rail is not None:
+                self._nav_rail.on_theme_changed()
 
     # ------------------- 时钟调度 -------------------
 
@@ -468,6 +547,16 @@ def main_gui(interface: AppInterface, **kwargs: Any) -> None:
 #   → SystemThemeListener（AUTO 深浅跟随，PL002.10）
 #   设计理由：窗口自身零后端 import（后端访问全部经 self._interface，PL001.08 保持）；
 #   深浅样式由 qfw 内建；Acrylic 背板经 ui/backdrop.py（PL003.03，随主题重铺）
+#   GL 装配（PL009）：__init__ 主题段后 gl_active() 判定——GL 画布铺整窗最底层
+#   （lower，光场+玻璃面着色器绘制，半透明输出透 DWM Acrylic），装配异常兜底回栅格；
+#   导航页规格表 _nav_specs 驱动 addSubInterface 装配（顺序即药丸顺序）；
+#   _setup_glass_navigation(): qfw 导航隐藏 + GlassNavRail 入布局最左 +
+#   navigate→_navigate_to（复用 switchTo 切页并同步药丸选中态，只换皮不换交互）；
+#   _navigate_to(page_id): 药丸导航路径（PL009.01）
+#   _render_field()/resizeEvent(): GL 模式下光场位图跳过（画布着色器接管），
+#   画布随窗口铺满；_expand_navigation() GL 模式跳过（qfw 导航已隐藏）；
+#   _apply_theme_preference()/_on_system_theme_changed(): GL 联动
+#   canvas.set_dark（配色重解析）+ rail.on_theme_changed（图标文字重取，PL009.07）
 #   _make_page(object_name, layout_tokens, *widgets): 导航页容器工厂（统一页边距 +
 #   objectName 硬要求；PL005.04 显式 AlignTop 顶锚，消除内容锚点漂移）
 #   _expand_navigation(): 导航图标+文字常开（PL005.05，singleShot(0) 延后到 show 后；
