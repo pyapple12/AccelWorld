@@ -4,7 +4,7 @@
 
 ## 运行与验证
 
-- 入口 `main.py`：GUI 为默认模式，CLI 用 `--cli`；版本号单一来源在 `config/static/base.json`（`base["version"]`，当前 `0.5.6.2`），各模块（main.py --version/窗口标题/托盘 toolTip）一律从配置读取，代码中不得出现版本字符串
+- 入口 `main.py`：GUI 为默认模式，CLI 用 `--cli`；版本号单一来源在 `config/static/base.json`（`base["version"]`，当前 `0.6.0.0`），各模块（main.py --version/窗口标题/托盘 toolTip）一律从配置读取，代码中不得出现版本字符串
 - **版本体系**（2026-09-10 切换）：自 `0.4.7.0` 起启用四段式纯数字 `X.Y.Z.P`（无 `ver ` 前缀）；历史存量 `ver 0.4x` 为旧三段式带前缀格式，仅存留于历史文档与提交记录，不回溯改写
 - 没有测试/lint 命令。改动后验证：`.\.venv\Scripts\python.exe -c "import main, modules.time_dilation, modules.chinese_calendar, modules.weather_service, modules.alarm_service, config.settings, config.static.static_config, ui.main_window, ui.alarm_dialog, ui.audio_player, ui.system_tray, data.cities, data.timezones, data.weather_codes, utils.logger, utils.file_utils, utils.retry, interface, ui.tools.countdown_tools, ui.tools.clock_tools, ui.tools.alarm_text"`。不要直接跑 GUI 验证（会弹窗阻塞）
 - GUI 无头初始化验证（不弹窗）：`$env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWidgets import QApplication; from interface import AppInterface; from ui.main_window import AcceleratedWorldGUI; app = QApplication([]); w = AcceleratedWorldGUI(AppInterface()); print('GUI init OK')"`（进程退出码可能为已知退出期崩溃所污染，以 stdout 输出为准）
@@ -23,6 +23,15 @@
 - 代码零硬编码原则：业务参数（倍率范围/默认值/定时器周期/窗口几何/字体颜色/日志路径等）全部从 `config/static/` 的 json 读取（`get_static_config()` 单例，映射表 config.json 由 static_config.py 的 `__file__` 自定位——唯一结构约定）；用户配置默认值经 `default_factory` 从 base.json 现取
 - **自绘圆弧留边**（2026-09-12 定案）：自绘圆/圆弧与控件裁剪边界相切时，抗锯齿会把切点处的圆弧量化成平边（125% 缩放等非整数 DPR 下更明显）。自绘圆形/圆弧元素的控件须比可见图形四周各大 ≥1px 透明边距，定位偏移同步计入——参照 `ui/glass_card.py` CapsuleSlider 的 `TRACK_PAD` 模式（杆子/橙槽/旋钮三层同心几何）与 `ui/system_tray.py` 托盘图标的 2px 边距；玻璃卡自身圆角为容器轮廓、属固有贴边，不适用
 - **Qt 回调必须 try/except 防护**（2026-09-13 定案）：paintGL/paintEvent/resizeEvent 等 Qt 回调内抛出的未捕获 Python 异常会触发 PyQt6 fail-fast 直接终止进程（0xC0000409，零输出）。所有回调主体必须有 try/except 包裹，异常降级为纯色/跳过绘制 + logger.error，绝不外抛。与显卡无关
+- **GL 渲染约定**（2026-09-13 PL010 定案，`ui/gl/` 链路通用）：
+  - **预乘 alpha**：Qt 合成 QOpenGLWidget 假定 FBO 内容为 premultiplied——shader 输出必须 `gl_FragColor = vec4(col*alpha, alpha)`，直通色会以满亮覆盖背板（Acrylic 全灭的历史根因）
+  - **uv 归一化空间**：着色器距离场/效果参数一律 uv 口径（u_rect/radius 注入前除以分辨率）；设备像素量纲会使 rim/折射参数失效数百倍。SDF 须乘 `vec2(aspect,1)` 纵横比校正（否则圆角椭圆化）
+  - **覆盖判向**：`cov`/`outside` 以 `d` 判向（d<0 面内）；`-d` 写法曾致面内外整体颠倒（玻璃失效主根因）
+  - **场景生命周期**：GlassCard 注册延迟到首次 showEvent；销毁必须显式 `SCENE.unregister`（setItemWidget 场景 destroyed 信号延迟不可靠）；隐藏页以 visible=False 剔除绘制；面数上限 16
+  - **重绘调度**：场景 touch → repaint_hook 直连画布 update（FIX004.7）+ 150ms 轮询兜底脏检查；静态期零重绘；改 touch/update 通路必须跑帧数断言探针（`update()` 在 QOpenGLWidget 有节流陷阱，须探针实证）
+  - **glow_y 语义**：ui.json 的 glow_y 为 uv 底原点直传（GL 定稿观感基准）；栅格路径消费时 1-y 换算
+  - **质量门**：任何 GL 观感/管线改动须过真机渲染断言探针（FBO 分区采样量化阈值）再进人工走查——功能探针抓不住纯视觉缺陷
+  - **能力探测**：gl_enabled（ui.json）× gl_available（非远程桌面 + 离屏上下文创建 + 版本 ≥2.1）与运算；GL 失败逐级降级栅格且行为无损
 - `main.py` 收编 CLI/GUI 分发与版本读取；模块间顶层 import，不要使用函数内延迟 import
 - 提交信息规范见下文「Commit 提交规范」节；功能开发先走 OpenSpec 提案流程
 - 工作流文档四件套（2026-09-10 接入 DeepTransHub 工作流体系）：`w.study.md` 项目分析报告 / `x.progress.md` 任务清单（已完成在前、未完成在后；审计修复组 `FIX{NNN}`）/ `y.problems.md` 已知问题 / `z.plan.md` 方案记录与审计附录（含豁免定案清单，附录 `A{NNN}` 递增）；另有 `m.milestone.md` 版本里程碑清单

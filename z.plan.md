@@ -135,48 +135,48 @@
 
 ### ① 永久豁免（不再讨论）
 
-| 文件:行号 | 描述 | 定案理由 | 定案日期 |
-| --------- | ---- | -------- | -------- |
+| 文件:行号                        | 描述                                                                           | 定案理由                                                                                                        | 定案日期   |
+| -------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- | ---------- |
 | modules/alarm_service.py:193-196 | 闹钟触发去重键 \_last_triggered 仅内存不持久化（同分钟内重启理论可重复响一次） | 单实例桌面应用；去重键含日期维度，触发窗口极窄（仅"精确触发分钟内重启"）；代码注释已声明接受（FIX001.21 P3#15） | 2026-09-11 |
-| utils/monitor.py | crash 日志文件名取启动日，跨天运行归档日期有差 | 纯日志归属，无可达危害（四轮复核零变化） | 2026-09-13 |
-| modules/weather_service.py | DNS rebinding TOCTOU | 固定官方域名，代码注释显式声明接受（四轮复核零变化） | 2026-09-13 |
-| modules/weather_service.py:32 | \_weather_cache 无锁 | GIL 下原子，最坏重复请求一次（三轮复核零变化） | 2026-09-13 |
-| modules/chinese_calendar.py | lunar-python 异常直接上抛不包装 | 符合窄捕获上抛策略，上层有单轮兜底（三轮复核零变化） | 2026-09-13 |
-| modules/alarm_service.py | enabled 双重检查 | 无害冗余防御（四轮复核零变化） | 2026-09-13 |
-| utils/monitor.py | 重复 install_crash_handler 窗口期旧 fd 失效 | main.py 单点装配，无可达触发路径 | 2026-09-13 |
-| utils/monitor.py:71-74 | Qt 消息回调 \_handler 无 try/except | 回调体仅安全属性访问 + logger.log（logging 内部自吞异常） | 2026-09-13 |
-| utils/monitor.py:11-12 | utils 层 import PyQt6（与分层先例有张力） | 代码有注释论证，无运行时影响（三轮复核零变化） | 2026-09-13 |
-| modules/weather_service.py | 重定向被拒后按网络错误重试（约 2s 浪费） | 官方接口正常不重定向（三轮复核零变化） | 2026-09-13 |
-| utils/file_utils.py | 临时目录整目录放行超出最小写入面 | 有注释依据（pytest 隔离豁免，三轮复核零变化） | 2026-09-13 |
-| ui/panels/clock_panel.py | QPropertyAnimation 每 tick stop/start | T004.3 既有设计取向，单线程无竞态收敛正确（四轮复核零变化） | 2026-09-13 |
-| ui/glass_card.py | 卡片 resize 全量重渲染纹理 | T005 定案取向，缩放非高频（三轮复核零变化） | 2026-09-13 |
-| ui/glass_card.py | \_posToValue 值映射域与视觉行程域 2px 偏差 | 绘制几何细节，用户定案视觉优先（三轮复核零变化） | 2026-09-13 |
-| ui/main_window.py | 窗口隐藏托盘后快捷键失效 | Qt WindowShortcut 机制固有，托盘菜单有等效入口（三轮复核零变化） | 2026-09-13 |
-| main.py | 未设 QApplication.applicationName | 外观类（四轮复核零变化） | 2026-09-13 |
-| utils/logger.py | 重开失败期每次 emit 重试的开销 | 注释声明"自动重试直至恢复"设计取向；INFO 低频（三轮复核零变化） | 2026-09-13 |
-| utils/file_utils.py | 原子写无 fsync，掉电丢最近一次保存 | 桌面应用可接受（三轮复核零变化） | 2026-09-13 |
-| modules/alarm_service.py | replace_alarm 不清理同 id 去重键 | 编辑保留原 id，去重键仍有效，本就无需清理（2026-09-13 调查定案） | 2026-09-13 |
-| ui/audio_player.py | QMediaPlayer/QAudioOutput 引用滞留与 GC 疑虑 | A002 探针证伪（C++ 侧持引用），记录防复发 | 2026-09-13 |
-| ui/panels/alarm_panel.py | refresh_list 在信号栈内 clear+重建 | FIX004.1 后清空前显式注销场景面，较原行为更安全；Qt 延迟删除实践安全 | 2026-09-13 |
-| modules/chinese_calendar.py | 干支按立春分界 | 库默认口径，民俗流派选择（两轮复核零变化） | 2026-09-13 |
-| modules/alarm_service.py | 哔声 duration=200 硬编码 | 单次使用常量，有注释依据（两轮复核零变化） | 2026-09-13 |
-| 各级 \_\_init\_\_.py | 空文件无说明区 | 空包标记，历轮未列 | 2026-09-13 |
-| ui/gl/glass_canvas.py:53-55 | 场景脏轮询 QTimer 启动后无 stop（隐藏期空转） | 空闲期仅布尔比较，开销可忽略 | 2026-09-13 |
-| ui/gl/glass_canvas.py:134 | monotonic % 3600 每小时呼吸相位跳变一次 | hover 呼吸可见性极低 | 2026-09-13 |
-| ui/gl/shaders.py | 材质微调常量（云雾/rim/bezel/spec/投影/色散错位/veil/alpha 档） | GLSL 材质参数，有注释依据，非业务配色 | 2026-09-13 |
+| utils/monitor.py                 | crash 日志文件名取启动日，跨天运行归档日期有差                                 | 纯日志归属，无可达危害（四轮复核零变化）                                                                        | 2026-09-13 |
+| modules/weather_service.py       | DNS rebinding TOCTOU                                                           | 固定官方域名，代码注释显式声明接受（四轮复核零变化）                                                            | 2026-09-13 |
+| modules/weather_service.py:32    | \_weather_cache 无锁                                                           | GIL 下原子，最坏重复请求一次（三轮复核零变化）                                                                  | 2026-09-13 |
+| modules/chinese_calendar.py      | lunar-python 异常直接上抛不包装                                                | 符合窄捕获上抛策略，上层有单轮兜底（三轮复核零变化）                                                            | 2026-09-13 |
+| modules/alarm_service.py         | enabled 双重检查                                                               | 无害冗余防御（四轮复核零变化）                                                                                  | 2026-09-13 |
+| utils/monitor.py                 | 重复 install_crash_handler 窗口期旧 fd 失效                                    | main.py 单点装配，无可达触发路径                                                                                | 2026-09-13 |
+| utils/monitor.py:71-74           | Qt 消息回调 \_handler 无 try/except                                            | 回调体仅安全属性访问 + logger.log（logging 内部自吞异常）                                                       | 2026-09-13 |
+| utils/monitor.py:11-12           | utils 层 import PyQt6（与分层先例有张力）                                      | 代码有注释论证，无运行时影响（三轮复核零变化）                                                                  | 2026-09-13 |
+| modules/weather_service.py       | 重定向被拒后按网络错误重试（约 2s 浪费）                                       | 官方接口正常不重定向（三轮复核零变化）                                                                          | 2026-09-13 |
+| utils/file_utils.py              | 临时目录整目录放行超出最小写入面                                               | 有注释依据（pytest 隔离豁免，三轮复核零变化）                                                                   | 2026-09-13 |
+| ui/panels/clock_panel.py         | QPropertyAnimation 每 tick stop/start                                          | T004.3 既有设计取向，单线程无竞态收敛正确（四轮复核零变化）                                                     | 2026-09-13 |
+| ui/glass_card.py                 | 卡片 resize 全量重渲染纹理                                                     | T005 定案取向，缩放非高频（三轮复核零变化）                                                                     | 2026-09-13 |
+| ui/glass_card.py                 | \_posToValue 值映射域与视觉行程域 2px 偏差                                     | 绘制几何细节，用户定案视觉优先（三轮复核零变化）                                                                | 2026-09-13 |
+| ui/main_window.py                | 窗口隐藏托盘后快捷键失效                                                       | Qt WindowShortcut 机制固有，托盘菜单有等效入口（三轮复核零变化）                                                | 2026-09-13 |
+| main.py                          | 未设 QApplication.applicationName                                              | 外观类（四轮复核零变化）                                                                                        | 2026-09-13 |
+| utils/logger.py                  | 重开失败期每次 emit 重试的开销                                                 | 注释声明"自动重试直至恢复"设计取向；INFO 低频（三轮复核零变化）                                                 | 2026-09-13 |
+| utils/file_utils.py              | 原子写无 fsync，掉电丢最近一次保存                                             | 桌面应用可接受（三轮复核零变化）                                                                                | 2026-09-13 |
+| modules/alarm_service.py         | replace_alarm 不清理同 id 去重键                                               | 编辑保留原 id，去重键仍有效，本就无需清理（2026-09-13 调查定案）                                                | 2026-09-13 |
+| ui/audio_player.py               | QMediaPlayer/QAudioOutput 引用滞留与 GC 疑虑                                   | A002 探针证伪（C++ 侧持引用），记录防复发                                                                       | 2026-09-13 |
+| ui/panels/alarm_panel.py         | refresh_list 在信号栈内 clear+重建                                             | FIX004.1 后清空前显式注销场景面，较原行为更安全；Qt 延迟删除实践安全                                            | 2026-09-13 |
+| modules/chinese_calendar.py      | 干支按立春分界                                                                 | 库默认口径，民俗流派选择（两轮复核零变化）                                                                      | 2026-09-13 |
+| modules/alarm_service.py         | 哔声 duration=200 硬编码                                                       | 单次使用常量，有注释依据（两轮复核零变化）                                                                      | 2026-09-13 |
+| 各级 \_\_init\_\_.py             | 空文件无说明区                                                                 | 空包标记，历轮未列                                                                                              | 2026-09-13 |
+| ui/gl/glass_canvas.py:53-55      | 场景脏轮询 QTimer 启动后无 stop（隐藏期空转）                                  | 空闲期仅布尔比较，开销可忽略                                                                                    | 2026-09-13 |
+| ui/gl/glass_canvas.py:134        | monotonic % 3600 每小时呼吸相位跳变一次                                        | hover 呼吸可见性极低                                                                                            | 2026-09-13 |
+| ui/gl/shaders.py                 | 材质微调常量（云雾/rim/bezel/spec/投影/色散错位/veil/alpha 档）                | GLSL 材质参数，有注释依据，非业务配色                                                                           | 2026-09-13 |
 
 ### ② 条件豁免（触发条件变化时重新评估）
 
-| 文件:行号 | 描述 | 触发条件 | 定案日期 |
-| --------- | ---- | -------- | -------- |
-| utils/dataclass_utils.py:35-36 | 未知注解形态放行（未来新字段类型可能绕过过滤） | 新增非基础类型字段（date/嵌套 dataclass 等）时重评 | 2026-09-13 |
-| utils/dataclass_utils.py | get_type_hints 每次 from_dict 重解析 | 字段类型多样化致实测卡顿时重评 | 2026-09-13 |
-| utils/file_utils.py:61 | tmp 文件名仅 pid，同进程双线程写同路径竞态 | 引入多进程/多线程写同一配置文件时重评 | 2026-09-13 |
-| config/settings.py:102-106 | save 的 json.dumps TypeError 穿透（仅捕 ValueError/OSError） | 配置值允许出现不可序列化对象时重评 | 2026-09-13 |
-| config/static/static_config.py:27-33 | config.json 额外分类静默丢弃 | 新增配置分类需被消费时重评 | 2026-09-13 |
-| modules/time_dilation.py:79 | tick 下限钳 1ms 仅当 rate>1000 可达 | rate_max 配置 >1000 时重评 | 2026-09-13 |
-| config/settings.py | get_alarms 浅拷贝仅隔离外层，内层 dict 共享引用 | 出现对内层 dict 的写路径时重评 | 2026-09-13 |
-| ui/gl/shaders.py:78 | r_cap 量纲混合（y 基准半径 vs x 基准宽度） | 玻璃面半径 > 半窗宽时可达（当前胶囊 r=h/2 不可达） | 2026-09-13 |
+| 文件:行号                            | 描述                                                         | 触发条件                                           | 定案日期   |
+| ------------------------------------ | ------------------------------------------------------------ | -------------------------------------------------- | ---------- |
+| utils/dataclass_utils.py:35-36       | 未知注解形态放行（未来新字段类型可能绕过过滤）               | 新增非基础类型字段（date/嵌套 dataclass 等）时重评 | 2026-09-13 |
+| utils/dataclass_utils.py             | get_type_hints 每次 from_dict 重解析                         | 字段类型多样化致实测卡顿时重评                     | 2026-09-13 |
+| utils/file_utils.py:61               | tmp 文件名仅 pid，同进程双线程写同路径竞态                   | 引入多进程/多线程写同一配置文件时重评              | 2026-09-13 |
+| config/settings.py:102-106           | save 的 json.dumps TypeError 穿透（仅捕 ValueError/OSError） | 配置值允许出现不可序列化对象时重评                 | 2026-09-13 |
+| config/static/static_config.py:27-33 | config.json 额外分类静默丢弃                                 | 新增配置分类需被消费时重评                         | 2026-09-13 |
+| modules/time_dilation.py:79          | tick 下限钳 1ms 仅当 rate>1000 可达                          | rate_max 配置 >1000 时重评                         | 2026-09-13 |
+| config/settings.py                   | get_alarms 浅拷贝仅隔离外层，内层 dict 共享引用              | 出现对内层 dict 的写路径时重评                     | 2026-09-13 |
+| ui/gl/shaders.py:78                  | r_cap 量纲混合（y 基准半径 vs x 基准宽度）                   | 玻璃面半径 > 半窗宽时可达（当前胶囊 r=h/2 不可达） | 2026-09-13 |
 
 ---
 
@@ -555,13 +555,13 @@ Acrylic 技术要点：
 
 主会话全局 grep + 三路子审计 `git show dd16497` 逐 hunk 对比。
 
-| A003 条目 | 现状 | 证据 |
-|---|---|---|
-| P0-1 春节三段解析 / P0-3 world_pins | ✅ 在位 | countdown_panel.py:205-213；settings.py:62-65 |
-| P0-2 超大 int isfinite | ⚠️ dataclass 层在位但**崩溃链位移**：app_interface.py:43 `float(saved_rate)` 抛 OverflowError 穿透 except(TypeError, ValueError)（→ 一、P1-2） | dataclass_utils.py:34-36；app_interface.py:43-44 |
-| P1-1 日长口径 / P1-3 天气 force / P1-4 replace 去重 / P1-5 created_at / P1-7 转存白名单 | ✅ 在位 | time_dilation.py:62,128；app_interface.py:110-115；alarm_service.py:239,156；settings.py:97-99 |
-| P2-1 死键 / P2-3 log_level / P3 各批次 | ✅ 在位；P2-1 有残留死键 rate_presets（→ P2-6）、interface 说明区漏改（→ P3-6） | main.py:22；base.json:6；app_interface.py:234,238-239 |
-| A003 观察项 glass_card origin 条件绑定 | ✅ 已消除 | glass_card.py:350 提前定义 |
+| A003 条目                                                                               | 现状                                                                                                                                           | 证据                                                                                           |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| P0-1 春节三段解析 / P0-3 world_pins                                                     | ✅ 在位                                                                                                                                        | countdown_panel.py:205-213；settings.py:62-65                                                  |
+| P0-2 超大 int isfinite                                                                  | ⚠️ dataclass 层在位但**崩溃链位移**：app_interface.py:43 `float(saved_rate)` 抛 OverflowError 穿透 except(TypeError, ValueError)（→ 一、P1-2） | dataclass_utils.py:34-36；app_interface.py:43-44                                               |
+| P1-1 日长口径 / P1-3 天气 force / P1-4 replace 去重 / P1-5 created_at / P1-7 转存白名单 | ✅ 在位                                                                                                                                        | time_dilation.py:62,128；app_interface.py:110-115；alarm_service.py:239,156；settings.py:97-99 |
+| P2-1 死键 / P2-3 log_level / P3 各批次                                                  | ✅ 在位；P2-1 有残留死键 rate_presets（→ P2-6）、interface 说明区漏改（→ P3-6）                                                                | main.py:22；base.json:6；app_interface.py:234,238-239                                          |
+| A003 观察项 glass_card origin 条件绑定                                                  | ✅ 已消除                                                                                                                                      | glass_card.py:350 提前定义                                                                     |
 
 **结论：十八项修复 17 项完好在位，1 项位移未消除（升格本轮 P1-2）。**
 
@@ -569,41 +569,41 @@ Acrylic 技术要点：
 
 #### P1（确定性缺陷，均有代码实证）
 
-| # | 文件:行号 | 类型 | 描述 | 建议 | 性质 | 影响面 |
-|---|---|---|---|---|---|---|
-| 1 | ui/glass_card.py（全类）+ ui/gl/glass_scene.py:33-35 + ui/panels/alarm_panel.py:78-85 | 1+5+9 | GL 模式 GlassCard 销毁不注销场景 → 幽灵玻璃面累积：全仓零调用 SCENE.unregister；闹钟页每次 refresh_list（开关/增删/编辑）clear() 销毁行卡重建，旧 GlassSurface 以旧 rect、visible=True 残留每帧绘制；闹钟上限 10 + 药丸 6 = 16 恰满 _MAX_SURFACES，一次刷新即超限截断——幽灵面保留、新行卡反被剔除渲染（gl_enabled 默认 true，确定性复现） | GlassCard 接销毁生命周期调 SCENE.unregister（destroyed 信号或宿主清理钩子） | 新增（PL009 引入注册未接销毁） | GL 模式闹钟页/动态卡 |
-| 2 | interface/app_interface.py:43（except :44） | 1+2 | 超大 int 崩溃链位移未消除：float(saved_rate) 抛 OverflowError 穿透 except (TypeError, ValueError) → 手改 user_config 即 GUI 启动确定性崩溃（子审计实证） | except 补 OverflowError + 更正 tests/test_settings.py:200-204 失实断言并补接口层用例 | 新增（dd16497 修复不完整） | GUI 启动/配置体系 |
-| 3 | modules/chinese_calendar.py:194 + ui/panels/date_panel.py:15-16,80-87 | 1+11 | 月相 chip 全年显示"蛾眉新月 拜"：modules 拼接"月相：X 拜财神：Y"，date_panel 以"财神："拆分命中"拜财神："内部，月相值捕获尾字"拜"（探针实证每天可见） | modules 侧去"拜"字（最小改）或根治走 LunarInfo 结构化 DTO | 遗留（A003 P1-2 修复不彻底） | 日期页农历 chip |
+| #   | 文件:行号                                                                             | 类型  | 描述                                                                                                                                                                                                                                                                                                                                       | 建议                                                                                 | 性质                           | 影响面               |
+| --- | ------------------------------------------------------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------ | -------------------- |
+| 1   | ui/glass_card.py（全类）+ ui/gl/glass_scene.py:33-35 + ui/panels/alarm_panel.py:78-85 | 1+5+9 | GL 模式 GlassCard 销毁不注销场景 → 幽灵玻璃面累积：全仓零调用 SCENE.unregister；闹钟页每次 refresh_list（开关/增删/编辑）clear() 销毁行卡重建，旧 GlassSurface 以旧 rect、visible=True 残留每帧绘制；闹钟上限 10 + 药丸 6 = 16 恰满 \_MAX_SURFACES，一次刷新即超限截断——幽灵面保留、新行卡反被剔除渲染（gl_enabled 默认 true，确定性复现） | GlassCard 接销毁生命周期调 SCENE.unregister（destroyed 信号或宿主清理钩子）          | 新增（PL009 引入注册未接销毁） | GL 模式闹钟页/动态卡 |
+| 2   | interface/app_interface.py:43（except :44）                                           | 1+2   | 超大 int 崩溃链位移未消除：float(saved_rate) 抛 OverflowError 穿透 except (TypeError, ValueError) → 手改 user_config 即 GUI 启动确定性崩溃（子审计实证）                                                                                                                                                                                   | except 补 OverflowError + 更正 tests/test_settings.py:200-204 失实断言并补接口层用例 | 新增（dd16497 修复不完整）     | GUI 启动/配置体系    |
+| 3   | modules/chinese_calendar.py:194 + ui/panels/date_panel.py:15-16,80-87                 | 1+11  | 月相 chip 全年显示"蛾眉新月 拜"：modules 拼接"月相：X 拜财神：Y"，date_panel 以"财神："拆分命中"拜财神："内部，月相值捕获尾字"拜"（探针实证每天可见）                                                                                                                                                                                      | modules 侧去"拜"字（最小改）或根治走 LunarInfo 结构化 DTO                            | 遗留（A003 P1-2 修复不彻底）   | 日期页农历 chip      |
 
 #### P2（确定性显示不一致/功能失效）
 
-| # | 文件:行号 | 类型 | 描述 | 建议 | 性质 | 影响面 |
-|---|---|---|---|---|---|---|
-| 1 | ui/glass_card.py:291-296 | 1 | 世界时钟选中金描边 GL 失效：set_selected 只失效栅格 _pix；GL 模式 paintEvent 直接 return，场景面 selected 恒 0 | set_selected 在 gl_mode 下写场景面 selected + touch | 新增 | GL 世界时钟页 |
-| 2 | ui/panels/glass_nav.py:178-183 + ui/main_window.py:238 | 1 | 药丸初始选中态丢失：装配期 set_current 时药丸未注册，强度无处落；首次注册不回填 _selected → 启动时时钟药丸无金描边 | _sync_geometry 注册时回填 selected | 新增 | GL 导航 |
-| 3 | config/static/base.json:22 + countdown_panel.py:205-213 | 1 | 春节 chip 2027-02-06 过期后确定性错值：顺延逻辑使 2027 年末点击设 2028-02-06，实测 2028 春节为 01-26 | 登记年末数据维护；根治 lunar 库派生 | 新增（时间门控） | 倒计时面板 |
-| 4 | ui/gl/capability.py:39 | 1+2 | makeCurrent(...) is not None 恒真（PyQt6 返回 bool）→ 探测层误报可用，靠画布降级兜底 | bool(ctx.makeCurrent(surface)) | 新增 | GL 能力探测 |
-| 5 | ui/panels/glass_nav.py:18,111 + ui/gl/glass_canvas.py:29 | 1+9 | hover 呼吸实际 ~6.7fps：药丸 33ms touch 但画布 150ms 轮询重绘，帧率错配 | 呼吸期缩短轮询或 touch 直连 update | 新增 | GL hover 观感 |
-| 6 | config/static/base.json:6 | 12 | rate_presets 死键残留（get_rate_presets 已删） | 删除 | A003 P2-1 遗留 | 配置体系 |
+| #   | 文件:行号                                                | 类型 | 描述                                                                                                                | 建议                                                | 性质             | 影响面        |
+| --- | -------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ---------------- | ------------- |
+| 1   | ui/glass_card.py:291-296                                 | 1    | 世界时钟选中金描边 GL 失效：set_selected 只失效栅格 \_pix；GL 模式 paintEvent 直接 return，场景面 selected 恒 0     | set_selected 在 gl_mode 下写场景面 selected + touch | 新增             | GL 世界时钟页 |
+| 2   | ui/panels/glass_nav.py:178-183 + ui/main_window.py:238   | 1    | 药丸初始选中态丢失：装配期 set_current 时药丸未注册，强度无处落；首次注册不回填 \_selected → 启动时时钟药丸无金描边 | \_sync_geometry 注册时回填 selected                 | 新增             | GL 导航       |
+| 3   | config/static/base.json:22 + countdown_panel.py:205-213  | 1    | 春节 chip 2027-02-06 过期后确定性错值：顺延逻辑使 2027 年末点击设 2028-02-06，实测 2028 春节为 01-26                | 登记年末数据维护；根治 lunar 库派生                 | 新增（时间门控） | 倒计时面板    |
+| 4   | ui/gl/capability.py:39                                   | 1+2  | makeCurrent(...) is not None 恒真（PyQt6 返回 bool）→ 探测层误报可用，靠画布降级兜底                                | bool(ctx.makeCurrent(surface))                      | 新增             | GL 能力探测   |
+| 5   | ui/panels/glass_nav.py:18,111 + ui/gl/glass_canvas.py:29 | 1+9  | hover 呼吸实际 ~6.7fps：药丸 33ms touch 但画布 150ms 轮询重绘，帧率错配                                             | 呼吸期缩短轮询或 touch 直连 update                  | 新增             | GL hover 观感 |
+| 6   | config/static/base.json:6                                | 12   | rate_presets 死键残留（get_rate_presets 已删）                                                                      | 删除                                                | A003 P2-1 遗留   | 配置体系      |
 
 #### P3（卫生/规范/防御）
 
-| # | 文件:行号 | 类型 | 描述 | 性质 |
-|---|---|---|---|---|
-| 1 | modules/alarm_service.py:138-145 | 1 | 过期一次性闹钟（关机跨过触发时刻）永久死条目不清理 | 新增 |
-| 2 | modules/alarm_service.py:287-299 | 2 | from_dict_list 装载不校验 max_alarms 上限（与 add 路径不一致） | 新增 |
-| 3 | ui/main_window.py:282-289 | 2+13 | 窗口 paintEvent 无 try/except（防护矩阵应一致；_field_pix 赋值 :95 早于首帧，触发路径当前不可达） | 新增 |
-| 4 | ui/glass_card.py + ui/panels/glass_nav.py | 2+13 | 回调防护矩阵不一致（仅 resize/paint 有 try/except，hide/show/move/enter/leave 无），与 AGENTS 约定口径需统一或定案豁免 | 新增 |
-| 5 | ui/gl/glass_canvas.py:161-165 + shaders.py:50 vs glass_card.py:372 | 1 | 光晕 y 语义双径镜像：栅格 Qt 顶原点 / GL 底原点直传，同一配置键两径观感颠倒 | 新增（返工只对齐 GL 单径） |
-| 6 | interface/app_interface.py:234,238-239 | 6 | 说明区引用已删方法、fetch_weather 签名漏 force | 新增（dd16497 残留） |
-| 7 | ui/gl/glass_canvas.py:211,216-218 + glass_nav.py:201-202 | 6 | 说明区失实三处（"长度 8"实为 16 / init 签名漏 glass_tokens / _rail_navigate 已不存在） | 新增 |
-| 8 | ui/gl/glass_scene.py:33 + glass_nav.py:183-190 | 5 | 死代码：unregister 零调用（P1-1 修复后转正）、pill_for_page 零调用 | 新增 |
-| 9 | ui/gl/capability.py:34-41 | 2 | 探测未按 PL008 定案校验 GL 版本 ≥2.1 | 新增 |
-| 10 | tests/test_gui_features.py:17-67 | 10+12 | GL 链路零测试覆盖；子进程未固定 ACCELWORLD_FORCE_NO_GL，回归路径随机器漂移 | 新增 |
-| 11 | modules/alarm_service.py:106,117-118 | 4 | HH:MM 归一化两处重复实现 | 新增 |
-| 12 | modules/alarm_service.py:10 + weather_service.py:15 | 6 | 旧式 List/Dict/Optional 注解与全仓风格不一致 | 遗留（FIX003 未覆盖） |
-| 13 | modules/chinese_calendar.py:144,177-179,209 | 6 | 注释/说明区失实（数据边界硬编码、"空字段跳过"过时） | 新增 |
-| 14 | ui/glass_card.py:13 + glass_nav.py:9-10 | 6 | import 样式（单行 13 名/连续两行 QtCore） | 新增 |
+| #   | 文件:行号                                                          | 类型  | 描述                                                                                                                   | 性质                       |
+| --- | ------------------------------------------------------------------ | ----- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| 1   | modules/alarm_service.py:138-145                                   | 1     | 过期一次性闹钟（关机跨过触发时刻）永久死条目不清理                                                                     | 新增                       |
+| 2   | modules/alarm_service.py:287-299                                   | 2     | from_dict_list 装载不校验 max_alarms 上限（与 add 路径不一致）                                                         | 新增                       |
+| 3   | ui/main_window.py:282-289                                          | 2+13  | 窗口 paintEvent 无 try/except（防护矩阵应一致；\_field_pix 赋值 :95 早于首帧，触发路径当前不可达）                     | 新增                       |
+| 4   | ui/glass_card.py + ui/panels/glass_nav.py                          | 2+13  | 回调防护矩阵不一致（仅 resize/paint 有 try/except，hide/show/move/enter/leave 无），与 AGENTS 约定口径需统一或定案豁免 | 新增                       |
+| 5   | ui/gl/glass_canvas.py:161-165 + shaders.py:50 vs glass_card.py:372 | 1     | 光晕 y 语义双径镜像：栅格 Qt 顶原点 / GL 底原点直传，同一配置键两径观感颠倒                                            | 新增（返工只对齐 GL 单径） |
+| 6   | interface/app_interface.py:234,238-239                             | 6     | 说明区引用已删方法、fetch_weather 签名漏 force                                                                         | 新增（dd16497 残留）       |
+| 7   | ui/gl/glass_canvas.py:211,216-218 + glass_nav.py:201-202           | 6     | 说明区失实三处（"长度 8"实为 16 / init 签名漏 glass_tokens / \_rail_navigate 已不存在）                                | 新增                       |
+| 8   | ui/gl/glass_scene.py:33 + glass_nav.py:183-190                     | 5     | 死代码：unregister 零调用（P1-1 修复后转正）、pill_for_page 零调用                                                     | 新增                       |
+| 9   | ui/gl/capability.py:34-41                                          | 2     | 探测未按 PL008 定案校验 GL 版本 ≥2.1                                                                                   | 新增                       |
+| 10  | tests/test_gui_features.py:17-67                                   | 10+12 | GL 链路零测试覆盖；子进程未固定 ACCELWORLD_FORCE_NO_GL，回归路径随机器漂移                                             | 新增                       |
+| 11  | modules/alarm_service.py:106,117-118                               | 4     | HH:MM 归一化两处重复实现                                                                                               | 新增                       |
+| 12  | modules/alarm_service.py:10 + weather_service.py:15                | 6     | 旧式 List/Dict/Optional 注解与全仓风格不一致                                                                           | 遗留（FIX003 未覆盖）      |
+| 13  | modules/chinese_calendar.py:144,177-179,209                        | 6     | 注释/说明区失实（数据边界硬编码、"空字段跳过"过时）                                                                    | 新增                       |
+| 14  | ui/glass_card.py:13 + glass_nav.py:9-10                            | 6     | import 样式（单行 13 名/连续两行 QtCore）                                                                              | 新增                       |
 
 ### 二、参考级观察项
 
@@ -738,5 +738,4 @@ Acrylic 技术要点：
 2. **世界时钟增强**：新增显示功能（形态待定）；同步调研时区与主要城市的对照表或可用 API，评估替代/补充现有城市表的可行性
 3. **天气强化**：天气 API 能力增强（含既有顺延项"小时级预报"）与天气卡 UI 显示同步升级
 4. **闹钟现代化**：闹钟页面视觉与交互更现代、优雅，支持多个闹钟的设定与管理
-5. **全量审计**：对当前代码基线执行一轮全量审计（audit-project 流程），输出修复清单
-6. **后端清理**：排查无调用的后端程序与模块，确认后删除
+5. **后端清理**：排查无调用的后端程序与模块，确认后删除

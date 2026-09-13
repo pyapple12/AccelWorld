@@ -75,11 +75,6 @@ class GlassScene:
     def dirty(self) -> bool:
         return self._dirty
 
-    def touch(self) -> None:
-        # 置脏（动画驱动入口）：hover 呼吸等连续重绘期由导航以 33ms 高频调用，
-        # 画布轮询见脏即重绘；静态期无调用即零重绘（静态帧缓存约定）
-        self._dirty = True
-
     def clear_dirty(self) -> None:
         self._dirty = False
 

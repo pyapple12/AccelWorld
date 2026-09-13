@@ -87,6 +87,15 @@
 - **排查方向（存档，不再投入）**：PyQt6 与 Python 3.14 组合的退出析构顺序（疑似 PyQt6/QFramelessWindow 层缺陷，后续升级 PyQt6 大版本时可复测）
 - **状态**：✅ 已定案规避（应用侧 os._exit + 测试侧子进程标记断言双保险，exit code 恢复真实；根因未深究，随 PyQt6 大版本升级复测）
 
+## 7. 同进程多主窗 + GL 退出挂起（P3，2026-09-13 PL010.02 复测发现）
+
+- **现象**：同进程创建 ≥2 个主窗（各含 GL 画布）时，退出流程（save → app.quit() → exec 返回 → os._exit/TerminateProcess）在最后终止阶段无限挂起——进程进入"不可终止"状态（self-TerminateProcess/ExitProcess 均卡，外部 taskkill /F 可杀）。crash 栈零新增（非崩溃是挂起）；faulthandler dump 定位：主线程卡 qframelesswindow event 原生调用，伴随 3 个 SystemThemeListener 线程卡 darkdetect 注册表等待
+- **机理**：GL 驱动线程卡在不可中断内核调用，任何终止方式（os._exit→ExitProcess / 预加载 TerminateProcess）都需等待该线程离开内核 → 无限等待。驱动层缺陷，应用层无解
+- **触发条件**：同进程多主窗 × GL 开（单窗 20/20 健康；GL 关多窗健康；多进程各单窗等价单窗场景健康）
+- **产品影响评估**：主程序 main.py 为单窗架构，产品无同进程多主窗路径——**非可达场景**；多开 = 多进程，各进程独立健康
+- **受控释放改进（已落地验证）**：退出前 hide+deleteLater GL 画布并泵事件，可使 app.exec() 正常返回、save 完整完成（进程最终消失需外部终止）——已写入 main_window 退出注释防误改
+- **状态**：📌 登记（非可达场景 + 规避注释；若未来引入同进程多窗功能（如浮层含独立 GL 画布）须重评）
+
 ## 7. 春节倒计时 chip 静态日期时效（P3，2026-09-13 A004 登记）
 
 - **现象**：base.json 春节条目为固定公历日期（当前 `2027-02-06`），过期后 countdown_panel 顺延逻辑取"次年同月日"——2027-02-06 后点击将设为 2028-02-06，而 2028 春节实为 01-26（lunar 实证），确定性错值
