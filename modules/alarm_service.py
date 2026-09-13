@@ -50,8 +50,13 @@ class PresetSound(Enum):
 
     @classmethod
     def from_index(cls, index: int) -> "PresetSound":
-        # 按序号取枚举成员（S9.6 封装）
-        return list(cls)[index]
+        # 按序号取枚举成员（S9.6 封装）；越界回退 CLASSIC 并告警（热修复
+        # 2026-09-13：公共工具函数裸索引，越界 IndexError 在槽内即进程终止）
+        members = list(cls)
+        if 0 <= index < len(members):
+            return members[index]
+        logger.warning(f"预设铃声序号越界，回退 CLASSIC: {index}")
+        return cls.CLASSIC
 
 
 # 预设铃声播放参数（频率, 重复次数, 间隔毫秒）——模块级常量，避免每次调用重建（E5）

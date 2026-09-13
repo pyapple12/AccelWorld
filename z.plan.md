@@ -127,22 +127,56 @@
 
 ---
 
-## 审计观察项豁免定案清单（2026-09-10 随工作流体系接入初始化）
+## 审计观察项豁免定案清单（2026-09-10 随工作流体系接入初始化；2026-09-13 A001-A004 四轮观察项归拢定案）
 
 > 豁免唯一权威源：已定案项审计时不再重复报告。新定案条目由归档环节（`.agents/skills/audit-report`）经用户确认后追加。
 > 分级规则：①**永久豁免**——设计定案/用户保证/容错体系覆盖，后续轮次不再报告不再讨论；②**条件豁免**——当前条件下不可达或可接受，**触发条件变化时重新评估**（每项标注触发条件）。
+> 归拢说明（2026-09-13）：A001-A004 四轮报告的参考级观察项已全部归拢至本清单（多轮重复项去重 + 单轮项逐一裁决），各报告观察项节已删除；3 条真缺陷当场热修复（chips 非法日期防护/from_index 越界回退/滑杆 int(round)，见各文件注释"热修复 2026-09-13"）；2 条已被后续修复自然消解（占位符格式、悬浮 rail 高度与 GL tint 硬编码）；chinese-calendar 数据年末维护项登记于 y.problems#7。
 
 ### ① 永久豁免（不再讨论）
 
-| 文件:行号                        | 描述                                                                           | 定案理由                                                                                                        | 定案日期   |
-| -------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- | ---------- |
+| 文件:行号 | 描述 | 定案理由 | 定案日期 |
+| --------- | ---- | -------- | -------- |
 | modules/alarm_service.py:193-196 | 闹钟触发去重键 \_last_triggered 仅内存不持久化（同分钟内重启理论可重复响一次） | 单实例桌面应用；去重键含日期维度，触发窗口极窄（仅"精确触发分钟内重启"）；代码注释已声明接受（FIX001.21 P3#15） | 2026-09-11 |
+| utils/monitor.py | crash 日志文件名取启动日，跨天运行归档日期有差 | 纯日志归属，无可达危害（四轮复核零变化） | 2026-09-13 |
+| modules/weather_service.py | DNS rebinding TOCTOU | 固定官方域名，代码注释显式声明接受（四轮复核零变化） | 2026-09-13 |
+| modules/weather_service.py:32 | \_weather_cache 无锁 | GIL 下原子，最坏重复请求一次（三轮复核零变化） | 2026-09-13 |
+| modules/chinese_calendar.py | lunar-python 异常直接上抛不包装 | 符合窄捕获上抛策略，上层有单轮兜底（三轮复核零变化） | 2026-09-13 |
+| modules/alarm_service.py | enabled 双重检查 | 无害冗余防御（四轮复核零变化） | 2026-09-13 |
+| utils/monitor.py | 重复 install_crash_handler 窗口期旧 fd 失效 | main.py 单点装配，无可达触发路径 | 2026-09-13 |
+| utils/monitor.py:71-74 | Qt 消息回调 \_handler 无 try/except | 回调体仅安全属性访问 + logger.log（logging 内部自吞异常） | 2026-09-13 |
+| utils/monitor.py:11-12 | utils 层 import PyQt6（与分层先例有张力） | 代码有注释论证，无运行时影响（三轮复核零变化） | 2026-09-13 |
+| modules/weather_service.py | 重定向被拒后按网络错误重试（约 2s 浪费） | 官方接口正常不重定向（三轮复核零变化） | 2026-09-13 |
+| utils/file_utils.py | 临时目录整目录放行超出最小写入面 | 有注释依据（pytest 隔离豁免，三轮复核零变化） | 2026-09-13 |
+| ui/panels/clock_panel.py | QPropertyAnimation 每 tick stop/start | T004.3 既有设计取向，单线程无竞态收敛正确（四轮复核零变化） | 2026-09-13 |
+| ui/glass_card.py | 卡片 resize 全量重渲染纹理 | T005 定案取向，缩放非高频（三轮复核零变化） | 2026-09-13 |
+| ui/glass_card.py | \_posToValue 值映射域与视觉行程域 2px 偏差 | 绘制几何细节，用户定案视觉优先（三轮复核零变化） | 2026-09-13 |
+| ui/main_window.py | 窗口隐藏托盘后快捷键失效 | Qt WindowShortcut 机制固有，托盘菜单有等效入口（三轮复核零变化） | 2026-09-13 |
+| main.py | 未设 QApplication.applicationName | 外观类（四轮复核零变化） | 2026-09-13 |
+| utils/logger.py | 重开失败期每次 emit 重试的开销 | 注释声明"自动重试直至恢复"设计取向；INFO 低频（三轮复核零变化） | 2026-09-13 |
+| utils/file_utils.py | 原子写无 fsync，掉电丢最近一次保存 | 桌面应用可接受（三轮复核零变化） | 2026-09-13 |
+| modules/alarm_service.py | replace_alarm 不清理同 id 去重键 | 编辑保留原 id，去重键仍有效，本就无需清理（2026-09-13 调查定案） | 2026-09-13 |
+| ui/audio_player.py | QMediaPlayer/QAudioOutput 引用滞留与 GC 疑虑 | A002 探针证伪（C++ 侧持引用），记录防复发 | 2026-09-13 |
+| ui/panels/alarm_panel.py | refresh_list 在信号栈内 clear+重建 | FIX004.1 后清空前显式注销场景面，较原行为更安全；Qt 延迟删除实践安全 | 2026-09-13 |
+| modules/chinese_calendar.py | 干支按立春分界 | 库默认口径，民俗流派选择（两轮复核零变化） | 2026-09-13 |
+| modules/alarm_service.py | 哔声 duration=200 硬编码 | 单次使用常量，有注释依据（两轮复核零变化） | 2026-09-13 |
+| 各级 \_\_init\_\_.py | 空文件无说明区 | 空包标记，历轮未列 | 2026-09-13 |
+| ui/gl/glass_canvas.py:53-55 | 场景脏轮询 QTimer 启动后无 stop（隐藏期空转） | 空闲期仅布尔比较，开销可忽略 | 2026-09-13 |
+| ui/gl/glass_canvas.py:134 | monotonic % 3600 每小时呼吸相位跳变一次 | hover 呼吸可见性极低 | 2026-09-13 |
+| ui/gl/shaders.py | 材质微调常量（云雾/rim/bezel/spec/投影/色散错位/veil/alpha 档） | GLSL 材质参数，有注释依据，非业务配色 | 2026-09-13 |
 
 ### ② 条件豁免（触发条件变化时重新评估）
 
 | 文件:行号 | 描述 | 触发条件 | 定案日期 |
 | --------- | ---- | -------- | -------- |
-| （暂无）  |      |          |          |
+| utils/dataclass_utils.py:35-36 | 未知注解形态放行（未来新字段类型可能绕过过滤） | 新增非基础类型字段（date/嵌套 dataclass 等）时重评 | 2026-09-13 |
+| utils/dataclass_utils.py | get_type_hints 每次 from_dict 重解析 | 字段类型多样化致实测卡顿时重评 | 2026-09-13 |
+| utils/file_utils.py:61 | tmp 文件名仅 pid，同进程双线程写同路径竞态 | 引入多进程/多线程写同一配置文件时重评 | 2026-09-13 |
+| config/settings.py:102-106 | save 的 json.dumps TypeError 穿透（仅捕 ValueError/OSError） | 配置值允许出现不可序列化对象时重评 | 2026-09-13 |
+| config/static/static_config.py:27-33 | config.json 额外分类静默丢弃 | 新增配置分类需被消费时重评 | 2026-09-13 |
+| modules/time_dilation.py:79 | tick 下限钳 1ms 仅当 rate>1000 可达 | rate_max 配置 >1000 时重评 | 2026-09-13 |
+| config/settings.py | get_alarms 浅拷贝仅隔离外层，内层 dict 共享引用 | 出现对内层 dict 的写路径时重评 | 2026-09-13 |
+| ui/gl/shaders.py:78 | r_cap 量纲混合（y 基准半径 vs x 基准宽度） | 玻璃面半径 > 半窗宽时可达（当前胶囊 r=h/2 不可达） | 2026-09-13 |
 
 ---
 
@@ -238,25 +272,9 @@
 | 27  | README.md:3, 13 + x.progress.md:4                          | 6    | 文档版本滞后：README 徽章 0.4.7.2、x.progress"当前版本 0.4.7.0" vs base.json 0.4.7.3                                        | 同步                                                        | 新增         | 文档             |
 | 28  | tests/                                                     | 10   | T004 新功能（动画/tooltip/快捷键）仅探针验证，无沉淀断言                                                                    | 探针断言子进程化沉淀                                        | 新增         | 测试             |
 
-### 二、参考级观察项（记录不修；2026-09-11 用户复核：全部维持观察级，不提升）
+### 二、参考级观察项
 
-| 文件:行号                          | 描述                                           | 回落理由                                             |
-| ---------------------------------- | ---------------------------------------------- | ---------------------------------------------------- |
-| utils/monitor.py:73-75             | 重复 install_crash_handler 窗口期旧 fd 失效    | 无可达触发路径【需验证】                             |
-| utils/monitor.py:72                | crash 文件日期安装时固定，跨天进程写昨日文件   | 桌面应用叠加概率极低                                 |
-| utils/file_utils.py:18-21          | 临时目录整目录放行超出最小写入面               | 有注释依据（pytest 隔离豁免）                        |
-| config/settings.py:118-120         | get_alarms 仅隔离外层，内层 dict 共享引用      | 无可证触发路径，需 alarm_panel 侧验证                |
-| utils/monitor.py:11-12             | utils 层 import PyQt6，与分层先例有张力        | 代码有注释论证，无运行时影响                         |
-| modules/weather_service.py:58-66   | 重定向被拒后按网络错误重试 3 次（约 2s 浪费）  | 官方接口正常不重定向                                 |
-| modules/weather_service.py:71-72   | DNS rebinding TOCTOU                           | 注释显式声明接受（固定官方域名）                     |
-| modules/alarm_service.py:99, 231   | enabled 双重检查                               | 无害冗余防御                                         |
-| modules/chinese_calendar.py:89-160 | lunar-python 异常直接上抛不包装                | 符合窄捕获上抛策略，上层有单轮兜底                   |
-| modules/weather_service.py:172     | humidity 无小数格式化与他项不一                | 极小展示瑕疵                                         |
-| ui/panels/clock_panel.py:165-175   | QPropertyAnimation 每 tick stop/start          | 单线程无竞态、收敛正确（本轮亲核）                   |
-| ui/main_window.py:205-215          | 窗口隐藏托盘后快捷键失效                       | Qt WindowShortcut 机制固有，托盘菜单有等效入口       |
-| ui/panels/clock_panel.py:215       | `int(rate*10)` vs `int(round(...))` 写法不一致 | 实机验证 [1.0,20.0] 全步进当前无差值；防御性建议统一 |
-| main_window.py:284                 | 未设 QApplication.applicationName              | 外观类                                               |
-| ui/panels/alarm_panel.py:85-152    | refresh_list 在信号栈内 clear+重建             | Qt 延迟删除实践安全；排查 y.problems#6 时可复查      |
+> 已归拢（2026-09-13）：本轮 15 条观察项经逐一裁决——3 条热修复（int(rate\*10) 写法）、7 条永久豁免、2 条条件豁免、3 条被后续重构消解/并入其他条目，全部条目见「审计观察项豁免定案清单」，本节原文删除。
 
 ### 三、亮点
 
@@ -328,24 +346,9 @@
 | 10  | ui/main_window.py:87,107 + weather_panel | 9    | 启动期天气双请求（FIX001.5 副作用）：init 首查 default_city + set_city 联动查询，非默认 last_city 时第一次结果被丢弃，多打一次真实 API | set_city 先设 current_city 再首查/构造参数注入 | 新增                     |
 | 11  | tests/test_rate_presets.py:45            | 11   | 子进程脚本调用私有方法 `window._flush_pending_rate()`（\_ 前缀约定外部不调用）                                                         | 提供公开 flush 或等待事件循环                  | 新增                     |
 
-### 二、参考级观察项（记录不修，含回落理由）
+### 二、参考级观察项
 
-**A001 观察项携带复核**：get_alarms 浅拷贝、monitor 重复安装 fd 窗口、crash 文件日期固定、临时目录放行、DNS rebinding、enabled 双检、lunar 异常直抛、QPropertyAnimation 重启、快捷键 WindowShortcut、refresh_list 信号栈、QFont 样板、int(rate\*10) 写法、applicationName——原样保留无变化，按 2026-09-11 定案继续维持观察级。
-
-**本轮新增观察项**：
-
-| 位置                           | 描述                                           | 回落理由                                                             |
-| ------------------------------ | ---------------------------------------------- | -------------------------------------------------------------------- |
-| utils/dataclass_utils.py:35-36 | 未知注解形态放行（未来新字段类型可能绕过过滤） | 当前两 dataclass 字段全覆盖，无可达路径【需验证新增字段】            |
-| utils/monitor.py:41-66         | install_excepthook 二次安装成链式套娃          | main.py 单点装配，同 A001 crash-handler 豁免口径                     |
-| utils/logger.py:36-53          | 重开失败期每次 emit 重试的开销                 | 注释声明"自动重试直至恢复"设计取向；INFO 低频                        |
-| utils/file_utils.py:64-66      | 无 fsync，掉电丢最近一次保存                   | 桌面应用可接受                                                       |
-| alarm_service.py:193-196       | \_last_triggered 仅内存，同分钟重启理论重复响  | 已定案永久豁免（2026-09-11 用户确认，见豁免清单①），后续轮次不再报告 |
-| alarm_service.py:229-235       | replace_alarm 不清理同 id 去重键               | 仅同分钟内编辑场景，无害                                             |
-| weather_service.py:32          | \_weather_cache 无锁                           | GIL 下原子，最坏重复请求一次                                         |
-| time_dilation.py:79            | 1ms tick 下限仅当 rate_max>1000 可达           | 当前配置不可达（触发条件：静态配置变更）                             |
-| countdown_panel.py:74 vs 159   | 占位符 4 段与运行态 3 段格式不一               | 外观细节                                                             |
-| ui/audio_player.py:35-36       | QAudioOutput 局部变量疑虑                      | 本轮探针证伪（C++ 侧持引用），记录防复发                             |
+> 已归拢（2026-09-13）：本轮 10 条观察项经逐一裁决——1 条探针证伪（QAudioOutput GC）、1 条已被后续重构消解（占位符格式）、5 条永久豁免、3 条条件豁免，全部条目见「审计观察项豁免定案清单」，本节原文删除。
 
 ### 三、亮点
 
@@ -528,34 +531,9 @@ Acrylic 技术要点：
 | 7   | modules/time_dilation.py:43-46 + modules/chinese_calendar.py:127-130 + data/cities.py:28 + data/weather_codes.py:10 + ui/panels/world_clock_panel.py:39 | P3   | 5+6  | 后端清理批次：custom_second 零调用、getCurrentJieQi 无效回落、cities 说明区漏 interface 消费方、weather_codes english 字段零读取、`dict[str, Any]` 未导入 Any                                                                                                                             | 新增                       |
 | 8   | tests/test_gui_features.py:80,100,370,410-441 + tests/test_rate_presets.py:62                                                                           | P3   | 11   | 子进程脚本多处访问 `_` 前缀私有成员（与 A002 P3-11 同性质）                                                                                                                                                                                                                               | 新增                       |
 
-### 二、参考级观察项（记录不修，含回落理由）
+### 二、参考级观察项
 
-**A002 携带项复核**：monitor 链式、crash 文件日期、fsync、\_weather_cache 无锁、1ms tick、audio GC 证伪、DNS rebinding、enabled 双检、lunar 异常直抛、QPropertyAnimation 重启、快捷键、refresh_list、QFont 样板、int(rate\*10)、applicationName——原样保留，维持观察级。
-
-**本轮新增观察项**：
-
-| 位置                                   | 描述                                                                        | 回落理由                                                |
-| -------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------- |
-| utils/monitor.py:83                    | crash 日志文件名取启动日，跨天运行归档日期有差                              | 纯理论，仅日志归属                                      |
-| utils/dataclass_utils.py:57            | get_type_hints 每次 from_dict 重解析                                        | UI 事件级频度，无实测卡顿                               |
-| utils/file_utils.py:61                 | tmp 名仅 pid，同进程双线程写同路径仍竞态                                    | 配置写全在 UI 线程，不可达                              |
-| config/static/static_config.py:27-33   | config.json 额外分类静默丢弃                                                | 扩展性预留，无行为缺陷                                  |
-| config/settings.py:102-106             | save 的 json.dumps TypeError 穿透                                           | 调用方数据恒可序列化【需验证】                          |
-| 各级 `__init__.py`                     | 空文件无说明区                                                              | 空包标记，历轮未列                                      |
-| weather_service.py:165-174,123,195     | NaN 穿透数值校验 / decode+ssl 逃逸白名单 / weather_code bool / TTL 墙钟回拨 | 固定官方 API 下不可达【需验证】                         |
-| alarm_service.py:172,57-59,68          | duration=200 硬编码；迁移墓碑注释                                           | 单次使用常量；文档性质                                  |
-| chinese_calendar.py:106,109            | 干支按立春分界                                                              | 库默认口径，民俗流派选择                                |
-| ui/glass_card.py:303-329               | `origin` 条件绑定后无条件使用，理论 NameError                               | 主窗口恒设 `_field_pix`，不可达【需验证脱离主窗口场景】 |
-| ui/glass_card.py + qfw                 | `_posToValue` 值映射域与视觉行程域 2px 偏差                                 | 绘制几何细节，用户定案视觉优先                          |
-| ui/panels/clock_panel.py:146-156       | 每 tick 重启动画                                                            | T004.3 既有设计取向                                     |
-| ui/glass_card.py:374-388               | resize 全量重渲染纹理                                                       | T005 定案取向，缩放非高频                               |
-| ui/audio_player.py:21,30-31            | 媒体不回调时引用滞留                                                        | 可达路径极窄【需验证】                                  |
-| ui/panels/world_clock_panel.py:135-139 | set_timezone 不校验 IANA                                                    | 值源受控，脏配置才触发                                  |
-| ui/panels 各玻璃卡                     | setContentsMargins 硬编码边距、天气图标字号 34                              | 外观细节，随死键清理可选收编                            |
-| ui/main_window.py:108-115              | chips_host 跨容器 reparent 装配耦合                                         | 行为正确，记录防误改                                    |
-| tests/test_gui_features.py:208         | ":" 恒真断言                                                                | 探针式断言既有口径，主断言有效                          |
-
-**豁免清单**：本轮无新增豁免定案建议（alarm_service `_last_triggered` 永久豁免维持）。
+> 已归拢（2026-09-13）：本轮 18 条观察项经逐一裁决——1 条已消除（glass_card origin 提前定义）、3 条热修复/登记（chips 防护、from_index 越界回退、春节数据时效入 y.problems#7）、8 条永久豁免、5 条条件豁免、1 条由 GL 返工定案（\_posToValue 保留），全部条目见「审计观察项豁免定案清单」，本节原文删除。
 
 ### 三、亮点
 
@@ -627,26 +605,9 @@ Acrylic 技术要点：
 | 13 | modules/chinese_calendar.py:144,177-179,209 | 6 | 注释/说明区失实（数据边界硬编码、"空字段跳过"过时） | 新增 |
 | 14 | ui/glass_card.py:13 + glass_nav.py:9-10 | 6 | import 样式（单行 13 名/连续两行 QtCore） | 新增 |
 
-### 二、参考级观察项（记录不修，含回落理由）
+### 二、参考级观察项
 
-**A003 携带项**：monitor crash 日期 / get_type_hints 重解析 / tmp pid / 额外分类丢弃 / json.dumps TypeError / 空 __init__ / weather NaN·DNS·TTL / duration=200 / 干支立春 / _posToValue 2px / resize 全量重渲 / 每 tick 重启动画 / chips_host reparent / 硬编码边距 / ":" 恒真断言——原样保留维持观察级。
-
-**本轮新增**：
-
-| 位置 | 描述 | 回落理由 |
-|---|---|---|
-| ui/gl/shaders.py 各系数 | 云雾/rim/bezel/spec/投影/色散/veil/alpha 材质常量 | GLSL 微调常量，注释在位 |
-| ui/gl/glass_canvas.py:53-55 | 轮询 QTimer 启动后无 stop（隐藏期空转布尔比较） | 开销可忽略 |
-| ui/gl/glass_canvas.py:134 | monotonic % 3600 每小时呼吸相位跳变 | 可见性极低 |
-| ui/gl/glass_nav.py:160-173 | 悬浮 rail 高度未显式设定，窗口过矮可能裁切 | 【已提升 P2 处理】 |
-| ui/gl/glass_scene.py:17 | GL tint 硬编码不读 ui.json | 【已提升 P2 处理】 |
-| ui/gl/shaders.py:78 | r_cap 量纲混合 | 纯理论【需验证】 |
-| modules/alarm_service.py:54 | PresetSound.from_index 越界无防护 | 调用点有界【需验证】 |
-| ui/panels/countdown_panel.py:205 | chips 解析对非法日期值无防护 | 配置受控【需验证】 |
-| utils/monitor.py:71-74 | Qt 消息回调无 try/except | 无可达异常路径【需验证】 |
-| chinese-calendar 数据 | 覆盖至 2026-12-31，2027 起优雅降级 | 年末依赖升级任务（A003 #6 延续） |
-
-**豁免清单**：本轮无新增豁免定案建议（alarm_service `_last_triggered` 永久豁免维持）。
+> 已归拢（2026-09-13）：本轮 10 条观察项经逐一裁决——2 条已提升修复（FIX004.9/.10）、2 条热修复（from_index 越界回退、chips 非法日期防护）、1 条登记 y.problems#7（chinese-calendar 年末维护）、4 条永久豁免、1 条条件豁免（r_cap），全部条目见「审计观察项豁免定案清单」，本节原文删除。
 
 ### 三、亮点
 

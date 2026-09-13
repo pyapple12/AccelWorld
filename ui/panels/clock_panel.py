@@ -105,9 +105,11 @@ class ClockPanel(QWidget):
             QColor(self._interface.get_ui_static()["colors"]["primary"]),
             track_h=float(layout_tokens["slider_track"]),
         )
-        self.slider.setMinimum(int(rate_min * 10))  # 倍率 ×10
-        self.slider.setMaximum(int(rate_max * 10))
-        self.slider.setValue(int(current_rate * 10))
+        # 倍率 ×10（int(round()) 四舍五入统一写法，热修复 2026-09-13：
+        # 与 :160 一致，防配置改小步进时 int() 截断出错值）
+        self.slider.setMinimum(int(round(rate_min * 10)))
+        self.slider.setMaximum(int(round(rate_max * 10)))
+        self.slider.setValue(int(round(current_rate * 10)))
         # 控件高度 == 轨道高度：qfw 将旋钮固定在 y=0，等高即旋钮结构性垂直居中
         self.slider.setFixedHeight(
             int(layout_tokens["slider_track"]) + 2 * CapsuleSlider.TRACK_PAD
