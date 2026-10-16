@@ -4,6 +4,7 @@
 pub mod cities;
 pub mod timezones;
 pub mod weather_codes;
+pub mod world_cities;
 
 // ===== src/data/mod.rs 说明区 =====
 // 数据来源：rs/data/*.json 与 Python data/ 三表原样一致（零改写平移）

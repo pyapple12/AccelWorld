@@ -14,6 +14,12 @@ pub struct TimeInfo {
     pub standard_datetime: String,
     /// 自定义（加速）时间字符串（"HH:MM:SS"，小时可超 24，整数日长回绕）
     pub custom_time: String,
+    /// 中文日期字符串（"YYYY年MM月DD日 星期X"，PL012 扩入，标准秒缓存）
+    #[serde(default)]
+    pub chinese_date: String,
+    /// 农历展示文本（拼装契约见 chinese_calendar，PL012 扩入，标准秒缓存）
+    #[serde(default)]
+    pub lunar_info: String,
     /// 时间膨胀倍率百分比（rate × 100）
     pub dilation_percentage: f64,
     /// 膨胀后一天的小时数（与钟面回绕同口径的整数日长，浮点呈现）

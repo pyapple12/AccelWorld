@@ -1,9 +1,12 @@
 //! 时间膨胀核心（modules/time_dilation.py 的 Rust 对等物）
 //! 倍率域校验/加速时间推进/整数日长口径/tick 联动/剩余小时——公式与 Python 逐行对齐
 
-use chrono::{DateTime, Local, Timelike};
+use std::sync::Mutex;
+
+use chrono::{DateTime, Datelike, Local, Timelike};
 use thiserror::Error;
 
+use crate::chinese_calendar::{get_chinese_date, get_lunar_info};
 use crate::static_config::Static;
 use crate::types::TimeInfo;
 
@@ -16,13 +19,26 @@ pub enum RateError {
     AboveMax { max: f64 },
 }
 
+// 标准秒缓存键：(年, 月, 日, 时, 分, 秒)——农历/中文日期昂贵计算的同秒复用键
+type SecondKey = (i32, u32, u32, u32, u32, u32);
+
 /// 时间膨胀核心（Python AcceleratedWorld 镜像）
-/// 无内部时钟状态：时间全参数化注入（PL011 层面无 Clock 依赖，可测性优先）
-#[derive(Debug, Clone, PartialEq)]
+/// 时间全参数化注入（PL011 层面无 Clock 依赖，可测性优先）；
+/// 农历/中文日期按标准秒缓存（Python _lunar_cache 对等，PL012 扩入）
+#[derive(Debug)]
 pub struct TimeDilation {
     rate: f64,
     /// 整数日长 int(24×rate)——钟面回绕模数与日长显示同口径（FIX003.4）
     day_hours: i64,
+    /// (标准秒键, 中文日期, 农历信息) 缓存——同标准秒内直接复用
+    lunar_cache: Mutex<Option<(SecondKey, String, String)>>,
+}
+
+impl PartialEq for TimeDilation {
+    // 等值语义：仅业务字段（rate/day_hours）；秒级缓存是透明性能状态不参与比较
+    fn eq(&self, other: &Self) -> bool {
+        self.rate == other.rate && self.day_hours == other.day_hours
+    }
 }
 
 impl TimeDilation {
@@ -40,6 +56,7 @@ impl TimeDilation {
         Ok(TimeDilation {
             rate,
             day_hours: (24.0 * rate) as i64,
+            lunar_cache: Mutex::new(None),
         })
     }
 
@@ -66,12 +83,33 @@ impl TimeDilation {
         std::cmp::max(1, std::cmp::min(base_tick_ms, accelerated_second_ms))
     }
 
-    /// 加速时间信息快照（Python get_custom_time 时间域对等）
+    /// 加速时间信息快照（Python get_custom_time 全域对等：时间公式 + 农历秒级缓存）
     /// 输入注入时刻 now（本地墙钟）；公式逐行对齐：
     /// total = 墙钟秒（微秒并入小数）→ custom_total = total×rate →
     /// 时= floor(custom_total/3600) mod day_hours、分秒各自取模取整 →
     /// 剩余 = max(0, day_hours×3600 − custom_total)/3600
     pub fn time_info(&self, now: DateTime<Local>) -> TimeInfo {
+        // 农历/中文日期按标准秒缓存（同秒直接复用，跨秒现算——Python 同语义）
+        let second_key: SecondKey = (
+            now.year(),
+            now.month(),
+            now.day(),
+            now.hour(),
+            now.minute(),
+            now.second(),
+        );
+        let mut cache = self.lunar_cache.lock().expect("lunar 缓存锁中毒");
+        let (chinese_date, lunar_info) = match &*cache {
+            Some((key, cd, li)) if *key == second_key => (cd.clone(), li.clone()),
+            _ => {
+                let cd = get_chinese_date(now);
+                let li = get_lunar_info(now);
+                *cache = Some((second_key, cd.clone(), li.clone()));
+                (cd, li)
+            }
+        };
+        drop(cache);
+
         let micro = now.nanosecond() / 1_000;
         let total_seconds =
             (now.hour() as i64 * 3600 + now.minute() as i64 * 60 + now.second() as i64) as f64
@@ -86,6 +124,8 @@ impl TimeDilation {
         TimeInfo {
             standard_datetime: now.format("%Y-%m-%d %H:%M:%S").to_string(),
             custom_time,
+            chinese_date,
+            lunar_info,
             dilation_percentage: self.rate * 100.0,
             expanded_hours_per_day: self.day_hours as f64,
             remaining_hours: remaining_seconds / 3600.0,
@@ -106,8 +146,8 @@ impl TimeDilation {
 //   rem_euclid 与 Python % 在正模数下同语义（day_hours 恒正）
 // 异常处理：域外倍率返 RateError（Python ValueError 对等，不 panic）；
 //   default_rate 越界属 token 表损坏，expect 快速失败
-// 已知偏移：Python lunar 缓存（标准秒级）不迁移——农历计算 PL012 落地时经
-//   interface 层缓存承接（TimeDilation 保持纯时间域单一职责）
+// 已知偏移：农历缓存自 TimeDilation 内部承接（Python _lunar_cache 同构，PL012 落地——
+//   原 PL011 注记「interface 层承接」改为模型内承接，与 Python 结构一致）
 // 关联配置：rate_min/rate_max/default_rate/clock_tick_ms（base.json）
 #[cfg(test)]
 mod tests {

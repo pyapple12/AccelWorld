@@ -9,7 +9,8 @@ use std::time::Duration;
 use chrono::Local;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-use crate::data::{cities, timezones};
+use crate::alarm::{Alarm, AlarmManager, Clock, RealClock};
+use crate::data::{cities, timezones, world_cities};
 use crate::settings;
 use crate::static_config::Static;
 use crate::time_dilation::TimeDilation;
@@ -26,6 +27,7 @@ const BUS_CAPACITY: usize = 64;
 pub struct AppInterface {
     world: Arc<Mutex<TimeDilation>>,
     weather: Arc<WeatherClient>,
+    alarms: Arc<Mutex<AlarmManager>>,
     /// 用户配置文件路径（env ACCELWORLD_CONFIG_FILE 优先，否则 exe 同目录 config/）
     config_path: PathBuf,
 }
@@ -44,6 +46,7 @@ impl AppInterface {
     }
 
     /// 注入配置路径构造（测试隔离；配置缺省时以 default_rate 初始化）
+    /// 闹钟随构造自配置装载（Python 由 UI 显式 load_alarm_dicts，Rust 收敛为构造内聚）
     pub fn with_config_path(config_path: PathBuf) -> Self {
         let saved_rate = settings::load(&config_path).time_dilation_rate;
         let world = match TimeDilation::new(saved_rate) {
@@ -53,9 +56,12 @@ impl AppInterface {
                 TimeDilation::with_default_rate()
             }
         };
+        let mut manager = AlarmManager::new();
+        manager.from_value_list(&settings::load(&config_path).alarms);
         AppInterface {
             world: Arc::new(Mutex::new(world)),
             weather: Arc::new(WeatherClient::new()),
+            alarms: Arc::new(Mutex::new(manager)),
             config_path,
         }
     }
@@ -202,20 +208,139 @@ impl AppInterface {
         }
     }
 
-    /// 汇总落盘（SaveNow/退出保存路径：整体写回）
+    /// 汇总落盘（SaveNow/退出保存路径：整体写回，含闹钟列表）
     pub fn save_config_now(&self) -> bool {
         let mut config = settings::load(&self.config_path);
         config.time_dilation_rate = self.get_rate();
+        config.alarms = self.alarms.lock().expect("闹钟锁中毒").to_value_list();
         settings::save(&self.config_path, &config)
     }
 
-    // ===== 信号总线（spawn：后台任务主循环）=====
+    // ===== 闹钟域（PL012.10：CRUD 转发 + 持久化，Python AlarmManager 所有权在接口）=====
 
-    /// 启动后台任务：返回命令发送端 + 事件接收端
-    /// 主循环 select 命令分发 / tick 定时推送；tick 周期每轮现读倍率（SetRate 即时生效）
+    /// 当前闹钟列表（浅拷贝快照）
+    pub fn get_alarms(&self) -> Vec<Alarm> {
+        self.alarms.lock().expect("闹钟锁中毒").alarms.clone()
+    }
+
+    /// 按 ID 查找
+    pub fn get_alarm(&self, alarm_id: &str) -> Option<Alarm> {
+        self.alarms
+            .lock()
+            .expect("闹钟锁中毒")
+            .get_alarm(alarm_id)
+            .cloned()
+    }
+
+    /// 闹钟数量上限
+    pub fn get_max_alarms() -> usize {
+        Static::get().base_i64("max_alarms") as usize
+    }
+
+    /// 触发检查（测试/调度共用入口；Python check_alarms 转发）
+    pub fn check_alarms(&self, now: chrono::DateTime<Local>) -> Vec<Alarm> {
+        self.alarms.lock().expect("闹钟锁中毒").check_alarms(now)
+    }
+
+    // ===== 城市域（PL012.10：统一城市表检索 + 常驻城市持久化）=====
+
+    /// 统一城市表全量名（世界时钟添加面板用）
+    pub fn get_world_cities() -> Vec<&'static str> {
+        world_cities::all_names()
+    }
+
+    /// 添加常驻城市（world_pins 追加去重 + 落盘；未知城市拒绝）
+    pub fn add_world_city(&self, name: &str) -> bool {
+        if world_cities::by_name(name).is_none() {
+            tracing::warn!("未知城市，拒绝添加常驻: {name}");
+            return false;
+        }
+        let mut config = settings::load(&self.config_path);
+        if config.world_pins.iter().any(|p| p == name) {
+            return false;
+        }
+        config.world_pins.push(name.to_string());
+        settings::save(&self.config_path, &config)
+    }
+
+    /// 移除常驻城市（不存在返回 false）
+    pub fn remove_world_city(&self, name: &str) -> bool {
+        let mut config = settings::load(&self.config_path);
+        let before = config.world_pins.len();
+        config.world_pins.retain(|p| p != name);
+        if config.world_pins.len() == before {
+            return false;
+        }
+        settings::save(&self.config_path, &config)
+    }
+
+    /// 设置基准时区（合法 IANA 且在统一城市表内才收；roundtrip 持久化）
+    pub fn set_base_timezone(&self, tz: &str) -> bool {
+        if world_cities::all().iter().all(|c| c.tz != tz) {
+            tracing::warn!("未知时区标识，拒绝设置: {tz}");
+            return false;
+        }
+        let mut config = settings::load(&self.config_path);
+        config.last_timezone = tz.to_string();
+        settings::save(&self.config_path, &config)
+    }
+
+    // ===== 信号总线（spawn：后台任务主循环 + 闹钟调度）=====
+
+    /// 启动后台任务（真实时钟）：命令分发主循环 + tick 推送 + 闹钟调度
     pub fn spawn(self: Arc<Self>) -> (Sender<FrontendCommand>, Receiver<BackendEvent>) {
+        Self::spawn_with_clock(self, Arc::new(RealClock))
+    }
+
+    /// 启动后台任务（注入时钟——测试拨钟入口）
+    /// 主循环 select 命令分发 / tick 定时推送（周期每轮现读倍率，SetRate 即时生效）；
+    /// 闹钟调度独立任务按 alarm_check_ms 轮询：命中发 AlarmTriggered + 一次性自动
+    /// 禁用 + AlarmsChanged 回推（PL012.07 编排定案）
+    pub fn spawn_with_clock(
+        self: Arc<Self>,
+        clock: Arc<dyn Clock>,
+    ) -> (Sender<FrontendCommand>, Receiver<BackendEvent>) {
         let (cmd_tx, mut cmd_rx) = mpsc::channel(BUS_CAPACITY);
         let (evt_tx, evt_rx) = mpsc::channel(BUS_CAPACITY);
+        // 关停信号（watch 保态）：Quit 杀主循环同时唤醒调度任务，杜绝 evt_tx 悬挂
+        let (sd_tx, sd_rx) = tokio::sync::watch::channel(false);
+
+        // 闹钟调度任务：固定周期轮询（去重由 manager 同分钟键保证）
+        {
+            let itf = Arc::clone(&self);
+            let evt_tx = evt_tx.clone();
+            let clock = Arc::clone(&clock);
+            let mut sd_rx = sd_rx.clone();
+            tokio::spawn(async move {
+                let check_ms = Static::get().base_i64("alarm_check_ms").max(1) as u64;
+                loop {
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_millis(check_ms)) => {
+                            let now = clock.now();
+                            let hits = itf.check_alarms(now);
+                            for alarm in hits {
+                                // 一次性触发后自动禁用（列表回推供 UI 刷新）
+                                let changed = if alarm.is_one_time() {
+                                    itf.alarms.lock().expect("闹钟锁中毒").toggle_alarm(&alarm.id)
+                                } else {
+                                    false
+                                };
+                                if evt_tx.send(BackendEvent::AlarmTriggered(alarm)).await.is_err() {
+                                    return;
+                                }
+                                if changed {
+                                    let _ = evt_tx
+                                        .send(BackendEvent::AlarmsChanged(itf.get_alarms()))
+                                        .await;
+                                }
+                            }
+                        }
+                        _ = sd_rx.changed() => return,
+                    }
+                }
+            });
+        }
+
         tokio::spawn(async move {
             loop {
                 let period = Duration::from_millis(self.get_tick_interval_ms().max(1) as u64);
@@ -249,13 +374,72 @@ impl AppInterface {
                                     let _ = evt_tx.send(evt).await;
                                 });
                             }
+                            Some(FrontendCommand::AddAlarm(draft)) => {
+                                // 草稿落库 + 入表 + 回推全量列表（UI 无状态重建）
+                                let ok = Alarm::from_draft(draft)
+                                    .map(|alarm| self.alarms.lock().expect("闹钟锁中毒").add_alarm(alarm))
+                                    .unwrap_or(false);
+                                if ok {
+                                    let _ = self.save_config_now();
+                                    let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
+                                }
+                            }
+                            Some(FrontendCommand::RemoveAlarm(id)) => {
+                                let removed =
+                                    self.alarms.lock().expect("闹钟锁中毒").remove_alarm(&id);
+                                if removed {
+                                    let _ = self.save_config_now();
+                                    let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
+                                }
+                            }
+                            Some(FrontendCommand::ReplaceAlarm(alarm)) => {
+                                let ok = self.alarms.lock().expect("闹钟锁中毒").replace_alarm(alarm);
+                                if ok {
+                                    let _ = self.save_config_now();
+                                    let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
+                                }
+                            }
+                            Some(FrontendCommand::ToggleAlarm(id)) => {
+                                let ok = self.alarms.lock().expect("闹钟锁中毒").toggle_alarm(&id);
+                                if ok {
+                                    let _ = self.save_config_now();
+                                    let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
+                                }
+                            }
+                            Some(FrontendCommand::AddWorldCity(name)) => {
+                                let ok = self.add_world_city(&name);
+                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                            }
+                            Some(FrontendCommand::RemoveWorldCity(name)) => {
+                                let ok = self.remove_world_city(&name);
+                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                            }
+                            Some(FrontendCommand::SetBaseTimezone(tz)) => {
+                                let ok = self.set_base_timezone(&tz);
+                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                            }
+                            Some(FrontendCommand::SetTheme(pref)) => {
+                                let theme = match pref {
+                                    crate::types::ThemePref::Auto => "auto",
+                                    crate::types::ThemePref::Light => "light",
+                                    crate::types::ThemePref::Dark => "dark",
+                                };
+                                let mut config = settings::load(&self.config_path);
+                                config.theme = theme.to_string();
+                                let ok = settings::save(&self.config_path, &config);
+                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                            }
                             Some(FrontendCommand::SaveNow) => {
                                 let ok = self.save_config_now();
                                 let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
                             }
-                            Some(FrontendCommand::Quit) | None => break,
+                            Some(FrontendCommand::Quit) | None => {
+                                // 关停调度任务后主循环退出（evt_tx 全部释放 → 接收端闭合）
+                                let _ = sd_tx.send(true);
+                                break;
+                            }
                             Some(other) => {
-                                // 闹钟/倒计时/世界城市/主题域随 PL012/PL014 接线（协议 v1 已定形状）
+                                // 倒计时目标域随 PL014 接线（协议 v1 已定形状）
                                 tracing::warn!("命令待后续 PL 接线: {other:?}");
                             }
                         }
@@ -320,7 +504,7 @@ mod tests {
         assert_eq!(itf.get_rate(), 2.0);
         assert_eq!(AppInterface::get_rate_bounds(), (1.0, 20.0));
         assert_eq!(AppInterface::get_weather_refresh_interval_ms(), 1_800_000);
-        assert_eq!(AppInterface::get_version(), "0.6.0.0");
+        assert_eq!(AppInterface::get_version(), "0.6.0.1");
     }
 
     #[test]
@@ -468,5 +652,232 @@ mod tests {
             }
         }
         assert!(got, "应收到 WeatherUpdated");
+    }
+
+    // ===== PL012.07/.10：闹钟调度（VirtualClock）与七域接线 =====
+
+    use crate::alarm::{AlarmDraft, VirtualClock};
+    use crate::types::ThemePref;
+
+    #[tokio::test]
+    async fn virtual_clock_alarm_triggers_exactly_once() {
+        // .07 验收：VirtualClock 拨至触发时刻恰收一次；同分钟重拨不重发；
+        // 一次性触发后列表回推 enabled==false（固定日 2026-06-03 周三）
+        use chrono::TimeZone;
+        let at = |h: u32, m: u32| {
+            let naive = chrono::NaiveDate::from_ymd_opt(2026, 6, 3)
+                .expect("日期合法")
+                .and_hms_opt(h, m, 0)
+                .expect("时刻合法");
+            Local.from_local_datetime(&naive).single().expect("无歧义")
+        };
+        let fire = at(9, 0);
+        let before = at(8, 59);
+
+        let path = temp_config("vclock");
+        let itf = Arc::new(iface(&path));
+        // 两条闹钟直入管理器：重复型（周三 [2]）测去重；一次性（created_at 昨日 07:00
+        // → 计划日 = 今日）测自动禁用回推
+        {
+            let mut m = itf.alarms.lock().expect("闹钟锁中毒");
+            m.add_alarm(
+                crate::alarm::Alarm::from_json_value(&serde_json::json!({
+                    "label": "重复", "time": "09:00", "repeat_days": [2],
+                    "enabled": true, "id": "rep1", "created_at": "2026-06-01T07:00:00",
+                }))
+                .expect("装载"),
+            );
+            m.add_alarm(
+                crate::alarm::Alarm::from_json_value(&serde_json::json!({
+                    "label": "一次", "time": "09:00", "repeat_days": [],
+                    "enabled": true, "id": "once1", "created_at": "2026-06-02T09:30:00",
+                }))
+                .expect("装载"),
+            );
+        }
+        // 共享虚拟时钟原位拨钟：单次 spawn，调度任务持续读 clock.now()
+        let shared = std::sync::Arc::new(std::sync::Mutex::new(before));
+        let clock: Arc<dyn crate::alarm::Clock> =
+            std::sync::Arc::new(VirtualClock(std::sync::Arc::clone(&shared)));
+        let (_cmd, mut evt) = AppInterface::spawn_with_clock(Arc::clone(&itf), clock);
+
+        // 阶段 1：拨至 08:59，一轮调度周期内（alarm_check_ms=1000）无触发
+        *shared.lock().expect("拨钟") = before;
+        let deadline = std::time::Instant::now() + Duration::from_millis(1300);
+        let mut early_fire = 0;
+        while std::time::Instant::now() < deadline {
+            if matches!(evt.try_recv(), Ok(BackendEvent::AlarmTriggered(_))) {
+                early_fire += 1;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert_eq!(early_fire, 0, "触发前一分钟不应触发");
+
+        // 阶段 2：拨至 09:00 → 两闹钟各恰触发一次 + 一次性禁用回推
+        *shared.lock().expect("拨钟") = fire;
+        let (mut fired_rep, mut fired_once, mut disabled_push) = (0, 0, false);
+        let deadline = std::time::Instant::now() + Duration::from_secs(4);
+        while std::time::Instant::now() < deadline {
+            match evt.try_recv() {
+                Ok(BackendEvent::AlarmTriggered(a)) => {
+                    if a.id == "rep1" {
+                        fired_rep += 1
+                    } else {
+                        fired_once += 1
+                    }
+                }
+                Ok(BackendEvent::AlarmsChanged(list)) => {
+                    if list.iter().any(|x| x.id == "once1" && !x.enabled) {
+                        disabled_push = true;
+                    }
+                }
+                Ok(_) => {}
+                Err(_) => {}
+            }
+            if fired_rep >= 1 && fired_once >= 1 && disabled_push {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert_eq!(fired_rep, 1, "重复闹钟应恰触发一次");
+        assert_eq!(fired_once, 1, "一次性闹钟应恰触发一次");
+        assert!(disabled_push, "一次性触发后应回推禁用列表");
+        assert!(
+            !itf.get_alarm("once1").expect("在表").enabled,
+            "一次性应已禁用"
+        );
+        assert!(
+            itf.get_alarm("rep1").expect("在表").enabled,
+            "重复闹钟保持启用"
+        );
+
+        // 阶段 3：同分钟重拨（08:59 → 09:00）不得重发（去重键含日期+分钟）
+        *shared.lock().expect("拨钟") = before;
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+        *shared.lock().expect("拨钟") = fire;
+        let deadline = std::time::Instant::now() + Duration::from_millis(1500);
+        let mut refire = 0;
+        while std::time::Instant::now() < deadline {
+            if matches!(evt.try_recv(), Ok(BackendEvent::AlarmTriggered(_))) {
+                refire += 1;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert_eq!(refire, 0, "同分钟重拨不得重复触发");
+    }
+
+    #[tokio::test]
+    async fn bus_alarm_crud_and_persistence() {
+        // .10 验收：AddAlarm→get_alarms 反查 + RemoveAlarm 回推 + 落盘可复载
+        let path = temp_config("acrud");
+        let itf = Arc::new(iface(&path));
+        let (cmd_tx, mut evt_rx) = AppInterface::spawn(Arc::clone(&itf));
+        cmd_tx
+            .send(FrontendCommand::AddAlarm(AlarmDraft {
+                label: " CRUD".trim().into(),
+                time: "07:30".into(),
+                sound_type: "preset".into(),
+                sound_value: "classic".into(),
+                repeat_days: vec![1, 2],
+                enabled: true,
+            }))
+            .await
+            .expect("发送失败");
+        let mut listed = None;
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            if let Some(BackendEvent::AlarmsChanged(list)) = evt_rx.recv().await {
+                listed = Some(list);
+                break;
+            }
+        }
+        let list = listed.expect("应回推列表");
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].time, "07:30");
+        assert_eq!(itf.get_alarms().len(), 1, "同步反查一致");
+        // 落盘复载
+        let config = settings::load(&path);
+        assert_eq!(config.alarms.len(), 1);
+        // 删除回推空列表
+        let id = list[0].id.clone();
+        cmd_tx
+            .send(FrontendCommand::RemoveAlarm(id))
+            .await
+            .expect("发送失败");
+        let mut emptied = false;
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            if let Some(BackendEvent::AlarmsChanged(l)) = evt_rx.recv().await {
+                emptied = l.is_empty();
+                break;
+            }
+        }
+        assert!(emptied, "删除后应回推空列表");
+    }
+
+    #[tokio::test]
+    async fn bus_city_and_theme_commands() {
+        // .10 验收：AddWorldCity 持久化 + SetBaseTimezone roundtrip + SetTheme 落盘
+        let path = temp_config("citycmd");
+        let itf = Arc::new(iface(&path));
+        let (cmd_tx, mut evt_rx) = AppInterface::spawn(Arc::clone(&itf));
+        cmd_tx
+            .send(FrontendCommand::AddWorldCity("东京".into()))
+            .await
+            .expect("发送失败");
+        cmd_tx
+            .send(FrontendCommand::SetBaseTimezone("Asia/Tokyo".into()))
+            .await
+            .expect("发送失败");
+        cmd_tx
+            .send(FrontendCommand::SetTheme(ThemePref::Dark))
+            .await
+            .expect("发送失败");
+        let mut saved_count = 0;
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while std::time::Instant::now() < deadline && saved_count < 3 {
+            if matches!(evt_rx.recv().await, Some(BackendEvent::ConfigSaved(true))) {
+                saved_count += 1;
+            }
+        }
+        assert_eq!(saved_count, 3, "三条命令均应 ConfigSaved(true)");
+        let config = settings::load(&path);
+        assert!(
+            config.world_pins.contains(&"东京".to_string()),
+            "常驻城市应落盘"
+        );
+        assert_eq!(config.last_timezone, "Asia/Tokyo", "时区 roundtrip");
+        assert_eq!(config.theme, "dark", "主题落盘");
+        // 非法值拒绝
+        assert!(!itf.add_world_city("不存在城"));
+        assert!(!itf.set_base_timezone("Mars/Olympus"));
+    }
+
+    #[test]
+    fn lunar_domain_via_time_info() {
+        // .10 验收：农历域经 get_time_info 快照携带（chinese_date/lunar_info 非空且形态正确）
+        let path = temp_config("lunarinfo");
+        let itf = iface(&path);
+        let info = itf.get_time_info();
+        assert!(
+            info.chinese_date.contains("星期"),
+            "中文日期应含星期：{}",
+            info.chinese_date
+        );
+        assert!(
+            info.lunar_info.contains("月相："),
+            "农历串应含月相段：{}",
+            info.lunar_info
+        );
+        assert!(info.lunar_info.contains("财神："), "农历串应含财神段");
+    }
+
+    #[test]
+    fn world_cities_domain_query() {
+        // .10 验收：统一城市表经 interface 检索（48 城 + 锚点）
+        let names = AppInterface::get_world_cities();
+        assert_eq!(names.len(), 50, "统一城市表 50 城（PL012.09 落位实测）");
+        assert!(names.contains(&"纽约"));
+        assert_eq!(AppInterface::get_max_alarms(), 10);
     }
 }

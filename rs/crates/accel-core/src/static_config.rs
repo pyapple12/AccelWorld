@@ -167,8 +167,8 @@ mod tests {
 
     #[test]
     fn version_single_source() {
-        // 版本单一来源契约：四段式 0.6.0.0（与 base.json 同步维护）
-        assert_eq!(Static::get().version(), "0.6.0.0");
+        // 版本单一来源契约：四段式 0.6.0.1（与 base.json 同步维护）
+        assert_eq!(Static::get().version(), "0.6.0.1");
     }
 
     #[test]

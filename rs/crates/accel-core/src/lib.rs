@@ -3,6 +3,7 @@
 //! 前端仅经 interface 的命令/事件总线与本库通信（z.plan 修订一）
 
 pub mod alarm;
+pub mod audio;
 pub mod chinese_calendar;
 pub mod data;
 pub mod interface;

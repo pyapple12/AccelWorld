@@ -903,6 +903,23 @@ G 节七项验证全过：build 绿/树对照零差异/egui 违例红（exit 1�
 **A. LunarInfo DTO（chinese_calendar.rs，字段对齐 Python dataclass）**
 `pub struct LunarInfo { lunar_year: String, shengxiao: String, lunar_month: String, lunar_day: String, shichen: String, jieqi: String, yue_phase: String, cai_shen_dir: String, position: String, public_holiday: String }` + `pub fn lunar_info_str(&self) -> String`（拼装顺序与标记契约逐字符对齐：`{年}（{生肖}年）{月}{日}{时辰} 月相：{X} 财神：{Y}方向（{Z}）`，节气/节日不入串——FIX003.5 定案延续）
 **B. 实现路径三分法（PL012.01 出入清单的判据）**：lunar-rust 字段可用→直调用；API 有数据无便捷方法→本地薄实现（如月相名：lunar-rust 取农历日数 → 本地 30 日名称表映射，表从 lunar-python 源码导出为常量）；缺失→纯本地（财神方位：12 月支 → 方位表，表从 Python Cai_SHEN_DIRECTION 数据导出）。每条出入在 z.plan 登记来源。
+
+**B'. PL012.01 字段级出入清单（2026-10-16 实测，107 代表日 × 7 字段 = 749 条比对，探针 examples/lunar_compare.rs）**：
+
+| LunarInfo 字段 | 归属 | 依据（API 名 / 数据表来源） |
+|---|---|---|
+| lunar_year（干支年） | **直调** | `Lunar::get_year_in_gan_zhi()` + "年"（107/107 全等） |
+| shengxiao（生肖） | **直调** | `Lunar::get_year_sheng_xiao()`（全等） |
+| lunar_month（农历月） | **直调** | `Lunar::get_month_in_chinese()` + "月"（全等，闰月"闰"前缀形态一致） |
+| lunar_day（农历日） | **直调** | `Lunar::get_day_in_chinese()`（全等） |
+| yue_phase（月相） | **直调** | `Lunar::get_yue_xiang()` + "月"（全等）——**消解 B 节预判**（无需本地 30 日名称表，lunar-rust 自带） |
+| jieqi（节气） | **直调** | `Lunar::get_jie_qi()`（非节气日空串语义一致，含边界 ±1） |
+| shichen（时辰） | **纯本地** | SHI_CHEN 12 档双时刻表移植（Python 同表，24 小时辰探针夹具已备） |
+| cai_shen_dir/position | **纯本地** | 12 公历月 → 方位表（Python Cai_SHEN_DIRECTION 导出常量） |
+| public_holiday（节日） | **三级兜底** | T1 直调 `Lunar::get_festivals().first()`（春节/除夕/端午/中秋等农历节日日全等）；T2 holidays.json（chinese-calendar 全量导出——假日跨度多日 + 英文名经 HOLIDAY_TRANSLATION 中文化，运行时不再需要翻译表）；T3 CUSTOM_HOLIDAYS 12 西式/公历节日表移植。实测 38 DIFF 全部为 T2 跨度日与 T3 节日（T1 空），三级合流后闭合 |
+| chinese_date（中文日期） | **纯本地** | 星期中文表 + `format("%Y年%m月%d日")` |
+
+零未决字段。lunar-rust 经 SolarRefHelper/LunarRefHelper trait 调用（`solar::from_ymd(y,m,d).get_lunar()`）。
 **C. holidays.json schema**：`{ "2026": { "01-01": "元旦", "2026-01-28": "除夕", ... } }`（chinese-calendar 全量导出 + HOLIDAY_TRANSLATION 中文名），加载器 `fn holidays(year) -> Option<&Map>`（None = 超范围优雅降级空表，对齐 NotImplementedError 捕获路径）
 **D. Alarm serde 结构（字段名/默认值与 Python to_dict 完全一致——持久化兼容硬约束）**
 ```rust
@@ -924,6 +941,28 @@ pub struct Alarm {
 **G. rodio 音频**：`fn play_preset(p: PresetSound)`（频率/次数/间隔三元组表从 Python _PRESET_SOUND_CONFIG 导出为常量，rodio Source 生成正弦段拼接）；`fn play_file(path)`（rodio Decoder，mp3/wav）。
 **H. 统一城市表 schema**：`config/static/world_cities.json`：`[{ "name": "北京", "tz": "Asia/Shanghai", "lat": 39.9042, "lon": 116.4074, "region": "east-asia" }]`（40-60 城，IANA 逐条经 chrono-tz 解析校验后方可入库）；检索 `fn by_name / fn all_names`。
 **I. PL012 验证流程**：1. 出入清单落档后逐字段跑 lunar_samples 全量（366 天字符串全等）；2. 节气边界日 ±1 断言；3. 2035 年降级空表不崩；4. Alarm 用例全集 = Python test_alarm_service 18 用例行为逐条移植（跨天顺延/编辑重复拒/复活防护/装载截断）；5. VirtualClock 拨到触发点断言 AlarmTriggered 恰发一次；6. holidays 全年断言；7. 全部夹具一次全跑清单入档。
+
+**J. PL012 完成记录（2026-10-16，全 11 条收口）**
+
+I 节七项验证全过：**95 测试全绿**（81 单测 + 14 夹具集成）+ CI 四关卡 ALL_GREEN（clippy 零警告）。夹具断言计数清单：time 47 向量位级 / config 默认+往返+22 脏值+损坏+未知键 / weather 61 样本（35 收 26 拒）+ 展示文本三态 / **lunar 365 天 × 十字段逐字段全等 + info_str 逐字符全等 + chinese_date 全等 + 24 时辰探针** / data 三表全量 + 城市表 50 城 tz 全解析；闹钟域 Python 用例集移植：跨天顺延/编辑成重复拒（排除自身 id）/created_at 非法不复活（FIX003.8）/装载 11 截 10（FIX004.15）/过期一次性禁用（FIX004.14）/同分钟去重/星期命中；调度 VirtualClock 三阶段拨钟（前一分不触/触发恰一次+一次性禁用回推/同分钟重拨不重发）。
+
+**执行偏移登记（PL012）**：
+1. 时间解析实测基线：Python `time.fromisoformat` 对 "9:30"（单位数小时）实为**拒绝**——x.progress 任务文本「"9:30" 补 :00」与实测不符，Rust `parse_alarm_hhmm` 以 Python 为准（两位小时严格位宽；无冒号补 ":00" 后仍须合法，"0930" 拒绝）
+2. repeat_days 布尔语义：Python 实码 `isinstance(day, bool): continue` 为**剔除**（任务文本「[true]→[1]」错误，那是穿透防御注释的本意），Rust 同为剔除
+3. lunar-rust API：`solar::from_ymd`（模块级自由函数）+ `SolarRefHelper/LunarRefHelper` trait；chrono 0.4.45 `NaiveDate::year` 固有方法私有须经 `Datelike` trait
+4. rodio 0.23 API 与 plan 预想（OutputStream/Sink）全变：`DeviceSinkBuilder::open_default_sink` + `mixer::Mixer`（Arc 克隆）+ `Player::connect_new/append/detach`；声道/采样率为 NonZero 类型；新增 `core/src/audio.rs` 挂 lib（plan 工程树未列，登记）
+5. world_cities 落位 50 城（40-60 区间内），放 config/static/、加载器在 data/world_cities.rs（include_str 路径跨约定，登记）
+6. holidays.json：门控对齐 Python `if holiday_detail[0]`（初版漏门控多导 19 个调休补班日，自校验发现后修正）；2024-2026 共 89 天（28/28/33）；导出器 `.archived/export_holidays.py`（年末维护重跑即 y.problems#7 的根治路径）
+7. 农历缓存承接位置修正：PL011 注记「interface 层承接」改为 **TimeDilation 模型内 Mutex 秒级缓存**（与 Python `_lunar_cache` 同构）；TimeInfo 扩 chinese_date/lunar_info 两字段（#[serde(default)] 向后兼容）
+8. 闹钟调度关停：Quit 仅杀主循环会令调度任务持 evt_tx 悬挂（recv 永不闭合——测试实证卡死）→ `tokio::sync::watch` 保态关停信号双任务同退
+9. 闹钟随 AppInterface 构造自配置装载（Python 由 UI 显式 load_alarm_dicts，Rust 内聚；登记）；一次性触发后自动禁用+回推为 PL012.07 编排定案（Python 无此自动禁用——UI 编排差异，任务文本定案）
+10. 财税合规类:gen_id 用 pid×纳秒 xor 8 位十六进制替代 uuid4[:8]（同形态无 uuid 依赖）；now_iso 微秒为 0 省略段对齐 isoformat
+
+**豁免清单复核（PL012.11，按 Rust 实现现状逐条标注）**：
+- **延续 9 条**：_last_triggered 仅内存（Rust 同 HashMap 内存态）；alarm enabled 双重检查（保持冗余防御）；weather 重定向拒后按网络错重试（reqwest Policy::none 同语义）；临时目录整目录放行（file_io 同依据）；原子写无 fsync（同）；replace 不清同 id 去重键（语义同）；干支按立春分界（lunar-rust 默认口径，夹具全年实证）；哔声 200ms 常量（PRESET_BEEP_DURATION_MS）；条件豁免 2 条延续——tmp 仅 pid 竞态（触发条件不变）、tick 钳 1ms 仅 rate>1000 可达（触发条件不变）
+- **core 域消解 12 条**：DNS rebinding TOCTOU（SSRF 结构性防线）、_weather_cache 无锁（Mutex）、lunar 库异常上抛（lunar-rust 无异常面）、PyQt6 入 utils（core 零 GUI CI 强制）、audio GC 疑虑（rodio 显式持有）、dataclass 未知注解放行（Option<Value> 显式 match）、get_type_hints 重解析（无此机制）、save TypeError 穿透（serde 不可能失败）、config.json 分类丢弃（映射表不迁移）、get_alarms 内层共享（Vec<Value>/Alarm Clone 深拷贝）、空 __init__.py（形态不存在）、r_cap 量纲留待 PL013.05 WGSL 移植时按新管线评估（归 UI 侧重评）
+- **UI/监控域 16 条随 PL013-015 落地重评**：monitor 三条（PL013.12 panic hook/tracing 落地）、Qt 回调/GL 七条（PL013 玻璃管线）、托盘/主窗四条（PL013/015/014）、clock_panel 动画一条（PL014）——Python 版定案理由随 UI 重写失效，届时按 egui/wgpu 实现重评
+- 豁免清单本体（第 130-179 行）不改写——Python 版豁免对归档代码仍然有效，Rust 侧结论以本节为准
 
 #### PL013 详细方案：egui 外壳与玻璃地基
 

@@ -194,6 +194,15 @@
 3. 顺带修复：glass_scene 双 touch 定义（旧定义覆盖新定义致 FIX004.7 直连重绘从未生效——帧数断言补跑后暴露）✅
 4. 流程沉淀：AGENTS 增「GL 渲染约定」节（预乘 alpha/uv 量纲/覆盖判向/场景生命周期/重绘调度/glow_y 语义/渲染断言质量门/能力探测八条）；大型重构改道 HTML 原型驱动（.temp/prototype 定版面与功能，先定基准再拆解）✅
 
+## 版本 0.6.0.1 的 MileStone（RS 重构二期：core 全量 parity 达成，2026-10-16 发布）
+
+1. 农历域 parity：lunar-rust 六字段直调 + 三表本地移植，365 天十字段与信息串逐字符全等（z.plan 出入清单 B' 实测定案）✅
+2. 节假日数据文件化：chinese-calendar 三年导出 holidays.json（89 天），年末维护改为重跑导出（y.problems#7 春节部分根治）✅
+3. 闹钟域：serde 持久化兼容 + 触发状态机逐行对齐 + Clock 抽象（VirtualClock 拨钟可测）；Quit 悬挂缺陷修复（watch 关停信号）✅
+4. rodio 音频 / 统一城市表 50 城 / interface 二期七域接线 ✅
+5. 95 测试全绿 + CI 四关卡零警告；豁免清单复核（延续 9/core 消解 12/UI 域 16 随 PL013-015 重评）✅
+6. 工程背景：Python 版全量归档 .archived/（PL011），golden 夹具体系（五类快照）持续作为 parity 基准
+
 ## 后续版本的 MileStone（暂不定版本号）
 
 1. 已知问题排查：GUI 进程退出期硬崩溃（y.problems#6，P3，不阻塞功能）

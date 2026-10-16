@@ -151,6 +151,112 @@ mod weather_parity {
     }
 }
 
+/// 农历域 parity（PL012.02/.03）：全年 365 天十字段 + info_str + 中文日期 + 时辰探针
+mod lunar_parity {
+    use accel_core::chinese_calendar::{
+        get_chinese_date, get_chinese_lunar_calendar, get_lunar_info,
+    };
+    use chrono::{Datelike, Local, NaiveDate, TimeZone};
+    use serde_json::Value;
+
+    const LUNAR_SAMPLES: &str = include_str!("../../../fixtures/lunar_samples.json");
+
+    fn local_noon(date_str: &str) -> chrono::DateTime<Local> {
+        let d = NaiveDate::parse_from_str(date_str, "%Y-%m-%d").expect("日期应可解析");
+        Local
+            .from_local_datetime(&d.and_hms_opt(12, 0, 0).expect("正午合法"))
+            .single()
+            .expect("本地时区无歧义")
+    }
+
+    #[test]
+    fn full_year_all_ten_fields() {
+        // 全年 365 天 × LunarInfo 十字段逐一全等（干支/生肖/月/日/时辰/月相/节气/节日/财神/方位）
+        let v: Value = serde_json::from_str(LUNAR_SAMPLES).expect("解析失败");
+        let days = v["days"].as_array().expect("days 数组");
+        assert_eq!(days.len(), 365);
+        for row in days {
+            let date = row["date"].as_str().expect("date");
+            let d = NaiveDate::parse_from_str(date, "%Y-%m-%d").expect("日期解析");
+            let info = get_chinese_lunar_calendar(d.year(), d.month(), d.day(), 12);
+            let e = &row["expect"];
+            assert_eq!(
+                info.lunar_year,
+                e["lunar_year"].as_str().expect("y"),
+                "{date}"
+            );
+            assert_eq!(
+                info.shengxiao,
+                e["shengxiao"].as_str().expect("sx"),
+                "{date}"
+            );
+            assert_eq!(
+                info.lunar_month,
+                e["lunar_month"].as_str().expect("m"),
+                "{date}"
+            );
+            assert_eq!(
+                info.lunar_day,
+                e["lunar_day"].as_str().expect("d"),
+                "{date}"
+            );
+            assert_eq!(info.shichen, e["shichen"].as_str().expect("sc"), "{date}");
+            assert_eq!(
+                info.yue_phase,
+                e["yue_phase"].as_str().expect("yx"),
+                "{date}"
+            );
+            assert_eq!(info.jieqi, e["jieqi"].as_str().expect("jq"), "{date}");
+            assert_eq!(
+                info.public_holiday,
+                e["public_holiday"].as_str().expect("ph"),
+                "{date} 节日三级兜底不一致"
+            );
+            assert_eq!(
+                info.cai_shen_dir,
+                e["cai_shen_dir"].as_str().expect("cs"),
+                "{date}"
+            );
+            assert_eq!(info.position, e["position"].as_str().expect("po"), "{date}");
+        }
+    }
+
+    #[test]
+    fn full_year_info_str_and_chinese_date() {
+        // info_str 逐字符全等（拼装契约 + 无"拜"回归）与中文日期全等
+        let v: Value = serde_json::from_str(LUNAR_SAMPLES).expect("解析失败");
+        for row in v["days"].as_array().expect("days") {
+            let date = row["date"].as_str().expect("date");
+            let now = local_noon(date);
+            assert_eq!(
+                get_lunar_info(now),
+                row["lunar_info_str"].as_str().expect("str"),
+                "{date}"
+            );
+            assert_eq!(
+                get_chinese_date(now),
+                row["chinese_date"].as_str().expect("cd"),
+                "{date}"
+            );
+        }
+    }
+
+    #[test]
+    fn shichen_probe_24_hours() {
+        // 同日 24 小时时辰档全等（含 23 时双档子时边界）
+        let v: Value = serde_json::from_str(LUNAR_SAMPLES).expect("解析失败");
+        for probe in v["shichen_probe"].as_array().expect("probe") {
+            let hour = probe["hour"].as_u64().expect("hour") as u32;
+            let info = get_chinese_lunar_calendar(2026, 9, 23, hour);
+            assert_eq!(
+                info.shichen,
+                probe["expect_shichen"].as_str().expect("sc"),
+                "hour={hour}"
+            );
+        }
+    }
+}
+
 /// 时间域 parity（PL011.10）：47 向量全量断言（42 合法 + 5 越界，位级浮点一致）
 mod time_parity {
     use accel_core::time_dilation::TimeDilation;
