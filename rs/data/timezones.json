@@ -1,0 +1,34 @@
+[
+  {
+    "display": "北京 (UTC+8)",
+    "iana": "Asia/Shanghai"
+  },
+  {
+    "display": "东京 (UTC+9)",
+    "iana": "Asia/Tokyo"
+  },
+  {
+    "display": "首尔 (UTC+9)",
+    "iana": "Asia/Seoul"
+  },
+  {
+    "display": "伦敦 (UTC+0/+1)",
+    "iana": "Europe/London"
+  },
+  {
+    "display": "巴黎 (UTC+1/+2)",
+    "iana": "Europe/Paris"
+  },
+  {
+    "display": "纽约 (UTC-5/-4)",
+    "iana": "America/New_York"
+  },
+  {
+    "display": "洛杉矶 (UTC-8/-7)",
+    "iana": "America/Los_Angeles"
+  },
+  {
+    "display": "悉尼 (UTC+10/+11)",
+    "iana": "Australia/Sydney"
+  }
+]

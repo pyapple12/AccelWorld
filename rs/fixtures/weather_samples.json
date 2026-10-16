@@ -1,0 +1,1273 @@
+{
+  "format_none": "天气信息获取失败",
+  "format_with_city": "北京 ⛅ 多云 | 23.5°C | 体感 25.1°C | 湿度 62% | 风力 10.8km/h",
+  "format_without_city": "⛅ 多云 | 23.5°C | 体感 25.1°C | 湿度 62% | 风力 10.8km/h",
+  "samples": [
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "晴朗无云",
+          "humidity": 62,
+          "icon": "☀️",
+          "temperature": 23.5,
+          "weather": "晴",
+          "weather_code": 0,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "normal_int_fields",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 0,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": -12.75,
+          "description": "晴朗无云",
+          "humidity": 88.5,
+          "icon": "☀️",
+          "temperature": -5.25,
+          "weather": "晴",
+          "weather_code": 0,
+          "wind_speed": 104.4
+        },
+        "ok": true
+      },
+      "name": "normal_float_fields_negative",
+      "raw": {
+        "current": {
+          "apparent_temperature": -12.75,
+          "relative_humidity_2m": 88.5,
+          "temperature_2m": -5.25,
+          "weather_code": 0,
+          "wind_speed_10m": 104.4
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "晴朗无云",
+          "humidity": 62,
+          "icon": "☀️",
+          "temperature": 23.5,
+          "weather": "晴",
+          "weather_code": 0,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_0",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 0,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "大致晴朗",
+          "humidity": 62,
+          "icon": "☀️",
+          "temperature": 23.5,
+          "weather": "晴",
+          "weather_code": 1,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_1",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 1,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "部分多云",
+          "humidity": 62,
+          "icon": "⛅",
+          "temperature": 23.5,
+          "weather": "多云",
+          "weather_code": 2,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_2",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 2,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "阴天",
+          "humidity": 62,
+          "icon": "☁️",
+          "temperature": 23.5,
+          "weather": "阴",
+          "weather_code": 3,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_3",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 3,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "有雾",
+          "humidity": 62,
+          "icon": "🌫️",
+          "temperature": 23.5,
+          "weather": "雾",
+          "weather_code": 45,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_45",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 45,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "有雾凇",
+          "humidity": 62,
+          "icon": "🌫️",
+          "temperature": 23.5,
+          "weather": "雾",
+          "weather_code": 48,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_48",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 48,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "轻度毛毛雨",
+          "humidity": 62,
+          "icon": "🌦️",
+          "temperature": 23.5,
+          "weather": "小毛毛雨",
+          "weather_code": 51,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_51",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 51,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "中度毛毛雨",
+          "humidity": 62,
+          "icon": "🌦️",
+          "temperature": 23.5,
+          "weather": "中毛毛雨",
+          "weather_code": 53,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_53",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 53,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "稠密毛毛雨",
+          "humidity": 62,
+          "icon": "🌧️",
+          "temperature": 23.5,
+          "weather": "稠密毛毛雨",
+          "weather_code": 55,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_55",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 55,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "轻度冻毛毛雨",
+          "humidity": 62,
+          "icon": "🌧️",
+          "temperature": 23.5,
+          "weather": "冻毛毛雨",
+          "weather_code": 56,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_56",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 56,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "中度冻毛毛雨",
+          "humidity": 62,
+          "icon": "🌧️",
+          "temperature": 23.5,
+          "weather": "冻毛毛雨",
+          "weather_code": 57,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_57",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 57,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "小雨",
+          "humidity": 62,
+          "icon": "🌦️",
+          "temperature": 23.5,
+          "weather": "小雨",
+          "weather_code": 61,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_61",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 61,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "中雨",
+          "humidity": 62,
+          "icon": "🌧️",
+          "temperature": 23.5,
+          "weather": "中雨",
+          "weather_code": 63,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_63",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 63,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "大雨",
+          "humidity": 62,
+          "icon": "🌧️",
+          "temperature": 23.5,
+          "weather": "大雨",
+          "weather_code": 65,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_65",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 65,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "轻度冻雨",
+          "humidity": 62,
+          "icon": "🌧️",
+          "temperature": 23.5,
+          "weather": "冻雨",
+          "weather_code": 66,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_66",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 66,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "中度冻雨",
+          "humidity": 62,
+          "icon": "🌧️",
+          "temperature": 23.5,
+          "weather": "冻雨",
+          "weather_code": 67,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_67",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 67,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "小雪",
+          "humidity": 62,
+          "icon": "❄️",
+          "temperature": 23.5,
+          "weather": "小雪",
+          "weather_code": 71,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_71",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 71,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "中雪",
+          "humidity": 62,
+          "icon": "❄️",
+          "temperature": 23.5,
+          "weather": "中雪",
+          "weather_code": 73,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_73",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 73,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "大雪",
+          "humidity": 62,
+          "icon": "❄️",
+          "temperature": 23.5,
+          "weather": "大雪",
+          "weather_code": 75,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_75",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 75,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "雪粒",
+          "humidity": 62,
+          "icon": "❄️",
+          "temperature": 23.5,
+          "weather": "雪粒",
+          "weather_code": 77,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_77",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 77,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "小阵雨",
+          "humidity": 62,
+          "icon": "🌦️",
+          "temperature": 23.5,
+          "weather": "小阵雨",
+          "weather_code": 80,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_80",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 80,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "中阵雨",
+          "humidity": 62,
+          "icon": "🌧️",
+          "temperature": 23.5,
+          "weather": "中阵雨",
+          "weather_code": 81,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_81",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 81,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "大阵雨",
+          "humidity": 62,
+          "icon": "⛈️",
+          "temperature": 23.5,
+          "weather": "大阵雨",
+          "weather_code": 82,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_82",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 82,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "小阵雪",
+          "humidity": 62,
+          "icon": "❄️",
+          "temperature": 23.5,
+          "weather": "小阵雪",
+          "weather_code": 85,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_85",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 85,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "大阵雪",
+          "humidity": 62,
+          "icon": "❄️",
+          "temperature": 23.5,
+          "weather": "大阵雪",
+          "weather_code": 86,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_86",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 86,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "雷暴",
+          "humidity": 62,
+          "icon": "⛈️",
+          "temperature": 23.5,
+          "weather": "雷暴",
+          "weather_code": 95,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_95",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 95,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "雷暴伴小冰雹",
+          "humidity": 62,
+          "icon": "⛈️",
+          "temperature": 23.5,
+          "weather": "雷暴",
+          "weather_code": 96,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_96",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 96,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "雷暴伴大冰雹",
+          "humidity": 62,
+          "icon": "⛈️",
+          "temperature": 23.5,
+          "weather": "雷暴",
+          "weather_code": 99,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_99",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 99,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "未知天气",
+          "humidity": 62,
+          "icon": "🌡️",
+          "temperature": 23.5,
+          "weather": "未知",
+          "weather_code": 42,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_unknown_42",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 42,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "未知天气",
+          "humidity": 62,
+          "icon": "🌡️",
+          "temperature": 23.5,
+          "weather": "未知",
+          "weather_code": 999,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_unknown_999",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 999,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "晴朗无云",
+          "humidity": 62,
+          "icon": "☀️",
+          "temperature": 23.5,
+          "weather": "晴",
+          "weather_code": 0.0,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_float_0.0",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 0.0,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "未知天气",
+          "humidity": 62,
+          "icon": "🌡️",
+          "temperature": 23.5,
+          "weather": "未知",
+          "weather_code": "0",
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_string_0",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": "0",
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "data": {
+          "apparent_temperature": 25.1,
+          "description": "大致晴朗",
+          "humidity": 62,
+          "icon": "☀️",
+          "temperature": 23.5,
+          "weather": "晴",
+          "weather_code": true,
+          "wind_speed": 10.8
+        },
+        "ok": true
+      },
+      "name": "code_bool_true",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": true,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应结构异常: []"
+      },
+      "name": "top_not_dict",
+      "raw": []
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应结构异常: 'hello'"
+      },
+      "name": "top_not_dict_str",
+      "raw": "hello"
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应缺少必要字段: {'foo': 1}"
+      },
+      "name": "current_missing",
+      "raw": {
+        "foo": 1
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应缺少必要字段: {'current': []}"
+      },
+      "name": "current_not_dict",
+      "raw": {
+        "current": []
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应缺少必要字段: {'current': {'relative_humidity_2m': 62, 'weather_code': 0, 'wind_speed_10m': 10.8, 'apparent_temperature': 25.1}}"
+      },
+      "name": "missing_temperature_2m",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "weather_code": 0,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应缺少必要字段: {'current': {'temperature_2m': None, 'relative_humidity_2m': 62, 'weather_code': 0, 'wind_speed_10m': 10.8, 'apparent_temperature': 25.1}}"
+      },
+      "name": "null_temperature_2m",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": null,
+          "weather_code": 0,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应缺少必要字段: {'current': {'temperature_2m': 23.5, 'weather_code': 0, 'wind_speed_10m': 10.8, 'apparent_temperature': 25.1}}"
+      },
+      "name": "missing_relative_humidity_2m",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "temperature_2m": 23.5,
+          "weather_code": 0,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应缺少必要字段: {'current': {'temperature_2m': 23.5, 'relative_humidity_2m': None, 'weather_code': 0, 'wind_speed_10m': 10.8, 'apparent_temperature': 25.1}}"
+      },
+      "name": "null_relative_humidity_2m",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": null,
+          "temperature_2m": 23.5,
+          "weather_code": 0,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应缺少必要字段: {'current': {'temperature_2m': 23.5, 'relative_humidity_2m': 62, 'wind_speed_10m': 10.8, 'apparent_temperature': 25.1}}"
+      },
+      "name": "missing_weather_code",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应缺少必要字段: {'current': {'temperature_2m': 23.5, 'relative_humidity_2m': 62, 'weather_code': None, 'wind_speed_10m': 10.8, 'apparent_temperature': 25.1}}"
+      },
+      "name": "null_weather_code",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": null,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应缺少必要字段: {'current': {'temperature_2m': 23.5, 'relative_humidity_2m': 62, 'weather_code': 0, 'apparent_temperature': 25.1}}"
+      },
+      "name": "missing_wind_speed_10m",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 0
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应缺少必要字段: {'current': {'temperature_2m': 23.5, 'relative_humidity_2m': 62, 'weather_code': 0, 'wind_speed_10m': None, 'apparent_temperature': 25.1}}"
+      },
+      "name": "null_wind_speed_10m",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 0,
+          "wind_speed_10m": null
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应缺少必要字段: {'current': {'temperature_2m': 23.5, 'relative_humidity_2m': 62, 'weather_code': 0, 'wind_speed_10m': 10.8}}"
+      },
+      "name": "missing_apparent_temperature",
+      "raw": {
+        "current": {
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 0,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应缺少必要字段: {'current': {'temperature_2m': 23.5, 'relative_humidity_2m': 62, 'weather_code': 0, 'wind_speed_10m': 10.8, 'apparent_temperature': None}}"
+      },
+      "name": "null_apparent_temperature",
+      "raw": {
+        "current": {
+          "apparent_temperature": null,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 0,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应数值字段类型非法: {'current': {'temperature_2m': '23.5', 'relative_humidity_2m': 62, 'weather_code': 0, 'wind_speed_10m': 10.8, 'apparent_temperature': 25.1}}"
+      },
+      "name": "badtype_str_temperature_2m",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": "23.5",
+          "weather_code": 0,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应数值字段类型非法: {'current': {'temperature_2m': True, 'relative_humidity_2m': 62, 'weather_code': 0, 'wind_speed_10m': 10.8, 'apparent_temperature': 25.1}}"
+      },
+      "name": "badtype_bool_temperature_2m",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": true,
+          "weather_code": 0,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应数值字段类型非法: {'current': {'temperature_2m': [1], 'relative_humidity_2m': 62, 'weather_code': 0, 'wind_speed_10m': 10.8, 'apparent_temperature': 25.1}}"
+      },
+      "name": "badtype_list_temperature_2m",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": [
+            1
+          ],
+          "weather_code": 0,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应数值字段类型非法: {'current': {'temperature_2m': 23.5, 'relative_humidity_2m': '23.5', 'weather_code': 0, 'wind_speed_10m': 10.8, 'apparent_temperature': 25.1}}"
+      },
+      "name": "badtype_str_relative_humidity_2m",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": "23.5",
+          "temperature_2m": 23.5,
+          "weather_code": 0,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应数值字段类型非法: {'current': {'temperature_2m': 23.5, 'relative_humidity_2m': True, 'weather_code': 0, 'wind_speed_10m': 10.8, 'apparent_temperature': 25.1}}"
+      },
+      "name": "badtype_bool_relative_humidity_2m",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": true,
+          "temperature_2m": 23.5,
+          "weather_code": 0,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应数值字段类型非法: {'current': {'temperature_2m': 23.5, 'relative_humidity_2m': [1], 'weather_code': 0, 'wind_speed_10m': 10.8, 'apparent_temperature': 25.1}}"
+      },
+      "name": "badtype_list_relative_humidity_2m",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": [
+            1
+          ],
+          "temperature_2m": 23.5,
+          "weather_code": 0,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应数值字段类型非法: {'current': {'temperature_2m': 23.5, 'relative_humidity_2m': 62, 'weather_code': 0, 'wind_speed_10m': '23.5', 'apparent_temperature': 25.1}}"
+      },
+      "name": "badtype_str_wind_speed_10m",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 0,
+          "wind_speed_10m": "23.5"
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应数值字段类型非法: {'current': {'temperature_2m': 23.5, 'relative_humidity_2m': 62, 'weather_code': 0, 'wind_speed_10m': True, 'apparent_temperature': 25.1}}"
+      },
+      "name": "badtype_bool_wind_speed_10m",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 0,
+          "wind_speed_10m": true
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应数值字段类型非法: {'current': {'temperature_2m': 23.5, 'relative_humidity_2m': 62, 'weather_code': 0, 'wind_speed_10m': [1], 'apparent_temperature': 25.1}}"
+      },
+      "name": "badtype_list_wind_speed_10m",
+      "raw": {
+        "current": {
+          "apparent_temperature": 25.1,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 0,
+          "wind_speed_10m": [
+            1
+          ]
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应数值字段类型非法: {'current': {'temperature_2m': 23.5, 'relative_humidity_2m': 62, 'weather_code': 0, 'wind_speed_10m': 10.8, 'apparent_temperature': '23.5'}}"
+      },
+      "name": "badtype_str_apparent_temperature",
+      "raw": {
+        "current": {
+          "apparent_temperature": "23.5",
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 0,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应数值字段类型非法: {'current': {'temperature_2m': 23.5, 'relative_humidity_2m': 62, 'weather_code': 0, 'wind_speed_10m': 10.8, 'apparent_temperature': True}}"
+      },
+      "name": "badtype_bool_apparent_temperature",
+      "raw": {
+        "current": {
+          "apparent_temperature": true,
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 0,
+          "wind_speed_10m": 10.8
+        }
+      }
+    },
+    {
+      "expect": {
+        "ok": false,
+        "reject_stage_log": "天气响应数值字段类型非法: {'current': {'temperature_2m': 23.5, 'relative_humidity_2m': 62, 'weather_code': 0, 'wind_speed_10m': 10.8, 'apparent_temperature': [1]}}"
+      },
+      "name": "badtype_list_apparent_temperature",
+      "raw": {
+        "current": {
+          "apparent_temperature": [
+            1
+          ],
+          "relative_humidity_2m": 62,
+          "temperature_2m": 23.5,
+          "weather_code": 0,
+          "wind_speed_10m": 10.8
+        }
+      }
+    }
+  ]
+}

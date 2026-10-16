@@ -1,0 +1,17 @@
+# egui 前端 crate（Python ui/ 层的 Rust 等价物）
+# PL011 为占位空壳：eframe/egui 等依赖 PL013 引入（z.plan 修订二·B）
+[package]
+name = "accel-app"
+version = "0.6.0"
+edition = "2024"
+description = "AccelWorld egui 前端：窗口/玻璃渲染/六页导航/系统集成"
+
+[dependencies]
+accel-core = { path = "../accel-core" }
+
+# ===== crates/accel-app/Cargo.toml 说明区 =====
+# version = "0.6.0"：对齐产品版本段 0.6.0.0（semver 三段上限）
+# PL011 占位：仅依赖 core（验证依赖方向单向），显示版本经 build.rs 从
+#   rs/config/static/base.json 注入（PL013 落位）
+# PL013 起接入：eframe(wgpu)/egui/egui_extras/pollster/image/windows/
+#   tray-icon/global-hotkey/rodio/chrono-tz——全部走 workspace.dependencies

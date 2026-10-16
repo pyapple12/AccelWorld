@@ -1,0 +1,27 @@
+# AccelWorld RS 工作区根清单（PL011.02 落位）
+# 结构镜像自 Python 工程（z.plan 镜像映射表）：core = 纯业务后端，app = egui 前端
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+# 统一依赖版本（2026-10-16 crates.io 核验最新稳定，PL011 只装 core 所需 + app 占位）
+[workspace.dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+# float_roundtrip：正确舍入浮点解析（默认实现可差 1 ULP——夹具 parity 位级断言的硬前提，
+# PL011.10 实证：110.00000000000001 默认解析为 110.0）
+serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
+tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros", "time", "sync"] }
+# reqwest 0.13 特性更名：rustls-tls → rustls（关 default-features + rustls：纯 Rust TLS 栈，不链系统 OpenSSL）
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json"] }
+chrono = { version = "0.4.45", features = ["clock"] }
+thiserror = "2.0.21"
+tracing = "0.1.44"
+httpmock = "0.8.3"
+
+# ===== rs/Cargo.toml 说明区 =====
+# [workspace]：members 通配 crates/*，后续新增 crate 无须改本文件
+# 依赖引入节奏（z.plan 修订二·B）：eframe/egui/egui_extras/pollster/image/windows/
+#   tray-icon/global-hotkey/rodio/chrono-tz 系 PL013/PL015 引入；lunar-rust 系 PL012 引入
+# reqwest 关 default-features + rustls-tls：不链接系统 OpenSSL，纯 Rust TLS 栈
+# chrono 仅开 clock 特性：Local 时区与格式化足够（旧解析特性不需要）
+# httpmock 为 dev 依赖（core 单测桩服务），不进正式依赖树

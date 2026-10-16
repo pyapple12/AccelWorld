@@ -1,0 +1,291 @@
+{
+  "corrupt_backup": {
+    "bak_content": "{ this is not json !!!",
+    "bak_exists": true,
+    "default_restored": {
+      "alarms": [],
+      "countdown_target": "",
+      "last_city": "北京",
+      "last_timezone": "Asia/Shanghai",
+      "theme": "auto",
+      "time_dilation_rate": 2.0,
+      "window_geometry": null,
+      "world_pins": [
+        "Asia/Shanghai",
+        "Asia/Tokyo",
+        "Australia/Sydney",
+        "Europe/London",
+        "Europe/Paris",
+        "America/New_York",
+        "America/Los_Angeles",
+        "Asia/Seoul"
+      ]
+    },
+    "in_file": "{ this is not json !!!"
+  },
+  "defaults": {
+    "alarms": [],
+    "countdown_target": "",
+    "last_city": "北京",
+    "last_timezone": "Asia/Shanghai",
+    "theme": "auto",
+    "time_dilation_rate": 2.0,
+    "window_geometry": null,
+    "world_pins": [
+      "Asia/Shanghai",
+      "Asia/Tokyo",
+      "Australia/Sydney",
+      "Europe/London",
+      "Europe/Paris",
+      "America/New_York",
+      "America/Los_Angeles",
+      "Asia/Seoul"
+    ]
+  },
+  "dirty_fields": [
+    {
+      "bad_value": "abc",
+      "bak_created": false,
+      "expect_field_value": 2.0,
+      "field": "time_dilation_rate"
+    },
+    {
+      "bad_value": true,
+      "bak_created": false,
+      "expect_field_value": 2.0,
+      "field": "time_dilation_rate"
+    },
+    {
+      "bad_value": null,
+      "bak_created": false,
+      "expect_field_value": 2.0,
+      "field": "time_dilation_rate"
+    },
+    {
+      "bad_value": "2.0",
+      "bak_created": false,
+      "expect_field_value": 2.0,
+      "field": "time_dilation_rate"
+    },
+    {
+      "bad_value": [
+        1.0
+      ],
+      "bak_created": false,
+      "expect_field_value": 2.0,
+      "field": "time_dilation_rate"
+    },
+    {
+      "bad_value": null,
+      "bak_created": false,
+      "expect_field_value": "auto",
+      "field": "theme"
+    },
+    {
+      "bad_value": 123,
+      "bak_created": false,
+      "expect_field_value": "auto",
+      "field": "theme"
+    },
+    {
+      "bad_value": "purple",
+      "bak_created": false,
+      "expect_field_value": "purple",
+      "field": "theme"
+    },
+    {
+      "bad_value": null,
+      "bak_created": false,
+      "expect_field_value": "北京",
+      "field": "last_city"
+    },
+    {
+      "bad_value": 123,
+      "bak_created": false,
+      "expect_field_value": "北京",
+      "field": "last_city"
+    },
+    {
+      "bad_value": null,
+      "bak_created": false,
+      "expect_field_value": "Asia/Shanghai",
+      "field": "last_timezone"
+    },
+    {
+      "bad_value": 3.14,
+      "bak_created": false,
+      "expect_field_value": "Asia/Shanghai",
+      "field": "last_timezone"
+    },
+    {
+      "bad_value": [
+        1,
+        "Asia/Tokyo",
+        null,
+        2.5
+      ],
+      "bak_created": false,
+      "expect_field_value": [
+        "Asia/Tokyo"
+      ],
+      "field": "world_pins"
+    },
+    {
+      "bad_value": "notalist",
+      "bak_created": false,
+      "expect_field_value": [
+        "Asia/Shanghai",
+        "Asia/Tokyo",
+        "Australia/Sydney",
+        "Europe/London",
+        "Europe/Paris",
+        "America/New_York",
+        "America/Los_Angeles",
+        "Asia/Seoul"
+      ],
+      "field": "world_pins"
+    },
+    {
+      "bad_value": null,
+      "bak_created": false,
+      "expect_field_value": [
+        "Asia/Shanghai",
+        "Asia/Tokyo",
+        "Australia/Sydney",
+        "Europe/London",
+        "Europe/Paris",
+        "America/New_York",
+        "America/Los_Angeles",
+        "Asia/Seoul"
+      ],
+      "field": "world_pins"
+    },
+    {
+      "bad_value": 42,
+      "bak_created": false,
+      "expect_field_value": "",
+      "field": "countdown_target"
+    },
+    {
+      "bad_value": null,
+      "bak_created": false,
+      "expect_field_value": "",
+      "field": "countdown_target"
+    },
+    {
+      "bad_value": 3.14,
+      "bak_created": false,
+      "expect_field_value": null,
+      "field": "window_geometry"
+    },
+    {
+      "bad_value": true,
+      "bak_created": false,
+      "expect_field_value": null,
+      "field": "window_geometry"
+    },
+    {
+      "bad_value": "nope",
+      "bak_created": false,
+      "expect_field_value": [],
+      "field": "alarms"
+    },
+    {
+      "bad_value": null,
+      "bak_created": false,
+      "expect_field_value": [],
+      "field": "alarms"
+    },
+    {
+      "bad_value": 42,
+      "bak_created": false,
+      "expect_field_value": [],
+      "field": "alarms"
+    }
+  ],
+  "roundtrip": {
+    "in": {
+      "alarms": [
+        {
+          "created_at": "2026-01-01T00:00:00",
+          "enabled": true,
+          "id": "a1",
+          "label": "起床",
+          "repeat_days": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "sound_type": "preset",
+          "sound_value": "classic",
+          "time": "07:30"
+        }
+      ],
+      "countdown_target": "春节",
+      "last_city": "上海",
+      "last_timezone": "Europe/Paris",
+      "theme": "dark",
+      "time_dilation_rate": 3.5,
+      "window_geometry": "SGVsbG8=",
+      "world_pins": [
+        "Asia/Shanghai",
+        "America/New_York"
+      ]
+    },
+    "out_on_disk": {
+      "alarms": [
+        {
+          "created_at": "2026-01-01T00:00:00",
+          "enabled": true,
+          "id": "a1",
+          "label": "起床",
+          "repeat_days": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "sound_type": "preset",
+          "sound_value": "classic",
+          "time": "07:30"
+        }
+      ],
+      "countdown_target": "春节",
+      "last_city": "上海",
+      "last_timezone": "Europe/Paris",
+      "theme": "dark",
+      "time_dilation_rate": 3.5,
+      "window_geometry": "SGVsbG8=",
+      "world_pins": [
+        "Asia/Shanghai",
+        "America/New_York"
+      ]
+    },
+    "saved_ok": true
+  },
+  "unknown_key_ignored": {
+    "in_has_extra": true,
+    "out": {
+      "alarms": [],
+      "countdown_target": "",
+      "last_city": "北京",
+      "last_timezone": "Asia/Shanghai",
+      "theme": "auto",
+      "time_dilation_rate": 2.0,
+      "window_geometry": null,
+      "world_pins": [
+        "Asia/Shanghai",
+        "Asia/Tokyo",
+        "Australia/Sydney",
+        "Europe/London",
+        "Europe/Paris",
+        "America/New_York",
+        "America/Los_Angeles",
+        "Asia/Seoul"
+      ]
+    }
+  }
+}

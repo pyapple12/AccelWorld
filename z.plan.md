@@ -739,3 +739,243 @@ Acrylic 技术要点：
 3. **天气强化**：天气 API 能力增强（含既有顺延项"小时级预报"）与天气卡 UI 显示同步升级
 4. **闹钟现代化**：闹钟页面视觉与交互更现代、优雅，支持多个闹钟的设定与管理
 5. **后端清理**：排查无调用的后端程序与模块，确认后删除
+
+---
+
+## Rust 重构总纲：AccelWorld RS（2026-10-16 立项，接替 Python 版）
+
+> 决策（用户 2026-10-16 拍板）：①计划与五 PL 切分认可；②Python 内容与 UI 全部移入新建 `.archived/`（git 忽略），Rust 项目按标准结构新建于仓库根；③**版本策略：同一产品延续身份，换引擎不换版本号段——重构定版仍为 0.6.0.0**（开发期显示 0.6.0.0-dev.PL0XX，PL015 去后缀正式发布）；④HTML 原型暂不定稿，以当前页面效果 + AI 决策的合宜呈现为 v1 基准，UI 雕刻为重构完成后独立阶段（不占五 PL 容量）。
+> 技术栈（定案）：GUI = egui + eframe(wgpu) + egui_extras，玻璃 = PaintCallback 跑 WGSL（GLSL 资产移植）+ windows-rs DWM Acrylic；集成 = tray-icon/muda + global-hotkey + winrt-notification + rodio；后端 = tokio + reqwest(rustls) + chrono/chrono-tz + lunar-rust + serde/serde_json + tracing/tracing-appender。
+> 架构：cargo workspace——`crates/core`（纯业务零 GUI，Python modules/config/data/utils 的等价物）+ `app`（egui 前端）；core 每帧被拉取渲染，tokio 后台线程管网络与闹钟调度经 channel 喂主循环；`config/static/*.json` token 体系原样平移。
+> parity 度量衡：Python 版（0.6.0.0）冻结为 golden 基准——PL011 导出行为夹具（fixtures JSON），Rust 侧全程对夹具断言；农历 parity 为最高风险项（PL012 集中对决，兜底个别字段本地实现）。
+> 旧版处置：夹具导出并复验可从归档再生后，Python 全量移入 `.archived/`（.gitignore 增补 `.archived/`）；归档保持可运行（夹具再生/对照查询用）。
+> 排期（五 PL 直线依赖）：
+- PL011 工程地基 + 核心域一期（workspace/夹具导出/config/time_dilation/weather/CI/归档）
+- PL012 核心域二期（农历 parity/节假日数据化/alarm/数据表/rodio → core 全量 parity）
+- PL013 egui 外壳与玻璃地基（窗口 Acrylic/字体/WGSL 玻璃/theme/胶囊导航/设置浮窗/日志）
+- PL014 六页功能落地（以 HTML 原型 v1 为基准：时钟/倒计时多目标/世界时钟城市管理/天气增强/闹钟快捷）
+- PL015 系统集成与定版（托盘/通知/热键/打包 NSIS/性能/文档迁移/0.6.0.0 定版切换）
+> 出口标准：PL015 = 干净机器安装走查 + 用户验收 + 版本 0.6.0.0 正式发布；UI 雕刻另立项。
+
+### 总纲修订一：结构镜像与信号接口（2026-10-16 用户确认，随任务细化同步）
+
+> **结构镜像原则**：Rust 工程以 Python 现结构为母版一比一镜像，PL011.02 建骨架时目录全量落位（含空模块占位），**禁止大文件后拆**。注释房规的 Rust 对等物：`///` 中文文档注释（1-3 行，对应函数注释规则）+ 模块头 `//!` 说明 + 文件尾 `// ===== 说明区` 保留。测试布局：core 各模块内联 `#[cfg(test)]` 就近单测 + `rs/tests/` 放夹具驱动集成测试。
+
+> **镜像映射表**（Python → Rust，PL011.02 验收对照物）：
+> | Python | Rust |
+> |---|---|
+> | main.py（装配/CLI） | app/src/main.rs |
+> | ui/main_window.py（主窗装配器） | app/src/window.rs |
+> | interface/（AppInterface 七域 + types） | core/src/interface.rs + types.rs |
+> | modules/time_dilation.py 等 | core/src/time_dilation.rs / chinese_calendar.rs / weather.rs / alarm.rs |
+> | config/settings.py | core/src/settings.rs |
+> | config/static/（token 单例） | core/src/static_config.rs（OnceLock） |
+> | data/（三数据表） | core/src/data/（include_str JSON + 强类型） |
+> | utils/（logger/retry/file_utils） | core/src/util/ |
+> | ui/panels/（七面板纯展示） | app/src/pages/（clock/countdown/world/weather/alarm.rs） |
+> | ui/tools/（展示运算纯函数） | app/src/tools/ |
+> | ui/gl/（画布/场景/着色器） | app/src/glass/（shader.rs/surface.rs/painter.rs） |
+> | glass_nav + 自绘控件 | app/src/nav.rs + app/src/widgets/（slider/ring/chip/glass_card.rs） |
+> | backdrop.py + system_tray.py | app/src/platform/（acrylic/tray/notify/hotkey.rs） |
+
+> **前后端解耦（信号接口）**：core 不知 egui、app 不直碰业务，两端仅经 interface 的命令/事件总线通信——
+> - `FrontendCommand`（枚举）：UI 意图（SetRate/AddAlarm/RemoveAlarm/AddCountdownTarget/SetCity/...）
+> - `BackendEvent`（枚举）：后端事实（Tick(TimeInfo)/WeatherUpdated(WeatherData)/AlarmTriggered(Alarm)/...）
+> - 物理通道：tokio mpsc 双向；`app/src/bus.rs` 每帧 drain 事件、按需发命令；core::interface 同时提供纯同步查询方法（拉）与事件流（推）——Python「UI 定时器拉取」习惯的 Rust 对等物
+> - 硬保障：CI 校验 core 依赖树零 egui/eframe（单向分层从约定升级为机器强制）
+
+> **粒度原则**：一个任务 = 一个可独立验证的交付物（PL011-015 共 62 条）；执行偏移以「镜像映射表 + interface 七域契约」为锚回正。
+
+### 总纲修订二：PL011–PL015 详细技术方案（2026-10-16 补齐「怎么做」）
+
+> 本节是 62 条任务的实现依据：结构定义 / 接口签名 / 数据 schema / 状态模型 / 验证流程全部落死。执行中与 x.progress 条目冲突时以本节为准回正。
+
+#### PL011 详细方案：工程地基 + 核心域一期
+
+**A. 工程树（PL011.02 验收对照物，精确到文件）**
+```
+rs/
+├── Cargo.toml                    # [workspace] members = ["crates/*"]，workspace.dependencies 统一版本
+├── rust-toolchain.toml           # channel = "stable"
+├── rustfmt.toml / clippy.toml
+├── fixtures/                     # golden 夹具（git 入库）
+│   ├── time_vectors.json / config_behavior.json / weather_samples.json / lunar_samples.json
+├── tests/                        # 夹具驱动集成测试（parity.rs 等）
+└── crates/
+    ├── accel-core/               # 纯业务，零 egui（CI 强制）
+    │   ├── Cargo.toml
+    │   └── src/{lib.rs, types.rs, interface.rs, time_dilation.rs, chinese_calendar.rs,
+    │            weather.rs, alarm.rs, settings.rs, static_config.rs,
+    │            data/{mod.rs,cities.rs,timezones.rs,weather_codes.rs},
+    │            util/{mod.rs,retry.rs,file_io.rs}}
+    └── accel-app/                # egui 前端
+        └── src/{main.rs, window.rs, bus.rs, theme.rs, nav.rs,
+                 glass/{mod.rs,shader.rs,surface.rs,painter.rs},
+                 pages/{mod.rs,clock.rs,countdown.rs,world.rs,weather.rs,alarm.rs},
+                 widgets/{mod.rs,glass_card.rs,slider.rs,ring.rs,chip.rs},
+                 tools/{mod.rs,clock.rs,countdown.rs,alarm_text.rs},
+                 platform/{mod.rs,acrylic.rs,tray.rs,notify.rs,hotkey.rs}}
+```
+
+**B. 依赖清单（workspace.dependencies，版本锁最新稳定）**
+core：serde(derive) / serde_json / tokio(rt-multi-thread,macros,time,sync) / reqwest(rustls-tls,json) / chrono(clock) / thiserror / tracing；单测：httpmock。
+app：eframe(wgpu) / egui / egui_extras / pollster / image / windows(Win32_Graphics_Dwm,Win32_UI_WindowsAndMessaging) / tray-icon / global-hotkey / rodio / chrono-tz；dev：httpmock 经 core 转接。
+（lunar-rust / chrono-tz / rodio / tray 系在 PL012/PL015 各自任务引入，PL011 只装 core 所需 + app 占位）
+
+**C. 通信协议 v1（types.rs + interface.rs，全部变体一次定义）**
+```rust
+// UI → 后端（意图）
+pub enum FrontendCommand {
+    SetRate(f64), ApplyRate(f64),                    // 实时生效 / 内聚落盘（对齐 set_rate/apply_rate 双档）
+    RefreshWeather { city: String, force: bool }, AddWeatherCity(String), RemoveWeatherCity(String),
+    AddAlarm(AlarmDraft), RemoveAlarm(String), ReplaceAlarm(Alarm), ToggleAlarm(String),
+    AddCountdownTarget { name: String, at: chrono::DateTime<Local> }, RemoveCountdownTarget(String),
+    AddWorldCity(String), RemoveWorldCity(String), SetBaseTimezone(String),
+    SetTheme(ThemePref), SaveNow, Quit,
+}
+// 后端 → UI（事实）
+pub enum BackendEvent {
+    Tick(TimeInfo),                                  // 按倍率节奏推送
+    WeatherUpdated { city: String, data: WeatherData },
+    WeatherFailed { city: String, reason: String },
+    AlarmTriggered(Alarm),
+    AlarmsChanged(Vec<Alarm>),                       // 列表变更后回推全量（UI 无状态重建）
+    ConfigSaved(bool), RateChanged(f64),
+}
+```
+
+**D. interface.rs 结构与所有权模型**
+```rust
+pub struct AppInterface {          // app 持有，内部全 Arc，可跨线程移入 tokio 任务
+    world: Arc<Mutex<TimeDilation>>,
+    weather: Arc<WeatherClient>,   // WeatherClient 内部缓存 Mutex<HashMap<..>>
+    alarms: Arc<Mutex<AlarmManager>>,
+    settings: Arc<Mutex<Settings>>,// settings.rs 装载/落盘/容错门面
+}
+impl AppInterface {
+    pub fn sync_query 七域方法（get_time_info/get_rate/get_alarms/... 对齐 Python AppInterface 一一对应）;
+    pub fn spawn(self: Arc<Self>) -> (Sender<FrontendCommand>, Receiver<BackendEvent>);
+    // spawn 内部：tokio task 主循环 select! { cmd = rx.recv() => 分发, _ = tick 定时器 => 发 Tick, ... }
+}
+```
+规则：**同步查询只读快照（锁内 clone 出 DTO）；一切写操作走命令**——UI 不直接拿锁，杜绝锁跨帧。
+
+**E. 夹具 schema（PL011.04 导出物格式）**
+- time_vectors.json：`[{ "rate": 1.1, "std": "2026-09-13T09:00:00+08:00", "expect": { "accel": "022:26:24", "day_hours": 26, "tick_ms": 909, "remaining_h": .. } }]`（rate 边界/脏值/越界各含）
+- config_behavior.json：`{ "roundtrip": {in, out}, "corrupt_backup": {in_file, bak_exists, default_restored}, "dirty_fields": [{field, bad_value, expect_default}] }`
+- weather_samples.json：`[{ "name": "null_temp", "raw": {...}, "expect": "Err(NullField:temperature_2m)" } | { "raw": {...}, "expect": WeatherData }]`
+- lunar_samples.json：`[{ "date": "2026-09-23", "expect": { "lunar_year": "丙午年", "shengxiao": "马", "lunar_month": "八月", "lunar_day": "廿三", "shichen": "午时", "jieqi": "秋分", "yue_phase": "蛾眉残月", "cai_shen": "正北", "position": "坎位", "info_str": "丙午年（马年）八月初三午时 月相：… 财神：…" } }]`（全年 366 天逐日 + 节气日加密抽样）
+导出脚本：Python 侧 `.archived` 可再生，输出前 sha256 自登记；Rust 侧 serde 反序列化为强类型夹具结构。
+
+**F. 各模块设计要点**
+- static_config.rs：`pub struct Static { pub base: serde_json::Value, pub ui: serde_json::Value }` + `Static::get() -> &'static Static`（OnceLock，启动 main 装配期 init，未 init 使用 panic 带指引文案 = Python RuntimeError 等价）；访问器按域取键（`base_f64("rate_min")` 等），**键名常量集中在 impl 内**对应 Python 零硬编码读取层
+- settings.rs：`UserConfig` serde 字段名与 Python 完全一致（time_dilation_rate/theme/last_city/last_timezone/countdown_target/alarms/world_pins/window_geometry），`#[serde(default)]` + 默认值**从 Static 单源取**（Default 实现读 base.json，对齐 default_factory 行为）；load：损坏 → 转存 .bak（util::file_io）→ 默认值；save：原子写 + 白名单
+- time_dilation.rs：`pub struct TimeDilation { rate: f64, day_start: DateTime<Local>, day_hours: i64 /* int(24*rate) 整数口径 */ }`；`fn time_info(&self, now) -> TimeInfo`（accel 推进公式与 Python 逐行对齐：day_start 固定当日 00:00 本地，accel = std 起点差 × rate，回绕取 day_hours）；tick_ms = 1000/rate 钳 [16,∞]；测试注入 now 参数（无 Clock 依赖，PL011 层面时间全参数化）
+- weather.rs 解析层：`fn parse_open_meteo(v: serde_json::Value) -> Result<WeatherData, WeatherErr>`，WeatherErr 枚举（NullField(name)/BadType(name)/MissingField(name)/BadCode(u8)）逐分支对齐 Python 拒绝路径
+- weather.rs 传输层：`WeatherClient { base: Url, cache: Mutex<HashMap<String,(Instant,WeatherData)>>, ttl: Duration, client: reqwest::Client }`；`async fn fetch(&self, city, force)`：白名单校验（scheme==https && host==open-meteo 常量）→ force 则清该城键 → GET → 解析 → 重试经 util::retry（RetrySpec{max:3, backoff:1s, 白名单错误}）→ 写缓存；**URL 由常量 + 已校验城市坐标拼接**（对齐 Python SSRF 防线）
+- util::retry：`pub async fn retry<F, Fut, T, E>(spec: RetrySpec, f: F) -> Result<T, E> where E: IsRetryable`（IsRetryable trait 对齐 Python 白名单异常判定）
+
+**G. PL011 验证流程（命令级）**
+1. `cargo build --workspace` 绿；2. 结构对照 A 节树逐项；3. 故意在 core 引 egui → CI 依赖检查红，撤销绿；4. Python 夹具导出两次 sha256 一致；5. `cargo test -p accel-core` 输出含四类夹具断言计数（time/config/weather 各 N 条全绿）；6. httpmock 桩跑传输层五路径（命中/过期/重试耗尽/force/白名单拒）；7. 归档后再导出夹具哈希一致。
+
+**H. PL011 完成记录（2026-10-16，全 14 条收口）**
+
+G 节七项验证全过：build 绿/树对照零差异/egui 违例红（exit 1）撤销绿（exit 0）/夹具三跑 sha256 一致/63 测试全绿（含 time 47 向量·config 22 脏值·weather 61 样本·data 三表夹具断言）/httpmock 五路径绿/归档再生哈希一致。夹具清单：time_vectors 47、config_behavior 22 脏值 + 往返/损坏/未知键、weather_samples 61（35 收 26 拒）、lunar_samples 365 天 + 24 时辰、data_tables（17 城/8 时区/28 码 + 兜底）；manifest 自登记 sha256。
+
+**执行偏移登记（plan 文本 vs 实做，以 Python 行为/结构事实为准回正）**：
+1. 集成测试位置：rs/tests/ → crates/accel-core/tests/parity.rs（虚拟 manifest 根级目录不参与编译，占位测试从未运行即暴露）
+2. CI 脚本：scripts/ci.sh → rs/ci.ps1（pwsh 对齐仓房规）；房规样例入 rs/README.md（不新建 CONTRIBUTING.md）；GitHub Actions 为 .github/workflows/rs-ci.yml（windows-latest）
+3. serde_json **float_roundtrip 特性强制启用**：默认浮点解析可差 1 ULP（110.00000000000001 解析为 110.0），夹具位级 parity 的硬前提——已写入 rs/Cargo.toml 注释
+4. tick 口径：plan 文本 clamp(16,∞) 有误，Python 实现为 max(1, min(clock_tick_ms, int(1000/rate)))，以 Python 为准
+5. retry 规格：固定 delay 无 factor 指数退避（对齐 Python retry_call 实现而非 plan 文本）
+6. weather_code 归一 i64：Python 动态类型渗漏（"0"/True 原样入 DTO），Rust 以 scalar_code_key 复刻查表语义（bool→1、整值浮点→整键、其余→未知），展示字段（weather/description/icon）位级 parity；BadCode 变体取消（未知码 Python 本就接受并回退）
+7. SSRF 防线结构化：Python 运行期 scheme/host 白名单 + DNS 私网阻断 → Rust 构造期固定 base（生产 https 常量）+ URL 全派生 + 禁重定向；「host 篡改」在 Rust 下不可达，对应测试改为输入侧拒绝 + URL 派生断言
+8. force 语义：Python 清全缓存 → per-city 清键（本总纲修订二·C 定案，多城市语义正确）
+9. 配置白名单根：Python「项目根（__file__ 相对）」→ exe 目录 + ACCELWORLD_WRITE_ROOT env + temp（编译型语言无源码根概念）
+10. 序列化字节级偏移（值级等价）：serde_json 缩进 2 vs Python indent=4；JSON 文本 NaN/Infinity——Python 容忍并按脏值过滤（不转存），serde_json 判损坏走转存，两路径终点同为默认值
+11. static_config：get_or_init 自初始化取代显式 init + 未 init panic（语义超集）；config.json 映射表不迁移（include_str 路径即唯一结构约定）
+12. 夹具导出参数按覆盖等效微调：rate 集 {1.0,1.1,2.0,5.0,10.0,15.5,20.0} + 越界 {0.9,0.0,−3.0,20.1,100.0}、std 六时刻（含 23:59:59.999999/微秒三种尾数）、2026 全年实为 365 天
+13. Python 归档执行：AI 不执行 git 写操作，用文件系统 mv（main.py 副本与 git 历史逐字节核验一致）；git 呈删除态，提交由用户定夺；AGENTS.md 仍为 Python 时代内容，验证命令自 PL011.14 起以 rs/ci.ps1 为准，重写归 PL015.F
+14. 依赖版本落定（2026-10-16 crates.io）：serde 1.0.229/serde_json 1.0.154(+float_roundtrip)/tokio 1.53.3/reqwest 0.13.5（特性 rustls 已更名，非 rustls-tls）/chrono 0.4.45/thiserror 2.0.21/tracing 0.1.44/httpmock 0.8.3（Mock 无生命周期句柄，calls() 取代 hits()）
+
+#### PL012 详细方案：核心域二期 → core 全量 parity
+
+**A. LunarInfo DTO（chinese_calendar.rs，字段对齐 Python dataclass）**
+`pub struct LunarInfo { lunar_year: String, shengxiao: String, lunar_month: String, lunar_day: String, shichen: String, jieqi: String, yue_phase: String, cai_shen_dir: String, position: String, public_holiday: String }` + `pub fn lunar_info_str(&self) -> String`（拼装顺序与标记契约逐字符对齐：`{年}（{生肖}年）{月}{日}{时辰} 月相：{X} 财神：{Y}方向（{Z}）`，节气/节日不入串——FIX003.5 定案延续）
+**B. 实现路径三分法（PL012.01 出入清单的判据）**：lunar-rust 字段可用→直调用；API 有数据无便捷方法→本地薄实现（如月相名：lunar-rust 取农历日数 → 本地 30 日名称表映射，表从 lunar-python 源码导出为常量）；缺失→纯本地（财神方位：12 月支 → 方位表，表从 Python Cai_SHEN_DIRECTION 数据导出）。每条出入在 z.plan 登记来源。
+**C. holidays.json schema**：`{ "2026": { "01-01": "元旦", "2026-01-28": "除夕", ... } }`（chinese-calendar 全量导出 + HOLIDAY_TRANSLATION 中文名），加载器 `fn holidays(year) -> Option<&Map>`（None = 超范围优雅降级空表，对齐 NotImplementedError 捕获路径）
+**D. Alarm serde 结构（字段名/默认值与 Python to_dict 完全一致——持久化兼容硬约束）**
+```rust
+#[derive(Serialize, Deserialize)]
+pub struct Alarm {
+    pub label: String, pub time: String,                    // "HH:MM"
+    #[serde(default = "default_preset")] pub sound_type: String,   // "preset"|"custom"
+    #[serde(default = "default_classic")] pub sound_value: String,
+    #[serde(default)] pub repeat_days: Vec<i64>,             // 0-6，空 = 一次性
+    #[serde(default = "true_")] pub enabled: bool,
+    #[serde(default = "gen_id")] pub id: String,
+    #[serde(default = "now_iso")] pub created_at: String,
+}
+```
+规范化在 `Alarm::normalize()`（构造后必调）：repeat_days 字符串强转 i64 / bool 剔除 / 越界剔除 / 去重；时间 HH:MM 校验失败 → Err。
+**E. AlarmManager 状态机（触发判定，顺序即实现顺序）**
+`fn should_trigger(&self, a: &Alarm, now: DateTime<Local>, ) -> bool`：enabled? → HH:MM 等值? → repeat_days 空 ? 一次性路径（created_at 解析 → 计划日 = created 当日 or +1（创建时刻已过设定时分）/ 计划日 < 今日 → 已过期不触发） : 星期命中。触发去重键 `"YYYY-MM-DD HH:MM"`（HashMap<id, String>，仅内存——永久豁免条目延续）。过期禁用：装载时对一次性且计划日 < 今日者 enabled=false + warning。
+**F. Clock 抽象（可测性核心）**：`pub trait Clock: Send + Sync { fn now(&self) -> DateTime<Local>; }`；`RealClock`（chrono Local）/ `VirtualClock(Arc<Mutex<DateTime<Local>>>)`（测试可拨动）。AlarmManager 调度任务与全部触发单测经 Clock 注入——**杜绝真睡眠测试**。
+**G. rodio 音频**：`fn play_preset(p: PresetSound)`（频率/次数/间隔三元组表从 Python _PRESET_SOUND_CONFIG 导出为常量，rodio Source 生成正弦段拼接）；`fn play_file(path)`（rodio Decoder，mp3/wav）。
+**H. 统一城市表 schema**：`config/static/world_cities.json`：`[{ "name": "北京", "tz": "Asia/Shanghai", "lat": 39.9042, "lon": 116.4074, "region": "east-asia" }]`（40-60 城，IANA 逐条经 chrono-tz 解析校验后方可入库）；检索 `fn by_name / fn all_names`。
+**I. PL012 验证流程**：1. 出入清单落档后逐字段跑 lunar_samples 全量（366 天字符串全等）；2. 节气边界日 ±1 断言；3. 2035 年降级空表不崩；4. Alarm 用例全集 = Python test_alarm_service 18 用例行为逐条移植（跨天顺延/编辑重复拒/复活防护/装载截断）；5. VirtualClock 拨到触发点断言 AlarmTriggered 恰发一次；6. holidays 全年断言；7. 全部夹具一次全跑清单入档。
+
+#### PL013 详细方案：egui 外壳与玻璃地基
+
+**A. App 主结构与主循环（window.rs + bus.rs）**
+```rust
+pub struct AppHandle {
+    iface: Arc<AppInterface>, cmd_tx: Sender<FrontendCommand>, evt_rx: Receiver<BackendEvent>,
+    state: UiState,                    // 全部 UI 状态（当前页/主题态/hover 态/各页临时输入）
+    glass: GlassScene,                 // Rc<RefCell>（egui 单线程，无需 Mutex）
+    theme: Theme, pages: Pages, nav: NavRail, settings_pop: SettingsPop,
+}
+impl eframe::App for AppHandle {
+    fn update(&mut self, ctx, frame) {
+        while let Ok(evt) = self.evt_rx.try_recv() { self.state.apply(evt); }  // ① drain 事件
+        self.nav.ui(ctx, &mut self.state);                                     // ② 导航（发命令经 cmd_tx）
+        self.pages.current_mut().ui(ctx, &self.state, &self.cmd_tx);           // ③ 当前页
+        ctx.request_repaint_after(self.state.next_deadline());                 // ④ 节奏：Tick 间隔与动画期取短者，空闲 1s 兜底
+    }
+}
+```
+**B. WGSL uniform 布局（与 Python GLSL 一一对照，painter.rs 组装）**
+`uniforms { u_res: vec2<f32>, u_count: u32, u_rect: array<vec4<f32>,16>, u_radius/u_refr/u_sel: array<f32,16>, u_tint: array<vec3<f32>,16>, u_top/u_bottom/u_glow_a/u_glow_b: vec4<f32>, u_glow_a_pos/u_glow_b_pos: vec2<f32>, u_glow_a_rad/u_glow_b_rad: f32, u_accent: vec3<f32>, u_time: f32, u_lift: f32 }`——键名/语义/默认值与 ui/gl/shaders.py 对照表落档（PL013.05 交付物），SDF/覆盖判向/预乘逐行移植，**每移植一条对照 t.hint HINT002 勾销一条**。
+**C. GlassScene（surface.rs）**：`struct GlassScene { surfaces: Vec<GlassSurface> }`（id 排序即绘制序，无 HashMap——Rust 侧 Vec 线性检索 16 面内足够且保序）；`register/unregister/set_visible/set_selected/update_geometry/touch` 契约与 Python 同名同语义；touch → `ctx.request_repaint()`（egui 版直连重绘，等价 FIX004.7 hook）。
+**D. 渲染断言探针（PL013.07）**：offscreen 渲染 → 读回像素（wgpu buffer→cpu）→ 分区采样断言（面内外色差 ≥12、rim 增量 ≥60、金晕底/紫晕顶、背景 alpha 微黑档 0.08-0.22）——**阈值直接沿用 Python 版探针实测基线**，脚本 `rs/tools/render_probe.rs`（cargo bin），CI 可选跑。
+**E. theme.rs 映射表**：ui.json 键 → egui 对象（colors.primary→selection/hover 色、radius.*→Visuals.window_rounding/menu_rounding、scale.*→FontId::new、glass.*→玻璃 uniform 默认、field.*→光场 uniform）；`Theme::apply(&mut ctx)`；三态偏好经 SetTheme 命令持久化。
+**F. PL013 验证流程**：1. cargo run 空窗退出码 0；2. bus 单测（命令往返 + fake Tick 驱动 state 变化）；3. 字形截图（中文/数字等宽断言）；4. Acrylic 截图对照 + 失败注入降级；5. render_probe 全阈值 PASS；6. 改 token 值 → 截图 diff 断言跟随；7. 导航切换状态断言；8. 空闲期 repaint 计数 = 节奏值（无忙转）。
+
+#### PL014 详细方案：六页功能落地
+
+**A. Page trait 与页面状态**
+```rust
+pub trait Page { fn ui(&mut self, ctx: &egui::Context, state: &UiState, cmd: &Sender<FrontendCommand>); }
+pub struct Pages { current: PageId, clock: ClockPage, countdown: CountdownPage, world: WorldPage, weather: WeatherPage, alarm: AlarmPage }
+// 各页自持临时输入态（如倒计时弹窗草稿），持久态一律在后端（UiState 只是后端快照）
+```
+**B. 倒计时数据迁移（serde 兼容双格式）**
+```rust
+#[derive(Deserialize)] #[serde(untagged)]
+enum CountdownValue { Legacy(String), List(Vec<CountdownTarget>) }   // 旧单值 → 迁移为列表首项
+pub struct CountdownTarget { name: String, at: DateTime<Local> }
+```
+迁移在 settings load 后处理一步完成并回写；默认目标（列表空时）= `next_spring_festival(now)` 动态派生（lunar 农历正月初一 → 公历），UI 只读不落盘（根治 y.problems#7）。
+**C. 节日派生算法**：`fn year_chips(now) -> Vec<Chip>` = holidays.json 法定节日（当年+次年各取未过项）+ lunar 传统节日计算（春节/元宵/清明[节气法]/端午/七夕/中元/中秋/重阳/腊八/除夕，逐个的 lunar 日期规则表落档）→ 合并去重 → 按日期排序 → 截未来一年内。
+**D. 天气 DTO 扩展**：`WeatherData { current: Current, hourly: Vec<HourlyPoint>, daily: Vec<DailyPoint> }`；请求参数追加 `&hourly=temperature_2m,precipitation_probability&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&forecast_days=7`；解析对新增字段同样 null/缺字段拒绝纪律。
+**E. 闹钟快捷换算**：`fn quick_target(minutes: u64, now) -> AlarmDraft`（now+minutes → HH:MM + created_at=now，一次性 repeat_days 空——跨午夜由既有顺延语义自然覆盖）。
+**F. PL014 验证流程**：每页 = ①纯函数单测（对 Python 用例移植）②虚拟数据渲染截图断言 ③交互走查三件套；六页过完跑 135 用例行为映射表核对（PL014.16 交付物：Python 用例编号 → Rust 测试名对照清单）。
+
+#### PL015 详细方案：系统集成与定版
+
+**A. 托盘**：tray-icon 菜单树（显示窗口/隐藏到托盘/分隔/当前倍率 x.x[禁用项随 Tick 更新]/退出）；关闭按钮 → 隐藏驻留（对齐 closeEvent 语义）；悬停文本 = 加速时间 + 倍率（Tick 更新，节流 1s）。
+**B. 热键**：global-hotkey 注册三组（保存/退出/主题循环，键位 base.json shortcuts token 读入）；egui 侧经 channel 转命令。
+**C. 版本单源**：`build.rs` 读 `config/static/base.json` 的 version → `env!("ACCELWORLD_VERSION")` 编译期注入；窗口标题/关于页/托盘 tooltip 统一引用。
+**D. 打包**：`[profile.release] lto=true, opt-level="z", strip=true`；NSIS 脚本（图标/开始菜单/卸载/版本信息）+ 便携 zip 双产物；安装包体积目标 <15MB。
+**E. 退出矩阵程序**：20 轮启停（正常退出/托盘退出/热键退出）× 多开进程各单窗——退出码全 0 + 无挂起（对照 y.problems#6/#7 家族，预期整体消失，若复现按新问题登记）。
+**F. 文档迁移清单**：AGENTS.md 重写为 Rust 房规（镜像映射表/注释房规///+说明区/零硬编码 token/CI 四关卡）；w.study 重做项目分析（RS 版）；x.progress/y.problems/z.plan/m.milestone 原文件续写；t.hint.md 承接（HINT002 追加 Rust 侧教训节）。

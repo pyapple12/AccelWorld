@@ -1,0 +1,6 @@
+# clippy 项目配置（PL011.03 房规占位）
+# CI 强制方式：cargo clippy --workspace --all-targets -- -D warnings（警告即红）
+# 预留：后续如需 disallowed-methods / disallowed-types 等条目在此追加
+
+# ===== clippy.toml 说明区 =====
+# 空配置是有意为之：-D warnings 已覆盖 lint 强度需求，无需重复配置

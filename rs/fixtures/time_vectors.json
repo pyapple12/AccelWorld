@@ -1,0 +1,637 @@
+{
+  "vectors": [
+    {
+      "expect": {
+        "custom_hour": 9,
+        "custom_time": "09:00:00",
+        "day_hours": 24,
+        "dilation_percentage": 100.0,
+        "expanded_hours_per_day": 24.0,
+        "remaining_hours": 15.0,
+        "standard_time": "09:00:00",
+        "tick_ms": 100
+      },
+      "rate": 1.0,
+      "std": "2026-09-13T09:00:00"
+    },
+    {
+      "expect": {
+        "custom_hour": 0,
+        "custom_time": "00:00:00",
+        "day_hours": 24,
+        "dilation_percentage": 100.0,
+        "expanded_hours_per_day": 24.0,
+        "remaining_hours": 24.0,
+        "standard_time": "00:00:00",
+        "tick_ms": 100
+      },
+      "rate": 1.0,
+      "std": "2026-01-01T00:00:00"
+    },
+    {
+      "expect": {
+        "custom_hour": 23,
+        "custom_time": "23:59:59",
+        "day_hours": 24,
+        "dilation_percentage": 100.0,
+        "expanded_hours_per_day": 24.0,
+        "remaining_hours": 2.7777585071615045e-10,
+        "standard_time": "23:59:59",
+        "tick_ms": 100
+      },
+      "rate": 1.0,
+      "std": "2026-12-31T23:59:59.999999"
+    },
+    {
+      "expect": {
+        "custom_hour": 12,
+        "custom_time": "12:34:56",
+        "day_hours": 24,
+        "dilation_percentage": 100.0,
+        "expanded_hours_per_day": 24.0,
+        "remaining_hours": 11.417743484444443,
+        "standard_time": "12:34:56",
+        "tick_ms": 100
+      },
+      "rate": 1.0,
+      "std": "2026-06-15T12:34:56.123456"
+    },
+    {
+      "expect": {
+        "custom_hour": 18,
+        "custom_time": "18:45:30",
+        "day_hours": 24,
+        "dilation_percentage": 100.0,
+        "expanded_hours_per_day": 24.0,
+        "remaining_hours": 5.241527777777778,
+        "standard_time": "18:45:30",
+        "tick_ms": 100
+      },
+      "rate": 1.0,
+      "std": "2026-03-01T18:45:30.500000"
+    },
+    {
+      "expect": {
+        "custom_hour": 23,
+        "custom_time": "23:00:00",
+        "day_hours": 24,
+        "dilation_percentage": 100.0,
+        "expanded_hours_per_day": 24.0,
+        "remaining_hours": 1.0,
+        "standard_time": "23:00:00",
+        "tick_ms": 100
+      },
+      "rate": 1.0,
+      "std": "2026-09-23T23:00:00"
+    },
+    {
+      "expect": {
+        "custom_hour": 9,
+        "custom_time": "09:54:00",
+        "day_hours": 26,
+        "dilation_percentage": 110.00000000000001,
+        "expanded_hours_per_day": 26.0,
+        "remaining_hours": 16.1,
+        "standard_time": "09:00:00",
+        "tick_ms": 100
+      },
+      "rate": 1.1,
+      "std": "2026-09-13T09:00:00"
+    },
+    {
+      "expect": {
+        "custom_hour": 0,
+        "custom_time": "00:00:00",
+        "day_hours": 26,
+        "dilation_percentage": 110.00000000000001,
+        "expanded_hours_per_day": 26.0,
+        "remaining_hours": 26.0,
+        "standard_time": "00:00:00",
+        "tick_ms": 100
+      },
+      "rate": 1.1,
+      "std": "2026-01-01T00:00:00"
+    },
+    {
+      "expect": {
+        "custom_hour": 0,
+        "custom_time": "00:23:59",
+        "day_hours": 26,
+        "dilation_percentage": 110.00000000000001,
+        "expanded_hours_per_day": 26.0,
+        "remaining_hours": 0.0,
+        "standard_time": "23:59:59",
+        "tick_ms": 100
+      },
+      "rate": 1.1,
+      "std": "2026-12-31T23:59:59.999999"
+    },
+    {
+      "expect": {
+        "custom_hour": 13,
+        "custom_time": "13:50:25",
+        "day_hours": 26,
+        "dilation_percentage": 110.00000000000001,
+        "expanded_hours_per_day": 26.0,
+        "remaining_hours": 12.159517832888888,
+        "standard_time": "12:34:56",
+        "tick_ms": 100
+      },
+      "rate": 1.1,
+      "std": "2026-06-15T12:34:56.123456"
+    },
+    {
+      "expect": {
+        "custom_hour": 20,
+        "custom_time": "20:38:03",
+        "day_hours": 26,
+        "dilation_percentage": 110.00000000000001,
+        "expanded_hours_per_day": 26.0,
+        "remaining_hours": 5.365680555555555,
+        "standard_time": "18:45:30",
+        "tick_ms": 100
+      },
+      "rate": 1.1,
+      "std": "2026-03-01T18:45:30.500000"
+    },
+    {
+      "expect": {
+        "custom_hour": 25,
+        "custom_time": "25:18:00",
+        "day_hours": 26,
+        "dilation_percentage": 110.00000000000001,
+        "expanded_hours_per_day": 26.0,
+        "remaining_hours": 0.699999999999996,
+        "standard_time": "23:00:00",
+        "tick_ms": 100
+      },
+      "rate": 1.1,
+      "std": "2026-09-23T23:00:00"
+    },
+    {
+      "expect": {
+        "custom_hour": 18,
+        "custom_time": "18:00:00",
+        "day_hours": 48,
+        "dilation_percentage": 200.0,
+        "expanded_hours_per_day": 48.0,
+        "remaining_hours": 30.0,
+        "standard_time": "09:00:00",
+        "tick_ms": 100
+      },
+      "rate": 2.0,
+      "std": "2026-09-13T09:00:00"
+    },
+    {
+      "expect": {
+        "custom_hour": 0,
+        "custom_time": "00:00:00",
+        "day_hours": 48,
+        "dilation_percentage": 200.0,
+        "expanded_hours_per_day": 48.0,
+        "remaining_hours": 48.0,
+        "standard_time": "00:00:00",
+        "tick_ms": 100
+      },
+      "rate": 2.0,
+      "std": "2026-01-01T00:00:00"
+    },
+    {
+      "expect": {
+        "custom_hour": 47,
+        "custom_time": "47:59:59",
+        "day_hours": 48,
+        "dilation_percentage": 200.0,
+        "expanded_hours_per_day": 48.0,
+        "remaining_hours": 5.555517014323009e-10,
+        "standard_time": "23:59:59",
+        "tick_ms": 100
+      },
+      "rate": 2.0,
+      "std": "2026-12-31T23:59:59.999999"
+    },
+    {
+      "expect": {
+        "custom_hour": 25,
+        "custom_time": "25:09:52",
+        "day_hours": 48,
+        "dilation_percentage": 200.0,
+        "expanded_hours_per_day": 48.0,
+        "remaining_hours": 22.835486968888887,
+        "standard_time": "12:34:56",
+        "tick_ms": 100
+      },
+      "rate": 2.0,
+      "std": "2026-06-15T12:34:56.123456"
+    },
+    {
+      "expect": {
+        "custom_hour": 37,
+        "custom_time": "37:31:01",
+        "day_hours": 48,
+        "dilation_percentage": 200.0,
+        "expanded_hours_per_day": 48.0,
+        "remaining_hours": 10.483055555555556,
+        "standard_time": "18:45:30",
+        "tick_ms": 100
+      },
+      "rate": 2.0,
+      "std": "2026-03-01T18:45:30.500000"
+    },
+    {
+      "expect": {
+        "custom_hour": 46,
+        "custom_time": "46:00:00",
+        "day_hours": 48,
+        "dilation_percentage": 200.0,
+        "expanded_hours_per_day": 48.0,
+        "remaining_hours": 2.0,
+        "standard_time": "23:00:00",
+        "tick_ms": 100
+      },
+      "rate": 2.0,
+      "std": "2026-09-23T23:00:00"
+    },
+    {
+      "expect": {
+        "custom_hour": 45,
+        "custom_time": "45:00:00",
+        "day_hours": 120,
+        "dilation_percentage": 500.0,
+        "expanded_hours_per_day": 120.0,
+        "remaining_hours": 75.0,
+        "standard_time": "09:00:00",
+        "tick_ms": 100
+      },
+      "rate": 5.0,
+      "std": "2026-09-13T09:00:00"
+    },
+    {
+      "expect": {
+        "custom_hour": 0,
+        "custom_time": "00:00:00",
+        "day_hours": 120,
+        "dilation_percentage": 500.0,
+        "expanded_hours_per_day": 120.0,
+        "remaining_hours": 120.0,
+        "standard_time": "00:00:00",
+        "tick_ms": 100
+      },
+      "rate": 5.0,
+      "std": "2026-01-01T00:00:00"
+    },
+    {
+      "expect": {
+        "custom_hour": 119,
+        "custom_time": "119:59:59",
+        "day_hours": 120,
+        "dilation_percentage": 500.0,
+        "expanded_hours_per_day": 120.0,
+        "remaining_hours": 1.3888832957794268e-09,
+        "standard_time": "23:59:59",
+        "tick_ms": 100
+      },
+      "rate": 5.0,
+      "std": "2026-12-31T23:59:59.999999"
+    },
+    {
+      "expect": {
+        "custom_hour": 62,
+        "custom_time": "62:54:40",
+        "day_hours": 120,
+        "dilation_percentage": 500.0,
+        "expanded_hours_per_day": 120.0,
+        "remaining_hours": 57.08871742222222,
+        "standard_time": "12:34:56",
+        "tick_ms": 100
+      },
+      "rate": 5.0,
+      "std": "2026-06-15T12:34:56.123456"
+    },
+    {
+      "expect": {
+        "custom_hour": 93,
+        "custom_time": "93:47:32",
+        "day_hours": 120,
+        "dilation_percentage": 500.0,
+        "expanded_hours_per_day": 120.0,
+        "remaining_hours": 26.207638888888887,
+        "standard_time": "18:45:30",
+        "tick_ms": 100
+      },
+      "rate": 5.0,
+      "std": "2026-03-01T18:45:30.500000"
+    },
+    {
+      "expect": {
+        "custom_hour": 115,
+        "custom_time": "115:00:00",
+        "day_hours": 120,
+        "dilation_percentage": 500.0,
+        "expanded_hours_per_day": 120.0,
+        "remaining_hours": 5.0,
+        "standard_time": "23:00:00",
+        "tick_ms": 100
+      },
+      "rate": 5.0,
+      "std": "2026-09-23T23:00:00"
+    },
+    {
+      "expect": {
+        "custom_hour": 90,
+        "custom_time": "90:00:00",
+        "day_hours": 240,
+        "dilation_percentage": 1000.0,
+        "expanded_hours_per_day": 240.0,
+        "remaining_hours": 150.0,
+        "standard_time": "09:00:00",
+        "tick_ms": 100
+      },
+      "rate": 10.0,
+      "std": "2026-09-13T09:00:00"
+    },
+    {
+      "expect": {
+        "custom_hour": 0,
+        "custom_time": "00:00:00",
+        "day_hours": 240,
+        "dilation_percentage": 1000.0,
+        "expanded_hours_per_day": 240.0,
+        "remaining_hours": 240.0,
+        "standard_time": "00:00:00",
+        "tick_ms": 100
+      },
+      "rate": 10.0,
+      "std": "2026-01-01T00:00:00"
+    },
+    {
+      "expect": {
+        "custom_hour": 239,
+        "custom_time": "239:59:59",
+        "day_hours": 240,
+        "dilation_percentage": 1000.0,
+        "expanded_hours_per_day": 240.0,
+        "remaining_hours": 2.7777665915588536e-09,
+        "standard_time": "23:59:59",
+        "tick_ms": 100
+      },
+      "rate": 10.0,
+      "std": "2026-12-31T23:59:59.999999"
+    },
+    {
+      "expect": {
+        "custom_hour": 125,
+        "custom_time": "125:49:21",
+        "day_hours": 240,
+        "dilation_percentage": 1000.0,
+        "expanded_hours_per_day": 240.0,
+        "remaining_hours": 114.17743484444443,
+        "standard_time": "12:34:56",
+        "tick_ms": 100
+      },
+      "rate": 10.0,
+      "std": "2026-06-15T12:34:56.123456"
+    },
+    {
+      "expect": {
+        "custom_hour": 187,
+        "custom_time": "187:35:05",
+        "day_hours": 240,
+        "dilation_percentage": 1000.0,
+        "expanded_hours_per_day": 240.0,
+        "remaining_hours": 52.415277777777774,
+        "standard_time": "18:45:30",
+        "tick_ms": 100
+      },
+      "rate": 10.0,
+      "std": "2026-03-01T18:45:30.500000"
+    },
+    {
+      "expect": {
+        "custom_hour": 230,
+        "custom_time": "230:00:00",
+        "day_hours": 240,
+        "dilation_percentage": 1000.0,
+        "expanded_hours_per_day": 240.0,
+        "remaining_hours": 10.0,
+        "standard_time": "23:00:00",
+        "tick_ms": 100
+      },
+      "rate": 10.0,
+      "std": "2026-09-23T23:00:00"
+    },
+    {
+      "expect": {
+        "custom_hour": 139,
+        "custom_time": "139:30:00",
+        "day_hours": 372,
+        "dilation_percentage": 1550.0,
+        "expanded_hours_per_day": 372.0,
+        "remaining_hours": 232.5,
+        "standard_time": "09:00:00",
+        "tick_ms": 64
+      },
+      "rate": 15.5,
+      "std": "2026-09-13T09:00:00"
+    },
+    {
+      "expect": {
+        "custom_hour": 0,
+        "custom_time": "00:00:00",
+        "day_hours": 372,
+        "dilation_percentage": 1550.0,
+        "expanded_hours_per_day": 372.0,
+        "remaining_hours": 372.0,
+        "standard_time": "00:00:00",
+        "tick_ms": 64
+      },
+      "rate": 15.5,
+      "std": "2026-01-01T00:00:00"
+    },
+    {
+      "expect": {
+        "custom_hour": 371,
+        "custom_time": "371:59:59",
+        "day_hours": 372,
+        "dilation_percentage": 1550.0,
+        "expanded_hours_per_day": 372.0,
+        "remaining_hours": 4.305556002590391e-09,
+        "standard_time": "23:59:59",
+        "tick_ms": 64
+      },
+      "rate": 15.5,
+      "std": "2026-12-31T23:59:59.999999"
+    },
+    {
+      "expect": {
+        "custom_hour": 195,
+        "custom_time": "195:01:29",
+        "day_hours": 372,
+        "dilation_percentage": 1550.0,
+        "expanded_hours_per_day": 372.0,
+        "remaining_hours": 176.97502400888888,
+        "standard_time": "12:34:56",
+        "tick_ms": 64
+      },
+      "rate": 15.5,
+      "std": "2026-06-15T12:34:56.123456"
+    },
+    {
+      "expect": {
+        "custom_hour": 290,
+        "custom_time": "290:45:22",
+        "day_hours": 372,
+        "dilation_percentage": 1550.0,
+        "expanded_hours_per_day": 372.0,
+        "remaining_hours": 81.24368055555556,
+        "standard_time": "18:45:30",
+        "tick_ms": 64
+      },
+      "rate": 15.5,
+      "std": "2026-03-01T18:45:30.500000"
+    },
+    {
+      "expect": {
+        "custom_hour": 356,
+        "custom_time": "356:30:00",
+        "day_hours": 372,
+        "dilation_percentage": 1550.0,
+        "expanded_hours_per_day": 372.0,
+        "remaining_hours": 15.5,
+        "standard_time": "23:00:00",
+        "tick_ms": 64
+      },
+      "rate": 15.5,
+      "std": "2026-09-23T23:00:00"
+    },
+    {
+      "expect": {
+        "custom_hour": 180,
+        "custom_time": "180:00:00",
+        "day_hours": 480,
+        "dilation_percentage": 2000.0,
+        "expanded_hours_per_day": 480.0,
+        "remaining_hours": 300.0,
+        "standard_time": "09:00:00",
+        "tick_ms": 50
+      },
+      "rate": 20.0,
+      "std": "2026-09-13T09:00:00"
+    },
+    {
+      "expect": {
+        "custom_hour": 0,
+        "custom_time": "00:00:00",
+        "day_hours": 480,
+        "dilation_percentage": 2000.0,
+        "expanded_hours_per_day": 480.0,
+        "remaining_hours": 480.0,
+        "standard_time": "00:00:00",
+        "tick_ms": 50
+      },
+      "rate": 20.0,
+      "std": "2026-01-01T00:00:00"
+    },
+    {
+      "expect": {
+        "custom_hour": 479,
+        "custom_time": "479:59:59",
+        "day_hours": 480,
+        "dilation_percentage": 2000.0,
+        "expanded_hours_per_day": 480.0,
+        "remaining_hours": 5.555533183117707e-09,
+        "standard_time": "23:59:59",
+        "tick_ms": 50
+      },
+      "rate": 20.0,
+      "std": "2026-12-31T23:59:59.999999"
+    },
+    {
+      "expect": {
+        "custom_hour": 251,
+        "custom_time": "251:38:42",
+        "day_hours": 480,
+        "dilation_percentage": 2000.0,
+        "expanded_hours_per_day": 480.0,
+        "remaining_hours": 228.35486968888887,
+        "standard_time": "12:34:56",
+        "tick_ms": 50
+      },
+      "rate": 20.0,
+      "std": "2026-06-15T12:34:56.123456"
+    },
+    {
+      "expect": {
+        "custom_hour": 375,
+        "custom_time": "375:10:10",
+        "day_hours": 480,
+        "dilation_percentage": 2000.0,
+        "expanded_hours_per_day": 480.0,
+        "remaining_hours": 104.83055555555555,
+        "standard_time": "18:45:30",
+        "tick_ms": 50
+      },
+      "rate": 20.0,
+      "std": "2026-03-01T18:45:30.500000"
+    },
+    {
+      "expect": {
+        "custom_hour": 460,
+        "custom_time": "460:00:00",
+        "day_hours": 480,
+        "dilation_percentage": 2000.0,
+        "expanded_hours_per_day": 480.0,
+        "remaining_hours": 20.0,
+        "standard_time": "23:00:00",
+        "tick_ms": 50
+      },
+      "rate": 20.0,
+      "std": "2026-09-23T23:00:00"
+    },
+    {
+      "expect": {
+        "error_type": "ValueError",
+        "message": "时间膨胀倍率必须大于或等于1.0！",
+        "ok": false
+      },
+      "rate": 0.9,
+      "std": null
+    },
+    {
+      "expect": {
+        "error_type": "ValueError",
+        "message": "时间膨胀倍率必须大于或等于1.0！",
+        "ok": false
+      },
+      "rate": 0.0,
+      "std": null
+    },
+    {
+      "expect": {
+        "error_type": "ValueError",
+        "message": "时间膨胀倍率必须大于或等于1.0！",
+        "ok": false
+      },
+      "rate": -3.0,
+      "std": null
+    },
+    {
+      "expect": {
+        "error_type": "ValueError",
+        "message": "时间膨胀倍率必须小于或等于20.0！",
+        "ok": false
+      },
+      "rate": 20.1,
+      "std": null
+    },
+    {
+      "expect": {
+        "error_type": "ValueError",
+        "message": "时间膨胀倍率必须小于或等于20.0！",
+        "ok": false
+      },
+      "rate": 100.0,
+      "std": null
+    }
+  ]
+}

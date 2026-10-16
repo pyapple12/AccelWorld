@@ -1,0 +1,170 @@
+[
+  {
+    "code": 0,
+    "name": "晴",
+    "icon": "☀️",
+    "description": "晴朗无云"
+  },
+  {
+    "code": 1,
+    "name": "晴",
+    "icon": "☀️",
+    "description": "大致晴朗"
+  },
+  {
+    "code": 2,
+    "name": "多云",
+    "icon": "⛅",
+    "description": "部分多云"
+  },
+  {
+    "code": 3,
+    "name": "阴",
+    "icon": "☁️",
+    "description": "阴天"
+  },
+  {
+    "code": 45,
+    "name": "雾",
+    "icon": "🌫️",
+    "description": "有雾"
+  },
+  {
+    "code": 48,
+    "name": "雾",
+    "icon": "🌫️",
+    "description": "有雾凇"
+  },
+  {
+    "code": 51,
+    "name": "小毛毛雨",
+    "icon": "🌦️",
+    "description": "轻度毛毛雨"
+  },
+  {
+    "code": 53,
+    "name": "中毛毛雨",
+    "icon": "🌦️",
+    "description": "中度毛毛雨"
+  },
+  {
+    "code": 55,
+    "name": "稠密毛毛雨",
+    "icon": "🌧️",
+    "description": "稠密毛毛雨"
+  },
+  {
+    "code": 56,
+    "name": "冻毛毛雨",
+    "icon": "🌧️",
+    "description": "轻度冻毛毛雨"
+  },
+  {
+    "code": 57,
+    "name": "冻毛毛雨",
+    "icon": "🌧️",
+    "description": "中度冻毛毛雨"
+  },
+  {
+    "code": 61,
+    "name": "小雨",
+    "icon": "🌦️",
+    "description": "小雨"
+  },
+  {
+    "code": 63,
+    "name": "中雨",
+    "icon": "🌧️",
+    "description": "中雨"
+  },
+  {
+    "code": 65,
+    "name": "大雨",
+    "icon": "🌧️",
+    "description": "大雨"
+  },
+  {
+    "code": 66,
+    "name": "冻雨",
+    "icon": "🌧️",
+    "description": "轻度冻雨"
+  },
+  {
+    "code": 67,
+    "name": "冻雨",
+    "icon": "🌧️",
+    "description": "中度冻雨"
+  },
+  {
+    "code": 71,
+    "name": "小雪",
+    "icon": "❄️",
+    "description": "小雪"
+  },
+  {
+    "code": 73,
+    "name": "中雪",
+    "icon": "❄️",
+    "description": "中雪"
+  },
+  {
+    "code": 75,
+    "name": "大雪",
+    "icon": "❄️",
+    "description": "大雪"
+  },
+  {
+    "code": 77,
+    "name": "雪粒",
+    "icon": "❄️",
+    "description": "雪粒"
+  },
+  {
+    "code": 80,
+    "name": "小阵雨",
+    "icon": "🌦️",
+    "description": "小阵雨"
+  },
+  {
+    "code": 81,
+    "name": "中阵雨",
+    "icon": "🌧️",
+    "description": "中阵雨"
+  },
+  {
+    "code": 82,
+    "name": "大阵雨",
+    "icon": "⛈️",
+    "description": "大阵雨"
+  },
+  {
+    "code": 85,
+    "name": "小阵雪",
+    "icon": "❄️",
+    "description": "小阵雪"
+  },
+  {
+    "code": 86,
+    "name": "大阵雪",
+    "icon": "❄️",
+    "description": "大阵雪"
+  },
+  {
+    "code": 95,
+    "name": "雷暴",
+    "icon": "⛈️",
+    "description": "雷暴"
+  },
+  {
+    "code": 96,
+    "name": "雷暴",
+    "icon": "⛈️",
+    "description": "雷暴伴小冰雹"
+  },
+  {
+    "code": 99,
+    "name": "雷暴",
+    "icon": "⛈️",
+    "description": "雷暴伴大冰雹"
+  }
+]

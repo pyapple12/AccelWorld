@@ -1,0 +1,9 @@
+# 工具链锁定（PL011.01 落位）：stable 通道，随 rustup 更新滚动
+# 落位核验记录（2026-10-16）：cargo 1.98.1 / rustc 1.98.1 / clippy 0.1.98 / rustfmt 1.9.0
+# 探针实证：cargo new + build + run 全链通过（MSVC 链接器实链可用）
+[toolchain]
+channel = "stable"
+
+# ===== rust-toolchain.toml 说明区 =====
+# channel = "stable"：不锁小版本（锁死会随时间腐烂），通道级锁定足够
+# 本文件入库后，任何机器进入 rs/ 目录自动使用 stable 工具链

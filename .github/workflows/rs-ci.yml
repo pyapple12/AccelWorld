@@ -1,0 +1,55 @@
+# AccelWorld RS 持续集成（PL011.14 落地）
+# 四关卡与本地 rs/ci.ps1 同一命令集（不重复实现逻辑）；windows-latest 对齐产品平台
+name: rs-ci
+
+on:
+  push:
+    branches: [main]
+    paths: ["rs/**", ".github/workflows/rs-ci.yml"]
+  pull_request:
+    paths: ["rs/**", ".github/workflows/rs-ci.yml"]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    working-directory: rs
+
+jobs:
+  gates:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 工具链（rust-toolchain.toml 锁 stable）
+        run: rustup show active-toolchain
+
+      - name: 缓存构建产物
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rs/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rs/Cargo.lock') }}
+
+      - name: 关卡 1/4 fmt（格式检查）
+        run: cargo fmt --all -- --check
+
+      - name: 关卡 2/4 clippy（警告即红）
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: 关卡 3/4 test（全量单测 + 集成）
+        run: cargo test --workspace
+
+      - name: 关卡 4/4 core 依赖树零 egui/eframe（单向分层机器强制）
+        shell: pwsh
+        run: |
+          $tree = cargo tree -p accel-core --edges normal --format "{p}"
+          if ($tree -match "egui|eframe") {
+            Write-Host "FAIL: accel-core 依赖树混入 egui/eframe"
+            exit 1
+          }
+          Write-Host "ALL_GREEN: 四关卡全过"

@@ -51,6 +51,12 @@ openspec/
 # Archived
 archived/
 
+# Python 版归档（PL011.14，2026-10-16：Rust 重构接替，归档保持可运行供夹具再生）
+.archived/
+
+# Rust 构建产物
+rs/target/
+
 # opencode 项目级配置（机器绑定解释器路径）
 .opencode/
 

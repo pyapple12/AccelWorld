@@ -1,0 +1,20 @@
+{
+  "counts": {
+    "config_dirty_cases": 22,
+    "n_cities": 17,
+    "n_codes": 28,
+    "n_days": 365,
+    "n_probe": 24,
+    "n_samples": 61,
+    "n_tz": 8,
+    "time_vectors": 47
+  },
+  "generated_by": ".temp/export_fixtures.py（Python 0.6.0.0 行为快照，PL011.04）",
+  "sha256": {
+    "config_behavior.json": "5cd50e131e3ac95289315a4288a6193c92d2d691212d5432279f06799142ce06",
+    "data_tables.json": "fe862386153d5c7feb222b5b42558901053d4bc91790550fef5d34985996c327",
+    "lunar_samples.json": "e5dbbf88af96efeba809b4264193cd0638c11e0230a6b1e405ea996e40bcd448",
+    "time_vectors.json": "b56ffc1205e54933f2e5382b4c73900fad8797fafb92f9093a67bbaa3fe592a9",
+    "weather_samples.json": "06dcd84337601e18f881cd91a4dadc106e1585a189f9200ccbcb06772a6a7620"
+  }
+}
