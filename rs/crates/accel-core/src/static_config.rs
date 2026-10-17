@@ -167,8 +167,16 @@ mod tests {
 
     #[test]
     fn version_single_source() {
-        // 版本单一来源契约：四段式 0.6.0.3（与 base.json 同步维护）
-        assert_eq!(Static::get().version(), "0.6.0.3");
+        // 版本单一来源契约：四段式纯数字形态（值本体只在 base.json——代码零版本字符串；
+        // 编译期注入与运行期读取的取值 parity 由 accel-app lib.rs 单测锚定）
+        let v = Static::get().version();
+        let segs: Vec<&str> = v.split('.').collect();
+        assert_eq!(segs.len(), 4, "版本应为四段式 X.Y.Z.P，实际 {v}");
+        assert!(
+            segs.iter()
+                .all(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit())),
+            "各段必须为纯数字，实际 {v}"
+        );
     }
 
     #[test]

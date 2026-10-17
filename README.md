@@ -1,7 +1,7 @@
 # AccelWorld —— 加速世界世界钟
 
-[![Version](https://img.shields.io/badge/Version-0.6.0.3-blue.svg)](rs/config/static/base.json)
-[![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org)
+[![Version](https://img.shields.io/badge/Version-0.6.0.4-blue.svg)](rs/config/static/base.json)
+[![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](rs/rust-toolchain.toml)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
 ---
@@ -10,7 +10,8 @@
 
 基于时间膨胀倍率的自定义小时制时钟应用。根据设定的加速倍率（1.0x - 20.0x），实时显示加速后的时间，同时保留标准时间对照。灵感来自《加速世界》，界面以中文为主，提供农历、生肖、节气等中华传统文化元素。
 
-> 当前状态：S1-S10 重构完成；两轮审计修复完成；**UI 2.0 完成（0.5.0.0），UI 打磨进行中（0.5.2.1 真机观感返工）**——Fluent 重写 + 接口层架构 + 多页导航 + Acrylic + 真渐变玻璃光场 + 环形表盘与城市矩阵；任务清单见 `x.progress.md`，已知问题见 `y.problems.md`，版本路线见 `m.milestone.md`。
+> 当前技术栈：**Rust**（egui + eframe/wgpu + WGSL 玻璃渲染）。0.6.0.0 为原 Python（PyQt6 + Fluent Widgets）版本的定版，本仓库已在同版本号段内完成引擎重构（PL011–PL015），Python 版归档于 `.archived/`（git 忽略，仅供 golden 夹具再生）。
+> 任务清单见 `x.progress.md`，已知问题见 `y.problems.md`，版本路线见 `m.milestone.md`，方案与审计见 `z.plan.md`。
 
 ## 目录
 
@@ -23,211 +24,151 @@
 - [常见问题](#常见问题)
 - [许可证](#许可证)
 
-## 项目展示
-
-![项目截图](docs/images/demo.png)
-
-启动应用程序即可查看同时显示标准时间和加速时间的实时时钟。
-
----
-
 ## 特性
 
 - **时间膨胀计算**：根据可配置的加速倍率（1.0x - 20.0x）计算自定义时间流速
-- **双界面支持**：同时支持命令行界面和图形界面（PyQt6 + Fluent Widgets）
-- **实时时钟**：加速时间大字英雄区 + 标准时间对照 + 进度条可视化
-- **侧栏多页导航**：时钟 / 倒计时 / 世界时钟 / 天气 / 闹钟 独立页面，设置页置底
-- **农历信息**：显示天干地支年、生肖、时辰、月相、节气、公历节日、拜财神方向
-- **世界时钟**：支持查看北京、东京、首尔、伦敦、巴黎、纽约、洛杉矶、悉尼等城市时间
-- **倒计时功能**：支持设置目标时间倒计时显示
-- **天气显示**：支持北京、上海、广州、深圳等 18 个主要城市天气（使用 Open-Meteo API）
-- **闹钟功能**：支持设置多个闹钟，预设/自定义铃声，系统通知提醒
-- **三态主题**：跟随系统（实时切换）/ 浅色 / 深色，设置页选择器或 Ctrl+T 循环
-- **Acrylic 材质**：Windows 11 毛玻璃背板（不支持环境自动降级实底）
-- **系统托盘**：支持隐藏到托盘后台运行，Fluent 风格右键菜单
-- **配置持久化**：自动保存加速倍率、主题、城市、时区、闹钟等设置
+- **实时时钟**：加速时间大字英雄区 + 标准时间对照 + 进度环可视化
+- **玻璃渲染**：WGSL 着色器自绘玻璃卡（折射/色散/rim/光场）+ Windows 11 Acrylic 窗口背板（不支持环境自动降级实底）
+- **胶囊导航**：时钟 / 倒计时 / 世界时钟 / 天气 / 闹钟 五页 + 设置浮窗
+- **农历信息**：天干地支年、生肖、时辰、月相、节气、公历节日、拜财神方向
+- **世界时钟**：城市矩阵走时 + 昼夜指示，支持增删城市与基准时区切换
+- **倒计时功能**：多目标列表，法定/传统节日自动派生
+- **天气显示**：Open-Meteo 免费 API，当前 / 逐小时 / 七日预报，多城市切换
+- **闹钟功能**：多闹钟、预设/自定义铃声、一键快捷添加、系统通知提醒
+- **三态主题**：跟随系统 / 浅色 / 深色，设置浮窗选择或全局热键 Ctrl+T 循环
+- **系统集成**：系统托盘菜单树（显示/隐藏/退出，关闭按钮隐藏驻留）+ 全局热键（Ctrl+S 保存 / Ctrl+Q 退出 / Ctrl+T 主题）
+- **配置持久化**：倍率、主题、城市、时区、倒计时目标、闹钟等自动保存
 
 ## 快速开始
 
 ### 环境要求
 
-- Python 3.10 或更高版本
-- pip（Python 包管理器）
+- Rust stable 工具链（见 `rs/rust-toolchain.toml`）
+- Windows：MSVC 链接器（VS Build Tools，含 C++ 工作负载）
 
-### 安装
+### 构建与运行
 
-```bash
-# 克隆仓库
-git clone https://github.com/pyapple12/AccelWorld.git
-cd AccelWorld
+```powershell
+cd rs
 
-# 安装依赖
-pip install -r requirements.txt
+# 开发运行（真窗）
+cargo run -p accel-app
+
+# 发布构建
+cargo build --release        # 产物 rs/target/release/accelworld.exe
+```
+
+### 验证
+
+```powershell
+# 四关卡 CI：格式 / clippy / 全量测试 / core 依赖树零 GUI
+pwsh rs/ci.ps1
+
+# 仅测试
+cargo test --workspace
+
+# 玻璃离屏渲染断言探针
+cargo run -p accel-app --bin render_probe
 ```
 
 ## 使用说明
 
-### 图形界面
+### 界面操作
 
-```bash
-# 默认启动（图形界面）
-python main.py
-
-# 指定加速倍率启动
-python main.py --rate 3.0
-
-# 启动后隐藏到托盘
-python main.py --hidden
-
-# 深色主题启动
-python main.py --theme dark
-
-# 指定城市启动
-python main.py --city 上海
-```
-
-### 命令行模式
-
-```bash
-# 进入命令行交互模式
-python main.py --cli
-
-# 命令行模式指定倍率
-python main.py --cli --rate 2.0
-```
-
-### 命令行参数
-
-| 参数              | 说明                              |
-| ----------------- | --------------------------------- |
-| `--gui`           | 运行图形界面（默认）              |
-| `--cli`           | 运行命令行界面                    |
-| `--rate`, `-R`    | 加速倍率（1.0 - 20.0，默认：2.0） |
-| `--theme`, `-T`   | 主题：`light` 或 `dark`           |
-| `--city`, `-C`    | 默认显示城市                      |
-| `--hidden`        | 启动后隐藏到托盘                  |
-| `--version`, `-V` | 显示版本信息                      |
-
-### GUI 操作说明
-
-- **侧栏导航**：左侧边栏切换 时钟 / 倒计时 / 世界时钟 / 天气 / 闹钟 / 设置 六个页面
-- **调节倍率**：时钟页拖动滑杆或输入数值后点击"应用加速"，也可点击工作/专注/睡眠预设
-- **切换主题**：设置页选择 跟随系统/浅色/深色，或快捷键 Ctrl+T 三态循环；跟随系统时随 Windows 深浅色实时切换
+- **导航**：左侧胶囊按钮切换 时钟 / 倒计时 / 世界时钟 / 天气 / 闹钟；底部齿轮打开设置浮窗
+- **调节倍率**：时钟页拖动玻璃滑杆（拖动即生效，松手落盘），支持 0.1x 步进
+- **切换主题**：设置浮窗选择 跟随系统/浅色/深色，或热键 Ctrl+T 三态循环；跟随系统时随 Windows 深浅色实时切换
 - **毛玻璃**：Windows 11 下窗口自动启用 Acrylic 材质（壁纸渗透，失焦短暂收起属系统行为）
-- **选择城市**：天气页从下拉框选择城市查看天气
-- **设置倒计时**：倒计时页输入目标时间（支持 `YYYY-MM-DD`、`YYYY-MM-DD HH:MM` 或 `YYYY-MM-DD HH:MM:SS` 格式）
-- **查看世界时钟**：世界时钟页从下拉框选择时区
-- **托盘操作**：双击托盘图标显示窗口，右键弹出 Fluent 菜单，点击关闭按钮隐藏到托盘
-- **快捷键**：Ctrl+S 保存 / Ctrl+Q 退出 / Ctrl+T 切换主题
+- **世界时钟**：点击城市卡切换基准时区，加号添加城市、减号移除（至少保留一个）
+- **倒计时**：加号新增目标（名称 + 日期时间），减号移除；默认目标为下一个春节
+- **天气**：顶部城市条切换城市，刷新按钮强制拉取，加号管理城市列表
+- **闹钟**：快捷按钮（15/30/60/240 分钟）或自定义添加（时间/标签/重复星期），行卡开关与删除
+- **托盘**：关闭按钮隐藏到托盘后台驻留；右键弹出菜单（显示窗口 / 隐藏到托盘 / 退出），双击托盘图标还原
+- **全局热键**：Ctrl+S 保存 / Ctrl+Q 退出 / Ctrl+T 主题循环（窗口失焦亦生效）
+
+### 配置与日志
+
+- 用户配置：`rs/config/user_config.json`（倍率/主题/城市/时区/倒计时/闹钟/窗口几何）
+- 运行日志：`rs/logs/`（按日独立文件 + 崩溃栈）
 
 ## 项目结构
 
 ```
-AccelWorld/
-├── main.py                    # 主入口：装配 AppInterface → GUI（注入接口）/ CLI 分发
-├── interface/                 # 接口层（UI 访问后端的唯一契约，无 Qt 依赖）
-│   ├── app_interface.py       # AppInterface：时钟/倍率/天气/闹钟/时区/配置/几何七域方法
-│   └── types.py               # 类型转出（TimeInfo/WeatherData/Alarm/PresetSound/UiPreferences）
-├── modules/                   # 业务核心层（无 GUI 依赖，可独立测试）
-│   ├── time_dilation.py       # 时间膨胀算法与 CLI 实时钟
-│   ├── chinese_calendar.py    # 农历、干支、生肖、节气、节日
-│   ├── weather_service.py     # 天气服务（Open-Meteo API，30 分钟缓存 + 重试）
-│   └── alarm_service.py       # 闹钟模型与匹配逻辑（音频播放已迁 ui/audio_player.py）
-├── config/
-│   ├── settings.py            # 用户配置读写（UserConfig）
-│   ├── user_config.json       # 用户配置（生成于项目内）
-│   └── static/                # 应用静态配置（参数/UI 常量，json 驱动，零硬编码）
-│       ├── config.json        # 引导映射表
-│       ├── base.json          # 应用参数
-│       ├── ui.json            # 字体/布局 tokens/颜色
-│       └── static_config.py   # StaticConfig + get_static_config() 单例
-├── logs/                      # 运行日志（app-*.log 每日文件 + crash-*.log 崩溃栈）
-├── ui/                        # GUI 层（Fluent Widgets，零后端 import）
-│   ├── main_window.py         # 主窗口装配器（FluentWindow 六导航页 + 三态主题）
-│   ├── backdrop.py            # Acrylic 毛玻璃背板（DWM，Win11）
-│   ├── system_tray.py         # 系统托盘（自绘图标/RoundMenu 菜单/原生通知）
-│   ├── alarm_dialog.py        # 闹钟编辑对话框（MessageBoxBase）
-│   ├── audio_player.py        # 闹钟音频播放（自定义铃声/异步分发）
-│   ├── tools/                 # UI 层纯函数运算（倒计时解析/进度换算/文案格式化）
-│   └── panels/                # 7 个面板（时钟/日期/倒计时/世界时钟/天气/闹钟/设置）
-├── data/                      # 静态数据
-│   ├── cities.py              # 城市经纬度表
-│   ├── timezones.py           # 时区表（含夏令时标注）
-│   └── weather_codes.py       # WMO 天气代码映射表
-├── utils/                     # 通用工具
-│   ├── logger.py              # 统一日志配置（每日独立文件）
-│   ├── file_utils.py          # JSON 读写 + 缓存单例 + 项目根定位
-│   ├── dataclass_utils.py     # dataclass 反序列化通用工具
-│   └── retry.py               # 泛型重试函数
-├── tests/                     # pytest 单元测试（54 用例）
-├── requirements.txt           # Python 依赖列表
-├── pyproject.toml             # 项目配置
-├── AGENTS.md                  # Agent 协作规范（工程原则/代码规范/Commit 提交规范）
-├── w.study.md                 # 项目分析报告（工作流四件套）
-├── x.progress.md              # 任务清单（工作流四件套）
-├── y.problems.md              # 已知问题（工作流四件套）
-├── z.plan.md                  # 方案记录与审计附录（工作流四件套）
-├── m.milestone.md             # 版本里程碑清单
-├── LICENSE                    # GPL-3.0 许可证
-└── README.md                  # 本文件
+rs/                              # cargo workspace 根（全部命令在此执行）
+├── Cargo.toml                   # [workspace] members = ["crates/*"] + 统一依赖版本
+├── rust-toolchain.toml / rustfmt.toml / clippy.toml
+├── ci.ps1                       # 四关卡本地 CI（fmt / clippy / test / 依赖树）
+├── README.md                    # Rust 工程房规与结构说明
+├── fixtures/                    # golden 夹具（Python 0.6.0.0 行为快照，parity 基准）
+├── config/static/               # 应用静态配置（零硬编码 token）
+│   ├── base.json                # 应用参数 + version（版本单一来源）
+│   ├── ui.json                  # 字体/布局 tokens/颜色
+│   ├── holidays.json            # 法定节假日（逐年导出）
+│   └── world_cities.json        # 统一城市表（名称/坐标/IANA 时区）
+├── crates/
+│   ├── accel-core/              # 纯业务（零 GUI 依赖，CI 强制）
+│   │   └── src/                 # interface/types/time_dilation/chinese_calendar/weather/
+│   │                            #   alarm/settings/static_config/audio/data/util
+│   └── accel-app/               # egui 前端
+│       └── src/                 # window/bus/theme/nav/logging/main.rs
+│           ├── glass/           # WGSL 玻璃管线（shader/surface/painter）
+│           ├── pages/           # 六页（clock/countdown/world/weather/alarm/settings）
+│           ├── widgets/         # 自绘控件（glass_card/chip/ring/slider）
+│           ├── tools/           # 展示运算纯函数
+│           ├── platform/        # 系统集成（acrylic/tray/notify/hotkey）
+│           └── bin/render_probe.rs
+├── assets/                      # 托盘图标等内嵌资源
+└── logs/                        # 运行日志（gitignore）
 ```
 
 ## 依赖
 
-| 包名             | 版本      | 说明                           |
-| ---------------- | --------- | ------------------------------ |
-| PyQt6            | >= 6.6.0  | GUI 框架                       |
-| lunar-python     | >= 0.0.9  | 农历、天干地支、生肖、节气计算 |
-| chinese-calendar | >= 1.8.0  | 中国节假日信息                 |
-| pytz             | >= 2024.1 | 世界时钟时区处理               |
+主要 crates（完整清单见 `rs/Cargo.toml`）：
+
+| 领域     | 依赖                                                              |
+| -------- | ----------------------------------------------------------------- |
+| GUI      | eframe(wgpu) / egui / egui_extras / wgpu / image                  |
+| 后端     | tokio / reqwest(rustls) / chrono / chrono-tz / lunar_rust / rodio |
+| 序列化   | serde / serde_json                                                |
+| 日志     | tracing / tracing-subscriber / tracing-appender                   |
+| 系统集成 | tray-icon / global-hotkey / tauri-winrt-notification / windows    |
+| 测试     | httpmock                                                          |
 
 ## 贡献指南
 
 欢迎各类贡献，包括 Bug 修复、功能开发、文档优化等。
 
-### 贡献流程
-
 1. Fork 本仓库
 2. 创建特性分支（`git checkout -b feature/xxx`）
-3. 提交修改（`git commit -m "feat: 新增xxx功能"`）
-4. 推送分支（`git push origin feature/xxx`）
-5. 发起 Pull Request
-
-详细规范见 [CONTRIBUTING.md](./CONTRIBUTING.md)
+3. 提交前跑 `pwsh rs/ci.ps1` 四关卡全绿
+4. 提交修改（提交信息规范见 `AGENTS.md`）
+5. 推送分支并发起 Pull Request
 
 ## 常见问题
 
 ### Q1：加速倍率设置为多少最合适？
 
-A：默认值为 2.0x，可根据个人需求在 1.0x 到 20.0x 之间调节。例如 2.0x 表示加速世界的一天等于现实 12 小时。建议从默认值开始，逐步调整找到适合自己的节奏。
+A：默认值为 2.0x，可在 1.0x 到 20.0x 之间调节。例如 2.0x 表示加速世界的一天等于现实 12 小时。建议从默认值开始逐步调整。
 
 ### Q2：关闭程序后设置会丢失吗？
 
-A：不会。程序会自动保存加速倍率、主题、城市、时区等设置到配置文件（`config/user_config.json`，位于项目目录内），下次启动时会自动恢复。
+A：不会。倍率、主题、城市、时区、闹钟等设置自动保存到 `rs/config/user_config.json`，下次启动自动恢复。
 
 ### Q3：支持查看哪些城市的天气？
 
-A：支持北京、上海、广州、深圳、杭州、成都、武汉、南京、西安、重庆、天津、苏州、长沙、青岛、厦门、香港、台北等 18 个主要城市。天气数据来自 Open-Meteo 免费 API，无需 API Key。
+A：覆盖国内外 50 个主要城市（`rs/config/static/world_cities.json`）。天气数据来自 Open-Meteo 免费 API，无需 API Key。
 
 ### Q4：如何让程序在后台运行？
 
-A：启动时使用 `--hidden` 参数，程序将直接隐藏到系统托盘运行。点击托盘图标可重新显示窗口，关闭窗口会最小化到托盘而非退出程序。
+A：点击窗口关闭按钮即隐藏到系统托盘驻留；托盘右键菜单或双击图标可还原窗口，菜单"退出"才真正结束进程。
 
-### Q5：倒计时功能支持哪些时间格式？
+### Q5：倒计时支持哪些目标？
 
-A：支持三种格式：
+A：任意名称 + 日期时间目标，另自动派生当年/次年法定节假日与传统节日；未设置时默认指向上一个/下一个春节。
 
-- `2025-12-31`（仅日期）
-- `2025-12-31 23:59`（日期+小时分钟）
-- `2025-12-31 23:59:59`（完整日期时间）
+### Q6：为什么玻璃效果在半透明/远程桌面下变实底？
 
-### Q6：世界时钟支持哪些时区？
-
-A：支持北京、东京、首尔、伦敦、巴黎、纽约、洛杉矶、悉尼等 8 个常用时区，可通过下拉框快速切换。
-
-### Q7：农历信息显示哪些内容？
-
-A：显示天干地支年、生肖、当前时辰、月相、节气（如有）、公历节日（如有）、拜财神方向等丰富的中华传统文化元素。
+A：Acrylic 与 WGSL 玻璃依赖桌面合成能力，在不支持的环境自动降级为实底纯色（行为无损）。
 
 ## 维护者
 

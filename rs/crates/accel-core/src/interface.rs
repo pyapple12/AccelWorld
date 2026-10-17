@@ -563,7 +563,13 @@ mod tests {
         assert_eq!(itf.get_rate(), 2.0);
         assert_eq!(AppInterface::get_rate_bounds(), (1.0, 20.0));
         assert_eq!(AppInterface::get_weather_refresh_interval_ms(), 1_800_000);
-        assert_eq!(AppInterface::get_version(), "0.6.0.3");
+        // 版本经 base.json 单源转出（四段式形态；值本体不在代码内）
+        let version = AppInterface::get_version();
+        assert_eq!(
+            version.split('.').count(),
+            4,
+            "版本应为四段式，实际 {version}"
+        );
     }
 
     #[test]

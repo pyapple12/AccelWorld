@@ -182,11 +182,24 @@ impl Bus {
 
     /// 每帧 drain：while try_recv 消费全部积压事件 → UiState::apply
     /// ConfigSaved 后重拉倒计时目标同步快照（iface 拉取式通道）
+    /// 闹钟触发/保存失败两事件旁路平台通知 + 铃声（PL015.02 接线）
     /// 返回本轮消费条数（帧计数/节奏探针用）；logic(&mut self) 调用
     pub fn drain(&mut self, state: &mut UiState) -> usize {
         let mut n = 0;
         let mut need_reload = false;
         while let Ok(evt) = self.evt_rx.try_recv() {
+            match &evt {
+                BackendEvent::AlarmTriggered(alarm) => {
+                    // 系统通知 + 铃声（PL014.15 占位补齐；两者皆失败不阻塞——
+                    // 触发事实已由 AlarmsChanged/列表状态承载）
+                    crate::platform::notify::notify_alarm(&alarm.label, &alarm.time);
+                    play_alarm_sound(&alarm.sound_type, &alarm.sound_value);
+                }
+                BackendEvent::ConfigSaved(false) => {
+                    crate::platform::notify::notify_save_failed();
+                }
+                _ => {}
+            }
             if matches!(evt, BackendEvent::ConfigSaved(_)) {
                 need_reload = true;
             }
@@ -212,6 +225,17 @@ impl Bus {
     }
 }
 
+/// 闹钟铃声分发（Python play_preset_sound/play_custom_sound 分支对等）：
+/// preset → core::audio::play_preset（枚举反解）；custom → play_file（路径直放）
+/// 其余 sound_type 回退 preset（alarm.rs 解析层已过滤，此处兜底同语义）
+fn play_alarm_sound(sound_type: &str, sound_value: &str) {
+    if sound_type == "custom" && !sound_value.is_empty() {
+        accel_core::audio::play_file(std::path::Path::new(sound_value));
+    } else {
+        accel_core::audio::play_preset(accel_core::alarm::PresetSound::from_value(sound_value));
+    }
+}
+
 // ===== src/bus.rs 说明区 =====
 // 输入：BackendEvent 流（后端事实）；输出：UiState 快照 + FrontendCommand 出口
 // 逻辑步骤：drain 每帧 while try_recv → apply 逐变体更新 → 渲染层只读 state
@@ -219,7 +243,8 @@ impl Bus {
 //   &UiState 与 cmd 发送口），锁不跨帧（drain 在 update 首行完成）；Tick 节奏
 //   由后端推（tick_ms 随倍率重排已在 interface 内），app 侧 next_repaint_interval
 //   只做「取小 + 1s 兜底」（空闲期 egui 空转防护）
-// 异常处理：send 通道满/关记 error 不 panic（UI 假死不应崩进程）
+// 异常处理：send 通道满/关记 error 不 panic（UI 假死不应崩进程）；闹钟触发旁路
+//   通知/铃声均失败不阻塞（触发事实由列表状态承载）
 // 关联依赖：accel-core::interface/types；消费方：window.rs AppHandle
 #[cfg(test)]
 mod tests {

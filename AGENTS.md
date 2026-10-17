@@ -1,46 +1,40 @@
 # AccelWorld 项目说明
 
-单包 Python 桌面应用：基于加速倍率的时间膨胀时钟（PyQt6，中文界面为主）。无 lint/格式脚本、无构建步骤；单元测试用 pytest（tests/，131 用例）。2026-09-10 起接入 DeepTransHub 工作流体系（文档四件套 + Commit 提交规范 + `.agents/skills/` 项目级技能）。
+Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/wgpu，中文界面为主）。2026-10-16 起由 Python（PyQt6 + Fluent Widgets）重构为 Rust，Python 版全量归档 `.archived/`（git 忽略，仅供 golden 夹具再生）。2026-09-10 起接入 DeepTransHub 工作流体系（文档四件套 + Commit 提交规范 + `.agents/skills/` 项目级技能）。
 
 ## 运行与验证
 
-- 入口 `main.py`：GUI 为默认模式，CLI 用 `--cli`；版本号单一来源在 `config/static/base.json`（`base["version"]`，当前 `0.6.0.0`），各模块（main.py --version/窗口标题/托盘 toolTip）一律从配置读取，代码中不得出现版本字符串
-- **版本体系**（2026-09-10 切换）：自 `0.4.7.0` 起启用四段式纯数字 `X.Y.Z.P`（无 `ver ` 前缀）；历史存量 `ver 0.4x` 为旧三段式带前缀格式，仅存留于历史文档与提交记录，不回溯改写
-- 没有测试/lint 命令。改动后验证：`.\.venv\Scripts\python.exe -c "import main, modules.time_dilation, modules.chinese_calendar, modules.weather_service, modules.alarm_service, config.settings, config.static.static_config, ui.main_window, ui.alarm_dialog, ui.audio_player, ui.system_tray, data.cities, data.timezones, data.weather_codes, utils.logger, utils.file_utils, utils.retry, interface, ui.tools.countdown_tools, ui.tools.clock_tools, ui.tools.alarm_text"`。不要直接跑 GUI 验证（会弹窗阻塞）
-- GUI 无头初始化验证（不弹窗）：`$env:QT_QPA_PLATFORM="offscreen"; .\.venv\Scripts\python.exe -c "from PyQt6.QtWidgets import QApplication; from interface import AppInterface; from ui.main_window import AcceleratedWorldGUI; app = QApplication([]); w = AcceleratedWorldGUI(AppInterface()); print('GUI init OK')"`（进程退出码可能为已知退出期崩溃所污染，以 stdout 输出为准）
-- `pyproject.toml` 仅有 basedpyright 配置，且绝大多数检查被显式放宽为 `"none"` —— 不要引入严格类型修复，也不要改动这些配置
-- CLI 冒烟测试：`.\.venv\Scripts\python.exe main.py --version`、`main.py --cli --rate 2.0`
-- 单元测试：`.\.venv\Scripts\python.exe -m pytest tests/ -v`（131 用例覆盖 time_dilation/chinese_calendar/settings/alarm_service/weather_service/file_utils/rate_presets/logger/monitor/static_config/gui_features/interface/countdown_tools/ui_tools；依赖 `tests/requirements-dev.txt` 的 pytest；GUI 断言类测试放子进程执行、以 stdout 标记断言——本机 GUI 进程退出期硬崩溃见 y.problems#6，勿在 pytest 主进程内联创建 QApplication；子进程配置隔离统一走 ACCELWORLD_CONFIG_FILE 环境变量，FIX001.12）
+- 全部命令在 `rs/` 目录（cargo workspace 根）下执行；工具链见 `rs/rust-toolchain.toml`（channel = stable）
+- **统一入口四关卡**：`pwsh rs/ci.ps1`（fmt --check → clippy `-D warnings` → `cargo test --workspace` → core 依赖树零 egui/eframe）；`.github/workflows/rs-ci.yml` 复用同一命令集
+- 全量测试：`cargo test --workspace`（core 单测 + 夹具 parity 集成 + app 单测）
+- GUI 冒烟（真窗出血，会弹窗）：`cargo run -p accel-app`；玻璃离屏渲染断言探针：`cargo run -p accel-app --bin render_probe`
+- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.0.4`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
+- **版本体系**：四段式纯数字 `X.Y.Z.P`（无 `ver ` 前缀）；`feat`/`fix`/`refactor`/`perf` 提交前 bump patch 位；历史存量 `ver 0.4x` 三段式仅存于历史文档与提交记录，不回溯改写
 
 ## 环境陷阱
 
-- `.venv` 是机器绑定的：`pyvenv.cfg` 的 `home` 指向创建时机器的 Python 路径。换机器/换用户后解释器损坏，症状是 VSCode Python 扩展报 `write EPIPE / Shutting down server`（Jedi 语言服务器无法启动）。重建：`Remove-Item -Recurse -Force .venv; py -3.14 -m venv .venv; .\.venv\Scripts\python.exe -m pip install -r requirements.txt`，然后在 VSCode 重选解释器
-- 依赖（`requirements.txt`）：PyQt6、lunar-python、chinese-calendar、pytz
+- 工作区为 Windows + MSVC 工具链（`stable-x86_64-pc-windows-msvc`）；首次配置需 VS Build Tools 的 `cl`/`link`
+- `.venv` 与 `config/user_config.json`（Python 版）已随 Python 归档，不再作为验证通道；现役用户配置在 `rs/config/user_config.json`
+- `rs/target/` 为构建缓存（体积可达数十 GB），可随时 `cargo clean` 清除；勿将其纳入版本控制
+- pwsh 会话带 `-NoProfile`；输出中文前先 `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;`；搜索统一 `rg`
 
 ## 结构与约定
 
-- 包结构按依赖单向分层（UI 2.0 三大块，plan#UI2.0）：`interface/` 接口层（AppInterface 七域契约 + types 类型转出，无 Qt 依赖；UI 访问后端的唯一入口）→ 后端 `utils/` 通用工具（logger/file_utils/retry/dataclass_utils/monitor 运行监控，无业务依赖）+ `config/` 配置（settings 用户配置 + static/ 应用静态配置层，用户配置存项目内 `config/user_config.json`，日志存项目内 `logs/app-YYYY-MM-DD.log` 每日独立文件、崩溃栈 `logs/crash-YYYY-MM-DD.log`）+ `modules/` 业务核心（time_dilation 时间膨胀、chinese_calendar 农历/干支/节气、weather_service Open-Meteo 天气、alarm_service 闹钟）+ `data/` 静态数据（cities/timezones/weather_codes）→ `ui/` 界面（Fluent Widgets：main_window 主窗口装配器 FluentWindow 六导航页、panels/ 7 面板含设置页、tools/ 展示运算纯函数、backdrop.py Acrylic 背板、system_tray 托盘、alarm_dialog 闹钟对话框、audio_player 音频；**ui/ 零后端 import，一切经 interface**）
-- 代码零硬编码原则：业务参数（倍率范围/默认值/定时器周期/窗口几何/字体颜色/日志路径等）全部从 `config/static/` 的 json 读取（`get_static_config()` 单例，映射表 config.json 由 static_config.py 的 `__file__` 自定位——唯一结构约定）；用户配置默认值经 `default_factory` 从 base.json 现取
-- **自绘圆弧留边**（2026-09-12 定案）：自绘圆/圆弧与控件裁剪边界相切时，抗锯齿会把切点处的圆弧量化成平边（125% 缩放等非整数 DPR 下更明显）。自绘圆形/圆弧元素的控件须比可见图形四周各大 ≥1px 透明边距，定位偏移同步计入——参照 `ui/glass_card.py` CapsuleSlider 的 `TRACK_PAD` 模式（杆子/橙槽/旋钮三层同心几何）与 `ui/system_tray.py` 托盘图标的 2px 边距；玻璃卡自身圆角为容器轮廓、属固有贴边，不适用
-- **Qt 回调必须 try/except 防护**（2026-09-13 定案）：paintGL/paintEvent/resizeEvent 等 Qt 回调内抛出的未捕获 Python 异常会触发 PyQt6 fail-fast 直接终止进程（0xC0000409，零输出）。所有回调主体必须有 try/except 包裹，异常降级为纯色/跳过绘制 + logger.error，绝不外抛。与显卡无关
-- **GL 渲染约定**（2026-09-13 PL010 定案，`ui/gl/` 链路通用）：
-  - **预乘 alpha**：Qt 合成 QOpenGLWidget 假定 FBO 内容为 premultiplied——shader 输出必须 `gl_FragColor = vec4(col*alpha, alpha)`，直通色会以满亮覆盖背板（Acrylic 全灭的历史根因）
-  - **uv 归一化空间**：着色器距离场/效果参数一律 uv 口径（u_rect/radius 注入前除以分辨率）；设备像素量纲会使 rim/折射参数失效数百倍。SDF 须乘 `vec2(aspect,1)` 纵横比校正（否则圆角椭圆化）
-  - **覆盖判向**：`cov`/`outside` 以 `d` 判向（d<0 面内）；`-d` 写法曾致面内外整体颠倒（玻璃失效主根因）
-  - **场景生命周期**：GlassCard 注册延迟到首次 showEvent；销毁必须显式 `SCENE.unregister`（setItemWidget 场景 destroyed 信号延迟不可靠）；隐藏页以 visible=False 剔除绘制；面数上限 16
-  - **重绘调度**：场景 touch → repaint_hook 直连画布 update（FIX004.7）+ 150ms 轮询兜底脏检查；静态期零重绘；改 touch/update 通路必须跑帧数断言探针（`update()` 在 QOpenGLWidget 有节流陷阱，须探针实证）
-  - **glow_y 语义**：ui.json 的 glow_y 为 uv 底原点直传（GL 定稿观感基准）；栅格路径消费时 1-y 换算
-  - **质量门**：任何 GL 观感/管线改动须过真机渲染断言探针（FBO 分区采样量化阈值）再进人工走查——功能探针抓不住纯视觉缺陷
-  - **能力探测**：gl_enabled（ui.json）× gl_available（非远程桌面 + 离屏上下文创建 + 版本 ≥2.1）与运算；GL 失败逐级降级栅格且行为无损
-- `main.py` 收编 CLI/GUI 分发与版本读取；模块间顶层 import，不要使用函数内延迟 import
+- cargo workspace 双 crate，依赖单向 `app → core`（CI 关卡 4 机器强制 core 零 egui/eframe）：
+  - `rs/crates/accel-core`：纯业务（时间膨胀 / 农历干支节气 / 天气 / 闹钟 / 配置 / 数据表 / 通用工具 / 接口契约），零 GUI 依赖
+  - `rs/crates/accel-app`：egui 前端（窗口装配 / WGSL 玻璃渲染 / 六页导航 / 自绘控件 / 系统集成）
+- **分层与镜像**（Python → Rust，完整对应见 z.plan 镜像映射表）：`interface.rs` 七域契约 + `FrontendCommand`/`BackendEvent` 命令事件总线是 UI 访问后端的唯一入口；app 经 `bus.rs` 每帧 drain 事件、按需发命令，core 不感知 egui
+- **代码零硬编码**：业务参数（倍率范围/默认值/周期/窗口几何/颜色/日志路径等）全部从 `rs/config/static/*.json` 读取（`static_config.rs` 单例经 `include_str!` 编译期嵌入）；用户配置存 `rs/config/user_config.json`，日志存 `rs/logs/`（每日独立文件）
+- **注释房规**：`///` 中文文档注释（函数/方法，1-3 行，说明用途与核心逻辑）；模块头 `//!` 一行职责；每个 `.rs` 文件末尾保留 `// ===== 说明区 =====`（输入输出 / 逻辑步骤 / 设计理由 / 异常处理 / 关联配置）
+- **渲染质量门**：玻璃观感或渲染管线改动须过离屏渲染断言探针（FBO 分区采样量化阈值）再进人工走查——功能探针抓不住纯视觉缺陷
+- **平台集成降级纪律**：托盘 / 全局热键 / 通知等系统能力构造失败一律降级日志不崩（行为无损），非 Windows 平台编译期桩化
+- **视觉设计不得向测试环境妥协**：offscreen / 无头探针仅作功能与结构参考；视觉与材质的最终实测以用户桌面走查为准
 - 提交信息规范见下文「Commit 提交规范」节；功能开发先走 OpenSpec 提案流程
-- 工作流文档四件套（2026-09-10 接入 DeepTransHub 工作流体系）：`w.study.md` 项目分析报告 / `x.progress.md` 任务清单（已完成在前、未完成在后；审计修复组 `FIX{NNN}`）/ `y.problems.md` 已知问题 / `z.plan.md` 方案记录与审计附录（含豁免定案清单，附录 `A{NNN}` 递增）；另有 `m.milestone.md` 版本里程碑清单
-- 项目级 Agent 技能在 `.agents/skills/`（audit-project 全量审计 / audit-report 审计归档 / progress-task 按任务组执行 / skillforge 技能创建），已 gitignore 仅本地使用
-- 历史规划文档 `workingboard/` 已归档至 `archived/workingboard`（gitignore）
+- 工作流文档：`w.study.md` 项目分析 / `x.progress.md` 任务清单（PL011–PL015，已完成在前、未完成在后）/ `y.problems.md` 已知问题 / `z.plan.md` 方案记录与审计附录（豁免定案清单 `A{NNN}` 递增）/ `m.milestone.md` 版本里程碑 / `t.hint.md` 经验复盘
+- 项目级 Agent 技能在 `.agents/skills/`（audit-project / audit-report / progress-task / skillforge，gitignore 仅本地使用）
+- 历史规划文档 `workingboard/` 已归档 `archived/workingboard`（gitignore）
 
 ## 工程原则（设计哲学，所有项目通用）
-
-> 设计哲学总纲（18 条 / 5 大类，与用户级 instructions.md 同源）；下文"代码规范"为项目细则，两者冲突时以本项目边界为准。
 
 ### 核心思想
 
@@ -77,57 +71,49 @@
 
 ## 代码规范
 
-### 函数注释规则
+### 注释规则
 
-- 每个函数定义下方紧跟 `#` 注释，说明该函数的用途和核心逻辑（1-3 行）
-- **禁止使用 docstring（三引号字符串）替代 `#` 注释**——函数/类/模块文档统一走 `#` 注释体系，docstring 不承担注释职责；单行 docstring 当注释用属于违规（`.temp/verify_s11.py` 自动检测）
-- 每个 `.py` 文件末尾必须有完整的函数逻辑说明区，用 `# =====` 分隔，涵盖文件中所有函数/模块级常量：
-  - 输入、输出、逻辑步骤
-  - 设计理由（为什么这样做）
-  - 异常处理说明
-  - 关联的配置或外部依赖
+- 注释一律中文，使用 Rust 原生注释：`//` 行注释、`///` 文档注释（函数/方法/字段）、`//!` 模块头
+- 每个函数/方法定义处用 `///` 说明用途与核心逻辑（1-3 行）；模块头 `//!` 一行职责
+- 每个 `.rs` 文件末尾必须有 `// ===== 说明区 =====`，涵盖文件中所有函数/模块级常量：输入输出、逻辑步骤、设计理由（为什么这样做）、异常处理（Result/panic 策略）、关联的配置或外部依赖
+- 禁止用大段注释替代可读代码；注释解释"为什么"，不复述"是什么"
 
 ### 代码约定
 
-- 注释必须用 `#`，禁止 `//` 或其他语言注释符号；所有注释使用中文
-- 命名风格：函数/变量用 `snake_case`，类用 `CamelCase`，常量用 `UPPER_CASE`
-- `_` 前缀：函数名前加 `_` 表示模块内部私用，如 `_format_tokens()`，外部模块不应直接调用
-- `def main()`：每个可独立运行的脚本都有 `main()` + `if __name__ == "__main__": main()`
-- 类型注解：优先使用 Python 类型注解，包括 `typing` 模块和 `| None` 语法
-- dataclass：配置聚合优先用 `@dataclass`
-- import 顺序：标准库 → 第三方库 → 本地模块，每组之间空行分隔
-- f-string：字符串格式化优先用 f-string，避免 `.format()` 或 `%`
-- 推导式：优先用列表/字典推导式而非手写 for 循环构建集合
-- 布尔值判断：用 `if x:` / `if not x:` 而非 `if x == True:` / `if x is False:`
-- 空值判断：用 `if x is None:` / `if x is not None:` 而非 `if x == None:`
-- 异常捕获：避免裸 `except:`，至少用 `except Exception:`，指定具体异常类型更好；捕获多个异常类型可用 `except (Exc1, Exc2):`
-- 行长度：每行尽量不超过 100 字符（超过时在运算符或逗号后换行）
-- 空格约定：逗号后加空格、冒号前不加空格（切片冒号两侧不加）、赋值/比较运算符两侧加空格、函数定义前后各空两行、类定义前后各空两行、方法之间空一行
-- 字符串引号：普通字符串用双引号，文档字符串用 `"""` 三引号；f-string 内含大量双引号时允许外层使用单引号
-- 路径处理：强制使用 `pathlib` 代替 `os.path`
-- 临时文件：所有临时生成的脚本/文件必须写入项目根目录下的 `.temp/` 文件夹（已 gitignore）
-- **文件修改必须用 edit 工具**：修改既有文件（.py/.md/.json）一律用 edit 的精确 oldString/newString 替换，禁止用 python -c 或 PowerShell 脚本做内容替换（易踩引号/缩进坑）；新建 .temp 探针脚本不受限
-- **版本单一来源**：版本号只存 `config/static/base.json` 的 `version` 字段，其他处一律 `get_static_config().base["version"]` 引用，禁止第二处硬编码；版本格式见「运行与验证」节（四段式 X.Y.Z.P）
-- **全量回归输出**：`.\.venv\Scripts\python.exe -m pytest tests/ -v` 的结果行全量显示，禁止 `tail`/`Select-Object -First/-Last` 截断——截断会掩盖前段 FAIL（2026-09-10 约定）
+- 命名：函数/变量/字段用 `snake_case`，类型/trait/枚举与变体用 `CamelCase`，常量/静态用 `UPPER_SNAKE_CASE`
+- 可见性：模块内部私有项不加 `pub`（等价于 Python `_` 前缀），外部模块不应直接调用
+- 错误处理：库层返回 `Result<T, E>`（错误类型用 `thiserror`）；产品路径避免 `unwrap`/`expect`，构建期/初始化期允许 panic 快速失败（附中文文案）
+- 类型：公开 API 显式标注签名；用 `Option`/`Result` 表达空值与失败，不用哨兵值
+- import 顺序：标准库 → 第三方 crate → 本 crate/workspace crate，每组之间空行
+- 格式化：`cargo fmt`（`rs/rustfmt.toml`：4 空格缩进、行宽 100）；`cargo clippy --workspace --all-targets -- -D warnings` 零警告
+- 字符串：字符串格式化优先用 `format!`/`write!`，避免 `+` 拼接
+- 集合构建：优先 iterator 与 `collect` 而非手写可变循环
+- 布尔/空值判断：用 `if x` / `if !x` / `if let Some(v)` / `x.is_none()`，避免 `== true` 之类比较
+- 路径处理：强制 `std::path::Path`/`PathBuf`，禁止字符串拼接路径
+- 测试：core 各模块内联 `#[cfg(test)]` 就近单测，夹具驱动集成测试放 `rs/crates/accel-core/tests/`；app 单测就近放置
+- 临时文件：所有临时生成的脚本/文件必须写入项目根 `.temp/`（gitignore）；`.temp/` 探针脚本不受「必须用 edit」限制
+- **文件修改必须用 edit 工具**：修改既有 `.rs`/`.md`/`.json` 一律用 edit 的精确 oldString/newString 替换，禁止用脚本做内容替换
+- **版本单一来源**：见「运行与验证」节
+- **全量回归输出**：`cargo test --workspace` 的结果行全量显示，禁止截断（会掩盖前段 FAIL）
 
 ## Commit 提交规范
 
-- **标题行**：`<type>: V<版本>，<摘要>`——版本号与 `config/static/base.json` 的 `version` 一致（四段式全写，如 `V0.4.7.0`）；摘要一句话概括核心
+- **标题行**：`<type>: V<版本>，<摘要>`——版本号与 `rs/config/static/base.json` 的 `version` 一致（四段式全写，如 `V0.6.0.4`）；摘要一句话概括核心
 - **版本递增**：`feat`/`fix`/`refactor`/`perf` 提交前先 bump version（patch 位 +1）；`docs`/`test`/`style`/`chore` 不强制
 - **type 全集**（conventional 风格）：`feat` 新功能 / `fix` 修复 / `refactor` 重构（行为不变）/ `perf` 性能 / `docs` 文档 / `test` 测试 / `style` 格式 / `build` 构建依赖 / `ci` CI / `chore` 杂项 / `revert` 回滚
 - **正文**（改动大时可选）：`- ` 列表，按主题分组、分组下子条目缩进，每个功能块一行自然中文描述，每行 ≤ 100 字符
-- **禁止项**：内部编号（A0.1/B1.5/FIX1.1/T001.2 等任务编号）、验证/回归数字（如"全量回归 44 项通过"）、英文混排描述
+- **禁止项**：内部编号（A0.1/B1.5/FIX1.1/PL015.01 等任务编号）、验证/回归数字（如"全量回归 44 项通过"）、英文混排描述
 - **提交范围**：一个版本的所有连带改动一次提交（源码 + 配置 + 文档同步）
 - **流程**：由 AI 根据 `git status`/`git diff` 核对清单并草拟 commit 内容（git add 清单 + message）→ 用户审阅后自行执行 `git add`/`git commit`/`git push`（AI 不执行 git 写操作）
 
 ## Git 注意
 
-- `.gitignore` 忽略 `CLAUDE.md`、`openspec/`、`.vscode/`、`.venv`、`archived/`、`.opencode/`、`.agents/`、`.temp/`、`.history/`、`.mimosa/` —— 对这些文件的修改不会出现在 `git status` 中；`AGENTS.md` 与工作流文档四件套（w/x/y/z/m）已纳入版本控制
-- **`config/user_config.json` 每次提交必须入库**（2026-09-11 用户定案）：该文件虽为运行时用户配置，但已纳入版本控制且未 ignore，历次提交均须 `git add` 一并入库，不得以"运行时状态"为由排除
+- `.gitignore` 忽略 `CLAUDE.md`、`openspec/`、`.vscode/`、`.venv`、`archived/`、`.archived/`、`.opencode/`、`.agents/`、`.temp/`、`.history/`、`.mimosa/`、`rs/target/`、`logs/` —— 对这些文件的修改不会出现在 `git status` 中；`AGENTS.md` 与工作流文档（w/x/y/z/m/t）已纳入版本控制
+- **`rs/config/user_config.json` 每次提交必须入库**：该文件虽为运行时用户配置，但已纳入版本控制且未被 ignore，历次提交均须 `git add` 一并入库，不得以"运行时状态"为由排除
 
 ## 操作注意
 
-- 执行命令前先检测当前 shell（Windows 下为 pwsh）：**搜索统一用 `rg`**（ripgrep 已安装，自动遵循 .gitignore 排除 .venv/.history，中文 UTF-8 正常；如 `rg -n "pattern" --type py`，统计匹配数用 `rg -c`），无 rg 环境时回退 `Select-String`；目录操作使用 PowerShell 兼容命令（`Get-ChildItem` 替代 `ls` 等），避免 Linux-only 工具
+- 执行命令前先检测当前 shell（Windows 下为 pwsh）：**搜索统一用 `rg`**（ripgrep，自动遵循 .gitignore，中文 UTF-8 正常；如 `rg -n "pattern" --type rust`，统计匹配数用 `rg -c`），无 rg 环境时回退 `Select-String`；目录操作使用 PowerShell 兼容命令（`Get-ChildItem` 替代 `ls` 等），避免 Linux-only 工具
 - pwsh 会话带 `-NoProfile` 不加载 `$PROFILE`，输出中文前必须先设置编码：`[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;`
 - 未经用户明确要求，不得擅自执行 `git add`、`git commit` 或任何其他 Git 写操作
-- **视觉设计不得向测试环境妥协**（2026-09-12 定案）：offscreen/无头探针仅作功能与结构参考；不得因 offscreen 渲染缺陷（如渐变栅格化随机崩溃）降级、简化或改动桌面端设计——桌面端一律按原设计实现；视觉与材质的最终实测以用户桌面走查为准
+- 视觉设计不得向测试环境妥协：offscreen/无头探针仅作功能与结构参考，桌面端一律按原设计实现

@@ -26,10 +26,17 @@ raw-window-handle = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true }
+tray-icon = { workspace = true }
+global-hotkey = { workspace = true }
+tauri-winrt-notification = { workspace = true }
 
 [[bin]]
 name = "render_probe"
 path = "src/bin/render_probe.rs"
+
+# 构建期依赖（build.rs 专用，不进运行时依赖树）
+[build-dependencies]
+serde_json = { workspace = true }
 
 # ===== crates/accel-app/Cargo.toml 说明区 =====
 # version = "0.6.0"：对齐产品版本段 0.6.0.0（semver 三段上限）

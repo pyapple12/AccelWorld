@@ -33,11 +33,13 @@ fn fps_probe(secs: u64) {
     let result = accel_app::window::run_with_counter(counter.clone(), Some(secs));
     let n = counter.load(std::sync::atomic::Ordering::SeqCst);
     let tick = accel_core::static_config::Static::get().base_i64("clock_tick_ms") as u64;
-    println!(
+    let line = format!(
         "REPAINT_COUNT={n} in {secs}s（预期 ≈{}±{}）",
         1000 * secs / tick,
         secs.max(2)
     );
+    println!("{line}");
+    tracing::info!("{line}");
     if let Err(e) = result {
         tracing::error!("探针异常退出: {e}");
         std::process::exit(1);

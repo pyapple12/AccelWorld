@@ -32,6 +32,10 @@ windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_
 # 与 eframe 0.37 内部 wgpu 同版（30.x）——render_probe 离屏断言复用同一 WGSL
 wgpu = "30.0.1"
 raw-window-handle = "0.6.2"
+# PL015 系统集成三件：托盘菜单（含 muda）/全局热键/WinRT 通知
+tray-icon = "0.25.1"
+global-hotkey = "0.8.0"
+tauri-winrt-notification = "0.7.3"
 
 # ===== rs/Cargo.toml 说明区 =====
 # [workspace]：members 通配 crates/*，后续新增 crate 无须改本文件

@@ -69,3 +69,34 @@
 - **定义唯一性**：类方法重写式"修复"要先 rg 确认旧定义已删（Python 后定义覆盖前定义，静默失效）
 - **真机门槛**：offscreen 功能绿 ≠ 真机观感对；GL 链路的最终裁判是真机走查（用户目测）
 
+---
+
+## HINT003.Rust 重构（Python → egui/eframe/wgpu）复盘（2026-10-17）
+
+### 背景
+
+Python 版 0.6.0.0 冻结为 golden 基准，Rust 侧以五类行为夹具（time/config/weather/lunar/alarm）全程 parity 断言，PL011–PL014 重建 core 与六页 UI。本文记录跨语言/跨 GUI 栈迁移的踩坑与定案。
+
+### 关键教训
+
+- **实测先行于文档**：egui 0.37 / eframe 0.37 / wgpu 30 API 均有破坏性变更（App trait 拆 `logic`/`ui`、Color32 全预乘、`CornerRadius` 取代 `Rounding`、`PollType::Wait{..}`、`create_buffer_init` 移入 `util::DeviceExt`）——先跑真窗/探针，再据实修正，勿凭旧文档臆断
+- **egui-wgpu 回调资源陷阱**：`CallbackResources`（TypeMap）条目须**显式 `insert` 后**才能 `get_mut`，否则真窗首帧 panic（真窗实证）
+- **DWM Acrylic 底座必需**：无 `DwmExtendFrameIntoClientArea` 底座直接覆写 `SYSTEMBACKDROP` → **窗口不可见**（DWM 合成异常）；补 1px 底边扩展即恢复
+- **浮点 parity 位级陷阱**：serde_json 默认浮点解析可差 1 ULP（`110.00000000000001` → `110.0`），须启用 `float_roundtrip` 特性才能过夹具位级断言
+- **夹具方法论**：golden 快照 + 独立路径互证（Rust 消费夹具 ≠ 导出器代码路径），三跑 sha256 一致证明确定性
+- **架构约束机器化**：core 依赖树零 egui/eframe 由 CI `cargo tree` 关卡强制，把"架构约定"升级为"架构不变量"
+- **平台能力主线程化**：tray-icon / global-hotkey 须在 winit 消息泵所在主线程创建与轮询（无独立消息泵），每帧 drain 事件通道；构造失败一律降级 None
+- **可变字体等宽漂移**：Bahnschrift 为可变字体，ab_glyph 下数字 advance 非等宽（实测 83px vs 124px）——Qt 等宽不等于 Rust 等宽，须独立实测（y.problems#12）
+- **探针灵敏度实证**：渲染断言探针建好后要"人为破坏一次"验证能红（注入 rim 强度 0.05 → FAIL → 恢复），否则探针可能恒绿而失效
+
+### 方法论沉淀
+
+- **迁移以行为为锚**：跨语言重构的验收标准是"对旧版行为快照逐条断言全等"，而非"看起来一样"
+- **API 版本核验第一**：引入新依赖/升级 GUI 栈时，先用最小真窗冒烟核对 API 面再铺开
+- **降级即无损**：系统能力（玻璃/Acrylic/托盘/热键/通知）失败路径必须与成功路径行为等价（静默降级 + 日志），绝不因环境缺失而崩
+
+### 关联
+
+- AGENTS.md「结构与约定」：渲染质量门 / 平台集成降级纪律 / 零硬编码 token
+- y.problems.md：RS 现役已知问题 #9-#12
+- z.plan.md：Rust 重构总纲 + 各 PL 执行偏移记录

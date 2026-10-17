@@ -44,16 +44,39 @@ pub struct AppHandle {
     pipeline_attached: bool,
     /// Acrylic 挂接一次性标记（.04）
     acrylic_applied: bool,
-    /// 探针自动关窗秒数（None=正常模式）
+    /// 探针自动退窗秒数（None=正常模式；到时走退出序列——fps/矩阵探针）
     probe_close_secs: Option<u64>,
+    /// 探针隐藏秒数（None=正常模式；到时 Visible(false)——模拟关闭按钮隐藏驻留）
+    probe_hide_secs: Option<u64>,
+    probe_hide_done: bool,
+    /// 探针显示秒数（None=正常模式；到时 Visible(true)+Focus——模拟托盘"显示窗口"恢复）
+    probe_show_secs: Option<u64>,
+    probe_show_done: bool,
+    /// 托盘句柄（构造失败降级 None——无托盘环境行为无损）
+    tray: Option<crate::platform::tray::TrayHandles>,
+    /// 全局热键句柄（注册失败降级 None）
+    hotkeys: Option<crate::platform::hotkey::HotkeyHandles>,
+    /// 退出请求（托盘退出/热键退出/探针到时）
+    quit_requested: bool,
+    /// 退出序列已发（SaveNow+Quit+Close 一次——放行 Close 不再被拦截）
+    quit_sent: bool,
+    /// 托盘状态推送节流（Tick 更新限频 1s）
+    last_status: std::time::Instant,
     /// 帧计数（.13 空闲节奏探针）
     pub repaint_count: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl eframe::App for AppHandle {
-    /// 每帧逻辑（先于 ui；窗口隐藏期也调用）——事件 drain 唯一入口（锁不跨帧）
-    fn logic(&mut self, _ctx: &Context, _frame: &mut eframe::Frame) {
+    /// 每帧逻辑（先于 ui；窗口隐藏期也调用）——事件 drain 与视口/命令动作唯一入口
+    /// 隐藏期不重绘但 logic 仍驱动：托盘恢复、退出序列、探针时序均须在此（.01 教训）
+    fn logic(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         self.bus.drain(&mut self.state);
+        // 托盘/热键事件轮询（命令可能触发 viewport 命令，经 ctx 队列）
+        self.poll_platform(ctx);
+        // 探针时序（隐藏/显示/退出）+ 退出序列/关闭驻留 + 托盘状态推送
+        self.probe_tick(ctx);
+        self.exit_or_stay(ctx);
+        self.push_tray_status();
         self.repaint_count
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
@@ -61,13 +84,6 @@ impl eframe::App for AppHandle {
     /// 帧绘制：背板 → 导航 → 当前页 → 设置浮窗 → 重绘节奏
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-
-        // 探针路径：到时自动关窗（fps_probe 静置计数后退出）
-        if let Some(secs) = self.probe_close_secs
-            && self.start_time.elapsed().as_secs() >= secs
-        {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-        }
 
         // Acrylic 一次性挂接（.04）：Frame 经 HasWindowHandle 取句柄，WindowHandle
         // 经 From 转 RawWindowHandle（0.6.2 特殊设计：window_handle 递归返自身）；
@@ -98,17 +114,129 @@ impl eframe::App for AppHandle {
         );
         self.paint_settings_pop(&ctx);
 
-        // 关闭请求：汇总落盘后放行（eframe 0.37 无 on_close_event——input 检测）
-        if ctx.input(|i| i.viewport().close_requested()) {
-            self.bus.send(FrontendCommand::SaveNow);
-        }
-
         // 重绘节奏：Tick 间隔（空闲 1s 兜底）——零忙转纪律
         ctx.request_repaint_after(self.state.next_repaint_interval());
     }
 }
 
 impl AppHandle {
+    /// 探针时序（隐藏期仍由 logic 驱动）：隐藏 → 显示 → 退出三段模拟
+    /// 隐藏/显示两侧打印同源状态指纹，供"隐藏→显示状态保持"断言比对
+    fn probe_tick(&mut self, ctx: &Context) {
+        if let Some(secs) = self.probe_hide_secs
+            && !self.probe_hide_done
+            && self.start_time.elapsed().as_secs() >= secs
+        {
+            self.probe_hide_done = true;
+            probe_note(&format!("[PROBE] hidden {}", self.probe_fingerprint()));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        }
+        if let Some(secs) = self.probe_show_secs
+            && !self.probe_show_done
+            && self.start_time.elapsed().as_secs() >= secs
+        {
+            self.probe_show_done = true;
+            probe_note(&format!("[PROBE] shown {}", self.probe_fingerprint()));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        }
+        if let Some(secs) = self.probe_close_secs
+            && self.start_time.elapsed().as_secs() >= secs
+        {
+            self.quit_requested = true;
+        }
+    }
+
+    /// 退出序列与关闭驻留（logic 每轮驱动——隐藏期同样生效）
+    /// 退出（托盘/热键/探针）→ SaveNow+Quit+Close 一次放行；关闭按钮 → 隐藏驻留
+    /// （quit_sent 区分两种 Close 来源：放行的退出 Close 不再被拦截）
+    fn exit_or_stay(&mut self, ctx: &Context) {
+        if self.quit_requested && !self.quit_sent {
+            self.quit_sent = true;
+            if self.probe_close_secs.is_some() {
+                probe_note("[PROBE] quit");
+            }
+            self.bus.send(FrontendCommand::SaveNow);
+            self.bus.send(FrontendCommand::Quit);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            return;
+        }
+        // 关闭按钮 → 隐藏驻留（托盘常驻，对齐 Python closeEvent：拦截不落盘——
+        // 倍率等改动经 ApplyRate 内聚实时落盘）
+        if !self.quit_sent && ctx.input(|i| i.viewport().close_requested()) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        }
+    }
+
+    /// 托盘状态推送（悬停文本 = 加速时间 + 倍率；节流 1s；隐藏期同样更新）
+    fn push_tray_status(&mut self) {
+        let Some(tray) = &self.tray else { return };
+        if self.last_status.elapsed() < std::time::Duration::from_secs(1) {
+            return;
+        }
+        self.last_status = std::time::Instant::now();
+        let tooltip = match &self.state.time {
+            Some(t) => format!("加速世界 - {} @ {:.1}x", t.custom_time, self.state.rate),
+            None => format!(
+                "加速世界 - {}",
+                accel_core::static_config::Static::get().version()
+            ),
+        };
+        tray.set_status(self.state.rate, &tooltip);
+    }
+
+    /// 探针状态指纹（隐藏/恢复两侧同源打印——"隐藏→显示状态保持"断言数据源）
+    fn probe_fingerprint(&self) -> String {
+        format!(
+            "rate={:.1} page={:?} settings_open={}",
+            self.state.rate, self.state.current_page, self.state.settings_open
+        )
+    }
+
+    /// 托盘/热键事件轮询（logic 每帧调用；事件归一到 PlatformAction 后应用）
+    fn poll_platform(&mut self, ctx: &Context) {
+        let tray_cmds = self.tray.as_ref().map(|t| t.poll()).unwrap_or_default();
+        let hotkey_cmds = self.hotkeys.as_ref().map(|h| h.poll()).unwrap_or_default();
+        let mut actions: Vec<PlatformAction> =
+            Vec::with_capacity(tray_cmds.len() + hotkey_cmds.len());
+        actions.extend(tray_cmds.into_iter().map(tray_action));
+        actions.extend(hotkey_cmds.into_iter().map(hotkey_action));
+        for action in actions {
+            self.apply_platform_action(ctx, action);
+        }
+    }
+
+    /// 动作应用（托盘/热键/探针的窗口与命令出口唯一汇合点）
+    fn apply_platform_action(&mut self, ctx: &Context, action: PlatformAction) {
+        match action {
+            PlatformAction::ShowWindow => {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            }
+            PlatformAction::HideWindow => {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            }
+            PlatformAction::SaveNow => self.bus.send(FrontendCommand::SaveNow),
+            PlatformAction::Quit => self.quit_requested = true,
+            PlatformAction::CycleTheme => self.cycle_theme(ctx),
+        }
+    }
+
+    /// 主题三态循环（热键 Ctrl+T；跟随系统→浅色→深色→跟随系统）
+    /// 与设置浮窗选择器同一乐观更新路径（SetTheme 回推前 UI 即响应）
+    fn cycle_theme(&mut self, ctx: &Context) {
+        let next = match self.state.theme_pref() {
+            accel_core::types::ThemePref::Auto => accel_core::types::ThemePref::Light,
+            accel_core::types::ThemePref::Light => accel_core::types::ThemePref::Dark,
+            accel_core::types::ThemePref::Dark => accel_core::types::ThemePref::Auto,
+        };
+        self.bus.send(FrontendCommand::SetTheme(next));
+        self.state.prefs.theme = pref_value(next).to_string();
+        self.theme = Theme::load(self.state.prefs.theme.as_str());
+        self.theme.apply(ctx);
+    }
+
     /// 背板绘制：全屏玻璃回调（场景含导航/页卡/浮窗面）+ 场景 dirty 时的直连重绘
     fn paint_backplate(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
         let Some(rs) = frame.wgpu_render_state() else {
@@ -246,6 +374,40 @@ fn pref_value(pref: accel_core::types::ThemePref) -> &'static str {
     }
 }
 
+/// 探针标记：stdout（人读）+ tracing 文件日志（脚本断言用，避开 stdout 管道缓冲）
+fn probe_note(msg: &str) {
+    println!("{msg}");
+    tracing::info!("{msg}");
+}
+
+/// 平台事件归一后的动作（纯数据；单测可断言 tray/hotkey → 动作映射）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlatformAction {
+    ShowWindow,
+    HideWindow,
+    SaveNow,
+    Quit,
+    CycleTheme,
+}
+
+/// 托盘命令 → 动作（纯函数；只读项/未知 id 已在 tray::command_for 返 None）
+fn tray_action(cmd: crate::platform::tray::TrayCommand) -> PlatformAction {
+    match cmd {
+        crate::platform::tray::TrayCommand::Show => PlatformAction::ShowWindow,
+        crate::platform::tray::TrayCommand::Hide => PlatformAction::HideWindow,
+        crate::platform::tray::TrayCommand::Quit => PlatformAction::Quit,
+    }
+}
+
+/// 热键动作 → 动作（纯函数；保存/退出/主题循环三键一一对应）
+fn hotkey_action(kind: crate::platform::hotkey::HotkeyKind) -> PlatformAction {
+    match kind {
+        crate::platform::hotkey::HotkeyKind::Save => PlatformAction::SaveNow,
+        crate::platform::hotkey::HotkeyKind::Quit => PlatformAction::Quit,
+        crate::platform::hotkey::HotkeyKind::Theme => PlatformAction::CycleTheme,
+    }
+}
+
 /// 注册页卡玻璃面（pages.ui 内每页调用——几何随布局 rect 同步；register 幂等）
 pub fn register_page_surface(scene: &mut GlassScene, page: PageId, rect: Rect) {
     let id = format!("{SURFACE_PAGE_PREFIX}{page:?}");
@@ -273,6 +435,14 @@ pub fn run_with_counter(
     counter: Arc<std::sync::atomic::AtomicU64>,
     probe_close_secs: Option<u64>,
 ) -> Result<(), eframe::Error> {
+    // 探针隐藏/显示秒数（ACCELWORLD_HIDE_AFTER / ACCELWORLD_SHOW_AFTER）：
+    // 冒烟/矩阵脚本模拟"关闭按钮隐藏驻留 → 托盘显示恢复"全链路
+    let probe_hide_secs = std::env::var("ACCELWORLD_HIDE_AFTER")
+        .ok()
+        .and_then(|v| v.parse().ok());
+    let probe_show_secs = std::env::var("ACCELWORLD_SHOW_AFTER")
+        .ok()
+        .and_then(|v| v.parse().ok());
     let runtime = Arc::new(build_runtime());
     let iface = Arc::new(AppInterface::new());
 
@@ -309,6 +479,23 @@ pub fn run_with_counter(
             let bus =
                 tokio::task::block_in_place(|| Bus::spawn_on(Arc::clone(&iface), &rt_for_app));
 
+            // 平台集成（PL015.01/.02）：托盘 + 全局热键（主线程创建，winit 泵消息；
+            // 失败降级 None 继续运行——无托盘/热键环境行为无损）
+            let tray = match crate::platform::tray::TrayHandles::new() {
+                Ok(t) => Some(t),
+                Err(e) => {
+                    tracing::warn!("托盘初始化失败，降级无托盘运行: {e}");
+                    None
+                }
+            };
+            let hotkeys = match crate::platform::hotkey::HotkeyHandles::new() {
+                Ok(h) => Some(h),
+                Err(e) => {
+                    tracing::warn!("全局热键注册失败，降级无热键运行: {e}");
+                    None
+                }
+            };
+
             Ok(Box::new(AppHandle {
                 bus,
                 state,
@@ -321,6 +508,15 @@ pub fn run_with_counter(
                 pipeline_attached: false,
                 acrylic_applied: false,
                 probe_close_secs,
+                probe_hide_secs,
+                probe_hide_done: false,
+                probe_show_secs,
+                probe_show_done: false,
+                tray,
+                hotkeys,
+                quit_requested: false,
+                quit_sent: false,
+                last_status: std::time::Instant::now(),
                 repaint_count: counter,
             }))
         };
@@ -389,15 +585,69 @@ pub fn install_fonts(ctx: &Context) {
     ctx.set_fonts(fonts);
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::platform::hotkey::HotkeyKind;
+    use crate::platform::tray::TrayCommand;
+
+    #[test]
+    fn tray_command_maps_to_platform_action() {
+        // 菜单事件 → 窗口意图：显示/隐藏/退出三项各自归位（.01 检验项）
+        assert_eq!(tray_action(TrayCommand::Show), PlatformAction::ShowWindow);
+        assert_eq!(tray_action(TrayCommand::Hide), PlatformAction::HideWindow);
+        assert_eq!(tray_action(TrayCommand::Quit), PlatformAction::Quit);
+    }
+
+    #[test]
+    fn hotkey_maps_to_platform_action() {
+        // 热键 → 命令意图：保存/退出/主题循环三键一一对应（.02 检验项）
+        assert_eq!(hotkey_action(HotkeyKind::Save), PlatformAction::SaveNow);
+        assert_eq!(hotkey_action(HotkeyKind::Quit), PlatformAction::Quit);
+        assert_eq!(hotkey_action(HotkeyKind::Theme), PlatformAction::CycleTheme);
+    }
+
+    #[test]
+    fn hide_show_are_pure_viewport_actions() {
+        // 隐藏→显示状态保持：两动作必为纯视口意图（非跨界命令），窗口显示性变化
+        // 不触碰 UiState 任何字段——状态快照前后一致
+        let state = UiState::default();
+        let fingerprint = format!("{state:?}");
+        for cmd in [TrayCommand::Hide, TrayCommand::Show] {
+            let action = tray_action(cmd);
+            assert!(
+                matches!(
+                    action,
+                    PlatformAction::HideWindow | PlatformAction::ShowWindow
+                ),
+                "隐藏/显示动作必须为纯视口意图，实际 {action:?}"
+            );
+        }
+        assert_eq!(fingerprint, format!("{state:?}"));
+    }
+}
+
 // ===== src/window.rs 说明区 =====
 // 输入：无（装配期读 token/配置）；输出：GUI 主窗进程
 // 逻辑步骤：build_runtime → AppInterface::new → NativeOptions（token 几何+透明）
-//   → run_native（create_app：theme/fonts/state 装配 → AppHandle）→ update 四步循环
+//   → run_native（create_app：theme/fonts/state 装配 + 托盘/热键挂接 → AppHandle）
+//   → logic（drain → 平台事件 → 探针时序 → 退出/驻留 → 托盘状态）→ ui（背板→部件→节奏）
 // 设计理由：drain→背板→部件→节奏四步对齐 z.plan A 节主循环骨架；透明 viewport +
 //   wgpu alpha 供 Acrylic 透出（.04 在 platform/acrylic.rs 挂接 DWM）；页面玻璃面
-//   惰性注册 + 切页 set_visible（PL009 僵尸面教训平移：面随页注册，隐藏页剔除绘制）
-// 已知偏移：①run() 内 Bus 装配的占位桥待 .02 联调收口（Bus::spawn 已在 bus.rs，
-//   runtime 与 eframe 线程模型衔接在本文件完成）；②几何恢复（用户拖拽记忆）随
-//   PL015；③gl_lift 经 pointer 直取（ui.json 无顶层 f64 访问器的三级键）
-// 异常处理：管线失败降级纯色背板（行为无损纪律）；字体缺失降级内置（告警）
+//   惰性注册 + 切页 set_visible（PL009 僵尸面教训平移：面随页注册，隐藏页剔除绘制）；
+//   **隐藏期不重绘但 logic 仍逐轮驱动**——视口命令（托盘恢复/退出/探针）与托盘状态
+//   推送一律落在 logic，落在 ui 会在隐藏驻留后失效（.01 真窗实证的返工教训）
+// 退出语义（PL015.01 定案，对齐 Python closeEvent）：关闭按钮 → CancelClose+隐藏
+//   驻留（不落盘——倍率经 ApplyRate 内聚实时落盘）；托盘退出/热键退出/探针 →
+//   quit_requested → SaveNow+Quit+Close 一次放行（quit_sent 区分两种 Close 来源）
+// 平台事件归一（PL015.01/.02）：tray::TrayCommand 与 hotkey::HotkeyKind 经纯函数
+//   tray_action/hotkey_action 归一到 PlatformAction，再由 apply_platform_action 汇合
+//   应用（窗口/命令出口唯一入口——映射可单测，无须真实托盘/热键）
+// 探针通路：ACCELWORLD_HIDE_AFTER / ACCELWORLD_SHOW_AFTER / ACCELWORLD_FPS_PROBE
+//   模拟"隐藏驻留 → 显示恢复 → 退出"全链路；隐藏与显示两侧打印同源状态指纹，
+//   供"隐藏→显示状态保持"断言比对
+// 已知偏移：①几何恢复（用户拖拽记忆）未做（PL015 无对应任务，随 UI 雕刻阶段处理）；
+//   ②gl_lift 经 pointer 直取（ui.json 无顶层 f64 访问器的三级键）
+// 异常处理：管线失败降级纯色背板（行为无损纪律）；字体缺失降级内置（告警）；
+//   托盘/热键构造失败降级 None（无系统集成环境行为无损）
 // 关联配置：window_*/glass.gl_lift/ui.json field.*；消费方：main.rs

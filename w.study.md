@@ -1,178 +1,177 @@
 # AccelWorld 项目分析报告
 
+> 2026-10-17 重做：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/wgpu），本报告按 Rust 现役实现改写；Python 版分析随 `.archived/` 归档留档。
+
 ---
 
 ## 1. 项目概述
 
-单包 Python 桌面应用：基于加速倍率的时间膨胀时钟（PyQt6，中文界面为主）。
+cargo workspace 双 crate 桌面应用：基于加速倍率的时间膨胀时钟（egui 中文界面为主）。
 
 ```
-[输入]   用户设定加速倍率（rate_min 1.0 - rate_max 20.0，来自 base.json）
-[引擎]   AcceleratedWorld 按倍率换算：加速时钟 1 秒 = 现实 1/rate 秒
-[展示]   GUI（FluentWindow 六导航页 + 设置页，QTimer tick 随倍率联动，Acrylic 背板）/ CLI（--cli 轮询输出）
-[周边]   农历干支节气 / 世界时钟 / 倒计时 / 天气（Open-Meteo）/ 闹钟 / 主题切换
-[持久化] 用户配置 config/user_config.json（倍率/主题/城市/时区/倒计时/窗口几何/闹钟）
+[输入]   用户设定加速倍率（rate_min 1.0 - rate_max 20.0，来自 config/static/base.json）
+[引擎]   accel-core::time_dilation 按倍率换算：加速时钟 1 秒 = 现实 1/rate 秒
+[展示]   accel-app（egui + eframe/wgpu）：胶囊导航六页 + WGSL 玻璃卡 + Acrylic 背板
+[周边]   农历干支节气 / 世界时钟 / 倒计时 / 天气（Open-Meteo）/ 闹钟 / 三态主题 / 托盘 / 全局热键
+[持久化] 用户配置 rs/config/user_config.json（倍率/主题/城市/时区/倒计时/窗口几何/闹钟）
 ```
 
-- **时间膨胀**：`AcceleratedWorld` 引擎，标准一天总秒数 × rate = 加速一天总秒数，整数运算拆分时分秒
-- **中华元素**：lunar-python 农历/干支/生肖/节气 + 公历节日 + 拜财神方向
-- **天气**：Open-Meteo 免费 API，18 城市经纬度表驱动，WMO 天气代码映射
-- **闹钟**：多闹钟（上限 max_alarms）、预设/自定义铃声、系统通知、跨天去重键触发
-- **双界面**：GUI 默认模式，`--cli` 命令行实时模式；`main.py` 收编分发与版本读取
+- **时间膨胀**：`TimeDilation { rate, day_hours }`，标准一天总秒数 × rate = 加速一天总秒数，整数运算拆分时分秒；`now` 全参数化（无内部时钟，测试可注入）
+- **中华元素**：lunar-rust 农历/干支/生肖/节气 + holidays.json 法定节假日 + 财神方位本地表
+- **天气**：Open-Meteo 免费 API，50 城市统一表驱动，WMO 天气代码映射，TTL 缓存 + 重试
+- **闹钟**：多闹钟（上限 max_alarms）、预设/自定义铃声、系统通知、去重键触发 + `Clock` 抽象（VirtualClock 可拨钟测试）
+- **系统集成**：tray-icon 托盘菜单树、global-hotkey 全局热键、WinRT toast 通知（失败一律降级不崩）
 
 ## 2. 目录结构与模块职责
 
 ```
-main.py                    # 装配入口：GUI 分支构造 AppInterface 注入 main_gui；CLI 直连后端（例外）
-interface/                 # 接口层（UI 访问后端的唯一契约，无 Qt 依赖；plan#UI2.0 三大块）
-  app_interface.py         # AppInterface：时钟/倍率/天气/闹钟/时区/配置/几何七域方法
-  types.py                 # 类型转出（TimeInfo/WeatherData/Alarm/PresetSound/UiPreferences）
-modules/                   # 业务核心层（无 GUI 依赖，可独立测试）
-  time_dilation.py         # TimeInfo dataclass + AcceleratedWorld 引擎 + CLI 实时时钟
-  chinese_calendar.py      # LunarInfo dataclass + 农历/干支/生肖/节气/节日
-  weather_service.py       # WeatherData dataclass + Open-Meteo 查询（TTL 缓存 + 重试）
-  alarm_service.py         # PresetSound/Alarm + AlarmManager（去重键触发匹配）
-config/
-  settings.py              # 用户配置读写（UserConfig dataclass + load/save/get/set）
-  user_config.json         # 用户配置文件（项目内，随项目走）
-  static/                  # 应用静态配置层（零硬编码）
-    config.json            # 引导映射表（分类名 → json 相对路径）
-    base.json              # 应用参数（version/倍率范围/定时器周期/日志路径等）
-    ui.json                # 字体/布局 tokens/颜色
-    static_config.py       # StaticConfig + get_static_config() 单例加载器
-ui/                        # GUI 层（Fluent Widgets；零后端 import，类型走 interface.types）
-  main_window.py           # 主窗口装配器（FluentWindow 六导航页 + 三态主题 + QTimer 调度）
-  backdrop.py              # Acrylic 毛玻璃背板（DWM，Win11；offscreen 短路降级）
-  panels/                  # 7 个面板（时钟/日期/倒计时/世界时钟/天气/闹钟/设置）
-  tools/                   # UI 层纯函数运算（倒计时解析/剩余拆解/进度换算/文案格式化）
-  system_tray.py           # 系统托盘（自绘图标/RoundMenu 菜单/原生通知）
-  alarm_dialog.py          # 闹钟编辑对话框（MessageBoxBase + qfw 组件）
-  audio_player.py          # 闹钟音频播放（自定义铃声 + 异步分发，防 GC 中断）
-data/                      # 静态数据表
-  cities.py                # 城市经纬度表
-  timezones.py             # 时区表（含夏令时标注）
-  weather_codes.py         # WMO 天气代码映射表
-utils/                     # 通用工具层（无业务依赖）
-  logger.py                # 统一日志（每日独立文件 + 过期清理）
-  file_utils.py            # JSON 读写 + 缓存单例 + 项目根定位
-  dataclass_utils.py       # dataclass 反序列化通用工具（字段白名单过滤）
-  retry.py                 # 泛型重试函数 retry_call
-tests/                     # pytest 测试（131 用例，依赖 tests/requirements-dev.txt）
-logs/                      # 运行日志（app-YYYY-MM-DD.log 每日独立文件）
+rs/                              # cargo workspace 根
+  ci.ps1                         # 四关卡本地 CI（fmt / clippy / test / 依赖树零 egui）
+  fixtures/                      # golden 夹具（Python 0.6.0.0 行为快照，parity 基准）
+  config/static/                 # 应用静态配置（零硬编码）
+    base.json                    # 应用参数 + version（版本单一来源）
+    ui.json                      # 字体/布局 tokens/颜色
+    holidays.json                # 法定节假日（历年导出）
+    world_cities.json            # 统一城市表（名称/坐标/IANA 时区）
+  crates/accel-core/             # 纯业务 crate（零 GUI 依赖，CI 机器强制）
+    src/interface.rs             # AppInterface（七域契约）+ FrontendCommand/BackendEvent 总线 + spawn
+    src/types.rs                 # 协议类型转出（TimeInfo/WeatherData/Alarm/DTO/ThemePref）
+    src/time_dilation.rs         # 时间膨胀引擎（公式对齐 Python，秒级农历缓存）
+    src/chinese_calendar.rs      # 农历/干支/生肖/节气/节日（lunar-rust + 常量表 + holidays.json）
+    src/weather.rs               # 天气解析层 + 传输层（reqwest rustls + 按城 TTL 缓存 + 重试）
+    src/alarm.rs                 # Alarm 模型 + AlarmManager + 触发状态机 + Clock 抽象
+    src/settings.rs              # 用户配置读写（serde + 字段白名单过滤 + 原子写）
+    src/static_config.rs         # Static 单例（include_str 嵌入 + OnceLock + 域访问器）
+    src/audio.rs                 # rodio 预设/自定义铃声播放
+    src/data/                    # 三数据表加载器（cities/timezones/weather_codes + world_cities）
+    src/util/                    # file_io（原子写/白名单）/ retry（泛型重试）
+  crates/accel-app/              # egui 前端 crate
+    src/main.rs / lib.rs         # 入口 + 编译期版本（compiled_version）
+    src/window.rs                # 主窗装配器（AppHandle：drain→背板→部件→平台→节奏）
+    src/bus.rs                   # 信号总线（UiState 快照 + drain/apply + 命令出口）
+    src/theme.rs                 # 设计系统（ui.json tokens → Visuals 深浅两套）
+    src/nav.rs                   # 胶囊导航（几何 token 化 + 点击纯逻辑）
+    src/logging.rs               # tracing 每日滚动 + panic hook 崩溃栈
+    src/glass/                   # WGSL 玻璃管线（shader/surface/painter）
+    src/pages/                   # 六页（clock/countdown/world/weather/alarm/settings）
+    src/widgets/                 # 自绘控件（glass_card/chip/ring/slider）
+    src/tools/                   # 展示运算纯函数（clock/countdown/alarm_text）
+    src/platform/                # 系统集成（acrylic/tray/notify/hotkey，非 Windows 桩化）
+    src/bin/render_probe.rs      # 离屏渲染断言探针
+  assets/                        # 托盘图标等内嵌资源
+  logs/                          # 运行日志（每日独立文件，gitignore）
 ```
 
-架构一句话（UI 2.0 三大块，plan#UI2.0）：`后端(modules/config/utils/data) ← 接口(interface) ← UI(ui)`，依赖单向；UI 不 import 后端（类型经 interface.types、参数经 AppInterface），接口无 Qt 依赖（后端+接口测试可脱离 Qt 运行）；`main.py` 只做装配，CLI 直连后端为唯一例外。
+架构一句话：`accel-core（纯业务 + interface 契约 + 命令/事件总线）← accel-app（egui 前端）`，依赖单向；app 不直碰业务（一切经 interface 命令/事件），core 不感知 egui（CI 关卡 4 机器强制）；`main.rs` 只做装配与运行时挂载。
 
 ## 3. 核心设计模式
 
-### 3.1 应用静态配置层 — 引导映射表 + 单例加载器
+### 3.1 应用静态配置层 — 编译期嵌入 + 单例
 
-```python
-STATIC_DIR = Path(__file__).resolve().parent  # 唯一结构约定：__file__ 自定位
-
-@dataclass
-class StaticConfig:
-    base: Dict[str, Any]  # base.json 应用参数
-    ui: Dict[str, Any]    # ui.json 字体/颜色
-
-def get_static_config() -> StaticConfig:
-    # 模块级 _static_config_cache 缓存懒加载，首次调用后不再读文件
+```rust
+// static_config.rs：include_str! 编译期嵌入 + OnceLock 惰性初始化
+pub struct Static { base: Value, ui: Value }
+impl Static {
+    pub fn get() -> &'static Static { /* get_or_init */ }
+    pub fn base_f64(&self, key: &str) -> f64 { /* 缺键 panic 含键名 */ }
+}
 ```
 
-- 引导链：`config.json`（映射表）→ 遍历读取分类 json → 聚合为 `StaticConfig`
-- 文件缺失/损坏抛 `RuntimeError`（开发期快速暴露，不静默兜底）
-- 全项目零硬编码：倍率范围/定时器周期/窗口几何/通知时长/日志路径等一律 `get_static_config().base["..."]`
+- base.json / ui.json 经 `include_str!` 嵌入二进制，运行期零文件依赖（便携 exe 自包含）
+- 缺键/错型 panic 快速失败（附中文键名），对齐 Python `RuntimeError` 语义而不静默兜底
+- 全项目零硬编码：倍率范围/周期/窗口几何/字体颜色/日志路径等一律 `Static::get().base_*()`
 
-### 3.2 用户配置 — dataclass + 缓存单例读写
+### 3.2 用户配置 — serde + 字段白名单过滤
 
-```python
-@dataclass
-class UserConfig:
-    time_dilation_rate: float = field(
-        default_factory=lambda: get_static_config().base["default_rate"]
-    )  # 默认值经 default_factory 从静态配置现取，不双处硬编码
+- `UserConfig` 字段名与 Python 逐字一致（`time_dilation_rate`/`theme`/`last_city`/…），保证旧配置可读
+- 经 `Option<Value>` 中间层逐字段过滤：类型不符/越界回退默认值 + warning 日志（等价 Python `dataclass_from_dict`）
+- 写入走 `write_atomic`（`.{pid}.tmp` + rename，防半截文件）；损坏配置转存 `.bak` 并回退默认
+- 倒计时目标双格式兼容：旧单值字符串 → 迁移为列表首项并回写新格式
+
+### 3.3 时间膨胀引擎 — 参数化 now + 秒级缓存
+
+```rust
+pub fn time_info(&self, now: DateTime<Local>) -> TimeInfo {
+    // day_start = now 本地当日 00:00 → elapsed=(now-day_start)×rate
+    // accel = elapsed mod (day_hours×3600)（day_hours>24 时钟面扩展 HHH:MM:SS）
+    // remaining = day_hours×3600 − elapsed；tick_ms = min(clock_tick_ms, 1000/rate)
+}
 ```
 
-- 读取走 `read_json_cached()`（仅成功解析才入缓存），写入 `write_json()` 后清缓存保证一致
-- 反序列化委托 `dataclass_from_dict()` 通用工具：字段白名单过滤，缺省字段由 dataclass 默认值兜底
-- 窗口几何 base64 编码存储；闹钟列表存 dict 结构
+- `now` 全参数化（无内部时钟）：测试可注入固定时刻，消除时间依赖
+- 农历/中文日期按标准秒级缓存，标准/加速时间每次现算（对齐 Python 0.4.7.1 修复语义）
+- 47 条 time 向量夹具位级全等（含 110.00000000000001 类 ULP 值——启用 `serde_json` `float_roundtrip` 特性）
 
-### 3.3 时间膨胀引擎 — 秒级缓存 + 整数运算
+### 3.4 闹钟服务 — 去重键 + 状态机 + Clock 抽象
 
-```python
-class AcceleratedWorld:
-    def __init__(self, time_dilation_rate: float | None = None):
-        # None 哨兵避免默认参数定义时求值；下限读 base.rate_min（消除边界矛盾）
-        # 低于 rate_min 抛 ValueError
-
-    def get_custom_time(self) -> TimeInfo:
-        # (年,月,日,时,分,秒) 作缓存键：同秒内直接返回缓存，
-        # 避免 GUI 10Hz tick 重复农历全量计算
-```
-
-- 换算：当前时刻总秒数（含微秒精度）× rate = 加速总秒数，`//` 与 `%` 整数运算直接拆分时分秒，避免手动进位
-- `TimeInfo` dataclass 携带标准/加速时间 + 中文日期 + 农历信息 + 膨胀百分比 + 进度条属性（`standard_time`/`custom_hour`/`custom_second`）
-- 已知局限（y.problems#1）：缓存键按标准时间秒，刷新节奏与倍率无关——待修复
-
-### 3.4 闹钟服务 — 去重键触发模型
-
-- `Alarm` dataclass（时间/标签/铃声/启用/一次性语义）+ `PresetSound` 枚举
-- `_trigger_key(check_time)` 生成去重键：同一时刻同一闹钟只触发一次，防轮询期内重复弹窗
-- `AlarmManager` 持有闹钟列表，按 `alarm_check_ms`（1000ms）轮询匹配；跨天闹钟按去重键正确处理
+- `Alarm` serde 结构与 Python 持久化逐字一致；`normalize()` 梳理脏值（repeat_days 强转/越界剔除/去重，时间 HH:MM 校验）
+- `AlarmManager`：add（上限+去重）/remove/replace/toggle/from_dict_list（截断+过期禁用）；`should_trigger_on` 状态机逐行对齐 Python（一次性顺延/星期命中/过期不触发）
+- `trait Clock`：`RealClock`（chrono::Local）/ `VirtualClock`（可拨）——调度循环经 `spawn_with_clock` 注入，拨钟即测触发
 
 ### 3.5 天气服务 — TTL 缓存 + 泛型重试
 
-```python
-def get_weather_by_city(city_name: str) -> Optional[WeatherData]:
-    # 城市名 → cities.py 经纬度表 → get_weather_by_coords()
-    # TTL 缓存（weather_cache_ttl=1800s）内直接命中返回
+```rust
+// 城市名 → 坐标表 → 拼 URL（host 常量白名单）→ GET → parse（经 retry）→ 写缓存
+pub async fn fetch(&self, city: &str, force: bool) -> Result<WeatherData, WeatherErr>
 ```
 
-- 网络请求经 `utils/retry.py` 的 `retry_call()` 泛型重试
-- GUI 侧查询移入 `QThreadPool` 后台线程（S5 后台化），不阻塞主线程
-- 失败返回 `None`，`format_weather_info()` 统一格式化展示文案
+- `WeatherClient`：reqwest(rustls，禁重定向) + 按城缓存（仅存成功）+ `force` 清该城键 + 失败不缓存
+- 解析层逐字段校验（存在→非 null→类型对→范围对），对 null/缺字段/错型整包 `Err`；hourly/daily 键缺失向后兼容空序列
+- `trait IsRetryable` 区分网络类（可重试）与解析类（立即返回）；httpmock 五路径集成断言
 
-### 3.6 GUI 分层 — 三大块接口契约 + Fluent 面板化 + signal/slot 解耦（UI 2.0 后）
+### 3.6 前后端解耦 — interface 七域 + 命令/事件总线
 
-- **三大块架构**（plan#UI2.0）：后端（modules/config/utils/data）→ 接口（interface/AppInterface 七域契约）→ UI（ui/）；UI 零后端 import，接口无 Qt 依赖——后端+接口测试可脱离 Qt 运行，UI 可整体替换
-- `main_window.AcceleratedWorldGUI(FluentWindow)` 为纯装配器：接口注入 + 六导航页（时钟/倒计时/世界时钟/天气/闹钟 + 设置置底）+ `QTimer`（tick 随倍率联动）+ 三态主题（auto 跟随系统/light/dark）+ Acrylic 背板 + 托盘
-- 7 个面板独立类（`ui/panels/`），纯展示化：数据经接口拉取，运算在 `ui/tools/`，跨面板通信走信号：`rate_changed`/`theme_selected`/`alarm_saved`/`alarm_triggered`
-- `SystemTray` 独立类：自绘图标/RoundMenu 菜单/原生通知，关闭按钮最小化到托盘而非退出
-- 主题：qfw `setTheme` 三态 + `setThemeColor`（ui.json primary）+ SystemThemeListener 系统深浅侦听；QSS 管线已退役（原 themes.py 删除）
-- 闹钟音频独立 `audio_player.py`：异步分发播放（防局部变量 GC 中断播放）
+- `AppInterface`：world/weather/settings 等各域持有（Arc），提供同步查询（拉）+ 命令/事件通道（推）
+- `FrontendCommand`（UI 意图：SetRate/ApplyRate/AddAlarm/SetTheme/Quit…）与 `BackendEvent`（后端事实：Tick/WeatherUpdated/AlarmTriggered/ConfigSaved…）全变体一次定义
+- `bus.rs`（app 侧）：每帧 `logic()` 首行 drain 全部事件 → `UiState::apply` 更新快照；命令经 `send` 统一出口
+- 硬保障：CI 关卡 4 校验 core 依赖树零 egui/eframe（单向分层从约定升级为机器强制）
 
-### 3.7 日志 — 每日独立文件 + 过期清理
+### 3.7 玻璃渲染 — WGSL 管线 + 场景注册表
 
-- `_DailyFileHandler` 按 `logs/app-YYYY-MM-DD.log` 切分每日文件
-- `_cleanup_old_logs()` 按 `log_backup_days`（7 天）清理过期日志
-- `setup_logging()` 统一初始化，控制台 + 文件双通道
+- `glass/shader.rs`：WGSL 移植 Python GLSL（SDF 圆角/纵横比校正/覆盖判向 `d<0` 面内/光场双晕/rim 方向性/bezel/投影/预乘输出）
+- `glass/surface.rs`：`GlassScene`（保序面表 + register/unregister/set_visible/set_selected/update_geometry/touch）
+- `glass/painter.rs`：每帧对可见面构造 `PaintCallback`（uniforms 快照 + bind group + draw）
+- 质量门：`bin/render_probe.rs` 离屏渲染 + FBO 分区采样量化断言（色差/rim 增量/双晕/预乘不变量/背景 alpha）
+- 能力探测：GL 失败逐级降级栅格/实底且行为无损；Acrylic 需 DWM 底座扩展 + SYSTEMBACKDROP 覆写
+
+### 3.8 日志 — 每日滚动 + 崩溃栈
+
+- `tracing_subscriber` + `tracing_appender::rolling::daily("logs","accel")`（对齐 Python 每日独立文件）
+- panic hook → `logs/crash-YYYY-MM-DD.log`（含 location + backtrace）
+- 级别读 base.json `log_level` token；后台任务 spawn 统一 join 监控（panic 记 error 不静默）
 
 ## 4. 代码风格观察
 
-| 方面       | 实际情况                                                                       |
-| ---------- | ------------------------------------------------------------------------------ |
-| 命名风格   | 函数/变量 `snake_case`，类 `CamelCase`，常量 `UPPER_CASE`，`_` 前缀模块内私用   |
-| 注释语言   | 中文，`#` 行注释体系；函数定义下方紧跟 1-3 行用途注释；禁止 docstring 当注释用 |
-| 底部文档   | 统一在文件末尾 `# =====` 函数逻辑说明区（输入/输出/逻辑/设计理由/异常/关联配置） |
-| 类型注解   | 函数参数与返回值注解齐全，`typing` 模块 + `| None` 语法                         |
-| import     | 三段顺序（标准库 → 第三方 → 本地），顶层 import，禁止函数内延迟 import          |
-| 配置格式   | JSON；静态配置 `config/static/*.json` + 单例加载器；用户配置 dataclass 序列化   |
-| 路径处理   | 强制 pathlib                                                                     |
-| 字符串     | f-string 优先，普通字符串双引号                                                  |
-| 临时文件   | `.temp/`（已 gitignore）                                                         |
-| 类型检查   | pyproject.toml 仅 basedpyright 配置，绝大多数检查显式放宽为 none                 |
+| 方面     | 实际情况                                                                          |
+| -------- | --------------------------------------------------------------------------------- |
+| 命名风格 | 函数/变量/字段 `snake_case`，类型/trait/枚举 `CamelCase`，常量 `UPPER_SNAKE_CASE` |
+| 注释语言 | 中文；`///` 文档注释（1-3 行）+ `//!` 模块头 + 文件末 `// ===== 说明区`           |
+| 错误处理 | 库层 `Result<T, E>` + `thiserror`；构建/初始化期 panic 快速失败（中文文案）       |
+| 类型     | 公开 API 显式签名；`Option`/`Result` 表达空值与失败                               |
+| import   | 三段顺序（标准库 → 第三方 → 本地），顶层 import                                   |
+| 配置格式 | JSON；静态 `config/static/*.json`（include_str 嵌入）+ 用户配置 serde 反序列化    |
+| 路径处理 | 强制 `std::path::Path`/`PathBuf`                                                  |
+| 格式化   | `cargo fmt`（4 空格、行宽 100）；`cargo clippy -D warnings` 零警告                |
+| 测试     | core 内联 `#[cfg(test)]` 就近单测 + `crates/accel-core/tests/` 夹具 parity 集成   |
+| 临时文件 | `.temp/`（gitignore）                                                             |
 
 ## 5. 与 DeepTransHub 对比
 
-| 维度         | AccelWorld                              | DeepTransHub                            |
-| ------------ | --------------------------------------- | --------------------------------------- |
-| 应用形态     | PyQt6 桌面 GUI（默认）+ CLI             | CLI 菜单 + subprocess 调度独立脚本      |
-| 配置管理     | `config/static/` 静态层 + 用户配置 dataclass | `config/static/` 静态层 + key.json 独立 |
-| 配置加载     | `get_static_config()` 单例              | `get_static_config()` 单例（同源设计）  |
-| 上下文聚合   | `TimeInfo`/`LunarInfo`/`WeatherData`/`UserConfig` 四 dataclass | `_XxxContext` 四工具各自 dataclass      |
-| 重试         | `utils/retry.py` 泛型 `retry_call()`    | `utils/error_handler.py` `retry_call()` |
-| 并发模型     | QThreadPool 后台线程 + QTimer 轮询      | 串行 + Ctrl+Q 文件信号优雅退出          |
-| 数据存储     | JSON 用户配置 + data/ 静态数据表        | Excel 状态机 + SQLite 词汇库            |
-| 日志系统     | 每日独立文件 + 过期清理                 | 按天+序号 usage 日志 + 分析工具链       |
-| 代码规范     | AGENTS.md 成文（# 注释体系/说明区）     | AGENTS.md 成文（同源，DeepTransHub 更早） |
-| 工作流体系   | 2026-09-10 接入（本文档交接）           | w/x/y/z 四件套 + skills + 审计流程      |
+| 维度       | AccelWorld RS                                            | DeepTransHub                              |
+| ---------- | -------------------------------------------------------- | ----------------------------------------- |
+| 应用形态   | Rust GUI（egui + eframe/wgpu）                           | CLI 菜单 + subprocess 调度脚本            |
+| 配置管理   | `config/static/` 静态层 + serde 用户配置                 | `config/static/` 静态层 + key.json        |
+| 配置加载   | `Static::get()` 单例（include_str + OnceLock）           | `get_static_config()` 单例                |
+| 上下文聚合 | `TimeInfo`/`LunarInfo`/`WeatherData`/`UserConfig` 四 DTO | `_XxxContext` 四工具各自 dataclass        |
+| 重试       | `util/retry.rs` 泛型 `retry()` + `IsRetryable`           | `utils/error_handler.py` `retry_call()`   |
+| 并发模型   | tokio 后台 runtime + mpsc 命令/事件总线                  | 串行 + Ctrl+Q 文件信号优雅退出            |
+| 数据存储   | JSON 用户配置 + data/ 静态数据表                         | Excel 状态机 + SQLite 词汇库              |
+| 日志系统   | tracing 每日滚动 + panic hook 崩溃栈                     | 按天+序号 usage 日志 + 分析工具链         |
+| 代码规范   | AGENTS.md 成文（`///`+`//!`+说明区房规）                 | AGENTS.md 成文（同源，DeepTransHub 更早） |
+| 工作流体系 | 2026-09-10 接入（本文档交接）                            | w/x/y/z 四件套 + skills + 审计流程        |
+
+## 6. 与 Python 版的 parity 基准
+
+- Python 版（0.6.0.0）冻结为 golden 基准：`rs/fixtures/*.json` 为行为快照（time/config/weather/lunar/alarm 五类），core 行为断言一律对夹具
+- 夹具可由 `.archived/` 内 Python 副本再生（`export_fixtures.py`，sha256 与入库值一致）
+- 镜像映射表（Python → Rust）见 `z.plan.md`「总纲修订一」；执行偏移与豁免清单见 z.plan 各 PL 完成记录节
