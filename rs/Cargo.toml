@@ -25,12 +25,13 @@ httpmock = "0.8.3"
 # PL013 GUI 栈（app 侧；wayland/x11 为 eframe default-features 组件，Linux CI 兼容）
 eframe = { version = "0.37.0", default-features = false, features = ["default_fonts", "wgpu", "wayland", "x11"] }
 egui = "0.37.0"
-egui_extras = "0.37.0"
 pollster = "1.0.1"
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_UI_WindowsAndMessaging", "Win32_UI_Controls"] }
 # 与 eframe 0.37 内部 wgpu 同版（30.x）——render_probe 离屏断言复用同一 WGSL
 wgpu = "30.0.1"
+# A005 #25：egui-wgpu 原直写在 crate 内，收归 workspace 统一版本表
+egui-wgpu = "0.37.0"
 raw-window-handle = "0.6.2"
 # PL015 系统集成三件：托盘菜单（含 muda）/全局热键/WinRT 通知
 tray-icon = "0.25.1"

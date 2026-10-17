@@ -23,19 +23,9 @@ pub fn all() -> &'static [TimezoneEntry] {
     })
 }
 
-/// IANA 标识检索（配置 world_pins 校验用）
-pub fn by_iana(iana: &str) -> Option<&'static TimezoneEntry> {
-    all().iter().find(|t| t.iana == iana)
-}
-
-/// 全部 IANA 标识（展示序）
-pub fn iana_list() -> Vec<&'static str> {
-    all().iter().map(|t| t.iana).collect()
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{all, by_iana, iana_list};
+    use super::all;
 
     #[test]
     fn entry_count_and_order_anchor() {
@@ -44,17 +34,15 @@ mod tests {
         assert_eq!(all.len(), 8);
         assert_eq!(all[0].iana, "Asia/Shanghai");
         assert_eq!(all[7].iana, "Australia/Sydney");
-        assert_eq!(iana_list().len(), 8);
     }
 
     #[test]
     fn display_and_lookup() {
-        // 样例值（夹具锚点：巴黎含 DST 双档显示名；未知标识返 None）
-        assert_eq!(
-            by_iana("Europe/Paris").map(|t| t.display),
-            Some("巴黎 (UTC+1/+2)")
-        );
-        assert!(by_iana("Mars/Olympus").is_none());
+        // 样例值（夹具锚点：巴黎含 DST 双档显示名）
+        // A005 #15：by_iana/iana_list 已删——检索改用 all() 的 iana 字段
+        let paris = all().iter().find(|t| t.iana == "Europe/Paris");
+        assert_eq!(paris.map(|t| t.display), Some("巴黎 (UTC+1/+2)"));
+        assert!(all().iter().all(|t| t.iana != "Mars/Olympus"));
     }
 }
 

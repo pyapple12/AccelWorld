@@ -1,11 +1,11 @@
 //! chip 控件（小尺寸玻璃卡：label + value 两行布局，PL014.02）
 //! 农历 chips / 节日 chips / 城市卡等小卡的统一容器
 
-use egui::{Color32, Sense, Vec2};
+use egui::{Sense, Vec2};
 
 use crate::glass::surface::{GlassScene, GlassSurface};
 
-/// chip 规格（尺寸 token 化随 PL015 观感轮；当前 120x64 圆角 12）
+/// chip 规格（A005 #9：圆角取 ui.json radius.md；尺寸为单场景外观常量）
 pub const CHIP_SIZE: Vec2 = Vec2::new(120.0, 64.0);
 
 /// 绘制一枚 chip（label 上 value 下；selected 金描边）并注册玻璃面（elevation 5）
@@ -19,8 +19,11 @@ pub fn show(
     selected: bool,
 ) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(CHIP_SIZE, Sense::click());
+    // A005 #9：语义色 + 圆角 token（radius.md）
+    let ink = crate::theme::ink();
+    let chip_radius = crate::theme::radius_px("md");
     let mut surface = GlassSurface::new(id, rect);
-    surface.radius = 12.0;
+    surface.radius = chip_radius;
     surface.elevation = 5;
     surface.selected = if selected { 1.0 } else { 0.0 };
     scene.register(surface);
@@ -28,7 +31,7 @@ pub fn show(
     if selected {
         ui.painter().rect_stroke(
             rect,
-            egui::epaint::CornerRadius::same(12),
+            egui::epaint::CornerRadius::same(chip_radius as u8),
             egui::Stroke::new(1.6, crate::theme::accent_color()),
             egui::StrokeKind::Inside,
         );
@@ -38,14 +41,14 @@ pub fn show(
         egui::Align2::LEFT_TOP,
         label,
         egui::FontId::proportional(12.0),
-        Color32::from_rgb(170, 176, 190),
+        ink.soft,
     );
     ui.painter().text(
         rect.left_bottom() + Vec2::new(10.0, -14.0),
         egui::Align2::LEFT_BOTTOM,
         value,
         egui::FontId::proportional(16.0),
-        Color32::from_rgb(235, 238, 245),
+        ink.strong,
     );
     resp
 }

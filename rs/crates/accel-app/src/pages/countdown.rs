@@ -45,14 +45,17 @@ impl std::fmt::Display for AddErr {
     }
 }
 
-/// 最近未到目标（hero 用）：targets 已按 at 升序则首个未到者
-pub fn next_target(
-    targets: &[(String, NaiveDateTime)],
+/// 最近未到目标（hero 用）：取未到项中 at 最小者（A005 #23：借用切片，无每帧克隆；
+/// 排序改为单次线性取最小，避免 to_vec + sort）
+pub fn next_target<'a>(
+    targets: &[(&'a str, NaiveDateTime)],
     now: NaiveDateTime,
-) -> Option<(String, NaiveDateTime)> {
-    let mut sorted = targets.to_vec();
-    sorted.sort_by_key(|(_, at)| *at);
-    sorted.into_iter().find(|(_, at)| *at > now)
+) -> Option<(&'a str, NaiveDateTime)> {
+    targets
+        .iter()
+        .filter(|(_, at)| *at > now)
+        .min_by_key(|(_, at)| *at)
+        .copied()
 }
 
 impl crate::pages::Page for crate::pages::CountdownPage {
@@ -63,45 +66,35 @@ impl crate::pages::Page for crate::pages::CountdownPage {
         cmd: &Sender<FrontendCommand>,
         scene: &mut GlassScene,
     ) {
-        let content = ui.ctx().input(|i| i.content_rect());
-        let page_rect = egui::Rect::from_min_size(
-            content.min + egui::vec2(180.0, 20.0),
-            content.size() - egui::vec2(204.0, 40.0),
-        );
+        let page_rect = crate::window::content_page_rect(ui.ctx());
         crate::window::register_page_surface(scene, PageId::Countdown, page_rect);
+        // A005 #9：语义色 token（不再写字面色值）
+        let ink = crate::theme::ink();
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().inner_margin(egui::Margin::same(24)))
+            .frame(egui::Frame::new().inner_margin(crate::window::page_inner_margin()))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.add_space(156.0);
+                    ui.add_space(crate::window::content_left_inset());
                     ui.vertical(|ui| {
                         let now = chrono::Local::now().naive_local();
-                        // 目标快照（同步查询——拉取式，同步语义见 interface）
-                        let mut targets: Vec<(String, NaiveDateTime)> = Vec::new();
-                        let tx = cmd.clone();
-                        let _ = tx;
-                        // 数据面：Bus iface 快照经 state 不可达——页面约定：倒计时列表
-                        // 由 Tick 外的 ConfigSaved 驱动重拉；此处经 cmd 发查询是重设计，
-                        // PL014.08 简化：Bus::iface 同步查询在 window 侧装配后存 state
+                        // 目标快照（state.countdown_targets：启动快照 + ConfigSaved 重拉）
+                        let mut targets: Vec<(&str, NaiveDateTime)> = Vec::new();
                         for t in &state.countdown_targets {
                             if let Some(at) = t.parse_at() {
-                                targets.push((t.name.clone(), at));
+                                // A005 #23：借用名称不 clone（原实现每帧克隆全部目标名）
+                                targets.push((t.name.as_str(), at));
                             }
                         }
                         // hero：最近目标大字
                         if let Some((name, at)) = next_target(&targets, now) {
                             let (text, ended) = format_remaining(at, now);
-                            ui.label(
-                                egui::RichText::new(&name)
-                                    .size(18.0)
-                                    .color(egui::Color32::from_rgb(200, 206, 220)),
-                            );
+                            ui.label(egui::RichText::new(name).size(18.0).color(ink.muted));
                             ui.label(
                                 egui::RichText::new(&text)
                                     .size(crate::theme::font_size("hero_time"))
                                     .color(if ended {
-                                        egui::Color32::from_rgb(228, 117, 106)
+                                        ink.danger
                                     } else {
                                         crate::theme::accent_color()
                                     }),
@@ -110,7 +103,7 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                             ui.label(
                                 egui::RichText::new("暂无目标 · 点右上 ＋ 添加")
                                     .size(16.0)
-                                    .color(egui::Color32::from_rgb(170, 176, 190)),
+                                    .color(ink.soft),
                             );
                         }
                         ui.add_space(16.0);
@@ -125,54 +118,50 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                                         at.format("%Y-%m-%d %H:%M")
                                     ))
                                     .size(15.0)
-                                    .color(egui::Color32::from_rgb(225, 230, 240)),
+                                    .color(ink.card),
                                 );
                                 ui.label(egui::RichText::new(&text).size(15.0).color(if ended {
-                                    egui::Color32::from_rgb(228, 117, 106)
+                                    ink.danger
                                 } else {
-                                    egui::Color32::from_rgb(200, 206, 220)
+                                    ink.muted
                                 }));
                                 if ui.small_button("－").clicked() {
                                     let _ = cmd.try_send(
                                         accel_core::types::FrontendCommand::RemoveCountdownTarget(
-                                            name.clone(),
+                                            (*name).to_string(),
                                         ),
                                     );
                                 }
                             });
                         }
                         ui.add_space(12.0);
-                        // 加号行：名称输入 + 日期/时间文本（自绘简化：单行文本框）
+                        // 加号行：名称输入 + 日期/时间文本（解析单一来源：tools::countdown::parse_target_text）
                         ui.horizontal(|ui| {
                             ui.label("＋ 新目标：");
                             ui.text_edit_singleline(&mut state.countdown_draft_name);
                             ui.text_edit_singleline(&mut state.countdown_draft_at);
-                            let (err_msg, valid) = {
+                            // A005 #11：统一走 tools::countdown::parse_target_text（19/16/10 位），
+                            // 不再页内自解析 NaiveDate（原实现只收 YYYY-MM-DD 且强填 23:59:59）
+                            let (err_msg, parsed_at) = {
                                 let name = state.countdown_draft_name.clone();
-                                let parsed = state
-                                    .countdown_draft_at
-                                    .parse::<chrono::NaiveDate>()
-                                    .ok()
-                                    .and_then(|d| d.and_hms_opt(23, 59, 59));
-                                match parsed {
+                                match crate::tools::countdown::parse_target_text(
+                                    &state.countdown_draft_at,
+                                ) {
                                     Some(at) => {
                                         let names: Vec<String> =
-                                            targets.iter().map(|(n, _)| n.clone()).collect();
+                                            targets.iter().map(|(n, _)| (*n).to_string()).collect();
                                         match validate_add(&name, at, now, &names) {
-                                            Ok(()) => (String::new(), true),
-                                            Err(e) => (e.to_string(), false),
+                                            Ok(()) => (String::new(), Some(at)),
+                                            Err(e) => (e.to_string(), None),
                                         }
                                     }
-                                    None => ("日期格式 YYYY-MM-DD".into(), false),
+                                    None => ("日期格式 YYYY-MM-DD[ HH:MM[:SS]]".into(), None),
                                 }
                             };
-                            if ui.add_enabled(valid, egui::Button::new("确认")).clicked() {
-                                let at = state
-                                    .countdown_draft_at
-                                    .parse::<chrono::NaiveDate>()
-                                    .ok()
-                                    .and_then(|d| d.and_hms_opt(23, 59, 59))
-                                    .expect("已校验");
+                            let valid = parsed_at.is_some();
+                            if ui.add_enabled(valid, egui::Button::new("确认")).clicked()
+                                && let Some(at) = parsed_at
+                            {
                                 let local = chrono::Local
                                     .from_local_datetime(&at)
                                     .single()
@@ -187,10 +176,7 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                                 state.countdown_draft_at.clear();
                             }
                             if !err_msg.is_empty() && !valid {
-                                ui.label(
-                                    egui::RichText::new(&err_msg)
-                                        .color(egui::Color32::from_rgb(228, 117, 106)),
-                                );
+                                ui.label(egui::RichText::new(&err_msg).color(ink.danger));
                             }
                         });
                     });
@@ -206,5 +192,5 @@ impl crate::pages::Page for crate::pages::CountdownPage {
 // 设计理由：校验与最近目标选取抽纯函数（可测）；默认派生目标（春节）不落盘，
 //   天然不在 targets 列表 → 无减号（任务定案平移）
 // 已知偏移：WorldPageAlisa 占位桥待删（世界页 impl 在 world.rs 时清理）；
-//   草稿日期输入用单行文本（egui_extras 日期件留 PL015 观感轮）
+//   草稿日期输入用单行文本（日期件控件未引入——A005 #25 已移除未用的 egui_extras）
 // 关联依赖：tools::countdown/settings::CountdownTarget；消费方：pages::Pages

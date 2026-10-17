@@ -58,26 +58,17 @@ pub struct UiState {
     pub world_pins: Vec<String>,
     /// 选中基准时区（IANA）
     pub base_timezone: Option<String>,
-    /// 天气已集城市（多城市切换 chips；含 last_city）
-    pub weather_cities: Vec<String>,
     /// 闹钟自定义添加草稿
     pub alarm_draft_label: String,
     pub alarm_draft_time: String,
+    /// 保存回执（A005 #28：ConfigSaved 结果，退出序列据此放行 Close）
+    pub save_ack: bool,
 }
 
 impl UiState {
     /// 世界常驻城市视图（只读借用）
     pub fn world_pins_view(&self) -> &[String] {
         &self.world_pins
-    }
-
-    /// 天气已集城市视图（缺省含 last_city——至少一城）
-    pub fn weather_cities_view(&self) -> Vec<String> {
-        let mut cities = self.weather_cities.clone();
-        if !cities.contains(&self.prefs.last_city) {
-            cities.push(self.prefs.last_city.clone());
-        }
-        cities
     }
 }
 
@@ -105,9 +96,9 @@ impl Default for UiState {
             countdown_draft_at: String::new(),
             world_pins: Vec::new(),
             base_timezone: None,
-            weather_cities: Vec::new(),
             alarm_draft_label: String::new(),
             alarm_draft_time: String::new(),
+            save_ack: false,
         }
     }
 }
@@ -122,14 +113,22 @@ impl UiState {
                 self.weather.insert(city, data);
             }
             BackendEvent::WeatherFailed { city, reason } => {
+                // A005 #13：失败须清除同城旧成功数据，否则页面"红字失败 + 完整数据"并存
+                self.weather.remove(&city);
                 self.weather_errors.insert(city, reason);
             }
             BackendEvent::AlarmTriggered(alarm) => {
                 tracing::info!("闹钟触发: {}（{}）", alarm.label, alarm.time);
             }
             BackendEvent::AlarmsChanged(list) => self.alarms = list,
-            BackendEvent::ConfigSaved(_ok) => {}
+            BackendEvent::ConfigSaved(_ok) => {
+                self.save_ack = _ok;
+            }
             BackendEvent::RateChanged(rate) => self.rate = rate,
+            // A005 #19：拒绝事件只记日志——rate 由 drain 侧回拉权威值修正（乐观更新回退）
+            BackendEvent::RateRejected(rate) => {
+                tracing::warn!("倍率 {rate} 被后端拒绝，UI 将回拉权威值");
+            }
         }
     }
 
@@ -154,50 +153,181 @@ impl UiState {
     }
 }
 
-/// 信号总线：AppHandle 持有（命令发送 + 事件接收 + 后端接口）
+/// 平台副作用（A005 #22②：从 UI 帧线程移出——drain 只入队，工作线程执行）
+#[derive(Debug, Clone)]
+pub enum SideEffect {
+    /// 闹钟触发通知（label, HH:MM）
+    NotifyAlarm(String, String),
+    /// 配置保存失败通知
+    NotifySaveFailed,
+    /// 铃声（sound_type, sound_value）
+    PlaySound(String, String),
+}
+
+/// 副作用工作线程（A005 #22②）：std mpsc 无界队列（入队恒成功，UI 帧不阻塞）
+/// 可注入 handler 便于单测（生产注入平台实现）
+fn spawn_side_effect_worker<F>(rx: std::sync::mpsc::Receiver<SideEffect>, handler: F)
+where
+    F: Fn(SideEffect) + Send + 'static,
+{
+    std::thread::Builder::new()
+        .name("accel-side-effects".into())
+        .spawn(move || {
+            while let Ok(effect) = rx.recv() {
+                handler(effect);
+            }
+        })
+        .ok();
+}
+
+/// 生产副作用执行（通知 + 铃声；两者失败皆降级不阻塞）
+fn apply_side_effect(effect: SideEffect) {
+    match effect {
+        SideEffect::NotifyAlarm(label, time) => {
+            crate::platform::notify::notify_alarm(&label, &time);
+        }
+        SideEffect::NotifySaveFailed => {
+            crate::platform::notify::notify_save_failed();
+        }
+        SideEffect::PlaySound(kind, value) => play_alarm_sound(&kind, &value),
+    }
+}
+
+/// 命令出口（A005 #22①：通道满时不丢命令——入待发队列，下一帧 flush 重试）
+struct CmdQueue {
+    tx: Sender<FrontendCommand>,
+    pending: std::cell::RefCell<std::collections::VecDeque<FrontendCommand>>,
+}
+
+// 待发队列上限（防后端长时间停摆导致无界增长；超限丢弃并记 error）
+const PENDING_CAP: usize = 256;
+
+impl CmdQueue {
+    fn new(tx: Sender<FrontendCommand>) -> CmdQueue {
+        CmdQueue {
+            tx,
+            pending: std::cell::RefCell::new(std::collections::VecDeque::new()),
+        }
+    }
+
+    /// 尝试直发；满则入待发队列（返回是否已直发）
+    fn push(&self, cmd: FrontendCommand) -> bool {
+        match self.tx.try_send(cmd) {
+            Ok(()) => true,
+            Err(tokio::sync::mpsc::error::TrySendError::Full(cmd)) => {
+                let mut q = self.pending.borrow_mut();
+                if q.len() >= PENDING_CAP {
+                    tracing::error!("命令待发队列已满（{PENDING_CAP}），丢弃命令");
+                } else {
+                    q.push_back(cmd);
+                }
+                false
+            }
+            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                tracing::error!("命令通道已关闭，丢弃命令");
+                false
+            }
+        }
+    }
+
+    /// 每帧 flush：按顺序补发待发命令，遇到再次满载即停（保序）
+    fn flush(&self) {
+        loop {
+            let Some(cmd) = self.pending.borrow_mut().pop_front() else {
+                return;
+            };
+            match self.tx.try_send(cmd) {
+                Ok(()) => continue,
+                Err(tokio::sync::mpsc::error::TrySendError::Full(cmd)) => {
+                    self.pending.borrow_mut().push_front(cmd);
+                    return;
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                    tracing::error!("命令通道已关闭，清空待发队列");
+                    self.pending.borrow_mut().clear();
+                    return;
+                }
+            }
+        }
+    }
+}
+
+/// 信号总线：AppHandle 持有（命令发送 + 事件接收 + 后端接口 + 副作用出队）
 pub struct Bus {
     pub iface: Arc<AppInterface>,
-    cmd_tx: Sender<FrontendCommand>,
+    cmd: CmdQueue,
     evt_rx: Receiver<BackendEvent>,
+    /// 平台副作用出口（通知/铃声由工作线程执行——A005 #22②）
+    side_tx: std::sync::mpsc::Sender<SideEffect>,
 }
 
 impl Bus {
-    /// 经 interface spawn 建立双通道（要求 tokio 上下文——eframe 装配期经
-    /// 共享 runtime block_on 进入；window::run 调用）
+    /// 经 interface spawn 建立双通道 + 副作用工作线程（要求 tokio 上下文——
+    /// eframe 装配期经共享 runtime block_on 进入；window::run 调用）
     pub fn spawn_on(iface: Arc<AppInterface>, runtime: &tokio::runtime::Runtime) -> Bus {
+        Self::spawn_on_with(iface, runtime, apply_side_effect)
+    }
+
+    /// 注入副作用 handler 的构造（单测用：handler 可替换为收集闭包）
+    pub fn spawn_on_with<F>(
+        iface: Arc<AppInterface>,
+        runtime: &tokio::runtime::Runtime,
+        handler: F,
+    ) -> Bus
+    where
+        F: Fn(SideEffect) + Send + 'static,
+    {
         let (cmd_tx, evt_rx) = runtime.block_on(async { AppInterface::spawn(Arc::clone(&iface)) });
+        let (side_tx, side_rx) = std::sync::mpsc::channel();
+        spawn_side_effect_worker(side_rx, handler);
         Bus {
             iface,
-            cmd_tx,
+            cmd: CmdQueue::new(cmd_tx),
             evt_rx,
+            side_tx,
         }
     }
 
-    /// 命令统一出口（页/控件发意图的唯一入口）
+    /// 命令统一出口（页/控件发意图的唯一入口；A005 #22① 满通道入待发队列不丢）
     pub fn send(&self, cmd: FrontendCommand) {
-        if let Err(e) = self.cmd_tx.try_send(cmd) {
-            tracing::error!("命令发送失败（通道满或关闭）: {e}");
+        self.cmd.push(cmd);
+    }
+
+    /// 平台副作用的传输出口（A005 #22②：UI 帧线程只入队，工作线程执行）
+    fn side_effect(&self, effect: SideEffect) {
+        if self.side_tx.send(effect).is_err() {
+            tracing::error!("副作用工作线程已退出，丢弃副作用事件");
         }
     }
 
-    /// 每帧 drain：while try_recv 消费全部积压事件 → UiState::apply
+    /// 每帧 drain：先补发待发命令 → while try_recv 消费全部积压事件 → UiState::apply
     /// ConfigSaved 后重拉倒计时目标同步快照（iface 拉取式通道）
-    /// 闹钟触发/保存失败两事件旁路平台通知 + 铃声（PL015.02 接线）
+    /// 闹钟触发/保存失败的平台通知与铃声经副作用线程（A005 #22②）
     /// 返回本轮消费条数（帧计数/节奏探针用）；logic(&mut self) 调用
     pub fn drain(&mut self, state: &mut UiState) -> usize {
+        self.cmd.flush();
         let mut n = 0;
         let mut need_reload = false;
+        let mut need_rate_resync = false;
         while let Ok(evt) = self.evt_rx.try_recv() {
             match &evt {
                 BackendEvent::AlarmTriggered(alarm) => {
-                    // 系统通知 + 铃声（PL014.15 占位补齐；两者皆失败不阻塞——
-                    // 触发事实已由 AlarmsChanged/列表状态承载）
-                    crate::platform::notify::notify_alarm(&alarm.label, &alarm.time);
-                    play_alarm_sound(&alarm.sound_type, &alarm.sound_value);
+                    // 系统通知 + 铃声经工作线程（失败皆降级不阻塞；触发事实已由
+                    // AlarmsChanged/列表状态承载）
+                    self.side_effect(SideEffect::NotifyAlarm(
+                        alarm.label.clone(),
+                        alarm.time.clone(),
+                    ));
+                    self.side_effect(SideEffect::PlaySound(
+                        alarm.sound_type.clone(),
+                        alarm.sound_value.clone(),
+                    ));
                 }
                 BackendEvent::ConfigSaved(false) => {
-                    crate::platform::notify::notify_save_failed();
+                    self.side_effect(SideEffect::NotifySaveFailed);
                 }
+                // A005 #19：倍率被拒 → 回拉权威值（乐观更新回退）
+                BackendEvent::RateRejected(_) => need_rate_resync = true,
                 _ => {}
             }
             if matches!(evt, BackendEvent::ConfigSaved(_)) {
@@ -209,42 +339,61 @@ impl Bus {
         if need_reload {
             state.countdown_targets = self.iface.get_countdown_targets();
             state.world_pins = self.iface.get_world_pins();
-            state.base_timezone = Some(self.iface.get_ui_preferences().last_timezone);
+            let prefs = self.iface.get_ui_preferences();
+            state.base_timezone = Some(prefs.last_timezone);
+            // A005 #4：单城模型下 last_city 由 SetWeatherCity 持久化，重拉同步
+            state.prefs.last_city = prefs.last_city;
+        }
+        if need_rate_resync {
+            state.rate = self.iface.get_rate();
         }
         n
     }
 
     /// 命令出口克隆（页/子部件需要独立 Sender 时；主出口仍走 send()）
     pub fn cmd_tx(&self) -> Sender<FrontendCommand> {
-        self.cmd_tx.clone()
+        self.cmd.tx.clone()
     }
 
-    /// 启动期拉取偏好快照（同步查询，只此一次——后续以事件回推为准）
-    pub fn initial_prefs(&self) -> UiPreferences {
-        self.iface.get_ui_preferences()
-    }
+    // 启动期偏好快照（A005 #15：生产零调用已删除——装配期用 `iface.get_ui_preferences()`）
 }
 
 /// 闹钟铃声分发（Python play_preset_sound/play_custom_sound 分支对等）：
 /// preset → core::audio::play_preset（枚举反解）；custom → play_file（路径直放）
 /// 其余 sound_type 回退 preset（alarm.rs 解析层已过滤，此处兜底同语义）
+/// A005 #24：custom 路径加扩展名白名单校验（用户配置属外部输入，非法回退 preset）
 fn play_alarm_sound(sound_type: &str, sound_value: &str) {
-    if sound_type == "custom" && !sound_value.is_empty() {
+    if sound_type == "custom" && is_allowed_audio_path(sound_value) {
         accel_core::audio::play_file(std::path::Path::new(sound_value));
     } else {
+        if sound_type == "custom" {
+            tracing::warn!("自定义铃声路径非法（白名单外扩展名），回退预设: {sound_value}");
+        }
         accel_core::audio::play_preset(accel_core::alarm::PresetSound::from_value(sound_value));
     }
 }
 
+/// 自定义铃声路径白名单（A005 #24：wav/mp3 扩展名 + 非空路径）
+fn is_allowed_audio_path(value: &str) -> bool {
+    let p = std::path::Path::new(value);
+    p.is_absolute()
+        && p.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("wav") || e.eq_ignore_ascii_case("mp3"))
+            .unwrap_or(false)
+}
+
 // ===== src/bus.rs 说明区 =====
-// 输入：BackendEvent 流（后端事实）；输出：UiState 快照 + FrontendCommand 出口
-// 逻辑步骤：drain 每帧 while try_recv → apply 逐变体更新 → 渲染层只读 state
-// 设计理由：z.plan 修订一信号接口的 app 半边——UI 不直碰业务（页/控件只拿
-//   &UiState 与 cmd 发送口），锁不跨帧（drain 在 update 首行完成）；Tick 节奏
-//   由后端推（tick_ms 随倍率重排已在 interface 内），app 侧 next_repaint_interval
-//   只做「取小 + 1s 兜底」（空闲期 egui 空转防护）
-// 异常处理：send 通道满/关记 error 不 panic（UI 假死不应崩进程）；闹钟触发旁路
-//   通知/铃声均失败不阻塞（触发事实由列表状态承载）
+// 输入：BackendEvent 流（后端事实）+ 页/控件命令意图；输出：UiState 快照 + 命令出口 + 副作用线程
+// 逻辑步骤：drain 每帧「先 flush 待发命令 → while try_recv 消费事件 → apply 逐变体更新」
+//   → 渲染层只读 state
+// 设计理由：z.plan 修订一信号接口的 app 半边——UI 不直碰业务状态（页/控件只拿
+//   &UiState 与命令出口）；锁不跨帧（drain 在 logic 首行完成）；Tick 节奏由后端推，
+//   app 侧 next_repaint_interval 只做「取小 + 1s 兜底」
+// A005 #22 修正：①命令出口满载时入待发队列（下一帧保序补发，帧路径零丢失，上限
+//   PENDING_CAP）；②平台副作用（通知/铃声）经 std::thread 工作线程执行——UI 帧只入队，
+//   不在渲染线程做 IO（入队恒成功，无界通道）
+// 异常处理：send 满载入队/关闭记 error 不 panic；副作用线程退出时记 error 丢弃事件
 // 关联依赖：accel-core::interface/types；消费方：window.rs AppHandle
 #[cfg(test)]
 mod tests {
@@ -302,6 +451,16 @@ mod tests {
         );
         state.apply(BackendEvent::AlarmsChanged(vec![]));
         assert!(state.alarms.is_empty());
+        // A005 #13 回归：失败事件必须清除同城旧成功数据（否则错误+数据并存）
+        state.apply(BackendEvent::WeatherFailed {
+            city: "北京".into(),
+            reason: "刷新失败".into(),
+        });
+        assert!(
+            !state.weather.contains_key("北京"),
+            "失败后同城旧数据应被清除"
+        );
+        assert!(state.weather_errors.contains_key("北京"));
     }
 
     #[test]
@@ -321,6 +480,77 @@ mod tests {
         assert_eq!(
             state.next_repaint_interval(),
             std::time::Duration::from_millis(1000)
+        );
+    }
+
+    #[test]
+    fn custom_ringtone_path_whitelist() {
+        // A005 #24 回归：仅 wav/mp3 绝对路径放行；其余（相对路径/其他扩展名/空）拒绝
+        assert!(super::is_allowed_audio_path(r"C:\ring\a.mp3"));
+        assert!(super::is_allowed_audio_path(r"C:\ring\b.WAV"));
+        assert!(!super::is_allowed_audio_path("relative.mp3"));
+        assert!(!super::is_allowed_audio_path(r"C:\ring\evil.exe"));
+        assert!(!super::is_allowed_audio_path(""));
+        assert!(!super::is_allowed_audio_path(r"C:\ring\noext"));
+    }
+
+    #[test]
+    fn cmd_queue_never_loses_on_full() {
+        // A005 #22① 回归：通道容量 1，连发 5 条命令——满载入待发队列，
+        // flush 后按序全量到达（帧路径零丢失）
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("测试 runtime");
+        let (_tx_keep, mut rx) = tokio::sync::mpsc::channel::<FrontendCommand>(1);
+        let queue = CmdQueue::new(_tx_keep);
+        for r in [1.0, 2.0, 3.0, 4.0, 5.0] {
+            queue.push(FrontendCommand::SetRate(r));
+        }
+        let mut got = Vec::new();
+        // 逐轮 flush + 消费（模拟后端节奏）
+        for _ in 0..5 {
+            queue.flush();
+            if let Ok(FrontendCommand::SetRate(r)) = rx.try_recv() {
+                got.push(r);
+            }
+        }
+        rt.block_on(async {});
+        assert_eq!(got, vec![1.0, 2.0, 3.0, 4.0, 5.0], "五条命令应保序零丢失");
+    }
+
+    #[test]
+    fn side_effect_worker_delivers_off_thread() {
+        // A005 #22② 回归：副作用经工作线程投递（UI 帧只入队）
+        let (tx, rx) = std::sync::mpsc::channel::<SideEffect>();
+        let sink = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let sink2 = std::sync::Arc::clone(&sink);
+        spawn_side_effect_worker(rx, move |effect| {
+            let tag = match effect {
+                SideEffect::NotifyAlarm(l, t) => format!("alarm:{l}:{t}"),
+                SideEffect::NotifySaveFailed => "save_failed".to_string(),
+                SideEffect::PlaySound(k, v) => format!("sound:{k}:{v}"),
+            };
+            sink2.lock().expect("锁").push(tag);
+        });
+        tx.send(SideEffect::NotifyAlarm("起床".into(), "07:30".into()))
+            .expect("发送");
+        tx.send(SideEffect::PlaySound("preset".into(), "classic".into()))
+            .expect("发送");
+        // 等待工作线程消费（有界轮询）
+        for _ in 0..50 {
+            if sink.lock().expect("锁").len() == 2 {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let got = sink.lock().expect("锁").clone();
+        assert_eq!(
+            got,
+            vec![
+                "alarm:起床:07:30".to_string(),
+                "sound:preset:classic".to_string()
+            ]
         );
     }
 

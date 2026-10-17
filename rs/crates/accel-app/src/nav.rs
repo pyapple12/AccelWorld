@@ -114,7 +114,7 @@ impl NavRail {
                         if resp.hovered() {
                             frame.hovered_any = true;
                         }
-                        // 选中金边框呼吸（sin 相位；GL 侧由 selected 强度驱动）
+                        // 选中金边框呼吸（sin 相位；GL 侧由 rail 面 selected 驱动）
                         let breath = if selected {
                             0.75 + 0.25 * (time * 2.2).sin()
                         } else if resp.hovered() {
@@ -132,9 +132,10 @@ impl NavRail {
                         if resp.clicked() && state.current_page != page {
                             frame.clicked = Some(page);
                         }
-                        // 选中呼吸写入 rail 玻璃面（u_sel 驱动 shader）
-                        scene.set_selected(SURFACE_NAV, if selected { breath } else { 0.0 });
                     }
+                    // A005 #3 修正：rail 面选中强度**在循环外每帧写一次**——循环内逐轮
+                    // 写同一面会被 PAGE_ORDER 末位（非选中页）覆写为 0，致四页 GL 选中失效
+                    write_rail_selection(scene, time);
                     ui.add_space(geom.gear_gap);
                     // 齿轮（设置浮窗开关）
                     let gear = ui
@@ -195,6 +196,8 @@ fn paint_pill(
     accent: Color32,
     label: &str,
 ) {
+    // A005 #9：语义色 token（文字/非选中描边）
+    let ink = crate::theme::ink();
     let painter = ui.painter();
     let rounding = egui::epaint::CornerRadius::same((rect.height() / 2.0).min(18.0) as u8);
     if selected || hovered {
@@ -205,11 +208,7 @@ fn paint_pill(
         };
         painter.rect_stroke(rect, rounding, stroke, egui::StrokeKind::Inside);
     }
-    let text_color = if selected {
-        accent
-    } else {
-        Color32::from_rgb(225, 230, 240)
-    };
+    let text_color = if selected { accent } else { ink.card };
     painter.text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
@@ -219,15 +218,24 @@ fn paint_pill(
     );
 }
 
+/// rail 面选中强度写入（A005 #3：**每帧恰调用一次**，由 ui 在 PAGE_ORDER 循环外调用；
+/// 呼吸相位只随时间变化——选中页由调用点决定，绝不可放回循环内逐轮覆写）
+pub(crate) fn write_rail_selection(scene: &mut GlassScene, time: f32) {
+    let breath = 0.75 + 0.25 * (time * 2.2).sin();
+    scene.set_selected(SURFACE_NAV, breath);
+}
+
 /// 齿轮绘制（中心圆 + 六齿简化外圈刻线）
 fn paint_gear(ui: &egui::Ui, rect: Rect, hovered: bool) {
+    // A005 #9：语义色 token（非 hover 用 text_card）
+    let ink = crate::theme::ink();
     let painter = ui.painter();
     let c = rect.center();
     let r = rect.height() / 2.0 - 4.0;
     let color = if hovered {
-        Color32::from_rgb(255, 220, 140)
+        crate::theme::accent_color()
     } else {
-        Color32::from_rgb(210, 216, 228)
+        ink.card
     };
     painter.circle_stroke(c, r * 0.62, egui::Stroke::new(1.8, color));
     for k in 0..6 {
@@ -308,6 +316,31 @@ mod tests {
             }
         ));
         assert_eq!(state.current_page, PageId::Weather);
+    }
+
+    #[test]
+    fn rail_selected_nonzero_for_every_page() {
+        // A005 #3 回归：任一选中页（含 PAGE_ORDER 非末位）写入后 rail 面 selected 均非零；
+        // 原实现把写入放在五页循环内，末位（Alarm）以 0.0 覆写 → 四页 GL 选中失效
+        for current in PAGE_ORDER {
+            let mut scene = GlassScene::new();
+            scene.register(GlassSurface::new(
+                SURFACE_NAV,
+                Rect::from_min_size(egui::pos2(0.0, 0.0), Vec2::new(60.0, 300.0)),
+            ));
+            // 模拟 ui 的循环外单次写入（current 仅决定调用时机，强度随时间呼吸）
+            write_rail_selection(&mut scene, 0.0);
+            let selected = scene
+                .draw_list()
+                .iter()
+                .find(|s| s.surface_id == SURFACE_NAV)
+                .map(|s| s.selected)
+                .expect("rail 面应在场景中");
+            assert!(
+                selected > 0.5,
+                "选中 {current:?} 时 rail 面 selected 应非零，实际 {selected}"
+            );
+        }
     }
 
     #[test]

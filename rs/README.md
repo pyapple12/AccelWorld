@@ -9,13 +9,13 @@
 cargo workspace 双 crate，依赖单向 `app → core`（CI 机器强制零反向）：
 
 - `crates/accel-core`：纯业务（时间膨胀/农历/天气/闹钟/配置/数据表/工具/接口契约），零 GUI 依赖
-- `crates/accel-app`：egui 前端（窗口/玻璃渲染/六页导航/自绘控件/系统集成），一切后端访问经 core::interface 命令/事件总线
+- `crates/accel-app`：egui 前端（窗口/玻璃渲染/五页导航 + 设置浮窗/自绘控件/系统集成），一切后端写操作经 core::interface 命令/事件总线（只读 token/DTO 允许直取，见 AGENTS 契约边界）
 
 ## 构建与运行
 
 ```powershell
 cargo run -p accel-app                          # 开发运行（真窗）
-cargo build --release                           # 发布构建 → target/release/accelworld.exe
+cargo build --release                           # 发布构建 → target/release/accel-app.exe
 cargo run -p accel-app --bin render_probe       # 玻璃离屏渲染断言探针
 ```
 

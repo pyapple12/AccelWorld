@@ -1,5 +1,5 @@
 {
-  "version": "0.6.0.4",
+  "version": "0.6.0.5",
   "rate_min": 1.0,
   "rate_max": 20.0,
   "default_rate": 2.0,
@@ -11,11 +11,6 @@
   "default_theme": "auto",
   "default_city": "北京",
   "default_timezone": "Asia/Shanghai",
-  "quick_countdown_targets": [
-    ["国庆节", "10-01"],
-    ["元旦", "01-01"],
-    ["春节", "2027-02-06"]
-  ],
   "default_world_pins": [
     "Asia/Shanghai",
     "Asia/Tokyo",
@@ -27,21 +22,18 @@
     "Asia/Seoul"
   ],
   "max_alarms": 10,
+  "quick_alarm_minutes": [15, 30, 60, 240],
   "window_x": 100,
   "window_y": 100,
   "window_width": 900,
   "window_height": 500,
   "clock_tick_ms": 100,
-  "rate_save_debounce_ms": 500,
-  "progress_anim_ms": 200,
   "alarm_check_ms": 1000,
-  "notification_duration_ms": 3000,
   "weather_cache_ttl": 1800,
   "weather_timeout_s": 10,
   "weather_retries": 3,
   "weather_retry_delay": 1.0,
   "log_level": "INFO",
   "user_config": "config/user_config.json",
-  "logs_dir": "logs",
-  "log_backup_days": 7
+  "logs_dir": "logs"
 }

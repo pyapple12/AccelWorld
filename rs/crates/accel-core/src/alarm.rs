@@ -47,32 +47,14 @@ impl PresetSound {
         }
     }
 
-    /// 当前成员显示名
-    pub fn display_name(self) -> &'static str {
-        Self::display_names()[self.index()]
-    }
-
-    /// 枚举序（下拉框索引互转）
+    /// 枚举序（下拉框索引互转；A005 #15：display_name/from_index 生产零调用已删除，
+    /// 显示名统一经 `display_names()[index()]` 或 `from_value`）
     pub fn index(self) -> usize {
         match self {
             PresetSound::Classic => 0,
             PresetSound::Gentle => 1,
             PresetSound::Beep => 2,
             PresetSound::Chime => 3,
-        }
-    }
-
-    /// 按序号取成员；越界回退 CLASSIC 并告警（2026-09-13 热修复对等）
-    pub fn from_index(index: i64) -> PresetSound {
-        match index {
-            1 => PresetSound::Gentle,
-            2 => PresetSound::Beep,
-            3 => PresetSound::Chime,
-            0 => PresetSound::Classic,
-            _ => {
-                tracing::warn!("预设铃声序号越界，回退 CLASSIC: {index}");
-                PresetSound::Classic
-            }
         }
     }
 }
@@ -235,9 +217,36 @@ impl Alarm {
         self.repeat_days.is_empty()
     }
 
+    /// 一次性闹钟的计划触发时刻（A005 #1 修正：计划日 = created_at 当日或 +1 顺延）
+    /// 输入：自身字段（time/created_at）；输出：Some(计划日 + 目标时分) / 数据异常 None
+    pub fn scheduled_at(&self) -> Option<NaiveDateTime> {
+        let (alarm_hour, alarm_minute) = parse_alarm_hhmm(&self.time)?;
+        let created = parse_created_at(&self.created_at)?;
+        let mut date: NaiveDate = created.date();
+        if (alarm_hour, alarm_minute) <= (created.hour(), created.minute()) {
+            // 创建时刻已到/过设定时分（同分钟视为已过，防创建后当分钟即响）
+            date += Duration::days(1);
+        }
+        date.and_hms_opt(alarm_hour, alarm_minute, 0)
+    }
+
+    /// 装载期过期判定（A005 #1：判据为"计划触发时刻已过"，非"创建日早于今日"）
+    /// 输入：判定基准时刻 now；输出：是否应自动禁用（纯函数——装载与单测共用）
+    /// 语义：计划时刻未到（含当日尚未到点）一律不判过期；恰在计划分钟内由触发路径处理
+    pub fn is_expired_at(&self, now: DateTime<Local>) -> bool {
+        if !self.enabled || !self.is_one_time() {
+            return false;
+        }
+        if self.should_trigger_on(now) {
+            return false;
+        }
+        self.scheduled_at()
+            .is_some_and(|planned| planned < now.naive_local())
+    }
+
     /// 触发判定状态机（Python should_trigger_on 逐行对齐）
-    /// 顺序：enabled → 时分等值 → repeat_days 空? 一次性路径（created_at 计划日
-    /// =创建日或 +1 顺延，数据异常保守不触发）/ 星期命中
+    /// 顺序：enabled → 时分等值 → repeat_days 空? 一次性路径（计划触发时刻
+    /// =created_at 计划日 + 目标时分，数据异常保守不触发）/ 星期命中
     pub fn should_trigger_on(&self, check_time: DateTime<Local>) -> bool {
         if !self.enabled {
             return false;
@@ -250,17 +259,12 @@ impl Alarm {
             return false;
         }
         if self.repeat_days.is_empty() {
-            // 一次性：创建时设定时间未过当日为创建当天，已过自动顺延次日（FIX001.20）
-            let Some(created) = parse_created_at(&self.created_at) else {
+            // 一次性：计划日 = 创建日或 +1 顺延（FIX001.20）；数据异常保守不触发
+            let Some(planned) = self.scheduled_at() else {
                 // created_at 数据异常保守不触发（FIX001.8：防意外每天响）
                 return false;
             };
-            let mut scheduled_date: NaiveDate = created.date();
-            if (alarm_hour, alarm_minute) <= (created.hour(), created.minute()) {
-                // 创建时刻已到/过设定时分（同分钟视为已过，防创建后当分钟即响）
-                scheduled_date += Duration::days(1);
-            }
-            return check_time.date_naive() == scheduled_date;
+            return check_time.naive_local().date() == planned.date();
         }
         // 重复闹钟：当前星期（周一=0）命中
         self.repeat_days
@@ -525,18 +529,15 @@ impl AlarmManager {
             );
             loaded.truncate(self.max_alarms);
         }
-        // 过期一次性禁用：越过计划触发日的死条目禁用保留供查看（FIX004.14）
+        // 过期一次性禁用：计划触发时刻已过（A005 #1 修正判据——原"创建日 < 今日"
+        // 会误禁"昨日建、次日触发"的待触发条目，见 is_expired_at）
         let now = Local::now();
         for alarm in &mut loaded {
-            let expired = alarm.enabled
-                && alarm.is_one_time()
-                && !alarm.should_trigger_on(now)
-                && parse_created_at(&alarm.created_at)
-                    .is_some_and(|created| created.date() < now.date_naive());
-            if expired {
+            if alarm.is_expired_at(now) {
                 alarm.enabled = false;
-                let planned = parse_created_at(&alarm.created_at)
-                    .map(|c| c.date().to_string())
+                let planned = alarm
+                    .scheduled_at()
+                    .map(|t| t.date().to_string())
                     .unwrap_or_default();
                 tracing::warn!(
                     "一次性闹钟已过期（计划日 {planned}），自动禁用: {}",
@@ -582,7 +583,10 @@ pub fn quick_target(minutes: i64, now: chrono::DateTime<Local>) -> AlarmDraft {
 //   parse_alarm_hhmm/parse_created_at 全 Option 无 panic
 // 已知偏移（登记 z.plan）：①x.progress 任务文本「"9:30" 补 :00」与 Python 实测
 //   不符（"9:30" 即拒绝——单 digit 小时非法），以 Python 为准；②gen_id 用
-//   pid×纳秒混合 xor 代替 uuid4（同 8 位形态，无 uuid 依赖）
+//   pid×纳秒混合 xor 代替 uuid4（同 8 位形态，无 uuid 依赖）；③**A005 #1 修复**：
+//   装载期过期判据由「创建日 < 今日」改为「计划触发时刻已过」（is_expired_at +
+//   scheduled_at 纯函数）——原判据会误禁"昨日建、次日触发"的待触发条目（Python
+//   侧同源缺陷，`.archived/` 不回移）
 // 关联配置：max_alarms（base.json token）；消费方：interface（PL012.07/.10）、
 //   rodio 播放（PRESET_SOUND_CONFIG/PRESET_BEEP_DURATION_MS，PL012.08）
 #[cfg(test)]
@@ -616,9 +620,11 @@ mod tests {
         );
         assert_eq!(PresetSound::from_value("GENTLE"), PresetSound::Gentle);
         assert_eq!(PresetSound::from_value("nope"), PresetSound::Classic);
-        assert_eq!(PresetSound::Chime.display_name(), "Chime");
-        assert_eq!(PresetSound::from_index(3), PresetSound::Chime);
-        assert_eq!(PresetSound::from_index(99), PresetSound::Classic);
+        // A005 #15：display_name/from_index 已删——显示名经 display_names()[index()] 取
+        assert_eq!(
+            PresetSound::display_names()[PresetSound::Chime.index()],
+            "Chime"
+        );
         // 常量表逐条对 Python 值
         assert_eq!(PRESET_SOUND_CONFIG[0], (PresetSound::Classic, 800, 3, 500));
         assert_eq!(PRESET_SOUND_CONFIG[1], (PresetSound::Gentle, 600, 2, 800));
@@ -768,6 +774,43 @@ mod tests {
         v["created_at"] = serde_json::json!("not-a-date");
         let a = Alarm::from_json_value(&v).expect("字符串形态应装载");
         assert!(!a.should_trigger_on(local(2026, 6, 1, 9, 30)));
+    }
+
+    #[test]
+    fn expiry_uses_planned_time_not_created_date() {
+        // A005 #1 回归：昨日 23:50 建、目标今日 08:00 的待触发条目，在计划时刻
+        // 到达前装载不得判过期（原判据 created.date() < today 会误禁 → 闹钟永不响）
+        let a = Alarm::from_json_value(&alarm_json(
+            "p1",
+            "早起",
+            "08:00",
+            serde_json::json!([]),
+            "2026-06-01T23:50:00",
+        ))
+        .expect("装载");
+        assert_eq!(
+            a.scheduled_at().map(|t| t.to_string()),
+            Some("2026-06-02 08:00:00".to_string()),
+            "计划触发时刻 = 创建日 +1 的 08:00"
+        );
+        assert!(
+            !a.is_expired_at(local(2026, 6, 1, 23, 55)),
+            "创建当日不得判过期"
+        );
+        assert!(
+            !a.is_expired_at(local(2026, 6, 2, 6, 0)),
+            "计划日尚未到点不得判过期（本次修正点）"
+        );
+        assert!(
+            !a.is_expired_at(local(2026, 6, 2, 8, 0)),
+            "计划分钟内不判过期（交由触发路径处理）"
+        );
+        assert!(
+            a.is_expired_at(local(2026, 6, 2, 9, 0)),
+            "计划时刻已过才判过期"
+        );
+        assert!(a.should_trigger_on(local(2026, 6, 2, 8, 0)), "计划时刻命中");
+        assert!(!a.should_trigger_on(local(2026, 6, 2, 9, 0)));
     }
 
     #[test]

@@ -41,13 +41,10 @@ pub fn tz_of(name: &str) -> Option<&'static str> {
     by_name(name).map(|c| c.tz)
 }
 
-/// 城市名 → (lat, lon)（天气查询坐标检索）
-pub fn coords_of(name: &str) -> Option<(f64, f64)> {
-    by_name(name).map(|c| (c.lat, c.lon))
-}
-
+/// 城市名 → (lat, lon) 检索（A005 #15：coords_of 生产零调用已删除——
+/// 天气坐标经 `cities::get` 取，世界时钟城市表仅需 name/tz 分组）
 // ===== src/data/world_cities.rs 说明区 =====
-// 输入：rs/config/static/world_cities.json（48 城静态表）；输出：强类型检索
+// 输入：rs/config/static/world_cities.json（50 城静态表）；输出：强类型检索
 // 设计理由：世界时钟（PL014 城市管理）与天气多城市共用同一城市源，杜绝两表漂移；
 //   表放 config/static（随版本发布不运行时改）而加载器在 data/（数据访问职责）——
 //   include_str 路径跨约定，登记 z.plan；tz 存字符串，消费侧 chrono_tz 解析
@@ -96,12 +93,12 @@ mod tests {
 
     #[test]
     fn lookup_hit_and_miss() {
-        // 检索命中/None 两分支 + 锚点值
+        // 检索命中/None 两分支 + 锚点值（A005 #15：coords_of 已删，坐标断言走 by_name）
         assert_eq!(tz_of("北京"), Some("Asia/Shanghai"));
         assert_eq!(tz_of("纽约"), Some("America/New_York"));
         assert_eq!(tz_of("悉尼"), Some("Australia/Sydney"));
         assert!(by_name("不存在城").is_none());
-        let (lat, lon) = coords_of("东京").expect("东京应在表");
-        assert_eq!((lat, lon), (35.6762, 139.6503));
+        let tokyo = by_name("东京").expect("东京应在表");
+        assert_eq!((tokyo.lat, tokyo.lon), (35.6762, 139.6503));
     }
 }

@@ -47,15 +47,18 @@ impl TimeDilation {
         let base = Static::get();
         let min = base.base_f64("rate_min");
         let max = base.base_f64("rate_max");
-        if rate < min {
+        if !rate.is_finite() || rate < min {
             return Err(RateError::BelowMin { min });
         }
         if rate > max {
             return Err(RateError::AboveMax { max });
         }
+        // A005 #29：日长下钳 1——rem_euclid(day_hours) 在 day_hours=0 时会 panic
+        //（rate_min 被误配到 <1/24 的域外情形，属 token 表损坏的防御路径）
+        let day_hours = ((24.0 * rate) as i64).max(1);
         Ok(TimeDilation {
             rate,
-            day_hours: (24.0 * rate) as i64,
+            day_hours,
             lunar_cache: Mutex::new(None),
         })
     }

@@ -14,15 +14,18 @@ pub fn progress_to_arc(progress: f64) -> (f32, f32) {
 
 /// 进度环绘制（留边纪律：环径比控件短边小 ≥2px，抗锯齿切点不出界）
 pub fn show(ui: &mut egui::Ui, size: f32, progress: f64, percent_text: &str) {
-    // 留边：控件短边两侧各收 2px（≥1px 纪律取双倍余量）
-    let side = ui.available_height().min(ui.available_width()) - 2.0;
-    let _ = size;
+    // 留边：控件短边两侧各收 2px（≥1px 纪律取双倍余量）；A005 #9 起尺寸取
+    // layout.progress_ring_size token（调用方传入），非 0 时以 token 为准
+    let avail = ui.available_height().min(ui.available_width()) - 2.0;
+    let side = if size > 0.0 { size.min(avail) } else { avail };
     let (rect, _) = ui.allocate_exact_size(Vec2::splat(side.max(40.0)), egui::Sense::hover());
     draw_at(ui.painter(), rect, progress, percent_text);
 }
 
 /// 指定矩形绘制（页面内嵌用）
 pub fn draw_at(painter: &egui::Painter, rect: Rect, progress: f64, percent_text: &str) {
+    // A005 #9：语义色 token
+    let ink = crate::theme::ink();
     // 留边 ≥1px（自绘圆弧纪律：相切边界抗锯齿量化成平边）
     let inset = 2.0;
     let circle = Rect::from_min_size(
@@ -64,7 +67,7 @@ pub fn draw_at(painter: &egui::Painter, rect: Rect, progress: f64, percent_text:
         egui::Align2::CENTER_CENTER,
         percent_text,
         egui::FontId::proportional(15.0),
-        Color32::from_rgb(235, 238, 245),
+        ink.strong,
     );
 }
 

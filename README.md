@@ -1,6 +1,6 @@
 # AccelWorld —— 加速世界世界钟
 
-[![Version](https://img.shields.io/badge/Version-0.6.0.4-blue.svg)](rs/config/static/base.json)
+[![Version](https://img.shields.io/badge/Version-0.6.0.5-blue.svg)](rs/config/static/base.json)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](rs/rust-toolchain.toml)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
@@ -33,7 +33,7 @@
 - **农历信息**：天干地支年、生肖、时辰、月相、节气、公历节日、拜财神方向
 - **世界时钟**：城市矩阵走时 + 昼夜指示，支持增删城市与基准时区切换
 - **倒计时功能**：多目标列表，法定/传统节日自动派生
-- **天气显示**：Open-Meteo 免费 API，当前 / 逐小时 / 七日预报，多城市切换
+- **天气显示**：Open-Meteo 免费 API，当前 / 逐小时（24 点）/ 七日预报，单城市可换（城市选择器，选择即持久化）
 - **闹钟功能**：多闹钟、预设/自定义铃声、一键快捷添加、系统通知提醒
 - **三态主题**：跟随系统 / 浅色 / 深色，设置浮窗选择或全局热键 Ctrl+T 循环
 - **系统集成**：系统托盘菜单树（显示/隐藏/退出，关闭按钮隐藏驻留）+ 全局热键（Ctrl+S 保存 / Ctrl+Q 退出 / Ctrl+T 主题）
@@ -81,7 +81,7 @@ cargo run -p accel-app --bin render_probe
 - **毛玻璃**：Windows 11 下窗口自动启用 Acrylic 材质（壁纸渗透，失焦短暂收起属系统行为）
 - **世界时钟**：点击城市卡切换基准时区，加号添加城市、减号移除（至少保留一个）
 - **倒计时**：加号新增目标（名称 + 日期时间），减号移除；默认目标为下一个春节
-- **天气**：顶部城市条切换城市，刷新按钮强制拉取，加号管理城市列表
+- **天气**：城市选择器切换查看城市（选择即持久化），刷新按钮强制拉取
 - **闹钟**：快捷按钮（15/30/60/240 分钟）或自定义添加（时间/标签/重复星期），行卡开关与删除
 - **托盘**：关闭按钮隐藏到托盘后台驻留；右键弹出菜单（显示窗口 / 隐藏到托盘 / 退出），双击托盘图标还原
 - **全局热键**：Ctrl+S 保存 / Ctrl+Q 退出 / Ctrl+T 主题循环（窗口失焦亦生效）
@@ -112,7 +112,7 @@ rs/                              # cargo workspace 根（全部命令在此执�
 │   └── accel-app/               # egui 前端
 │       └── src/                 # window/bus/theme/nav/logging/main.rs
 │           ├── glass/           # WGSL 玻璃管线（shader/surface/painter）
-│           ├── pages/           # 六页（clock/countdown/world/weather/alarm/settings）
+│           ├── pages/           # 五页（clock/countdown/world/weather/alarm）+ 设置浮窗
 │           ├── widgets/         # 自绘控件（glass_card/chip/ring/slider）
 │           ├── tools/           # 展示运算纯函数
 │           ├── platform/        # 系统集成（acrylic/tray/notify/hotkey）

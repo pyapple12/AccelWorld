@@ -17,8 +17,6 @@ use crate::theme::Theme;
 
 /// 玻璃面 id（导航 rail / 页卡 / 浮窗）
 pub const SURFACE_NAV: &str = "nav";
-pub const SURFACE_PAGE_PREFIX: &str = "page_";
-pub const SURFACE_SETTINGS: &str = "settings";
 
 /// 窗口几何 token 基准（base.json；restore 时用户拖拽覆盖）
 fn default_window_rect() -> (f32, f32, f32, f32) {
@@ -60,6 +58,8 @@ pub struct AppHandle {
     quit_requested: bool,
     /// 退出序列已发（SaveNow+Quit+Close 一次——放行 Close 不再被拦截）
     quit_sent: bool,
+    /// 退出保存起始时刻（A005 #28：SaveNow 后等回执/超时才放行 Close）
+    exit_save_started: Option<std::time::Instant>,
     /// 托盘状态推送节流（Tick 更新限频 1s）
     last_status: std::time::Instant,
     /// 帧计数（.13 空闲节奏探针）
@@ -85,17 +85,21 @@ impl eframe::App for AppHandle {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
+        // A005 #5：玻璃 tint 按生效主题注入全场景面（注册后统一施加；与几何同有 1 帧滞后）
+        self.scene.set_tint_all(self.theme.glass_tint());
+
         // Acrylic 一次性挂接（.04）：Frame 经 HasWindowHandle 取句柄，WindowHandle
         // 经 From 转 RawWindowHandle（0.6.2 特殊设计：window_handle 递归返自身）；
         // 失败静默降级实底（透明 viewport 下 GL 背板仍提供半透明观感）
-        if !self.acrylic_applied {
-            if let Ok(h) = frame.window_handle() {
-                let raw: RawWindowHandle = h.into();
-                if let RawWindowHandle::Win32(w) = raw {
-                    self.acrylic_applied = crate::platform::acrylic::apply_acrylic(w.hwnd.get());
-                }
+        if !self.acrylic_applied
+            && let Ok(h) = frame.window_handle()
+        {
+            let raw: RawWindowHandle = h.into();
+            if let RawWindowHandle::Win32(w) = raw {
+                // A005 #21：仅在真实调用后置位——首帧句柄未就绪时保留重试机会
+                // （原实现无论成败一律置 true，句柄未就绪即永久放弃 Acrylic）
+                self.acrylic_applied = crate::platform::acrylic::apply_acrylic(w.hwnd.get());
             }
-            self.acrylic_applied = true; // 无论成败只试一次（失败即环境不支持）
         }
 
         // 背板：全屏玻璃管线（背景光场 + 场景面合成）；不可用降级纯色
@@ -115,7 +119,13 @@ impl eframe::App for AppHandle {
         self.paint_settings_pop(&ctx);
 
         // 重绘节奏：Tick 间隔（空闲 1s 兜底）——零忙转纪律
-        ctx.request_repaint_after(self.state.next_repaint_interval());
+        // A005 #27：有平台集成（托盘/热键）时间隔收紧到 ≤200ms——平台事件仅在帧内
+        // 轮询，1s 兜底会让隐藏期菜单/热键响应最坏延迟 1s（收紧后 ≤200ms，成本 5 帧/s）
+        let mut interval = self.state.next_repaint_interval();
+        if self.tray.is_some() || self.hotkeys.is_some() {
+            interval = interval.min(std::time::Duration::from_millis(200));
+        }
+        ctx.request_repaint_after(interval);
     }
 }
 
@@ -151,19 +161,40 @@ impl AppHandle {
     /// 退出（托盘/热键/探针）→ SaveNow+Quit+Close 一次放行；关闭按钮 → 隐藏驻留
     /// （quit_sent 区分两种 Close 来源：放行的退出 Close 不再被拦截）
     fn exit_or_stay(&mut self, ctx: &Context) {
+        let close_requested = ctx.input(|i| i.viewport().close_requested());
+        // A005 #7：托盘与热键同时缺失时"隐藏驻留"即无出口死路（唯一可置退出请求的
+        // 通道全部不存在）——此时关闭按钮直接升级为退出请求，走下方退出序列
+        if close_requested
+            && close_action(self.tray.is_some(), self.hotkeys.is_some()) == CloseAction::Quit
+        {
+            self.quit_requested = true;
+        }
         if self.quit_requested && !self.quit_sent {
+            // A005 #28：先发 SaveNow，待回执或超时后再发 Quit+Close——原实现 SaveNow
+            // 后立即 Close，runtime drop 可能取消尚未处理的命令（保存非确定性）
+            match self.exit_save_started {
+                None => {
+                    self.exit_save_started = Some(std::time::Instant::now());
+                    self.bus.send(FrontendCommand::SaveNow);
+                    return;
+                }
+                Some(started) => {
+                    if !exit_ready(self.state.save_ack, started.elapsed(), EXIT_SAVE_TIMEOUT) {
+                        return;
+                    }
+                }
+            }
             self.quit_sent = true;
             if self.probe_close_secs.is_some() {
                 probe_note("[PROBE] quit");
             }
-            self.bus.send(FrontendCommand::SaveNow);
             self.bus.send(FrontendCommand::Quit);
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             return;
         }
         // 关闭按钮 → 隐藏驻留（托盘常驻，对齐 Python closeEvent：拦截不落盘——
         // 倍率等改动经 ApplyRate 内聚实时落盘）
-        if !self.quit_sent && ctx.input(|i| i.viewport().close_requested()) {
+        if !self.quit_sent && close_requested {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
@@ -233,11 +264,12 @@ impl AppHandle {
         };
         self.bus.send(FrontendCommand::SetTheme(next));
         self.state.prefs.theme = pref_value(next).to_string();
-        self.theme = Theme::load(self.state.prefs.theme.as_str());
+        self.theme = Theme::load(self.state.prefs.theme.as_str())
+            .with_system(ctx.system_theme() == Some(egui::Theme::Dark));
         self.theme.apply(ctx);
     }
 
-    /// 背板绘制：全屏玻璃回调（场景含导航/页卡/浮窗面）+ 场景 dirty 时的直连重绘
+    /// 背板绘制：全屏玻璃回调（场景含导航/页卡/浮窗面）+ 场景 touch 直连重绘
     fn paint_backplate(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
         let Some(rs) = frame.wgpu_render_state() else {
             // 无 wgpu（软件回退等）：纯色背板降级，行为无损
@@ -275,14 +307,8 @@ impl AppHandle {
             screen.height() * pixels_per_point,
         ];
         let tokens = self.theme.active();
-        // glass.gl_lift token（0-255 → 0..1）；三级键经 pointer 直取
-        let lift_value = {
-            let s = accel_core::static_config::Static::get();
-            s.ui.pointer("/glass/gl_lift")
-                .and_then(|v| v.as_f64())
-                .map(|v| (v / 255.0) as f32)
-                .unwrap_or(0.10)
-        };
+        // 玻璃提亮 token（A005 #5：glass.{mode}.gl_lift，0-255 → 0..1，随生效主题）
+        let lift_value = self.theme.glass_lift();
         let uniforms = build_uniforms(
             &self.scene,
             size_px,
@@ -299,15 +325,16 @@ impl AppHandle {
     fn sync_page_visibility(&mut self) {
         let current = self.state.current_page;
         for page in PAGE_ORDER {
-            let id = format!("{SURFACE_PAGE_PREFIX}{page:?}");
-            self.scene.set_visible(&id, page == current);
+            self.scene
+                .set_visible(page_surface_id(page), page == current);
         }
     }
 
     /// 设置浮窗绘制（PL013.10：egui::Window + 主题三段 + 失焦/ESC 关）
+    /// A005 #15：原 SURFACE_SETTINGS 玻璃面从未注册（只 set_visible，恒静默 no-op），
+    /// 浮窗为 egui 矢量绘制——已删除该常量与三处无效调用
     fn paint_settings_pop(&mut self, ctx: &Context) {
         if !self.state.settings_open {
-            self.scene.set_visible(SURFACE_SETTINGS, false);
             return;
         }
         let mut keep_open = true;
@@ -330,7 +357,8 @@ impl AppHandle {
                             self.bus.send(FrontendCommand::SetTheme(pref));
                             // 乐观更新本地偏好（事件回推前 UI 即响应）
                             self.state.prefs.theme = pref_value(pref).to_string();
-                            self.theme = Theme::load(self.state.prefs.theme.as_str());
+                            self.theme = Theme::load(self.state.prefs.theme.as_str())
+                                .with_system(ctx.system_theme() == Some(egui::Theme::Dark));
                             self.theme.apply(ctx);
                         }
                     }
@@ -359,9 +387,6 @@ impl AppHandle {
         }
         if !keep_open {
             self.state.settings_open = false;
-            self.scene.set_visible(SURFACE_SETTINGS, false);
-        } else {
-            self.scene.set_visible(SURFACE_SETTINGS, true);
         }
     }
 }
@@ -378,6 +403,79 @@ fn pref_value(pref: accel_core::types::ThemePref) -> &'static str {
 fn probe_note(msg: &str) {
     println!("{msg}");
     tracing::info!("{msg}");
+}
+
+/// 退出前保存超时（A005 #28：回执未到时的放行上限——防后端失联导致永不退出）
+const EXIT_SAVE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(300);
+
+/// 退出保存放行判定（A005 #28 纯逻辑）：收到保存回执或等待超时即放行 Close
+fn exit_ready(save_ack: bool, waited: std::time::Duration, timeout: std::time::Duration) -> bool {
+    save_ack || waited >= timeout
+}
+
+/// 关闭请求的处置（A005 #7 纯逻辑）：有托盘或热键 → 隐藏驻留；两者皆无 → 退出
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CloseAction {
+    HideToTray,
+    Quit,
+}
+
+/// 关闭按钮处置判定（A005 #7：无平台集成时不得隐藏驻留，否则无恢复/退出通道）
+pub fn close_action(has_tray: bool, has_hotkey: bool) -> CloseAction {
+    if has_tray || has_hotkey {
+        CloseAction::HideToTray
+    } else {
+        CloseAction::Quit
+    }
+}
+
+/// 页面内容区（A005 #9）：由 nav_rail_width + page_margin token 派生，
+/// 替代各页硬编码的 (180,20)/(204,40) 偏移
+pub fn content_page_rect(ctx: &egui::Context) -> Rect {
+    let content = ctx.input(|i| i.content_rect());
+    let rail_w = crate::theme::layout_i64("nav_rail_width") as f32;
+    let m = page_margins();
+    Rect::from_min_max(
+        content.min + Vec2::new(rail_w + m[0], m[1]),
+        content.max - Vec2::new(m[2], m[3]),
+    )
+}
+
+/// 页面外边距 [左,上,右,下]（ui.json layout.page_margin；缺项回退 24）
+pub fn page_margins() -> [f32; 4] {
+    let s = accel_core::static_config::Static::get();
+    s.ui.pointer("/layout/page_margin")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            let mut out = [24.0f32; 4];
+            for (i, slot) in out.iter_mut().enumerate() {
+                if let Some(v) = a.get(i).and_then(|x| x.as_f64()) {
+                    *slot = v as f32;
+                }
+            }
+            out
+        })
+        .unwrap_or([24.0; 4])
+}
+
+/// 内容左缩进 = nav_rail_width + page_margin 左值（替代各页硬编码 add_space(156.0)）
+pub fn content_left_inset() -> f32 {
+    crate::theme::layout_i64("nav_rail_width") as f32 + page_margins()[0]
+}
+
+/// 页面内边距（CentralPanel inner_margin；取 page_margin 左上值）
+pub fn page_inner_margin() -> egui::Margin {
+    let m = page_margins();
+    egui::Margin::same(m[1].clamp(0.0, i8::MAX as f32) as i8)
+}
+
+/// 启动快照填充（A005 #2）：列表域显式拉取——core 的 spawn 首帧只推 Tick，
+/// 不推 AlarmsChanged/配置快照，故 app 侧必须在装配期拉一次全量
+fn fill_startup_snapshot(iface: &AppInterface, state: &mut UiState) {
+    state.alarms = iface.get_alarms();
+    state.world_pins = iface.get_world_pins();
+    state.countdown_targets = iface.get_countdown_targets();
+    state.base_timezone = Some(state.prefs.last_timezone.clone());
 }
 
 /// 平台事件归一后的动作（纯数据；单测可断言 tray/hotkey → 动作映射）
@@ -408,11 +506,22 @@ fn hotkey_action(kind: crate::platform::hotkey::HotkeyKind) -> PlatformAction {
     }
 }
 
+/// 页卡玻璃面 id（A005 #23：字面量查表替代每帧 format!——页枚举固定五档）
+pub fn page_surface_id(page: PageId) -> &'static str {
+    match page {
+        PageId::Clock => "page_Clock",
+        PageId::Countdown => "page_Countdown",
+        PageId::World => "page_World",
+        PageId::Weather => "page_Weather",
+        PageId::Alarm => "page_Alarm",
+    }
+}
+
 /// 注册页卡玻璃面（pages.ui 内每页调用——几何随布局 rect 同步；register 幂等）
+/// A005 #9：圆角取 radius.lg token（原硬编码 16）
 pub fn register_page_surface(scene: &mut GlassScene, page: PageId, rect: Rect) {
-    let id = format!("{SURFACE_PAGE_PREFIX}{page:?}");
-    let mut surface = GlassSurface::new(&id, rect);
-    surface.radius = 16.0;
+    let mut surface = GlassSurface::new(page_surface_id(page), rect);
+    surface.radius = crate::theme::radius_px("lg");
     scene.register(surface);
 }
 
@@ -464,7 +573,8 @@ pub fn run_with_counter(
     let create_app =
         move |cc: &eframe::CreationContext<'_>| -> Result<Box<dyn eframe::App>, String> {
             let prefs = iface.get_ui_preferences();
-            let theme = Theme::load(prefs.theme.as_str());
+            let theme = Theme::load(prefs.theme.as_str())
+                .with_system(cc.egui_ctx.system_theme() == Some(egui::Theme::Dark));
             theme.apply(&cc.egui_ctx);
             install_fonts(&cc.egui_ctx);
             let mut state = UiState {
@@ -474,6 +584,9 @@ pub fn run_with_counter(
                 ..UiState::default()
             };
             state.time = Some(iface.get_time_info());
+            // A005 #2 修正：启动即拉全量列表快照——core spawn 首帧不推事件，若只等
+            // ConfigSaved 重拉，则持久化闹钟/常驻城市/倒计时目标/基准时区启动全空
+            fill_startup_snapshot(&iface, &mut state);
 
             // spawn 需 tokio 上下文——block_in_place + runtime 内完成（双 Arc 进入闭包）
             let bus =
@@ -516,6 +629,7 @@ pub fn run_with_counter(
                 hotkeys,
                 quit_requested: false,
                 quit_sent: false,
+                exit_save_started: None,
                 last_status: std::time::Instant::now(),
                 repaint_count: counter,
             }))
@@ -533,56 +647,65 @@ pub fn run_with_counter(
     result
 }
 
-/// 字体注入（PL013.03）：微软雅黑（中文）+ Bahnschrift（数字），默认族雅黑
+/// 字体注入（PL013.03 + A005 #8 接线）：族名读 ui.json token
+/// `font_family`（中文，默认族）/ `font_family_digits`（数字等宽族）
 pub fn install_fonts(ctx: &Context) {
     let mut fonts = egui::FontDefinitions::default();
-    let load = |name: &str| -> Option<Vec<u8>> {
-        for dir in [
-            "C:/Windows/Fonts",
-            "/usr/share/fonts",
-            "/System/Library/Fonts",
-        ] {
-            let candidates: &[&str] = if name == "yahei" {
-                &["msyh.ttc", "msyh.ttf", "msyhbd.ttc"]
-            } else {
-                &["Bahnschrift.ttf", "bahnschrift.ttf"]
-            };
-            for f in candidates {
-                let p = std::path::Path::new(dir).join(f);
-                if let Ok(bytes) = std::fs::read(&p) {
-                    tracing::info!("字体加载: {}", p.display());
-                    return Some(bytes);
-                }
-            }
-        }
-        None
-    };
-    if let Some(bytes) = load("yahei") {
+    let s = accel_core::static_config::Static::get();
+    let cjk_family = s.ui_str("font_family");
+    let digit_family = s.ui_str("font_family_digits");
+    // 候选名 = 族名去空格派生 + 平台常见文件名兜底（族名与文件名未必同名）
+    if let Some((path, bytes)) = load_font(cjk_family, &["msyh.ttc", "msyh.ttf", "msyhbd.ttc"]) {
+        tracing::info!("中文族字体加载: {path}");
         fonts
             .font_data
-            .insert("yahei".into(), egui::FontData::from_owned(bytes).into());
+            .insert("cjk".into(), egui::FontData::from_owned(bytes).into());
         fonts
             .families
             .entry(egui::FontFamily::Proportional)
             .or_default()
-            .insert(0, "yahei".into());
+            .insert(0, "cjk".into());
     } else {
-        tracing::warn!("微软雅黑未找到，中文回退 egui 内置字体（可能 tofu）");
+        tracing::warn!("{cjk_family} 未找到，中文回退 egui 内置字体（可能 tofu）");
     }
-    if let Some(bytes) = load("bahnschrift") {
-        fonts.font_data.insert(
-            "bahnschrift".into(),
-            egui::FontData::from_owned(bytes).into(),
-        );
+    if let Some((path, bytes)) = load_font(digit_family, &["Bahnschrift.ttf", "bahnschrift.ttf"]) {
+        tracing::info!("数字族字体加载: {path}");
+        fonts
+            .font_data
+            .insert("digits".into(), egui::FontData::from_owned(bytes).into());
         fonts
             .families
             .entry(egui::FontFamily::Monospace)
             .or_default()
-            .insert(0, "bahnschrift".into());
+            .insert(0, "digits".into());
     } else {
-        tracing::warn!("Bahnschrift 未找到，数字等宽回退内置等宽族");
+        tracing::warn!("{digit_family} 未找到，数字等宽回退内置等宽族");
     }
     ctx.set_fonts(fonts);
+}
+
+/// 按族名装载字体文件（A005 #8）：族名去空格派生候选 + 调用方平台兜底名
+/// 输入：ui.json 族名 + 兜底文件名表；输出：命中路径与字节（未命中 None）
+fn load_font(family: &str, fallback_names: &[&str]) -> Option<(String, Vec<u8>)> {
+    let compact = family.replace(' ', "");
+    let derived = [format!("{compact}.ttf"), format!("{compact}.ttc")];
+    for dir in [
+        "C:/Windows/Fonts",
+        "/usr/share/fonts",
+        "/System/Library/Fonts",
+    ] {
+        let names = derived
+            .iter()
+            .map(String::as_str)
+            .chain(fallback_names.iter().copied());
+        for name in names {
+            let p = std::path::Path::new(dir).join(name);
+            if let Ok(bytes) = std::fs::read(&p) {
+                return Some((p.display().to_string(), bytes));
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -605,6 +728,69 @@ mod tests {
         assert_eq!(hotkey_action(HotkeyKind::Save), PlatformAction::SaveNow);
         assert_eq!(hotkey_action(HotkeyKind::Quit), PlatformAction::Quit);
         assert_eq!(hotkey_action(HotkeyKind::Theme), PlatformAction::CycleTheme);
+    }
+
+    #[test]
+    fn exit_ready_waits_for_ack_or_timeout() {
+        // A005 #28 回归：保存回执到达即放行；未到则等满超时（防后端失联永不退出）
+        use std::time::Duration;
+        let t = Duration::from_millis(300);
+        assert!(
+            exit_ready(true, Duration::from_millis(0), t),
+            "有回执立即可退"
+        );
+        assert!(!exit_ready(false, Duration::from_millis(299), t));
+        assert!(exit_ready(false, t, t), "超时兜底放行");
+    }
+
+    #[test]
+    fn close_action_avoids_dead_end() {
+        // A005 #7 回归：有托盘/热键 → 隐藏驻留；两者皆无 → 直接退出（无出口死路防护）
+        assert_eq!(close_action(true, true), CloseAction::HideToTray);
+        assert_eq!(close_action(true, false), CloseAction::HideToTray);
+        assert_eq!(close_action(false, true), CloseAction::HideToTray);
+        assert_eq!(
+            close_action(false, false),
+            CloseAction::Quit,
+            "无平台集成应退出"
+        );
+    }
+
+    #[test]
+    fn startup_snapshot_pulled() {
+        // A005 #2 回归：持久化的闹钟/常驻城市/倒计时目标/基准时区在装配期即入快照
+        //（原实现为空起手 + 只等 ConfigSaved 重拉 → 启动后列表全空）
+        let dir = std::env::temp_dir().join(format!("accel_startup_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("临时目录创建失败");
+        let path = dir.join("user_config.json");
+        let cfg = accel_core::settings::UserConfig {
+            world_pins: vec!["Asia/Tokyo".to_string(), "Europe/Paris".to_string()],
+            last_timezone: "Europe/Paris".to_string(),
+            alarms: vec![serde_json::json!({
+                "label": "起床", "time": "07:30", "repeat_days": [1],
+                "enabled": true, "id": "a1", "created_at": "2026-10-17T06:00:00",
+            })],
+            countdown_targets: vec![accel_core::settings::CountdownTarget {
+                name: "新年".to_string(),
+                at: "2027-01-01 00:00:00".to_string(),
+            }],
+            ..accel_core::settings::UserConfig::default()
+        };
+        assert!(accel_core::settings::save(&path, &cfg), "配置应落盘");
+        let iface = AppInterface::with_config_path(path);
+        let mut state = UiState {
+            prefs: iface.get_ui_preferences(),
+            ..UiState::default()
+        };
+        fill_startup_snapshot(&iface, &mut state);
+        assert_eq!(state.alarms.len(), 1, "持久化闹钟应入启动快照");
+        assert_eq!(state.world_pins.len(), 2, "常驻城市应入启动快照");
+        assert_eq!(state.countdown_targets.len(), 1, "倒计时目标应入启动快照");
+        assert_eq!(
+            state.base_timezone.as_deref(),
+            Some("Europe/Paris"),
+            "基准时区应入启动快照"
+        );
     }
 
     #[test]
@@ -647,7 +833,8 @@ mod tests {
 //   模拟"隐藏驻留 → 显示恢复 → 退出"全链路；隐藏与显示两侧打印同源状态指纹，
 //   供"隐藏→显示状态保持"断言比对
 // 已知偏移：①几何恢复（用户拖拽记忆）未做（PL015 无对应任务，随 UI 雕刻阶段处理）；
-//   ②gl_lift 经 pointer 直取（ui.json 无顶层 f64 访问器的三级键）
+//   ②玻璃 lift/tint 经 theme.rs 的 glass_lift()/glass_tint() 读 glass.{mode} 域
+//   （A005 #5 修正后不再直读 pointer）
 // 异常处理：管线失败降级纯色背板（行为无损纪律）；字体缺失降级内置（告警）；
 //   托盘/热键构造失败降级 None（无系统集成环境行为无损）
 // 关联配置：window_*/glass.gl_lift/ui.json field.*；消费方：main.rs

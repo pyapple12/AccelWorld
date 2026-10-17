@@ -74,15 +74,9 @@ impl Static {
         }
     }
 
-    /// base 域取 bool
-    pub fn base_bool(&self, key: &str) -> bool {
-        match self.base.get(key).and_then(Value::as_bool) {
-            Some(v) => v,
-            None => panic!("base.json 缺键或非布尔: {key}"),
-        }
-    }
-
-    // ===== ui 域类型化访问器（同语义，视觉 token 消费）=====
+    // base 域取 bool / ui 域取 i64 / ui 嵌套取串（A005 #15：生产零调用，已删除——
+    // 需要时用 `base`/`ui` 字段经 pointer 直取，勿再长出双轨访问器）
+    // ===== ui 域类型化访问器 =====
 
     /// ui 域取 f64
     pub fn ui_f64(&self, key: &str) -> f64 {
@@ -92,15 +86,7 @@ impl Static {
         }
     }
 
-    /// ui 域取 i64
-    pub fn ui_i64(&self, key: &str) -> i64 {
-        match self.ui.get(key).and_then(Value::as_i64) {
-            Some(v) => v,
-            None => panic!("ui.json 缺键或非整数: {key}"),
-        }
-    }
-
-    /// ui 域取字符串
+    /// ui 域取字符串（字体族名等）
     pub fn ui_str(&self, key: &str) -> &str {
         match self.ui.get(key).and_then(Value::as_str) {
             Some(v) => v,
@@ -108,18 +94,8 @@ impl Static {
         }
     }
 
-    /// ui 域嵌套对象取值（scale.hero_time / field.dark.top 等两级 token）
-    pub fn ui_nested_str(&self, group: &str, key: &str) -> &str {
-        match self
-            .ui
-            .get(group)
-            .and_then(|g| g.get(key))
-            .and_then(Value::as_str)
-        {
-            Some(v) => v,
-            None => panic!("ui.json 缺嵌套键或非字符串: {group}.{key}"),
-        }
-    }
+    // ui 域嵌套 i64（A005 #15：ui_i64 顶层版与 ui_nested_str 生产零调用已删除；
+    // 需要两级串 token 时用 `ui` 字段 pointer 直取）
 
     /// ui 域嵌套对象取 i64
     pub fn ui_nested_i64(&self, group: &str, key: &str) -> i64 {
@@ -157,7 +133,7 @@ impl Static {
 //   Python 版 config.json 映射表是 __file__ 自定位的结构约定，Rust include_str 路径
 //   即等价约定，映射层删除（不保留废弃间接层）
 // 异常处理：JSON 解析失败/缺键/错型一律 panic（构建产物或 token 表损坏，不可恢复）；
-//   可选消费（如 gl_enabled 探测失败降级）由调用方经 base.get 自行取 Value 判断，
+//   可选消费（如未来新增的开关型 token）由调用方经 base.get 自行取 Value 判断，
 //   不在本层提供 Option 变体（避免双轨语义）
 // 关联依赖：serde_json；消费方：settings（默认值单源）/time_dilation（倍率域）/
 //   weather（TTL/重试参数）/ app theme·window（视觉与几何 token）

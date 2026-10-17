@@ -74,6 +74,16 @@ mod tests {
     }
 
     #[test]
+    fn page_parse_contract_keeps_time_of_day() {
+        // A005 #11 回归：页面改用本函数后，带时分的输入必须保留时分
+        //（原页内 parse::<NaiveDate> 只收 10 位并把输入强填 23:59:59）
+        let t = parse_target_text("2027-02-06 08:30").expect("16 位应解析");
+        assert_eq!(t.to_string(), "2027-02-06 08:30:00", "不得改写为 23:59:59");
+        let d = parse_target_text("2027-02-06").expect("10 位应解析");
+        assert_eq!(d.to_string(), "2027-02-06 23:59:59", "10 位仍补当日末");
+    }
+
+    #[test]
     fn remaining_format_and_end_state() {
         // Python 用例语义：正常拆解 + 到点/过期结束态
         let now = NaiveDate::from_ymd_opt(2026, 10, 17)

@@ -129,7 +129,7 @@ fn tray_icon() -> Result<tray_icon::Icon, String> {
 // 异常处理：图标解码/菜单构建/托盘创建失败全部上抛 → window 降级无托盘运行
 //   （对齐 Python 托盘可选语义）；set_tooltip 失败静默（外观层不影响行为）
 // 已知偏移：①Python 左键单击弹出菜单，本版对齐 plan A 改右键弹菜单+双击还原
-//   （plan「托盘菜单树」定案）；②通知时长 token（notification_duration_ms）不适用
+//   （plan「托盘菜单树」定案）；②通知时长由 WinRT toast 自管（token 已删，A005 #8）
 //   ——WinRT toast 自管时长，token 留 base.json 不删（Python showMessage 遗产）
 // 关联配置：default_rate（菜单初始文本）/版本（初始 tooltip）；消费方：window.rs
 #[cfg(test)]

@@ -5,7 +5,7 @@ use accel_core::types::FrontendCommand;
 use egui::Context;
 use tokio::sync::mpsc::Sender;
 
-use crate::bus::{Bus, PAGE_ORDER, PageId, UiState};
+use crate::bus::{Bus, PageId, UiState};
 use crate::glass::surface::GlassScene;
 use crate::window::register_page_surface;
 
@@ -68,12 +68,8 @@ impl Pages {
     ) {
         // UiState.current_page 单源：Pages.current 镜像自导航点击（bus.apply 侧）
         self.current = state.current_page;
-        // 页面内容区避让左缘悬浮 rail（nav_pad：RAIL_X+PILL_W+呼吸空间 ≈ 180）
-        let content = ui.ctx().input(|i| i.content_rect());
-        let page_rect = egui::Rect::from_min_size(
-            content.min + egui::vec2(180.0, 20.0),
-            content.size() - egui::vec2(204.0, 40.0),
-        );
+        // 页面内容区避让左缘悬浮 rail（A005 #9：由 nav_rail_width + page_margin token 派生）
+        let page_rect = crate::window::content_page_rect(ui.ctx());
         register_page_surface(scene, self.current, page_rect);
 
         let page: &mut dyn Page = match self.current {
@@ -90,6 +86,17 @@ impl Pages {
             settings.ui(ui.ctx(), state, bus);
         }
     }
+}
+
+/// 快捷闹钟分钟选项（base.json quick_alarm_minutes token；A005 #9 零硬编码——
+/// 缺键按 token 表损坏快速失败，不在代码侧复制数值）
+pub fn quick_alarm_minutes() -> Vec<i64> {
+    accel_core::static_config::Static::get()
+        .base
+        .get("quick_alarm_minutes")
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|x| x.as_i64()).collect())
+        .unwrap_or_else(|| panic!("base.json 缺 quick_alarm_minutes token"))
 }
 
 /// 设置浮窗状态（PL013.10；窗口本体绘制在 window.rs——状态与主题选择在此）
@@ -127,15 +134,10 @@ pub struct WeatherPage;
 #[derive(Default)]
 pub struct AlarmPage;
 
-// 页面枚举循环工具（nav 点击循环用）
-pub fn next_page(current: crate::bus::PageId) -> crate::bus::PageId {
-    let idx = PAGE_ORDER.iter().position(|p| *p == current).unwrap_or(0);
-    PAGE_ORDER[(idx + 1) % PAGE_ORDER.len()]
-}
+// 页面枚举循环工具（A005 #15：next_page 生产零调用已删除——导航点击切换见 nav.rs）
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::bus::PageId;
 
     #[test]
@@ -172,20 +174,5 @@ mod tests {
             "面数 = 切过的页面 id 数（前 4 次切换各注册一面，此后幂等零新增）"
         );
         assert_eq!(scene.draw_list().len(), 1, "仅当前页可见");
-    }
-
-    #[test]
-    fn next_page_cycles_all_five() {
-        // 循环序：五页首尾相接
-        let seq = [
-            (PageId::Clock, PageId::Countdown),
-            (PageId::Countdown, PageId::World),
-            (PageId::World, PageId::Weather),
-            (PageId::Weather, PageId::Alarm),
-            (PageId::Alarm, PageId::Clock),
-        ];
-        for (from, expect) in seq {
-            assert_eq!(next_page(from), expect);
-        }
     }
 }

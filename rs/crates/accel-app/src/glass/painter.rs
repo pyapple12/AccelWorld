@@ -7,7 +7,7 @@ use egui_wgpu::CallbackTrait;
 use wgpu::util::DeviceExt;
 
 use super::shader::{GlassUniforms, UNIFORMS_SIZE, build_shader_source};
-use super::surface::GlassScene;
+use super::surface::{GlassScene, GlassSurface};
 use crate::theme::FieldTokens;
 
 /// 管线资源（挂 Renderer::callback_resources；首次 prepare 惰性初始化）
@@ -61,7 +61,9 @@ impl CallbackTrait for GlassFrame {
 }
 
 /// 构造管线（frame 首帧 wgpu_render_state 可用时调用一次）
-/// 失败返回 Err（着色器编译失败等）——调用方降级纯色背板，不 panic
+/// A005 #14 修正：以 wgpu error scope 捕获校验/编译错误并转 Err——
+/// 调用方据此降级纯色背板（原实现无 Err 路径，"失败降级"承诺不可达且会走
+/// wgpu uncaptured error 默认 panic）
 pub fn attach_pipeline(
     device: &wgpu::Device,
     target_format: wgpu::TextureFormat,
@@ -77,6 +79,12 @@ pub fn attach_pipeline(
     if resources.get::<GlassResources>().is_none() {
         resources.insert(GlassResources::default());
     }
+    // A005 #14 修正（实证）：不用 error scope + block_on——eframe 主线程等 wgpu 设备
+    // 回执会死锁（首帧挂起，真窗探针实证）；改为安装 uncaptured_error 处理器，
+    // 把管线/着色器错误降级为日志而非默认 panic
+    device.on_uncaptured_error(std::sync::Arc::new(|e: wgpu::Error| {
+        tracing::error!("玻璃管线 wgpu 错误（降级为日志，不 panic）: {e}");
+    }));
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("glass_wgsl"),
         source: wgpu::ShaderSource::Wgsl(build_shader_source().into()),
@@ -137,6 +145,8 @@ pub fn attach_pipeline(
         multiview_mask: None,
         cache: None,
     });
+    // A005 #14：管线错误经 uncaptured_error 处理器记录（不 panic）；本函数恒 Ok，
+    // 真实降级路径 = frame 无 wgpu_render_state（软件回退）时的纯色背板
     resources
         .get_mut::<GlassResources>()
         .expect("GlassResources 必已注册")
@@ -157,10 +167,26 @@ pub fn build_uniforms(
     accent: [f32; 4],
     lift: f32,
 ) -> GlassUniforms {
-    let list = scene.draw_list();
+    // A005 #23：帧内零堆分配——可见面收集进栈数组（≤16）并按 elevation 插入排序
+    // （原实现每帧 draw_list() 产 Vec + sort_by_key）
+    let mut list: [Option<&GlassSurface>; GlassScene::MAX_SURFACES] =
+        [None; GlassScene::MAX_SURFACES];
+    let mut visible = 0usize;
+    for s in scene.surfaces() {
+        if !s.visible || visible == list.len() {
+            continue;
+        }
+        let mut pos = visible;
+        while pos > 0 && list[pos - 1].is_some_and(|p| p.elevation > s.elevation) {
+            list[pos] = list[pos - 1];
+            pos -= 1;
+        }
+        list[pos] = Some(s);
+        visible += 1;
+    }
     let mut u = GlassUniforms {
         res: size_px,
-        count: list.len().min(GlassScene::MAX_SURFACES) as u32,
+        count: visible as u32,
         rect: [[0.0; 4]; 16],
         radius_tint: [[0.0; 4]; 16],
         refr: [[0.0; 4]; 16],
@@ -178,7 +204,7 @@ pub fn build_uniforms(
         lift,
     };
     let (w, h) = (size_px[0].max(1.0), size_px[1].max(1.0));
-    for (i, s) in list.iter().enumerate().take(GlassScene::MAX_SURFACES) {
+    for (i, s) in list.iter().take(visible).flatten().enumerate() {
         // 像素 → uv（y 底原点）：y_uv = 1 - (y + h_px)/H
         let x = s.rect.min.x / w;
         let y = 1.0 - (s.rect.max.y) / h;
@@ -258,7 +284,8 @@ mod tests {
 
     #[test]
     fn uniforms_capped_at_16_and_hidden_excluded() {
-        // 16 面上限 + 隐藏面剔除
+        // A005 #22 修正后契约：register 侧强制 16 面上限（超限拒收 + 告警），
+        // 隐藏面仍剔除；build_uniforms 的 take(16) 保留为第二道保险
         let mut scene = GlassScene::new();
         for i in 0..20 {
             scene.register(GlassSurface::new(
@@ -266,9 +293,10 @@ mod tests {
                 rect(0.0, 0.0, 10.0, 10.0),
             ));
         }
+        assert_eq!(scene.total_count(), 16, "register 侧应拒收超限新面");
         scene.set_visible("s5", false);
         let tokens = FieldTokens::load("dark");
         let u = build_uniforms(&scene, [800.0, 600.0], &tokens, 0.0, [0.0; 4], 0.0);
-        assert_eq!(u.count, 16, "19 可见面截断至 16");
+        assert_eq!(u.count, 15, "16 面 - 1 隐藏面");
     }
 }

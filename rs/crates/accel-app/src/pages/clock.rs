@@ -6,7 +6,6 @@ use crate::glass::surface::GlassScene;
 use crate::tools::clock::split_lunar_info;
 use crate::widgets::{chip, ring, slider};
 use accel_core::types::FrontendCommand;
-use egui::Color32;
 use tokio::sync::mpsc::Sender;
 
 impl crate::pages::Page for crate::pages::ClockPage {
@@ -18,31 +17,29 @@ impl crate::pages::Page for crate::pages::ClockPage {
         cmd: &Sender<FrontendCommand>,
         scene: &mut GlassScene,
     ) {
-        let content = ui.ctx().input(|i| i.content_rect());
-        let page_rect = egui::Rect::from_min_size(
-            content.min + egui::vec2(180.0, 20.0),
-            content.size() - egui::vec2(204.0, 40.0),
-        );
+        let page_rect = crate::window::content_page_rect(ui.ctx());
         crate::window::register_page_surface(scene, PageId::Clock, page_rect);
+        // A005 #9：语义色 token（不再写字面色值）
+        let ink = crate::theme::ink();
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().inner_margin(egui::Margin::same(24)))
+            .frame(egui::Frame::new().inner_margin(crate::window::page_inner_margin()))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.add_space(156.0);
+                    ui.add_space(crate::window::content_left_inset());
                     ui.vertical(|ui| {
                         // 标准时计卡：日期星期 + 标准时间大字
                         if let Some(info) = &state.time {
                             ui.heading(
                                 egui::RichText::new(&info.chinese_date)
                                     .size(18.0)
-                                    .color(Color32::from_rgb(200, 206, 220)),
+                                    .color(ink.muted),
                             );
                             ui.add_space(4.0);
                             ui.label(
                                 egui::RichText::new(info.standard_time())
                                     .size(crate::theme::font_size("std_time"))
-                                    .color(Color32::from_rgb(235, 238, 245)),
+                                    .color(ink.strong),
                             );
                             ui.add_space(16.0);
                             // 加速时间卡：hero 大字 + 进度环（已过占比）
@@ -54,7 +51,12 @@ impl crate::pages::Page for crate::pages::ClockPage {
                                         .size(crate::theme::font_size("hero_time"))
                                         .color(crate::theme::accent_color()),
                                 );
-                                ring::show(ui, 96.0, passed, &format!("{:.0}%", passed * 100.0));
+                                ring::show(
+                                    ui,
+                                    crate::theme::layout_i64("progress_ring_size") as f32,
+                                    passed,
+                                    &format!("{:.0}%", passed * 100.0),
+                                );
                             });
                             ui.label(
                                 egui::RichText::new(format!(
@@ -62,7 +64,7 @@ impl crate::pages::Page for crate::pages::ClockPage {
                                     info.day_hours, info.remaining_hours
                                 ))
                                 .size(14.0)
-                                .color(Color32::from_rgb(170, 176, 190)),
+                                .color(ink.soft),
                             );
                         }
                         ui.add_space(16.0);
@@ -74,7 +76,7 @@ impl crate::pages::Page for crate::pages::ClockPage {
                                 crate::tools::clock::fmt_percent(state.rate)
                             ))
                             .size(crate::theme::font_size("slider_value"))
-                            .color(Color32::from_rgb(235, 238, 245)),
+                            .color(ink.strong),
                         );
                         let (min, max) = state.rate_bounds;
                         let mut rate = state.rate;
@@ -82,7 +84,7 @@ impl crate::pages::Page for crate::pages::ClockPage {
                         let tx_commit = cmd.clone();
                         slider::show(
                             ui,
-                            16.0,
+                            crate::theme::layout_i64("slider_track") as f32,
                             min,
                             max,
                             &mut rate,

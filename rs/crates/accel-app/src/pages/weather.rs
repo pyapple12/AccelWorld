@@ -1,4 +1,4 @@
-//! 天气页（PL014.12/.13）：当前卡 + 逐时横条 + 七日概要 + 城市切换/管理 + 刷新
+//! 天气页（PL014.12；A005 #4 收敛为单城）：当前卡 + 逐时横条 + 七日概要 + 刷新
 
 use crate::bus::PageId;
 use crate::glass::surface::GlassScene;
@@ -13,30 +13,37 @@ impl crate::pages::Page for crate::pages::WeatherPage {
         cmd: &Sender<FrontendCommand>,
         scene: &mut GlassScene,
     ) {
-        let content = ui.ctx().input(|i| i.content_rect());
-        let page_rect = egui::Rect::from_min_size(
-            content.min + egui::vec2(180.0, 20.0),
-            content.size() - egui::vec2(204.0, 40.0),
-        );
+        let page_rect = crate::window::content_page_rect(ui.ctx());
         crate::window::register_page_surface(scene, PageId::Weather, page_rect);
+        // A005 #9：语义色 token（不再写字面色值）
+        let ink = crate::theme::ink();
 
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.add_space(156.0);
+                ui.add_space(crate::window::content_left_inset());
                 ui.vertical(|ui| {
                     let city = state.prefs.last_city.clone();
-                    // 城市切换条：已集 chips + 刷新按钮
+                    // 城市选择 + 刷新（A005 #4：单城市模型——从天气城市表选城并持久化 last_city）
                     ui.horizontal(|ui| {
-                        for c in state.weather_cities_view() {
-                            let selected = *c == city;
-                            if ui.selectable_label(selected, c.as_str()).clicked() && !selected {
-                                let _ = cmd.try_send(FrontendCommand::RefreshWeather {
-                                    city: c.clone(),
-                                    force: false,
-                                });
-                                state.prefs.last_city = c.clone();
-                            }
-                        }
+                        let city_names = accel_core::interface::AppInterface::get_city_names();
+                        egui::ComboBox::from_id_salt("weather_city")
+                            .selected_text(city.as_str())
+                            .show_ui(ui, |ui| {
+                                for name in &city_names {
+                                    if ui.selectable_label(name == &city, name).clicked()
+                                        && name != &city
+                                    {
+                                        let _ = cmd.try_send(FrontendCommand::SetWeatherCity(
+                                            name.clone(),
+                                        ));
+                                        let _ = cmd.try_send(FrontendCommand::RefreshWeather {
+                                            city: name.clone(),
+                                            force: false,
+                                        });
+                                        state.prefs.last_city = name.clone();
+                                    }
+                                }
+                            });
                         if ui.button("⟳ 刷新").clicked() {
                             let _ = cmd.try_send(FrontendCommand::RefreshWeather {
                                 city: city.clone(),
@@ -49,7 +56,7 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                     if let Some(err) = state.weather_errors.get(&city) {
                         ui.label(
                             egui::RichText::new(format!("{city} 获取失败：{err}"))
-                                .color(egui::Color32::from_rgb(228, 117, 106)),
+                                .color(ink.danger),
                         );
                     }
                     if let Some(w) = state.weather.get(&city) {
@@ -59,7 +66,7 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                                 w.icon, w.weather, w.temperature
                             ))
                             .size(34.0)
-                            .color(egui::Color32::from_rgb(235, 238, 245)),
+                            .color(ink.strong),
                         );
                         ui.label(
                             egui::RichText::new(format!(
@@ -67,34 +74,28 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                                 w.apparent_temperature, w.humidity, w.wind_speed
                             ))
                             .size(14.0)
-                            .color(egui::Color32::from_rgb(170, 176, 190)),
+                            .color(ink.soft),
                         );
                         ui.add_space(12.0);
                         // 逐小时横条（24 点）
                         if !w.hourly.is_empty() {
-                            ui.label(
-                                egui::RichText::new("逐小时")
-                                    .size(15.0)
-                                    .color(egui::Color32::from_rgb(200, 206, 220)),
-                            );
+                            ui.label(egui::RichText::new("逐小时").size(15.0).color(ink.muted));
                             ui.horizontal(|ui| {
                                 for h in w.hourly.iter().take(24) {
                                     ui.vertical(|ui| {
                                         let hour = h.time.get(11..16).unwrap_or("--:--");
                                         ui.label(
-                                            egui::RichText::new(hour)
-                                                .size(12.0)
-                                                .color(egui::Color32::from_rgb(170, 176, 190)),
+                                            egui::RichText::new(hour).size(12.0).color(ink.soft),
                                         );
                                         ui.label(
                                             egui::RichText::new(format!("{:.0}°", h.temperature))
                                                 .size(14.0)
-                                                .color(egui::Color32::from_rgb(235, 238, 245)),
+                                                .color(ink.strong),
                                         );
                                         ui.label(
                                             egui::RichText::new(format!("{:.0}%", h.precip_prob))
                                                 .size(11.0)
-                                                .color(egui::Color32::from_rgb(140, 170, 210)),
+                                                .color(ink.info),
                                         );
                                     });
                                 }
@@ -103,17 +104,11 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                         }
                         // 七日概要
                         if !w.daily.is_empty() {
-                            ui.label(
-                                egui::RichText::new("七日概要")
-                                    .size(15.0)
-                                    .color(egui::Color32::from_rgb(200, 206, 220)),
-                            );
+                            ui.label(egui::RichText::new("七日概要").size(15.0).color(ink.muted));
                             for d in w.daily.iter().take(7) {
                                 ui.horizontal(|ui| {
                                     ui.label(
-                                        egui::RichText::new(&d.date)
-                                            .size(14.0)
-                                            .color(egui::Color32::from_rgb(200, 206, 220)),
+                                        egui::RichText::new(&d.date).size(14.0).color(ink.muted),
                                     );
                                     ui.label(
                                         egui::RichText::new(format!(
@@ -121,7 +116,7 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                                             d.t_max, d.t_min
                                         ))
                                         .size(14.0)
-                                        .color(egui::Color32::from_rgb(235, 238, 245)),
+                                        .color(ink.strong),
                                     );
                                     ui.label(
                                         egui::RichText::new(format!(
@@ -130,7 +125,7 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                                             d.sunset.get(11..16).unwrap_or("--")
                                         ))
                                         .size(12.0)
-                                        .color(egui::Color32::from_rgb(170, 176, 190)),
+                                        .color(ink.soft),
                                     );
                                 });
                             }
@@ -144,11 +139,13 @@ impl crate::pages::Page for crate::pages::WeatherPage {
 }
 
 // ===== src/pages/weather.rs 说明区 =====
-// 输入：UiState.weather/weather_errors（WeatherUpdated/Failed 事件快照）
-// 输出：当前卡 + 逐时 24 横条 + 七日概要 + 城市切换 chips + 强制刷新
-// 逻辑步骤：city=last_city → 切换 chips 发 RefreshWeather{city} → 刷新发 force:true →
-//   weather 查数据域（错误域优先展示）
-// 设计理由：UI 无状态重建——数据全靠事件快照；PL014.13 多城市切换走缓存路径
-//   （force=false 命中不重发）；逐时/七日来自 PL014.11 扩展 DTO
-// 异常处理：数据缺失（首查前）整段静默；失败红字展示
+// 输入：UiState.weather/weather_errors（WeatherUpdated/Failed 事件快照）+ prefs.last_city
+// 输出：当前卡 + 逐时 24 横条 + 七日概要 + 城市名 + 强制刷新
+// 逻辑步骤：city=last_city → 城市行（单城标签）→ 刷新发 RefreshWeather{force:true} →
+//   weather 查数据域（失败红字优先展示）
+// 设计理由：UI 无状态重建——数据全靠事件快照；逐时/七日来自 PL014.11 扩展 DTO；
+//   **A005 #4 定案**：多城市增删（AddWeatherCity/RemoveWeatherCity）未接线且 Python 版
+//   本就是单城市（last_city），按"不长期保留废弃方案"删除死协议变体与 UiState.
+//   weather_cities / weather_cities_view，收敛单城——更正的是 z.plan/README 的过度承诺
+// 异常处理：数据缺失（首查前）整段静默；失败红字展示（FIX005.13 后失败会清旧数据）
 // 关联依赖：UiState.weather；消费方：pages::Pages

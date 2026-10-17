@@ -16,25 +16,19 @@ impl crate::pages::Page for crate::pages::AlarmPage {
         cmd: &Sender<FrontendCommand>,
         scene: &mut GlassScene,
     ) {
-        let content = ui.ctx().input(|i| i.content_rect());
-        let page_rect = egui::Rect::from_min_size(
-            content.min + egui::vec2(180.0, 20.0),
-            content.size() - egui::vec2(204.0, 40.0),
-        );
+        let page_rect = crate::window::content_page_rect(ui.ctx());
         crate::window::register_page_surface(scene, PageId::Alarm, page_rect);
+        // A005 #9：语义色 token（不再写字面色值）
+        let ink = crate::theme::ink();
 
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.add_space(156.0);
+                ui.add_space(crate::window::content_left_inset());
                 ui.vertical(|ui| {
-                    // 四快捷按钮（15/30/60/240 分钟）
-                    ui.label(
-                        egui::RichText::new("快捷添加")
-                            .size(15.0)
-                            .color(egui::Color32::from_rgb(200, 206, 220)),
-                    );
+                    // 四快捷按钮（分钟数读 base.json quick_alarm_minutes token）
+                    ui.label(egui::RichText::new("快捷添加").size(15.0).color(ink.muted));
                     ui.horizontal(|ui| {
-                        for minutes in [15i64, 30, 60, 240] {
+                        for minutes in crate::pages::quick_alarm_minutes() {
                             if ui.button(format!("＋{minutes} 分钟")).clicked() {
                                 let draft = quick_target(minutes, Local::now());
                                 let _ = cmd.try_send(FrontendCommand::AddAlarm(draft));
@@ -73,21 +67,16 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                     ui.add_space(12.0);
                     // 列表行卡（AlarmsChanged 全量回推重建——UI 无状态）
                     if state.alarms.is_empty() {
-                        ui.label(
-                            egui::RichText::new("暂无闹钟")
-                                .color(egui::Color32::from_rgb(170, 176, 190)),
-                        );
+                        ui.label(egui::RichText::new("暂无闹钟").color(ink.soft));
                     }
                     for alarm in &state.alarms {
                         ui.horizontal(|ui| {
                             // 时间大字
-                            ui.label(egui::RichText::new(&alarm.time).size(24.0).color(
-                                if alarm.enabled {
-                                    egui::Color32::from_rgb(235, 238, 245)
-                                } else {
-                                    egui::Color32::from_rgb(120, 126, 140)
-                                },
-                            ));
+                            ui.label(
+                                egui::RichText::new(&alarm.time)
+                                    .size(24.0)
+                                    .color(if alarm.enabled { ink.strong } else { ink.dim }),
+                            );
                             ui.label(
                                 egui::RichText::new(format!(
                                     "{}  {}",
@@ -95,7 +84,7 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                                     format_repeat_display(&alarm.repeat_days)
                                 ))
                                 .size(14.0)
-                                .color(egui::Color32::from_rgb(200, 206, 220)),
+                                .color(ink.muted),
                             );
                             // 开关
                             if ui

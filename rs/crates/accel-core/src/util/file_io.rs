@@ -52,7 +52,8 @@ fn strip_verbatim(p: PathBuf) -> PathBuf {
     }
 }
 
-/// 词法规范化：清理 ./ 与 ../（无 IO；大小写归一交由 starts_with 的 Windows 语义容忍）
+/// 词法规范化：清理 ./ 与 ../（无 IO；大小写比较交由 canonicalish 两侧统一形态——
+/// A005 #31 更正：`starts_with` 本身是大小写敏感的，不存在"Windows 语义容忍"）
 fn normalize_lexical(path: &Path) -> PathBuf {
     let mut out: Vec<std::ffi::OsString> = Vec::new();
     for comp in path.components() {
@@ -85,7 +86,8 @@ pub enum WriteError {
 }
 
 /// 原子写 JSON（Python write_json 对等）：白名单校验 → 同目录 .{pid}.tmp → rename 覆盖
-/// 序列化形态对齐 Python：UTF-8、ensure_ascii=False、缩进 4（用户配置 diff 友好）
+/// 序列化形态：UTF-8、ensure_ascii=False；缩进实为 2（serde_json pretty 固定值，
+/// 与 Python indent=4 的字节差异见文末「已知偏移」——值级语义一致）
 pub fn write_json(path: &Path, data: &Value) -> Result<(), WriteError> {
     let resolved = canonicalish(path);
     if !is_write_allowed(&resolved) {

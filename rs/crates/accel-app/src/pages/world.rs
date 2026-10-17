@@ -31,21 +31,20 @@ impl crate::pages::Page for crate::pages::WorldPage {
         cmd: &Sender<FrontendCommand>,
         scene: &mut GlassScene,
     ) {
-        let content = ui.ctx().input(|i| i.content_rect());
-        let page_rect = egui::Rect::from_min_size(
-            content.min + egui::vec2(180.0, 20.0),
-            content.size() - egui::vec2(204.0, 40.0),
-        );
+        let page_rect = crate::window::content_page_rect(ui.ctx());
         crate::window::register_page_surface(scene, PageId::World, page_rect);
+        // A005 #9：语义色 token（不再写字面色值）
+        let ink = crate::theme::ink();
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().inner_margin(egui::Margin::same(24)))
+            .frame(egui::Frame::new().inner_margin(crate::window::page_inner_margin()))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.add_space(156.0);
+                    ui.add_space(crate::window::content_left_inset());
                     ui.vertical(|ui| {
                         let utc_now = chrono::Utc::now();
-                        // 城市卡矩阵：world_pins 持久集（每卡：名+昼夜+走时，点卡选基准）
+                        // 城市卡矩阵：每帧读基准时区 + 常驻城市（自有副本：循环内需写 state，借用不可行——
+                        // A005 #23 保留判定：pins 同时作为下拉候选基线，每帧 ≤50 短串量级可忽略）
                         let pins: Vec<String> = state.world_pins_view().to_vec();
                         let base_tz = state.base_timezone.clone();
                         for city in &pins {
@@ -62,7 +61,7 @@ impl crate::pages::Page for crate::pages::WorldPage {
                                         .color(if base {
                                             crate::theme::accent_color()
                                         } else {
-                                            egui::Color32::from_rgb(225, 230, 240)
+                                            ink.card
                                         });
                                 if ui.selectable_label(base, label).clicked() {
                                     let _ = cmd.try_send(

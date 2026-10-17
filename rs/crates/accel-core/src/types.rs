@@ -136,8 +136,8 @@ pub enum FrontendCommand {
         city: String,
         force: bool,
     },
-    AddWeatherCity(String),
-    RemoveWeatherCity(String),
+    /// 切换天气城市（A005 #4：单城市模型下的城市选择——持久化 last_city）
+    SetWeatherCity(String),
     AddAlarm(AlarmDraft),
     RemoveAlarm(String),
     ReplaceAlarm(Alarm),
@@ -174,6 +174,8 @@ pub enum BackendEvent {
     AlarmsChanged(Vec<Alarm>),
     ConfigSaved(bool),
     RateChanged(f64),
+    /// 倍率被拒（越界/非法）——A005 #19：失败也必须回推，UI 据此回退乐观更新
+    RateRejected(f64),
 }
 
 // ===== src/types.rs 说明区 =====
@@ -183,4 +185,7 @@ pub enum BackendEvent {
 //   一致；FrontendCommand/BackendEvent 按 z.plan 修订二·C 逐变体定义——PL011
 //   实现时钟/倍率/天气三域分发，闹钟/倒计时/世界城市域随 PL012/PL014 接线，
 //   枚举形状定死即不再变动（协议 v1）；DateTime<Local> 负载可直接 serde 往返
+// A005 #4 修订（2026-10-18）：删除从未接线的 AddWeatherCity/RemoveWeatherCity，
+//   新增 SetWeatherCity（单城市模型的换城入口）；命令分发 match 已穷尽——新增
+//   变体不接线即编译失败（协议演进由编译器强制）
 // 关联依赖：serde/chrono/alarm（数据形状）；消费方：interface（分发）/ app bus

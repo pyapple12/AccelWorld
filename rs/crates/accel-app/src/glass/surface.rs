@@ -79,6 +79,8 @@ impl GlassScene {
     }
 
     /// 注册或整体替换（同 id 幂等——Python 同语义）
+    /// A005 #22：超 MAX_SURFACES 上限拒收并告警（原实现仅打包时按 elevation 截断，
+    /// 理论上可丢高 elevation 的导航面——如 nav 会被误剔）
     pub fn register(&mut self, surface: GlassSurface) {
         match self
             .surfaces
@@ -86,6 +88,14 @@ impl GlassScene {
             .position(|s| s.surface_id == surface.surface_id)
         {
             Some(pos) => self.surfaces[pos] = surface,
+            None if self.surfaces.len() >= Self::MAX_SURFACES => {
+                tracing::warn!(
+                    "玻璃面数达上限 {}，拒收新面: {}",
+                    Self::MAX_SURFACES,
+                    surface.surface_id
+                );
+                return;
+            }
             None => self.surfaces.push(surface),
         }
         self.dirty = true;
@@ -139,6 +149,29 @@ impl GlassScene {
             s.selected = selected.clamp(0.0, 1.0);
             self.dirty = true;
         }
+    }
+
+    /// 全场景 tint 覆写（A005 #5：ui.json glass.{mode}.gl_tint 注入——主题驱动；面注册
+    /// 后由调用方每帧统一施加；有变化才置脏，未变零开销）
+    pub fn set_tint_all(&mut self, tint: [f32; 3]) {
+        let mut changed = false;
+        for s in &mut self.surfaces {
+            if (s.tint[0] - tint[0]).abs() > f32::EPSILON
+                || (s.tint[1] - tint[1]).abs() > f32::EPSILON
+                || (s.tint[2] - tint[2]).abs() > f32::EPSILON
+            {
+                s.tint = tint;
+                changed = true;
+            }
+        }
+        if changed {
+            self.dirty = true;
+        }
+    }
+
+    /// 全表面访问（A005 #23：painter 帧内栈数组收集用；原 draw_list 保留给探针/单测）
+    pub fn surfaces(&self) -> &[GlassSurface] {
+        &self.surfaces
     }
 
     /// 绘制列表：仅可见面，按 elevation 升序（Python surfaces() 同语义）

@@ -19,26 +19,18 @@ pub fn split_lunar_info(text: &str) -> (String, String, String) {
     (text.trim().to_string(), String::new(), String::new())
 }
 
-/// 进度条上界（Python progress_bounds 对等：膨胀日长 int 截断）
-pub fn progress_bounds(expanded_hours_per_day: f64) -> i64 {
-    expanded_hours_per_day as i64
-}
-
-/// 秒数 → "HH:MM:SS"（标准/加速时间共用；小时两位起不封顶由调用方格式化）
-pub fn format_hms(hour: i64, minute: i64, second: i64) -> String {
-    format!("{hour:02}:{minute:02}:{second:02}")
-}
-
 /// 倍率百分比格式化（"200%"形态；四舍五入取整——UI 展示用非精确值）
 pub fn fmt_percent(rate: f64) -> String {
     format!("{:.0}%", rate * 100.0)
 }
 
 // ===== src/tools/clock.rs 说明区 =====
-// 输入：TimeInfo.lunar_info 串 / expanded_hours / rate；输出：展示字符串（纯函数）
-// 逻辑步骤：split_lunar_info 双标记 partition → strip 三段；format_hms 零填充拼接
+// 输入：TimeInfo.lunar_info 串 / rate；输出：展示字符串（纯函数）
+// 逻辑步骤：split_lunar_info 双标记 partition → strip 三段；fmt_percent 取整
 // 设计理由：date_panel._split_lunar 迁出的 Rust 对等（展示运算出面板，面板只剩
 //   控件装配）；标记契约由 core::chinese_calendar 产出端单源，此处只消费容错
+// A005 #15：progress_bounds / format_hms 生产零调用已删除（日长与时间串分别由
+//   TimeInfo.day_hours / custom_time 直接提供）
 // 异常处理：无 panic 面（split_once 前置 contains 校验）
 // 关联配置：无（纯函数）；消费方：pages/clock.rs（PL014.05）
 #[cfg(test)]
@@ -64,17 +56,12 @@ mod tests {
     }
 
     #[test]
-    fn progress_bounds_truncates() {
-        // Python 用例移植：整数直过 / 小数截断（FIX003.4 整数日长下 1.1 → 26）
-        assert_eq!(progress_bounds(48.0), 48);
-        assert_eq!(progress_bounds(26.4), 26);
-    }
-
-    #[test]
     fn hms_and_percent_formats() {
-        assert_eq!(format_hms(1, 2, 3), "01:02:03");
-        assert_eq!(format_hms(25, 59, 59), "25:59:59");
-        assert_eq!(fmt_percent(2.0), "200%");
+        assert_eq!(
+            crate::tools::clock::fmt_percent(2.0),
+            "200%",
+            "A005 #15：format_hms 生产零调用已删（时间串由 core::TimeDilation 产出）"
+        );
         assert_eq!(fmt_percent(1.1), "110%");
     }
 }

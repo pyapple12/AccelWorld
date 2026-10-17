@@ -1,10 +1,8 @@
 {
   "font_family": "Microsoft YaHei",
   "font_family_digits": "Bahnschrift",
-  "gl_enabled": true,
   "scale": {
     "hero_time": 64,
-    "page_title": 21,
     "city_time": 20,
     "std_time": 34,
     "slider_value": 28
@@ -37,14 +35,10 @@
   },
   "glass": {
     "dark": {
-      "fill_from": "#16FFFFFF",
-      "lift": 8,
       "gl_lift": 26,
       "gl_tint": "#29222E33"
     },
     "light": {
-      "fill_from": "#C6FFFFFF",
-      "lift": 10,
       "gl_lift": 34,
       "gl_tint": "#293A3E4E"
     }
@@ -56,36 +50,31 @@
   },
   "layout": {
     "page_margin": [24, 24, 24, 24],
-    "page_spacing": 14,
-    "nav_expanded_width": 160,
     "nav_rail_width": 84,
     "nav_pill_height": 62,
     "nav_pill_spacing": 10,
     "nav_pill_pad": 6,
-    "nav_icon_size": 24,
     "nav_rail_margin_top": 56,
-    "panel_margin": [4, 2, 4, 2],
-    "card_padding": [16, 12, 16, 12],
-    "clock_card_padding": [20, 14, 20, 12],
     "progress_ring_size": 88,
-    "slider_track": 24,
-    "countdown_input_width": 200,
-    "countdown_font_size": 14,
-    "picker_button_size": [32, 32],
-    "input_spacing": 5,
-    "city_combo_width": 130,
-    "alarm_list_height": 120,
-    "alarm_row_margin": [5, 2, 5, 2],
-    "alarm_time_width": 60,
-    "alarm_label_width": 150,
-    "alarm_row_button_size": [36, 32],
-    "dialog_form_spacing": 8,
-    "dialog_repeat_spacing": 4
+    "slider_track": 24
   },
   "colors": {
     "primary": "#E4B36A",
     "danger": "#E4756A",
-    "tray_accent": "#E4B36A",
-    "tray_hand": "#221703"
+    "text_strong": "#EBEEF5",
+    "text_muted": "#C8CEDC",
+    "text_soft": "#AAB0BE",
+    "text_dim": "#787E8C",
+    "text_card": "#E1E6F0",
+    "knob": "#F0F3FA",
+    "info": "#8CAAD2",
+    "panel_dark": "#121218",
+    "window_dark": "#16161E",
+    "bg_dark": "#0C0C10",
+    "selection_dark": "#191E28",
+    "panel_light": "#F4F6FA",
+    "window_light": "#FAFBFD",
+    "bg_light": "#FFFFFF",
+    "text_light": "#232832"
   }
 }

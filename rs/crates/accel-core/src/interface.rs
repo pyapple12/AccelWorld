@@ -48,16 +48,20 @@ impl AppInterface {
     /// 注入配置路径构造（测试隔离；配置缺省时以 default_rate 初始化）
     /// 闹钟随构造自配置装载（Python 由 UI 显式 load_alarm_dicts，Rust 收敛为构造内聚）
     pub fn with_config_path(config_path: PathBuf) -> Self {
-        let saved_rate = settings::load(&config_path).time_dilation_rate;
-        let world = match TimeDilation::new(saved_rate) {
+        // A005 #18：单次 load 复用（原实现对同一路径 load 两遍——重复磁盘 IO）
+        let config = settings::load(&config_path);
+        let world = match TimeDilation::new(config.time_dilation_rate) {
             Ok(w) => w,
             Err(e) => {
-                tracing::warn!("持久化倍率非法，已回退默认值: {saved_rate:?}（{e}）");
+                tracing::warn!(
+                    "持久化倍率非法，已回退默认值: {:?}（{e}）",
+                    config.time_dilation_rate
+                );
                 TimeDilation::with_default_rate()
             }
         };
         let mut manager = AlarmManager::new();
-        manager.from_value_list(&settings::load(&config_path).alarms);
+        manager.from_value_list(&config.alarms);
         AppInterface {
             world: Arc::new(Mutex::new(world)),
             weather: Arc::new(WeatherClient::new()),
@@ -82,20 +86,11 @@ impl AppInterface {
             .ok()
             .and_then(|e| e.parent().map(Path::to_path_buf))
             .unwrap_or_else(|| PathBuf::from("."));
-        exe_dir.join("config").join("user_config.json")
+        // A005 #8：配置相对路径取 base.json 的 user_config token（单源，不再硬编码同值双轨）
+        exe_dir.join(Static::get().base_str("user_config"))
     }
 
     // ===== 静态配置域 =====
-
-    /// base.json 静态参数域（版本/倍率范围/周期等 UI 所需键）
-    pub fn app_static() -> serde_json::Value {
-        Static::get().base.clone()
-    }
-
-    /// ui.json 静态样式 token 域（字体/颜色表）
-    pub fn ui_static() -> serde_json::Value {
-        Static::get().ui.clone()
-    }
 
     /// 版本号单一来源（base.version）
     pub fn get_version() -> String {
@@ -172,6 +167,21 @@ impl AppInterface {
     /// 自动刷新周期 = 缓存 TTL × 1000（单源派生，E15）
     pub fn get_weather_refresh_interval_ms() -> i64 {
         Static::get().base_i64("weather_cache_ttl") * 1000
+    }
+
+    /// 切换天气城市（A005 #4 单城模型的城市选择）：城市须在天气城市表内，持久化 last_city
+    /// 输入：城市名；输出：是否落盘成功（未知城市拒 false；同名视为已达成 true）
+    pub fn set_weather_city(&self, city: &str) -> bool {
+        if cities::get(city).is_none() {
+            tracing::warn!("未知天气城市，拒绝设置: {city}");
+            return false;
+        }
+        let mut config = settings::load(&self.config_path);
+        if config.last_city == city {
+            return true;
+        }
+        config.last_city = city.to_string();
+        settings::save(&self.config_path, &config)
     }
 
     // ===== 时区域 =====
@@ -395,6 +405,9 @@ impl AppInterface {
                             Some(FrontendCommand::SetRate(rate)) => {
                                 if self.set_rate(rate) {
                                     let _ = evt_tx.send(BackendEvent::RateChanged(rate)).await;
+                                } else {
+                                    // A005 #19：拒绝同样回推（UI 回退乐观更新，不静默偏离）
+                                    let _ = evt_tx.send(BackendEvent::RateRejected(rate)).await;
                                 }
                             }
                             Some(FrontendCommand::ApplyRate(rate)) => {
@@ -402,6 +415,9 @@ impl AppInterface {
                                     let saved = self.save_config_now();
                                     let _ = evt_tx.send(BackendEvent::RateChanged(rate)).await;
                                     let _ = evt_tx.send(BackendEvent::ConfigSaved(saved)).await;
+                                } else {
+                                    let _ = evt_tx.send(BackendEvent::RateRejected(rate)).await;
+                                    let _ = evt_tx.send(BackendEvent::ConfigSaved(false)).await;
                                 }
                             }
                             Some(FrontendCommand::RefreshWeather { city, force }) => {
@@ -451,6 +467,10 @@ impl AppInterface {
                                     let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
                                 }
                             }
+                            Some(FrontendCommand::SetWeatherCity(city)) => {
+                                let ok = self.set_weather_city(&city);
+                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                            }
                             Some(FrontendCommand::AddWorldCity(name)) => {
                                 let ok = self.add_world_city(&name);
                                 let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
@@ -491,10 +511,6 @@ impl AppInterface {
                                 let _ = sd_tx.send(true);
                                 break;
                             }
-                            Some(other) => {
-                                // 倒计时目标域随 PL014 接线（协议 v1 已定形状）
-                                tracing::warn!("命令待后续 PL 接线: {other:?}");
-                            }
                         }
                     }
                     _ = tokio::time::sleep(period) => {
@@ -518,8 +534,8 @@ impl AppInterface {
 
 // ===== src/interface.rs 说明区 =====
 // 输入：FrontendCommand 流（UI 写意图）；输出：同步查询 DTO 快照 + BackendEvent 流
-// 逻辑步骤：spawn 主循环 select——命令分支（SetRate/ApplyRate/RefreshWeather/
-//   SaveNow/Quit 即期处理，其余域 warn 待接线）与 tick 分支（每轮现读倍率定周期，
+// 逻辑步骤：spawn 主循环 select——命令分支（16 变体逐一接线，match 穷尽无兜底——
+//   A005 #4 起新增变体不接线即编译失败）与 tick 分支（每轮现读倍率定周期，
 //   SetRate 后下一轮即新节奏，等价「重排 interval」）并发
 // 设计理由：对齐 Python AppInterface 七域契约方法名（get_time_info/get_rate/
 //   set_rate/apply_rate/get_city_names/fetch_weather/get_ui_preferences/...），
@@ -916,6 +932,31 @@ mod tests {
         // 非法值拒绝
         assert!(!itf.add_world_city("不存在城"));
         assert!(!itf.set_base_timezone("Mars/Olympus"));
+    }
+
+    #[tokio::test]
+    async fn set_weather_city_persists_and_rejects_unknown() {
+        // A005 #4 验收：SetWeatherCity 持久化 last_city 并回推 ConfigSaved(true)；未知城市拒
+        let path = temp_config("wcity");
+        let itf = Arc::new(iface(&path));
+        let (cmd_tx, mut evt_rx) = AppInterface::spawn(Arc::clone(&itf));
+        cmd_tx
+            .send(FrontendCommand::SetWeatherCity("上海".into()))
+            .await
+            .expect("发送失败");
+        let mut saved = false;
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            if let Some(BackendEvent::ConfigSaved(ok)) = evt_rx.recv().await {
+                saved = ok;
+                break;
+            }
+        }
+        assert!(saved, "应回推 ConfigSaved(true)");
+        assert_eq!(settings::load(&path).last_city, "上海", "last_city 应落盘");
+        assert_eq!(itf.get_ui_preferences().last_city, "上海");
+        // 未知城市（不在天气城市表）拒绝
+        assert!(!itf.set_weather_city("不存在城"));
     }
 
     #[test]

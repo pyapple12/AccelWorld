@@ -45,7 +45,8 @@
 
 ### 关联
 
-- AGENTS.md「结构与约定」：自绘圆弧留边定案（TRACK_PAD 模式）
+- `rs/README.md` 结构树 → 五页 + 设置浮窗（A005 #17）；产物名 `accel-app.exe`
+- `t.hint.md` HINT001「关联」→ 自绘圆弧留边定案的现役承载处：`rs/crates/accel-app/src/widgets/slider.rs` 说明区（原 AGENTS 对应小节随 Rust 重写移除）
 - m.milestone.md：版本 0.5.3.1 条目
 
 ---
@@ -75,7 +76,7 @@
 
 ### 背景
 
-Python 版 0.6.0.0 冻结为 golden 基准，Rust 侧以五类行为夹具（time/config/weather/lunar/alarm）全程 parity 断言，PL011–PL014 重建 core 与六页 UI。本文记录跨语言/跨 GUI 栈迁移的踩坑与定案。
+Python 版 0.6.0.0 冻结为 golden 基准，Rust 侧以五类行为夹具（time/config/weather/lunar/alarm）全程 parity 断言，PL011–PL014 重建 core 与五页 UI（+ 设置浮窗）。本文记录跨语言/跨 GUI 栈迁移的踩坑与定案。
 
 ### 关键教训
 

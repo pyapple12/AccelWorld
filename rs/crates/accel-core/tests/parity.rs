@@ -535,7 +535,9 @@ mod config_parity {
     fn corrupt_backup_behavior() {
         // 损坏转存：原文进 .bak + 默认值恢复（本地临时目录复刻 Python 用例）
         let cb = &fixture()["corrupt_backup"];
+        // A005 #26：用例末尾清理临时目录（原实现反复运行残留）
         let dir = std::env::temp_dir().join(format!("accel_cfgparity_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("临时目录创建失败");
         let path = dir.join("user_config.json");
         std::fs::write(&path, cb["in_file"].as_str().expect("in_file 应为字符串"))
@@ -549,6 +551,8 @@ mod config_parity {
             bak_text,
             cb["in_file"].as_str().expect("in_file 应为字符串")
         );
+        // A005 #26：清理现场（连跑两次不留残留）
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

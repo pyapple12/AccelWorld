@@ -126,7 +126,7 @@ mod tests {
     #[test]
     fn register_and_poll_roundtrip() {
         // 注册→事件→poll：manager 注册成功后 poll 空转不 panic（无按键时零事件）
-        // （按键沿注入属 SendInput 真窗验证——PL015.02 检验 + PL015.06 矩阵路径）
+        // （按键沿注入属 SendInput 真窗验证——PL015.02 检验项；同场景人工矩阵已取消）
         match HotkeyHandles::new() {
             Ok(handles) => {
                 assert!(!handles.ids.is_empty(), "base.json 三键至少应有注册成功者");

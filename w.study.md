@@ -11,7 +11,7 @@ cargo workspace 双 crate 桌面应用：基于加速倍率的时间膨胀时钟
 ```
 [输入]   用户设定加速倍率（rate_min 1.0 - rate_max 20.0，来自 config/static/base.json）
 [引擎]   accel-core::time_dilation 按倍率换算：加速时钟 1 秒 = 现实 1/rate 秒
-[展示]   accel-app（egui + eframe/wgpu）：胶囊导航六页 + WGSL 玻璃卡 + Acrylic 背板
+[展示]   accel-app（egui + eframe/wgpu）：胶囊导航五页 + 设置浮窗 + WGSL 玻璃卡 + Acrylic 背板
 [周边]   农历干支节气 / 世界时钟 / 倒计时 / 天气（Open-Meteo）/ 闹钟 / 三态主题 / 托盘 / 全局热键
 [持久化] 用户配置 rs/config/user_config.json（倍率/主题/城市/时区/倒计时/窗口几何/闹钟）
 ```
@@ -53,7 +53,7 @@ rs/                              # cargo workspace 根
     src/nav.rs                   # 胶囊导航（几何 token 化 + 点击纯逻辑）
     src/logging.rs               # tracing 每日滚动 + panic hook 崩溃栈
     src/glass/                   # WGSL 玻璃管线（shader/surface/painter）
-    src/pages/                   # 六页（clock/countdown/world/weather/alarm/settings）
+    src/pages/                   # 五页（clock/countdown/world/weather/alarm）+ 设置浮窗
     src/widgets/                 # 自绘控件（glass_card/chip/ring/slider）
     src/tools/                   # 展示运算纯函数（clock/countdown/alarm_text）
     src/platform/                # 系统集成（acrylic/tray/notify/hotkey，非 Windows 桩化）

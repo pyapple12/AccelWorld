@@ -85,7 +85,7 @@
 ## 9. CloseMainWindow 偶发失效（P3，winit，2026-10-17 PL013.01 登记）
 
 - **现象**：eframe/winit 下程序化 `CloseMainWindow` 偶发不生效（窗口未随请求关闭）
-- **现状**：真窗 WM_CLOSE 正常，退出码 0；偶发场景以强杀兜底，退出稳定性归 PL015.05 真机走查复核
+- **现状**：真窗 WM_CLOSE 正常，退出码 0；偶发场景以强杀兜底，退出码监测由自动化探针（ACCELWORLD_FPS_PROBE 路径）覆盖
 - **状态**：📌 登记（不阻塞功能；若真机走查稳定复现再深究）
 
 ## 10. 窗口 with_position 定位与 token 偏移（P3，winit）
@@ -105,4 +105,4 @@
 - **现象**：ui.json `font_family_digits` 指定的 Bahnschrift 为可变字体，egui/ab_glyph 下数字 advance 非等宽（实测 83.25px vs 124.53px，与 Qt 版行为不符）→ 时钟大字逐帧走时会横向抖动
 - **候选方案**：内置等宽族 / OpenType `tnum` 特性 / 接受漂移（观感决策点）
 - **现状**：Bahnschrift 缺失时回退内置等宽族（window.rs）；等宽保真方案待用户定夺
-- **状态**：📌 登记（不阻塞功能；方案决策随 PL015.05 真机走查定案）
+- **状态**：📌 登记（不阻塞功能；等宽保真方案待定夺，随 UI 雕刻阶段一并评估）

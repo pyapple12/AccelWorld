@@ -44,7 +44,7 @@ fn show(title: &str, body: &str) -> bool {
 //   toast 仍可用（更稳）；静音避免与 rodio 铃声叠加双声
 // 异常处理：show 失败（无通知能力/权限受限）记 warn 返 false——通知属增强体验，
 //   绝不影响闹钟已触发/保存流程本体
-// 已知偏移：notification_duration_ms token 不适用（WinRT toast 自管时长，见 tray.rs）
+// 已知偏移：通知时长由 WinRT toast 自管（notification_duration_ms token 已于 A005 #8 删除）
 // 关联依赖：tauri-winrt-notification（Windows 通知基础设施）；消费方：bus.rs drain
 #[cfg(test)]
 mod tests {

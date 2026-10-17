@@ -8,7 +8,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/wgpu
 - **统一入口四关卡**：`pwsh rs/ci.ps1`（fmt --check → clippy `-D warnings` → `cargo test --workspace` → core 依赖树零 egui/eframe）；`.github/workflows/rs-ci.yml` 复用同一命令集
 - 全量测试：`cargo test --workspace`（core 单测 + 夹具 parity 集成 + app 单测）
 - GUI 冒烟（真窗出血，会弹窗）：`cargo run -p accel-app`；玻璃离屏渲染断言探针：`cargo run -p accel-app --bin render_probe`
-- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.0.4`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
+- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.0.5`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
 - **版本体系**：四段式纯数字 `X.Y.Z.P`（无 `ver ` 前缀）；`feat`/`fix`/`refactor`/`perf` 提交前 bump patch 位；历史存量 `ver 0.4x` 三段式仅存于历史文档与提交记录，不回溯改写
 
 ## 环境陷阱
@@ -22,8 +22,8 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/wgpu
 
 - cargo workspace 双 crate，依赖单向 `app → core`（CI 关卡 4 机器强制 core 零 egui/eframe）：
   - `rs/crates/accel-core`：纯业务（时间膨胀 / 农历干支节气 / 天气 / 闹钟 / 配置 / 数据表 / 通用工具 / 接口契约），零 GUI 依赖
-  - `rs/crates/accel-app`：egui 前端（窗口装配 / WGSL 玻璃渲染 / 六页导航 / 自绘控件 / 系统集成）
-- **分层与镜像**（Python → Rust，完整对应见 z.plan 镜像映射表）：`interface.rs` 七域契约 + `FrontendCommand`/`BackendEvent` 命令事件总线是 UI 访问后端的唯一入口；app 经 `bus.rs` 每帧 drain 事件、按需发命令，core 不感知 egui
+  - `rs/crates/accel-app`：egui 前端（窗口装配 / WGSL 玻璃渲染 / 五页导航 + 设置浮窗 / 自绘控件 / 系统集成）
+- **分层与镜像**（Python → Rust，完整对应见 z.plan 镜像映射表）：`interface.rs` 七域契约 + `FrontendCommand`/`BackendEvent` 命令事件总线是 UI **写操作**后端的唯一入口（UI 不直改业务状态）；app 经 `bus.rs` 每帧 drain 事件、按需发命令，core 不感知 egui。**契约边界（A005 #12 明确）**：只读访问允许直取——`static_config::Static`（渲染 token）、`types` 与纯常量 DTO（`alarm::PresetSound`、`settings::CountdownTarget`）、`data::{cities,world_cities}` 只读检索、`audio`（平台侧播放封装）；判定口径：**改变后端状态**才必须走总线，纯读取再经 interface 转一层属无价值间接
 - **代码零硬编码**：业务参数（倍率范围/默认值/周期/窗口几何/颜色/日志路径等）全部从 `rs/config/static/*.json` 读取（`static_config.rs` 单例经 `include_str!` 编译期嵌入）；用户配置存 `rs/config/user_config.json`，日志存 `rs/logs/`（每日独立文件）
 - **注释房规**：`///` 中文文档注释（函数/方法，1-3 行，说明用途与核心逻辑）；模块头 `//!` 一行职责；每个 `.rs` 文件末尾保留 `// ===== 说明区 =====`（输入输出 / 逻辑步骤 / 设计理由 / 异常处理 / 关联配置）
 - **渲染质量门**：玻璃观感或渲染管线改动须过离屏渲染断言探针（FBO 分区采样量化阈值）再进人工走查——功能探针抓不住纯视觉缺陷
@@ -98,7 +98,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/wgpu
 
 ## Commit 提交规范
 
-- **标题行**：`<type>: V<版本>，<摘要>`——版本号与 `rs/config/static/base.json` 的 `version` 一致（四段式全写，如 `V0.6.0.4`）；摘要一句话概括核心
+- **标题行**：`<type>: V<版本>，<摘要>`——版本号与 `rs/config/static/base.json` 的 `version` 一致（四段式全写，如 `V0.6.0.5`）；摘要一句话概括核心
 - **版本递增**：`feat`/`fix`/`refactor`/`perf` 提交前先 bump version（patch 位 +1）；`docs`/`test`/`style`/`chore` 不强制
 - **type 全集**（conventional 风格）：`feat` 新功能 / `fix` 修复 / `refactor` 重构（行为不变）/ `perf` 性能 / `docs` 文档 / `test` 测试 / `style` 格式 / `build` 构建依赖 / `ci` CI / `chore` 杂项 / `revert` 回滚
 - **正文**（改动大时可选）：`- ` 列表，按主题分组、分组下子条目缩进，每个功能块一行自然中文描述，每行 ≤ 100 字符
@@ -109,7 +109,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/wgpu
 ## Git 注意
 
 - `.gitignore` 忽略 `CLAUDE.md`、`openspec/`、`.vscode/`、`.venv`、`archived/`、`.archived/`、`.opencode/`、`.agents/`、`.temp/`、`.history/`、`.mimosa/`、`rs/target/`、`logs/` —— 对这些文件的修改不会出现在 `git status` 中；`AGENTS.md` 与工作流文档（w/x/y/z/m/t）已纳入版本控制
-- **`rs/config/user_config.json` 每次提交必须入库**：该文件虽为运行时用户配置，但已纳入版本控制且未被 ignore，历次提交均须 `git add` 一并入库，不得以"运行时状态"为由排除
+- **`rs/config/user_config.json` 每次提交必须入库（该文件生成后）**：该文件为运行时用户配置，未被 ignore；首次落盘生成后历次提交均须 `git add` 一并入库，不得以"运行时状态"为由排除（A005 #17 更正：当前尚未生成，故暂不在库内）
 
 ## 操作注意
 

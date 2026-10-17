@@ -120,8 +120,16 @@ struct UserConfigRaw {
 impl UserConfig {
     /// 从 JSON 值 lenient 构造：未知键忽略、错型剔除、缺省兜底（Python from_dict 对等）
     pub fn from_json_value(v: &Value) -> UserConfig {
+        // A005 #20：非对象输入（数组/标量/null）直接返默认值——原实现 expect 会 panic
+        if !v.is_object() {
+            tracing::warn!(
+                "用户配置根非对象，回退默认值: {}",
+                v.to_string().chars().take(32).collect::<String>()
+            );
+            return UserConfig::default();
+        }
         let raw: UserConfigRaw = serde_json::from_value(v.clone())
-            .expect("UserConfigRaw 全 Option 字段不可能反序列化失败");
+            .expect("UserConfigRaw 全 Option 字段 + 前置对象判定，不会失败");
         let d = UserConfig::default();
         // Legacy 倒计时串先取（str_field 会 move 同字段）
         let legacy_target = match &raw.countdown_target {
@@ -261,11 +269,7 @@ pub fn save(path: &Path, config: &UserConfig) -> bool {
     }
 }
 
-/// 期望的默认配置 JSON（测试/文档锚点用）
-pub fn defaults_json() -> Value {
-    UserConfig::default().to_json_value()
-}
-
+/// 期望的默认配置 JSON（A005 #15：生产零调用已删除——默认值单源见 `UserConfig::default`）
 // ===== src/settings.rs 说明区 =====
 // 输入：user_config.json 路径 + JSON 值；输出：UserConfig（字段级 lenient 装载）
 // 逻辑步骤：read_json → 对象判定 → UserConfigRaw（Option<Value> 中间层）→ 逐字段
@@ -277,7 +281,8 @@ pub fn defaults_json() -> Value {
 // 异常处理：装载全容错不 panic（脏配置是用户数据不是编程错误）；保存失败降级 false；
 //   转存失败仅日志（对齐 Python logger.error 不外抛）
 // 已知偏移（登记 z.plan）：①serde_json 缩进 2 vs Python indent=4（值级等价，字节级
-//   不同）；②JSON 文本含 NaN/Infinity 字面量时 Python json 容忍并按脏值过滤（不
+//   不同）；②alarms 字段为 Vec<Value> 透传（A005 #16 更正：原注"PL012 落地 Alarm
+//   强类型"已过期——强类型在 AlarmManager 侧，UserConfig 仍以 JSON 形态承载存档）；③JSON 文本含 NaN/Infinity 字面量时 Python json 容忍并按脏值过滤（不
 //   转存），serde_json 判解析失败走损坏转存——两路径终点同为默认值，副作用差异仅
 //   .bak 生成与否；③alarms 本期 Vec<Value> 透传，PL012 落地 Alarm 强类型
 // 关联依赖：static_config（默认值单源）/ util::file_io（原子写/转存/白名单）
@@ -308,6 +313,20 @@ mod tests {
         assert_eq!(d.countdown_target, "");
         assert_eq!(d.window_geometry, None);
         assert!(d.alarms.is_empty());
+    }
+
+    #[test]
+    fn non_object_input_returns_defaults() {
+        // A005 #20 回归：非对象根（数组/标量/null/串）返默认值且不 panic
+        for bad in [
+            serde_json::json!([1, 2]),
+            serde_json::json!(42),
+            serde_json::json!("text"),
+            Value::Null,
+        ] {
+            let cfg = UserConfig::from_json_value(&bad);
+            assert_eq!(cfg, UserConfig::default(), "非对象输入应回退默认值");
+        }
     }
 
     #[test]

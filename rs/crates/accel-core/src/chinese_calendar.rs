@@ -250,7 +250,11 @@ pub fn get_chinese_lunar_calendar(year: i32, month: u32, day: u32, hour: u32) ->
             .unwrap_or_default();
     }
 
-    let (cai_shen_dir, position) = CAI_SHEN_DIRECTION[(month - 1) as usize];
+    // 财神方位（公历月 → (方向, 卦位)；Python Cai_SHEN_DIRECTION 导出；月索引越界兜底见下）
+    let (cai_shen_dir, position) = CAI_SHEN_DIRECTION
+        .get((month.saturating_sub(1)) as usize)
+        .copied()
+        .unwrap_or(("正北", "坎位")); // A005 #29：域外月（0/13+）不 panic，取首档兜底
 
     LunarInfo {
         lunar_year: format!("{}年", lunar.get_year_in_gan_zhi()),
@@ -365,6 +369,15 @@ mod tests {
         let s = get_lunar_info(local(2035, 6, 15, 8));
         assert!(!s.is_empty(), "农历串应正常产出");
         assert!(holidays(2035).is_none(), "超范围年应返回 None");
+    }
+
+    #[test]
+    fn out_of_domain_inputs_do_not_panic() {
+        // A005 #29 回归：域外入参走安全路径（原实现 rem_euclid(0) / 数组越界会 panic）
+        let info = get_chinese_lunar_calendar(2026, 13, 1, 12);
+        assert_eq!(info.cai_shen_dir, "正北", "越界月取首档兜底");
+        let info0 = get_chinese_lunar_calendar(2026, 0, 1, 12);
+        assert_eq!(info0.cai_shen_dir, "正北");
     }
 
     #[test]

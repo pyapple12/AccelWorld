@@ -6,7 +6,7 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::data::weather_codes;
-use crate::types::{DailyPoint, HourlyPoint, WeatherData};
+use crate::types::WeatherData;
 
 // 必要响应字段（与请求 current 参数一致；缺失或 null 判失败，FIX001.14/FIX002.4）
 const REQUIRED_FIELDS: [&str; 5] = [
@@ -62,31 +62,53 @@ fn extract_hourly_daily(
     // 键缺失 → 空序列（向后兼容：Python 0.6.0.0 快照无此键；新 API 恒带参返回）
     // 键存在则全严校验（null/错型/长度不一致 → Err，同 current 域纪律）
     let Some(hourly) = root.get("hourly").and_then(Value::as_object) else {
-        return Ok((Vec::new(), Vec::new()));
+        // A005 #18：hourly 缺失不再连带丢弃 daily——两者独立判定
+        return Ok((
+            Vec::new(),
+            match root.get("daily").and_then(Value::as_object) {
+                Some(daily) => extract_daily(daily)?,
+                None => Vec::new(),
+            },
+        ));
     };
-    let Some(daily) = root.get("daily").and_then(Value::as_object) else {
-        return Ok((Vec::new(), Vec::new()));
+    let Some(_) = root.get("daily").and_then(Value::as_object) else {
+        return Ok((extract_hourly(hourly)?, Vec::new()));
     };
+    let daily = root
+        .get("daily")
+        .and_then(Value::as_object)
+        .expect("前置判定保证存在");
+    Ok((extract_hourly(hourly)?, extract_daily(daily)?))
+}
 
+/// 逐小时序列提取（A005 #18：从 extract_hourly_daily 拆出，与 daily 独立判定）
+fn extract_hourly(
+    hourly: &serde_json::Map<String, Value>,
+) -> Result<Vec<crate::types::HourlyPoint>, WeatherErr> {
     let h_times = series_strings(hourly, "time")?;
-    let h_temps = series_numbers(hourly, "temperature_2m", "HourlyNull")?;
-    let h_precips = series_numbers(hourly, "precipitation_probability", "HourlyNull")?;
+    let h_temps = series_numbers(hourly, "temperature_2m", SeriesKind::Hourly)?;
+    let h_precips = series_numbers(hourly, "precipitation_probability", SeriesKind::Hourly)?;
     if h_times.len() != h_temps.len() || h_times.len() != h_precips.len() {
         return Err(WeatherErr::SeriesMissing("hourly 长度不一致"));
     }
-    let hourly_points: Vec<HourlyPoint> = h_times
+    Ok(h_times
         .iter()
         .zip(h_temps.iter().zip(h_precips.iter()))
-        .map(|(t, (temp, p))| HourlyPoint {
+        .map(|(t, (temp, p))| crate::types::HourlyPoint {
             time: t.clone(),
             temperature: *temp,
             precip_prob: *p,
         })
-        .collect();
+        .collect())
+}
 
+/// 七日序列提取（同 null/长度纪律；与 hourly 独立判定）
+fn extract_daily(
+    daily: &serde_json::Map<String, Value>,
+) -> Result<Vec<crate::types::DailyPoint>, WeatherErr> {
     let d_dates = series_strings(daily, "time")?;
-    let d_max = series_numbers(daily, "temperature_2m_max", "DailyNull")?;
-    let d_min = series_numbers(daily, "temperature_2m_min", "DailyNull")?;
+    let d_max = series_numbers(daily, "temperature_2m_max", SeriesKind::Daily)?;
+    let d_min = series_numbers(daily, "temperature_2m_min", SeriesKind::Daily)?;
     let d_sunrise = series_strings(daily, "sunrise")?;
     let d_sunset = series_strings(daily, "sunset")?;
     if d_dates.len() != d_max.len()
@@ -96,18 +118,24 @@ fn extract_hourly_daily(
     {
         return Err(WeatherErr::SeriesMissing("daily 长度不一致"));
     }
-    let daily_points: Vec<DailyPoint> = d_dates
+    Ok(d_dates
         .iter()
         .enumerate()
-        .map(|(i, d)| DailyPoint {
+        .map(|(i, d)| crate::types::DailyPoint {
             date: d.clone(),
             t_max: d_max[i],
             t_min: d_min[i],
             sunrise: d_sunrise[i].clone(),
             sunset: d_sunset[i].clone(),
         })
-        .collect();
-    Ok((hourly_points, daily_points))
+        .collect())
+}
+
+/// 系列种类（A005 #18：原 `&'static str` 运行期分派改枚举——笔误即编译期暴露）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SeriesKind {
+    Hourly,
+    Daily,
 }
 
 /// 字符串系列提取（键缺失/非串元素 → SeriesMissing/对应 Null 变体由调用方语义定）
@@ -129,20 +157,20 @@ fn series_strings(
     }
 }
 
-/// 数值系列提取（null → *Null 变体；错型 → BadType）
+/// 数值系列提取（null → *Null 变体；错型 → BadType；A005 #18：种类参数改枚举）
 fn series_numbers(
     obj: &serde_json::Map<String, Value>,
     key: &'static str,
-    null_variant: &'static str,
+    kind: SeriesKind,
 ) -> Result<Vec<f64>, WeatherErr> {
     match obj.get(key) {
         None => Err(WeatherErr::SeriesMissing(key)),
         Some(Value::Array(arr)) => arr
             .iter()
             .map(|v| match v {
-                Value::Null => match null_variant {
-                    "HourlyNull" => Err(WeatherErr::HourlyNull(key)),
-                    _ => Err(WeatherErr::DailyNull(key)),
+                Value::Null => match kind {
+                    SeriesKind::Hourly => Err(WeatherErr::HourlyNull(key)),
+                    SeriesKind::Daily => Err(WeatherErr::DailyNull(key)),
                 },
                 Value::Number(_) => v.as_f64().ok_or(WeatherErr::BadType(key)),
                 _ => Err(WeatherErr::BadType(key)),
@@ -376,7 +404,8 @@ impl WeatherClient {
         let url = format!(
             "{}/v1/forecast?latitude={lat}&longitude={lon}&current={}&timezone=auto\
              &hourly=temperature_2m,precipitation_probability\
-             &daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&forecast_days=7",
+             &daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&forecast_days=7\
+             &forecast_hours=24",
             self.base,
             REQUIRED_FIELDS.join(","),
         );
@@ -399,11 +428,6 @@ impl WeatherClient {
             .await
             .map_err(|e| FetchErr::Parse(e.to_string()))?;
         parse_open_meteo(&body).map_err(FetchErr::from)
-    }
-
-    /// 清空全部缓存（Python clear_weather_cache 对等）
-    pub fn clear_cache(&self) {
-        self.cache.lock().expect("天气缓存锁中毒").clear();
     }
 }
 

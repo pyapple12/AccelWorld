@@ -7,11 +7,14 @@ use std::sync::OnceLock;
 use accel_core::static_config::Static;
 
 // 非 blocking writer 的守卫必须活到进程结束（drop 时冲刷）——静态持有
-static LOG_GUARD: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
+// A005 #6 修正：文件与控制台两个 guard 须各占一槽（单槽 OnceLock 第二次 set 必失败，
+// console guard 会被立即 drop → 控制台日志静默丢失）
+static LOG_GUARD_FILE: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
+static LOG_GUARD_CONSOLE: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
 static PANIC_LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
 
 /// 初始化日志（main 启动首步调用一次）：文件每日滚动 + 控制台双路
-/// 级别/目录/保留期读 base.json token（log_level/logs_dir/log_backup_days）
+/// 级别/目录读 base.json token（log_level/logs_dir）
 pub fn init() {
     let base = Static::get();
     let level_text = base.base_str("log_level");
@@ -22,12 +25,16 @@ pub fn init() {
     // 每日滚动文件（logs/accel-YYYY-MM-DD.log，对齐 Python 每日独立文件约定）
     let file_appender = tracing_appender::rolling::daily(&logs_dir, "accel-.log");
     let (file_writer, guard) = tracing_appender::non_blocking(file_appender);
-    let _ = LOG_GUARD.set(guard);
+    if LOG_GUARD_FILE.set(guard).is_err() {
+        tracing::warn!("文件日志 guard 已存在（重复 init？）");
+    }
 
     let filter = tracing_subscriber::EnvFilter::from_default_env()
         .add_directive(tracing_subscriber::filter::LevelFilter::from_level(level).into());
     let (console_writer, console_guard) = tracing_appender::non_blocking(std::io::stdout());
-    let _ = LOG_GUARD.set(console_guard);
+    if LOG_GUARD_CONSOLE.set(console_guard).is_err() {
+        tracing::warn!("控制台日志 guard 已存在（重复 init？）");
+    }
 
     use tracing_subscriber::fmt::writer::MakeWriterExt;
     tracing_subscriber::fmt()
@@ -126,7 +133,7 @@ fn parse_level(text: &str) -> tracing::Level {
 //   防日志 IO 阻塞渲染帧循环（tracing_appender 惯用法，guard 静态保活防冲刷丢失）
 // 异常处理：目录创建/文件打开失败静默（日志不可用不阻断应用）；try_init 幂等
 // 已知偏移：①文件名 accel-.log 滚动后缀由 tracing_appender 自动补日期；②保留
-//   天数（log_backup_days）由外部清理承接（PL015 托盘/安装器脚本），运行期不删档
+//   天数由外部清理承接（安装器/脚本），运行期不删档（A005 #8：log_backup_days token 已删）
 // 关联依赖：tracing/tracing-subscriber/tracing-appender；消费方：main.rs 首步
 
 #[cfg(test)]

@@ -11,7 +11,6 @@ accel-core = { path = "../accel-core" }
 serde_json = { workspace = true }
 eframe = { workspace = true }
 egui = { workspace = true }
-egui_extras = { workspace = true }
 pollster = { workspace = true }
 image = { workspace = true }
 chrono = { workspace = true }
@@ -20,7 +19,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-appender = { workspace = true }
 wgpu = { workspace = true }
-egui-wgpu = "0.37.0"
+egui-wgpu = { workspace = true }
 chrono-tz = { workspace = true }
 raw-window-handle = { workspace = true }
 
@@ -42,5 +41,5 @@ serde_json = { workspace = true }
 # version = "0.6.0"：对齐产品版本段 0.6.0.0（semver 三段上限）
 # PL011 占位：仅依赖 core（验证依赖方向单向），显示版本经 build.rs 从
 #   rs/config/static/base.json 注入（PL013 落位）
-# PL013 起接入：eframe(wgpu)/egui/egui_extras/pollster/image/windows/
+# PL013 起接入：eframe(wgpu)/egui/pollster/image/windows/
 #   tray-icon/global-hotkey/rodio/chrono-tz——全部走 workspace.dependencies

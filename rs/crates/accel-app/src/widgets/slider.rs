@@ -85,6 +85,8 @@ pub fn show(
 
 /// 三层几何绘制：底轨胶囊 → 填充（零进度整圆）→ 旋钮
 fn draw(painter: &egui::Painter, rect: Rect, track: Rect, track_h: f32, ratio: f32) {
+    // A005 #9：语义色 token
+    let ink = crate::theme::ink();
     let cap_r = track_h / 2.0;
     // 底轨（弱色胶囊）
     painter.rect_filled(
@@ -117,15 +119,11 @@ fn draw(painter: &egui::Painter, rect: Rect, track: Rect, track_h: f32, ratio: f
         );
     }
     // 旋钮（白亮圆 + 细描边，圆心=轨道中心）
-    painter.circle_filled(
-        egui::pos2(knob_x, fill_center_y),
-        cap_r + 3.0,
-        Color32::from_rgb(240, 243, 250),
-    );
+    painter.circle_filled(egui::pos2(knob_x, fill_center_y), cap_r + 3.0, ink.knob);
     painter.circle_stroke(
         egui::pos2(knob_x, fill_center_y),
         cap_r + 3.0,
-        egui::Stroke::new(1.2, Color32::from_rgb(120, 126, 140)),
+        egui::Stroke::new(1.2, ink.dim),
     );
     let _ = rect;
 }
