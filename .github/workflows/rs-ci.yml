@@ -48,6 +48,8 @@ jobs:
         shell: pwsh
         run: |
           $tree = cargo tree -p accel-core --edges normal --format "{p}"
+          # FIX006.18：与 ci.ps1 同源——命令失败亦须报错（原实现静默通过）
+          if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: cargo tree 执行失败"; exit 1 }
           if ($tree -match "egui|eframe") {
             Write-Host "FAIL: accel-core 依赖树混入 egui/eframe"
             exit 1

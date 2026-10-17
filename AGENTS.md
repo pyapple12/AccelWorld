@@ -8,7 +8,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/wgpu
 - **统一入口四关卡**：`pwsh rs/ci.ps1`（fmt --check → clippy `-D warnings` → `cargo test --workspace` → core 依赖树零 egui/eframe）；`.github/workflows/rs-ci.yml` 复用同一命令集
 - 全量测试：`cargo test --workspace`（core 单测 + 夹具 parity 集成 + app 单测）
 - GUI 冒烟（真窗出血，会弹窗）：`cargo run -p accel-app`；玻璃离屏渲染断言探针：`cargo run -p accel-app --bin render_probe`
-- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.0.5`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
+- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.0.6`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
 - **版本体系**：四段式纯数字 `X.Y.Z.P`（无 `ver ` 前缀）；`feat`/`fix`/`refactor`/`perf` 提交前 bump patch 位；历史存量 `ver 0.4x` 三段式仅存于历史文档与提交记录，不回溯改写
 
 ## 环境陷阱
@@ -98,7 +98,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/wgpu
 
 ## Commit 提交规范
 
-- **标题行**：`<type>: V<版本>，<摘要>`——版本号与 `rs/config/static/base.json` 的 `version` 一致（四段式全写，如 `V0.6.0.5`）；摘要一句话概括核心
+- **标题行**：`<type>: V<版本>，<摘要>`——版本号与 `rs/config/static/base.json` 的 `version` 一致（四段式全写，如 `V0.6.0.6`）；摘要一句话概括核心
 - **版本递增**：`feat`/`fix`/`refactor`/`perf` 提交前先 bump version（patch 位 +1）；`docs`/`test`/`style`/`chore` 不强制
 - **type 全集**（conventional 风格）：`feat` 新功能 / `fix` 修复 / `refactor` 重构（行为不变）/ `perf` 性能 / `docs` 文档 / `test` 测试 / `style` 格式 / `build` 构建依赖 / `ci` CI / `chore` 杂项 / `revert` 回滚
 - **正文**（改动大时可选）：`- ` 列表，按主题分组、分组下子条目缩进，每个功能块一行自然中文描述，每行 ≤ 100 字符

@@ -1,8 +1,10 @@
 {
-  "version": "0.6.0.5",
+  "version": "0.6.0.6",
   "rate_min": 1.0,
   "rate_max": 20.0,
   "default_rate": 2.0,
+  "default_alarm_sound_type": "preset",
+  "default_alarm_sound_value": "classic",
   "shortcuts": {
     "save": "Ctrl+S",
     "quit": "Ctrl+Q",

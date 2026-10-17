@@ -4,7 +4,10 @@
 name = "accel-app"
 version = "0.6.0"
 edition = "2024"
-description = "AccelWorld egui 前端：窗口/玻璃渲染/六页导航/系统集成"
+description = "AccelWorld egui 前端：窗口/玻璃渲染/五页导航 + 设置浮窗/系统集成"
+# 双 bin（accel-app + render_probe）下 `cargo run -p accel-app` 需 default-run 消歧
+# （FIX006 执行补录：AGENTS.md 记载的 GUI 冒烟命令原因此歧义直接失败）
+default-run = "accel-app"
 
 [dependencies]
 accel-core = { path = "../accel-core" }

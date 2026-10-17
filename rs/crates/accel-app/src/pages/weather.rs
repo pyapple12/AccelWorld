@@ -1,20 +1,16 @@
 //! 天气页（PL014.12；A005 #4 收敛为单城）：当前卡 + 逐时横条 + 七日概要 + 刷新
 
-use crate::bus::PageId;
 use crate::glass::surface::GlassScene;
 use accel_core::types::FrontendCommand;
-use tokio::sync::mpsc::Sender;
 
 impl crate::pages::Page for crate::pages::WeatherPage {
     fn ui(
         &mut self,
         ui: &mut egui::Ui,
         state: &mut crate::bus::UiState,
-        cmd: &Sender<FrontendCommand>,
-        scene: &mut GlassScene,
+        bus: &crate::bus::Bus,
+        _scene: &mut GlassScene,
     ) {
-        let page_rect = crate::window::content_page_rect(ui.ctx());
-        crate::window::register_page_surface(scene, PageId::Weather, page_rect);
         // A005 #9：语义色 token（不再写字面色值）
         let ink = crate::theme::ink();
 
@@ -33,10 +29,8 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                                     if ui.selectable_label(name == &city, name).clicked()
                                         && name != &city
                                     {
-                                        let _ = cmd.try_send(FrontendCommand::SetWeatherCity(
-                                            name.clone(),
-                                        ));
-                                        let _ = cmd.try_send(FrontendCommand::RefreshWeather {
+                                        bus.send(FrontendCommand::SetWeatherCity(name.clone()));
+                                        bus.send(FrontendCommand::RefreshWeather {
                                             city: name.clone(),
                                             force: false,
                                         });
@@ -45,7 +39,7 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                                 }
                             });
                         if ui.button("⟳ 刷新").clicked() {
-                            let _ = cmd.try_send(FrontendCommand::RefreshWeather {
+                            bus.send(FrontendCommand::RefreshWeather {
                                 city: city.clone(),
                                 force: true,
                             });
@@ -65,7 +59,7 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                                 "{} {}  {:.1}°C",
                                 w.icon, w.weather, w.temperature
                             ))
-                            .size(34.0)
+                            .size(crate::theme::font_size("std_time"))
                             .color(ink.strong),
                         );
                         ui.label(
@@ -73,28 +67,34 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                                 "体感 {:.1}°C · 湿度 {:.0}% · 风力 {:.1}km/h",
                                 w.apparent_temperature, w.humidity, w.wind_speed
                             ))
-                            .size(14.0)
+                            .size(crate::theme::font_size("body"))
                             .color(ink.soft),
                         );
                         ui.add_space(12.0);
                         // 逐小时横条（24 点）
                         if !w.hourly.is_empty() {
-                            ui.label(egui::RichText::new("逐小时").size(15.0).color(ink.muted));
+                            ui.label(
+                                egui::RichText::new("逐小时")
+                                    .size(crate::theme::font_size("label"))
+                                    .color(ink.muted),
+                            );
                             ui.horizontal(|ui| {
                                 for h in w.hourly.iter().take(24) {
                                     ui.vertical(|ui| {
                                         let hour = h.time.get(11..16).unwrap_or("--:--");
                                         ui.label(
-                                            egui::RichText::new(hour).size(12.0).color(ink.soft),
+                                            egui::RichText::new(hour)
+                                                .size(crate::theme::font_size("meta"))
+                                                .color(ink.soft),
                                         );
                                         ui.label(
                                             egui::RichText::new(format!("{:.0}°", h.temperature))
-                                                .size(14.0)
+                                                .size(crate::theme::font_size("body"))
                                                 .color(ink.strong),
                                         );
                                         ui.label(
                                             egui::RichText::new(format!("{:.0}%", h.precip_prob))
-                                                .size(11.0)
+                                                .size(crate::theme::font_size("tiny"))
                                                 .color(ink.info),
                                         );
                                     });
@@ -104,18 +104,24 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                         }
                         // 七日概要
                         if !w.daily.is_empty() {
-                            ui.label(egui::RichText::new("七日概要").size(15.0).color(ink.muted));
+                            ui.label(
+                                egui::RichText::new("七日概要")
+                                    .size(crate::theme::font_size("label"))
+                                    .color(ink.muted),
+                            );
                             for d in w.daily.iter().take(7) {
                                 ui.horizontal(|ui| {
                                     ui.label(
-                                        egui::RichText::new(&d.date).size(14.0).color(ink.muted),
+                                        egui::RichText::new(&d.date)
+                                            .size(crate::theme::font_size("body"))
+                                            .color(ink.muted),
                                     );
                                     ui.label(
                                         egui::RichText::new(format!(
                                             "{:.0}° / {:.0}°",
                                             d.t_max, d.t_min
                                         ))
-                                        .size(14.0)
+                                        .size(crate::theme::font_size("body"))
                                         .color(ink.strong),
                                     );
                                     ui.label(
@@ -124,7 +130,7 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                                             d.sunrise.get(11..16).unwrap_or("--"),
                                             d.sunset.get(11..16).unwrap_or("--")
                                         ))
-                                        .size(12.0)
+                                        .size(crate::theme::font_size("meta"))
                                         .color(ink.soft),
                                     );
                                 });
@@ -134,18 +140,19 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                 });
             });
         });
-        let _ = cmd;
     }
 }
 
 // ===== src/pages/weather.rs 说明区 =====
 // 输入：UiState.weather/weather_errors（WeatherUpdated/Failed 事件快照）+ prefs.last_city
-// 输出：当前卡 + 逐时 24 横条 + 七日概要 + 城市名 + 强制刷新
-// 逻辑步骤：city=last_city → 城市行（单城标签）→ 刷新发 RefreshWeather{force:true} →
-//   weather 查数据域（失败红字优先展示）
+// 输出：当前卡 + 逐时 24 横条 + 七日概要 + 城市选择 + 强制刷新
+// 逻辑步骤：city=last_city → 城市下拉（换城发 SetWeatherCity + RefreshWeather）→
+//   刷新发 RefreshWeather{force:true} → weather 查数据域（失败红字优先展示）
 // 设计理由：UI 无状态重建——数据全靠事件快照；逐时/七日来自 PL014.11 扩展 DTO；
 //   **A005 #4 定案**：多城市增删（AddWeatherCity/RemoveWeatherCity）未接线且 Python 版
 //   本就是单城市（last_city），按"不长期保留废弃方案"删除死协议变体与 UiState.
 //   weather_cities / weather_cities_view，收敛单城——更正的是 z.plan/README 的过度承诺
+// FIX006.2：命令统一经 bus.send（待发队列保底）；FIX006.5：字号全部走 scale token；
+//   FIX006.4：冷启动首拉在 window.rs 装配期发出（本页仅消费事件快照）
 // 异常处理：数据缺失（首查前）整段静默；失败红字展示（FIX005.13 后失败会清旧数据）
 // 关联依赖：UiState.weather；消费方：pages::Pages

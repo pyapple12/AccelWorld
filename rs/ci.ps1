@@ -18,6 +18,8 @@ if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: test"; exit 1 }
 
 Write-Host "== 关卡 4/4 core 依赖树零 egui/eframe（单向分层机器强制）=="
 $tree = cargo tree -p accel-core --edges normal --format "{p}"
+# FIX006.18：关卡 4 同样校验退出码——原实现命令失败时 $tree 为空 → -match 假 → 静默通过
+if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: cargo tree 执行失败"; exit 1 }
 if ($tree -match "egui|eframe") {
     Write-Host "FAIL: accel-core 依赖树混入 egui/eframe"
     exit 1
@@ -28,5 +30,6 @@ Write-Host "ALL_GREEN: 四关卡全过"
 # ===== rs/ci.ps1 说明区 =====
 # 关卡 4 原理：cargo tree 展平 core 正式依赖（--edges normal 排除 dev），
 #   包名逐行匹配 egui/eframe——core 是纯业务 crate，任何 GUI 依赖混入即架构违规
+# FIX006.18：四关卡一律先判 $LASTEXITCODE（原关卡 4 漏判，命令失败会静默通过）
 # GitHub Actions（PL011.14）在 windows-latest 上按同序执行四命令，不重复实现逻辑
 # fmt 用 --check：本地格式化须主动 cargo fmt 提交，CI 只做守门

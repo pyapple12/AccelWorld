@@ -30,6 +30,8 @@ pub struct AppInterface {
     alarms: Arc<Mutex<AlarmManager>>,
     /// 用户配置文件路径（env ACCELWORLD_CONFIG_FILE 优先，否则 exe 同目录 config/）
     config_path: PathBuf,
+    /// 天气在飞任务表（FIX006.9：同城去抖 + Quit 统一 abort；键 = 城市名）
+    weather_inflight: Arc<Mutex<std::collections::HashMap<String, tokio::task::JoinHandle<()>>>>,
 }
 
 impl Default for AppInterface {
@@ -67,6 +69,7 @@ impl AppInterface {
             weather: Arc::new(WeatherClient::new()),
             alarms: Arc::new(Mutex::new(manager)),
             config_path,
+            weather_inflight: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
     }
 
@@ -147,6 +150,8 @@ impl AppInterface {
     // ===== 天气域 =====
 
     /// 城市名有序列表（Python sorted(CITIES.keys()) 对等：排序返回）
+    /// 天气城市候选（FIX006.23：天气域城市表 = data::cities（17 城坐标表），
+    /// 与世界时钟域的 world_cities（50 城）职责分离）
     pub fn get_city_names() -> Vec<String> {
         let mut names: Vec<String> = cities::names().into_iter().map(String::from).collect();
         names.sort();
@@ -171,6 +176,7 @@ impl AppInterface {
 
     /// 切换天气城市（A005 #4 单城模型的城市选择）：城市须在天气城市表内，持久化 last_city
     /// 输入：城市名；输出：是否落盘成功（未知城市拒 false；同名视为已达成 true）
+    /// FIX006.22：幂等规则统一为「已存在 = true（不重复落盘）；非法入参 = false」
     pub fn set_weather_city(&self, city: &str) -> bool {
         if cities::get(city).is_none() {
             tracing::warn!("未知天气城市，拒绝设置: {city}");
@@ -259,21 +265,23 @@ impl AppInterface {
         world_cities::all_names()
     }
 
-    /// 添加常驻城市（world_pins 追加去重 + 落盘；未知城市拒绝）
+    /// 添加常驻城市（入参 = 城市名，落盘存其 IANA 时区串去重；未知城市拒绝）
+    /// FIX006.1：world_pins 权威域统一为 IANA——与默认值/golden 夹具/基准时区校验同域
     pub fn add_world_city(&self, name: &str) -> bool {
-        if world_cities::by_name(name).is_none() {
+        let Some(city) = world_cities::by_name(name) else {
             tracing::warn!("未知城市，拒绝添加常驻: {name}");
             return false;
-        }
+        };
         let mut config = settings::load(&self.config_path);
-        if config.world_pins.iter().any(|p| p == name) {
-            return false;
+        if config.world_pins.iter().any(|p| p == city.tz) {
+            // FIX006.22：已存在 = 幂等达成（true，不重复落盘）——与 set_weather_city 同语义
+            return true;
         }
-        config.world_pins.push(name.to_string());
+        config.world_pins.push(city.tz.to_string());
         settings::save(&self.config_path, &config)
     }
 
-    /// 移除常驻城市（不存在返回 false）
+    /// 移除常驻城市（不存在返 false——移除类无变更可报，与「已存在 = true」互补）
     pub fn remove_world_city(&self, name: &str) -> bool {
         let mut config = settings::load(&self.config_path);
         let before = config.world_pins.len();
@@ -421,19 +429,53 @@ impl AppInterface {
                                 }
                             }
                             Some(FrontendCommand::RefreshWeather { city, force }) => {
-                                // 独立任务拉取（重试/超时不阻塞主循环），完成回推事件
-                                let weather = Arc::clone(&self.weather);
-                                let evt_tx = evt_tx.clone();
-                                tokio::spawn(async move {
-                                    let evt = match weather.fetch_by_city(&city, force).await {
-                                        Ok(data) => BackendEvent::WeatherUpdated { city, data },
-                                        Err(e) => BackendEvent::WeatherFailed {
-                                            city,
-                                            reason: e.to_string(),
-                                        },
-                                    };
-                                    let _ = evt_tx.send(evt).await;
-                                });
+                                // FIX006.9：同城在飞去抖（force 强制刷新则取消旧任务重发）；
+                                // 任务完成自摘在飞表，Quit 时统一 abort（不留 evt_tx 克隆）
+                                let mut inflight = self
+                                    .weather_inflight
+                                    .lock()
+                                    .expect("天气在飞表锁中毒");
+                                if weather_should_skip(&inflight, &city, force) {
+                                    tracing::debug!("天气请求在飞，跳过重复触发: {city}");
+                                } else {
+                                    if let Some(old) = inflight.remove(&city) {
+                                        old.abort();
+                                    }
+                                    let weather = Arc::clone(&self.weather);
+                                    let evt_tx = evt_tx.clone();
+                                    let inflight_map = Arc::clone(&self.weather_inflight);
+                                    let city_task = city.clone();
+                                    // FIX006.4/.9 配套可观测性：拉取开始即留痕（冷启动首拉可见）
+                                    tracing::info!("天气拉取开始: {city}（force={force}）");
+                                    let handle = tokio::spawn(async move {
+                                        let result = weather.fetch_by_city(&city_task, force).await;
+                                        let evt = match result {
+                                            Ok(data) => BackendEvent::WeatherUpdated {
+                                                city: city_task.clone(),
+                                                data,
+                                            },
+                                            Err(e) => BackendEvent::WeatherFailed {
+                                                city: city_task.clone(),
+                                                reason: e.to_string(),
+                                            },
+                                        };
+                                        match &evt {
+                                            BackendEvent::WeatherUpdated { city, .. } => {
+                                                tracing::info!("天气更新完成: {city}");
+                                            }
+                                            BackendEvent::WeatherFailed { city, reason } => {
+                                                tracing::warn!("天气获取失败: {city}（{reason}）");
+                                            }
+                                            _ => {}
+                                        }
+                                        let _ = evt_tx.send(evt).await;
+                                        inflight_map
+                                            .lock()
+                                            .expect("天气在飞表锁中毒")
+                                            .remove(&city_task);
+                                    });
+                                    inflight.insert(city, handle);
+                                }
                             }
                             Some(FrontendCommand::AddAlarm(draft)) => {
                                 // 草稿落库 + 入表 + 回推全量列表（UI 无状态重建）
@@ -508,6 +550,15 @@ impl AppInterface {
                             }
                             Some(FrontendCommand::Quit) | None => {
                                 // 关停调度任务后主循环退出（evt_tx 全部释放 → 接收端闭合）
+                                // FIX006.9：先 abort 在飞天气任务——否则其 evt_tx 克隆会推迟闭合
+                                for (_, h) in self
+                                    .weather_inflight
+                                    .lock()
+                                    .expect("天气在飞表锁中毒")
+                                    .drain()
+                                {
+                                    h.abort();
+                                }
                                 let _ = sd_tx.send(true);
                                 break;
                             }
@@ -532,6 +583,15 @@ impl AppInterface {
     }
 }
 
+/// 天气去抖判定（FIX006.9 纯逻辑）：同城在飞且非强制刷新 → 跳过重复触发
+fn weather_should_skip(
+    inflight: &std::collections::HashMap<String, tokio::task::JoinHandle<()>>,
+    city: &str,
+    force: bool,
+) -> bool {
+    !force && inflight.contains_key(city)
+}
+
 // ===== src/interface.rs 说明区 =====
 // 输入：FrontendCommand 流（UI 写意图）；输出：同步查询 DTO 快照 + BackendEvent 流
 // 逻辑步骤：spawn 主循环 select——命令分支（16 变体逐一接线，match 穷尽无兜底——
@@ -546,6 +606,11 @@ impl AppInterface {
 // 异常处理：倍率非法回退默认（构造期）/拒绝 false（set/apply）；天气失败降级
 //   None + 日志（Python 对等），总线事件则回推 WeatherFailed 供 UI 提示；
 //   事件通道关闭（UI 已死）时退出主循环
+// FIX006.9：天气拉取任务入「在飞表」（同城去抖，force 取消旧任务重发；任务完成自摘；
+//   Quit 统一 abort——不留 evt_tx 克隆，接收端即时闭合）
+// FIX006.22：写操作幂等规则统一——「已存在 = true（不重复落盘）」/「非法入参 = false」/
+//   「移除类不存在 = false」；FIX006.23：天气城市候选 = data::cities（与世界时钟
+//   world_cities 两表职责分离）
 // 已知偏移：①fetch_weather 的 force 清该城缓存键（Python 清全表；z.plan 修订二
 //   per-city 定案，多城市语义更正确）；②配置读经每调用 load（Python 有模块级
 //   缓存；Rust 由调用频率低 + 原子写保证一致性，缓存层 PL013 视性能引入）
@@ -924,8 +989,12 @@ mod tests {
         assert_eq!(saved_count, 3, "三条命令均应 ConfigSaved(true)");
         let config = settings::load(&path);
         assert!(
-            config.world_pins.contains(&"东京".to_string()),
-            "常驻城市应落盘"
+            config.world_pins.contains(&"Asia/Tokyo".to_string()),
+            "常驻城市应以 IANA 时区串落盘（FIX006.1 域统一）"
+        );
+        assert!(
+            !config.world_pins.contains(&"东京".to_string()),
+            "不得落盘城市名（域混用）"
         );
         assert_eq!(config.last_timezone, "Asia/Tokyo", "时区 roundtrip");
         assert_eq!(config.theme, "dark", "主题落盘");
@@ -978,9 +1047,34 @@ mod tests {
         assert!(info.lunar_info.contains("财神："), "农历串应含财神段");
     }
 
+    #[tokio::test]
+    async fn weather_debounce_skips_inflight_same_city() {
+        // FIX006.9 验收（纯逻辑）：同城在飞且非强制 → 跳过；强制刷新/异城不受影响
+        let mut inflight: std::collections::HashMap<String, tokio::task::JoinHandle<()>> =
+            std::collections::HashMap::new();
+        inflight.insert("北京".into(), tokio::spawn(async {}));
+        assert!(
+            weather_should_skip(&inflight, "北京", false),
+            "同城在飞应跳过"
+        );
+        assert!(
+            !weather_should_skip(&inflight, "北京", true),
+            "强制刷新不得跳过"
+        );
+        assert!(
+            !weather_should_skip(&inflight, "上海", false),
+            "异城不得跳过"
+        );
+        inflight.clear();
+        assert!(
+            !weather_should_skip(&inflight, "北京", false),
+            "无在飞任务不得跳过"
+        );
+    }
+
     #[test]
     fn world_cities_domain_query() {
-        // .10 验收：统一城市表经 interface 检索（48 城 + 锚点）
+        // .10 验收：世界时钟城市表经 interface 检索（50 城 + 锚点；FIX006.13 注释校正）
         let names = AppInterface::get_world_cities();
         assert_eq!(names.len(), 50, "统一城市表 50 城（PL012.09 落位实测）");
         assert!(names.contains(&"纽约"));

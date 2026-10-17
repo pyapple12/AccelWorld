@@ -1,6 +1,6 @@
 # AccelWorld —— 加速世界世界钟
 
-[![Version](https://img.shields.io/badge/Version-0.6.0.5-blue.svg)](rs/config/static/base.json)
+[![Version](https://img.shields.io/badge/Version-0.6.0.6-blue.svg)](rs/config/static/base.json)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](rs/rust-toolchain.toml)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
@@ -55,7 +55,7 @@ cd rs
 cargo run -p accel-app
 
 # 发布构建
-cargo build --release        # 产物 rs/target/release/accelworld.exe
+cargo build --release        # 产物 rs/target/release/accel-app.exe
 ```
 
 ### 验证
@@ -127,7 +127,7 @@ rs/                              # cargo workspace 根（全部命令在此执�
 
 | 领域     | 依赖                                                              |
 | -------- | ----------------------------------------------------------------- |
-| GUI      | eframe(wgpu) / egui / egui_extras / wgpu / image                  |
+| GUI      | eframe(wgpu) / egui / wgpu / image                                |
 | 后端     | tokio / reqwest(rustls) / chrono / chrono-tz / lunar_rust / rodio |
 | 序列化   | serde / serde_json                                                |
 | 日志     | tracing / tracing-subscriber / tracing-appender                   |

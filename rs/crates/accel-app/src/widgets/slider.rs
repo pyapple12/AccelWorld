@@ -1,7 +1,7 @@
 //! 玻璃滑杆控件（ui/glass_card.py CapsuleSlider 的 Rust 对等物，PL014.04）
 //! 三层几何：胶囊底轨 + 橙色填充（零进度保留整圆）+ 旋钮；值映射与命令频率可测
 
-use egui::{Color32, Rect, Sense, Vec2};
+use egui::{Rect, Sense, Vec2};
 
 /// 滑杆值映射（纯函数）：轨道内指针比例 → 倍率值（0.1 步进四舍五入，域钳制）
 /// Python 语义：int(round(rate×10)) 反向映射同式
@@ -92,7 +92,7 @@ fn draw(painter: &egui::Painter, rect: Rect, track: Rect, track_h: f32, ratio: f
     painter.rect_filled(
         track,
         egui::epaint::CornerRadius::same(cap_r as u8),
-        Color32::from_rgba_premultiplied(60, 60, 72, 120),
+        crate::theme::color32_at("slider_track", 60),
     );
     // 填充（accent token）
     let knob_x = track.left() + ratio * track.width();

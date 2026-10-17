@@ -2,6 +2,7 @@
 //! 两调用点：闹钟触发 / 配置保存失败；失败仅日志不阻塞（行为无损纪律）
 
 // AUMID（应用用户模型 ID：通知中心归组标识；NSIS 快捷方式安装后归组显示）
+#[cfg(windows)]
 const APP_ID: &str = "AccelWorld";
 
 /// 闹钟触发通知（title=闹钟；body=HH:MM · 标签，空标签回退默认文案）
@@ -20,6 +21,7 @@ pub fn notify_save_failed() -> bool {
 }
 
 /// WinRT toast 发送（静音——铃声由 rodio 独立负责，避免双声）
+#[cfg(windows)]
 fn show(title: &str, body: &str) -> bool {
     let result = tauri_winrt_notification::Toast::new(APP_ID)
         .title(title)
@@ -35,6 +37,14 @@ fn show(title: &str, body: &str) -> bool {
     }
 }
 
+/// 非 Windows 编译期桩（FIX006.28）：无系统通知能力——仅记日志返 false
+/// （调用方不分支，行为无损：通知属增强体验）
+#[cfg(not(windows))]
+fn show(title: &str, body: &str) -> bool {
+    tracing::info!("非 Windows 平台无系统通知（降级跳过）: {title} / {body}");
+    false
+}
+
 // ===== src/platform/notify.rs 说明区 =====
 // 输入：闹钟（label/time）/保存失败两调用点文案
 // 输出：bool（toast 是否已提交；仅日志用途——调用方不分支）
@@ -45,6 +55,8 @@ fn show(title: &str, body: &str) -> bool {
 // 异常处理：show 失败（无通知能力/权限受限）记 warn 返 false——通知属增强体验，
 //   绝不影响闹钟已触发/保存流程本体
 // 已知偏移：通知时长由 WinRT toast 自管（notification_duration_ms token 已于 A005 #8 删除）
+// FIX006.28：tauri-winrt-notification 仅 Windows 依赖——`show` 走 cfg 分档，
+//   非 Windows 为编译期桩（仅日志返 false）；notify_alarm/notify_save_failed 不分档
 // 关联依赖：tauri-winrt-notification（Windows 通知基础设施）；消费方：bus.rs drain
 #[cfg(test)]
 mod tests {

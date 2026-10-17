@@ -269,7 +269,6 @@ pub fn save(path: &Path, config: &UserConfig) -> bool {
     }
 }
 
-/// 期望的默认配置 JSON（A005 #15：生产零调用已删除——默认值单源见 `UserConfig::default`）
 // ===== src/settings.rs 说明区 =====
 // 输入：user_config.json 路径 + JSON 值；输出：UserConfig（字段级 lenient 装载）
 // 逻辑步骤：read_json → 对象判定 → UserConfigRaw（Option<Value> 中间层）→ 逐字段
@@ -282,9 +281,10 @@ pub fn save(path: &Path, config: &UserConfig) -> bool {
 //   转存失败仅日志（对齐 Python logger.error 不外抛）
 // 已知偏移（登记 z.plan）：①serde_json 缩进 2 vs Python indent=4（值级等价，字节级
 //   不同）；②alarms 字段为 Vec<Value> 透传（A005 #16 更正：原注"PL012 落地 Alarm
-//   强类型"已过期——强类型在 AlarmManager 侧，UserConfig 仍以 JSON 形态承载存档）；③JSON 文本含 NaN/Infinity 字面量时 Python json 容忍并按脏值过滤（不
-//   转存），serde_json 判解析失败走损坏转存——两路径终点同为默认值，副作用差异仅
-//   .bak 生成与否；③alarms 本期 Vec<Value> 透传，PL012 落地 Alarm 强类型
+//   强类型"已过期——强类型在 AlarmManager 侧，UserConfig 仍以 JSON 形态承载存档）；
+//   ③JSON 文本含 NaN/Infinity 字面量时 Python json 容忍并按脏值过滤（不转存），
+//   serde_json 判解析失败走损坏转存——两路径终点同为默认值，副作用差异仅 .bak 生成与否
+//   （FIX006.13：原重复的 ③「alarms 本期 Vec<Value> 透传」与 ② 自相矛盾，已删并重排）
 // 关联依赖：static_config（默认值单源）/ util::file_io（原子写/转存/白名单）
 #[cfg(test)]
 mod tests {

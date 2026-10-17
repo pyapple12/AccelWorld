@@ -1,12 +1,43 @@
 //! 倒计时页（PL014.08）：hero 最近目标 + 目标卡网格 + 加号校验 + 减号
 //! 纯逻辑（校验/最近目标选取）抽离为可测函数，UI 层仅装配
 
-use crate::bus::PageId;
 use crate::glass::surface::GlassScene;
 use crate::tools::countdown::format_remaining;
+use crate::widgets::chip;
 use accel_core::types::FrontendCommand;
-use chrono::{Duration, NaiveDateTime, TimeZone};
-use tokio::sync::mpsc::Sender;
+use chrono::{Duration, NaiveDate, NaiveDateTime, TimeZone};
+
+/// hero 目标选取（纯函数，FIX006.3）：持久目标最近未到者 与 派生春节目标 取更近者
+pub fn hero_target<'a>(
+    targets: &[(&'a str, NaiveDateTime)],
+    derived: Option<(&'a str, NaiveDateTime)>,
+    now: NaiveDateTime,
+) -> Option<(&'a str, NaiveDateTime)> {
+    let best = next_target(targets, now);
+    if let Some((dn, dat)) = derived
+        && dat > now
+        && best.is_none_or(|(_, at)| dat < at)
+    {
+        return Some((dn, dat));
+    }
+    best
+}
+
+/// 派生兜底目标（PL014.07 + FIX006.3）：次年春节 00:00（UI 层派生，不落盘）
+pub fn derived_spring_festival(today: NaiveDate) -> Option<(&'static str, NaiveDateTime)> {
+    accel_core::chinese_calendar::next_spring_festival(today)
+        .and_hms_opt(0, 0, 0)
+        .map(|at| ("春节", at))
+}
+
+/// 本地时刻解析（FIX006.8）：歧义取较早一侧；不存在（DST 前跳）返 None——不静默改写目标
+pub fn local_from_naive(at: NaiveDateTime) -> Option<chrono::DateTime<chrono::Local>> {
+    match chrono::Local.from_local_datetime(&at) {
+        chrono::LocalResult::Single(d) => Some(d),
+        chrono::LocalResult::Ambiguous(earliest, _) => Some(earliest),
+        chrono::LocalResult::None => None,
+    }
+}
 
 /// 加号校验（纯函数）：距 now < 24h 拒（NotYet）、同名拒（Dup）、非法输入拒（Empty）
 pub fn validate_add(
@@ -63,11 +94,9 @@ impl crate::pages::Page for crate::pages::CountdownPage {
         &mut self,
         ui: &mut egui::Ui,
         state: &mut crate::bus::UiState,
-        cmd: &Sender<FrontendCommand>,
+        bus: &crate::bus::Bus,
         scene: &mut GlassScene,
     ) {
-        let page_rect = crate::window::content_page_rect(ui.ctx());
-        crate::window::register_page_surface(scene, PageId::Countdown, page_rect);
         // A005 #9：语义色 token（不再写字面色值）
         let ink = crate::theme::ink();
 
@@ -86,10 +115,15 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                                 targets.push((t.name.as_str(), at));
                             }
                         }
-                        // hero：最近目标大字
-                        if let Some((name, at)) = next_target(&targets, now) {
+                        // hero：最近目标大字（FIX006.3：持久目标与派生春节目标取更近者——空列表亦有兜底）
+                        let derived = derived_spring_festival(now.date());
+                        if let Some((name, at)) = hero_target(&targets, derived, now) {
                             let (text, ended) = format_remaining(at, now);
-                            ui.label(egui::RichText::new(name).size(18.0).color(ink.muted));
+                            ui.label(
+                                egui::RichText::new(name)
+                                    .size(crate::theme::font_size("heading"))
+                                    .color(ink.muted),
+                            );
                             ui.label(
                                 egui::RichText::new(&text)
                                     .size(crate::theme::font_size("hero_time"))
@@ -102,7 +136,7 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                         } else {
                             ui.label(
                                 egui::RichText::new("暂无目标 · 点右上 ＋ 添加")
-                                    .size(16.0)
+                                    .size(crate::theme::font_size("body_lg"))
                                     .color(ink.soft),
                             );
                         }
@@ -117,19 +151,39 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                                         "{name} · {}",
                                         at.format("%Y-%m-%d %H:%M")
                                     ))
-                                    .size(15.0)
+                                    .size(crate::theme::font_size("label"))
                                     .color(ink.card),
                                 );
-                                ui.label(egui::RichText::new(&text).size(15.0).color(if ended {
-                                    ink.danger
-                                } else {
-                                    ink.muted
-                                }));
+                                ui.label(
+                                    egui::RichText::new(&text)
+                                        .size(crate::theme::font_size("label"))
+                                        .color(if ended { ink.danger } else { ink.muted }),
+                                );
                                 if ui.small_button("－").clicked() {
-                                    let _ = cmd.try_send(
-                                        accel_core::types::FrontendCommand::RemoveCountdownTarget(
-                                            (*name).to_string(),
-                                        ),
+                                    bus.send(FrontendCommand::RemoveCountdownTarget(
+                                        (*name).to_string(),
+                                    ));
+                                }
+                            });
+                        }
+                        // 近期节日 chips（PL014.07 + FIX006.3：year_chips 派生取最近 6 枚，不落盘）
+                        let chips = accel_core::chinese_calendar::year_chips(now.date());
+                        if !chips.is_empty() {
+                            ui.add_space(12.0);
+                            ui.label(
+                                egui::RichText::new("近期节日")
+                                    .size(crate::theme::font_size("label"))
+                                    .color(ink.muted),
+                            );
+                            ui.horizontal(|ui| {
+                                for (d, fest) in chips.iter().take(6) {
+                                    chip::show(
+                                        ui,
+                                        scene,
+                                        &format!("festival_{d}"),
+                                        "节日",
+                                        fest,
+                                        false,
                                     );
                                 }
                             });
@@ -161,17 +215,12 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                             let valid = parsed_at.is_some();
                             if ui.add_enabled(valid, egui::Button::new("确认")).clicked()
                                 && let Some(at) = parsed_at
+                                && let Some(local) = local_from_naive(at)
                             {
-                                let local = chrono::Local
-                                    .from_local_datetime(&at)
-                                    .single()
-                                    .unwrap_or_else(chrono::Local::now);
-                                let _ = cmd.try_send(
-                                    accel_core::types::FrontendCommand::AddCountdownTarget {
-                                        name: state.countdown_draft_name.clone(),
-                                        at: local,
-                                    },
-                                );
+                                bus.send(FrontendCommand::AddCountdownTarget {
+                                    name: state.countdown_draft_name.clone(),
+                                    at: local,
+                                });
                                 state.countdown_draft_name.clear();
                                 state.countdown_draft_at.clear();
                             }
@@ -186,11 +235,74 @@ impl crate::pages::Page for crate::pages::CountdownPage {
 }
 
 // ===== src/pages/countdown.rs 说明区 =====
-// 输入：UiState.countdown_targets（后端权威列表）+ 草稿输入态；输出：hero/网格/加号
-// 逻辑步骤：parse_at 装载 → hero 最近目标（next_target）→ 网格行卡 + 减号 →
-//   加号行（validate_add 校验：空名/同名/<24h 拒）→ Add/RemoveCountdownTarget 命令
-// 设计理由：校验与最近目标选取抽纯函数（可测）；默认派生目标（春节）不落盘，
-//   天然不在 targets 列表 → 无减号（任务定案平移）
-// 已知偏移：WorldPageAlisa 占位桥待删（世界页 impl 在 world.rs 时清理）；
-//   草稿日期输入用单行文本（日期件控件未引入——A005 #25 已移除未用的 egui_extras）
-// 关联依赖：tools::countdown/settings::CountdownTarget；消费方：pages::Pages
+// 输入：UiState.countdown_targets（后端权威列表）+ 草稿输入态；输出：hero/网格/节日
+//   chips/加号（校验）+ Add/RemoveCountdownTarget 命令
+// 逻辑步骤：parse_at 装载 → hero 取「持久目标最近未到者 vs 派生春节目标」更近者
+//   （FIX006.3）→ 网格行卡 + 减号 → 近期节日 chips（year_chips 取 6）→ 加号行
+//   （validate_add：空名/同名/<24h 拒）→ 确认经 local_from_naive（FIX006.8 DST 歧义
+//   取较早一侧、不存在则不提交）后发命令
+// 设计理由：校验/最近目标/派生目标选取全抽纯函数（可测）；FIX006.3：PL014.07 的
+//   「默认派生目标 = next_spring_festival（不落盘）+ 节日 chips」在 UI 层接线，空列表
+//   亦有兜底（原实现仅显示「暂无目标」）；FIX006.2：命令统一经 bus.send（待发队列保底）
+// 已知偏移：草稿日期输入用单行文本（日期件控件未引入——A005 #25 已移除未用的 egui_extras）
+// 异常处理：非法输入/校验失败禁用确认并显示原因；DST 不存在时刻不提交（不改写目标）
+// 关联依赖：core::chinese_calendar（节日派生）/tools::countdown/settings::CountdownTarget；
+//   消费方：pages::Pages
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Datelike;
+
+    /// 常规时刻（便于构造固定 now）
+    fn at(y: i32, m: u32, d: u32, hh: u32) -> NaiveDateTime {
+        NaiveDate::from_ymd_opt(y, m, d)
+            .expect("合法日期")
+            .and_hms_opt(hh, 0, 0)
+            .expect("合法时刻")
+    }
+
+    #[test]
+    fn derived_target_present_for_empty_list() {
+        // FIX006.3 回归：空 targets 时 hero 仍有派生春节目标（原实现显示「暂无目标」）
+        let now = at(2026, 3, 1, 9);
+        let derived = derived_spring_festival(now.date());
+        let (name, dat) = derived.expect("派生目标应恒存在");
+        assert_eq!(name, "春节");
+        assert!(dat > now, "2026-03 的派生目标应为未来");
+        assert_eq!(hero_target(&[], derived, now).map(|(n, _)| n), Some("春节"));
+    }
+
+    #[test]
+    fn derived_target_rolls_to_next_year() {
+        // 跨年用例：now = 12-31 时派生目标切次年春节（PL014.07 验收点）
+        let now = at(2026, 12, 31, 9);
+        let (_, dat) = derived_spring_festival(now.date()).expect("派生目标");
+        assert!(dat > now);
+        assert_eq!(dat.date().year(), 2027, "12-31 应切次年春节");
+    }
+
+    #[test]
+    fn hero_prefers_nearer_target() {
+        // 持久目标更近取持久目标；更远取派生目标
+        let now = at(2026, 3, 1, 9);
+        let near = now + Duration::days(10);
+        assert_eq!(
+            hero_target(&[("生日", near)], derived_spring_festival(now.date()), now)
+                .map(|(n, _)| n),
+            Some("生日")
+        );
+        let far = now + Duration::days(400);
+        assert_eq!(
+            hero_target(&[("远期", far)], derived_spring_festival(now.date()), now).map(|(n, _)| n),
+            Some("春节")
+        );
+    }
+
+    #[test]
+    fn local_from_naive_never_silently_shifts() {
+        // FIX006.8 回归：常规时刻解析后与输入一致（原实现 .single().unwrap_or(now) 会静默改写）
+        let input = at(2027, 2, 6, 8);
+        let local = local_from_naive(input).expect("常规时刻应可解析");
+        assert_eq!(local.naive_local(), input, "不得改写用户所填时刻");
+    }
+}

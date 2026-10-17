@@ -20,6 +20,9 @@ pub fn format_repeat_display(repeat_days: &[i64]) -> String {
 }
 
 /// 铃声文件名文案：📁 前缀 + basename 截断 15 字符（Python format_sound_button_name 对等）
+/// FIX006.14 裁决（保留理由）：当前 UI 无铃声选择器故生产零调用；自定义铃声**播放**路径
+/// 已接线（`bus::play_alarm_sound`，扩展名白名单），本函数为 PL014 铃声按钮显示对等物，
+/// 随选择器落地即接线——保留并就地登记（非漏删）
 pub fn format_sound_button_name(path: &str) -> String {
     let base = path.rsplit(['/', '\\']).next().unwrap_or(path);
     let cut: String = base.chars().take(15).collect();

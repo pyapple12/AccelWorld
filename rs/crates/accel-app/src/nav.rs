@@ -204,7 +204,7 @@ fn paint_pill(
         let stroke = if selected {
             egui::Stroke::new(1.6, accent)
         } else {
-            egui::Stroke::new(1.0, Color32::from_rgba_premultiplied(60, 60, 60, 60))
+            egui::Stroke::new(1.0, crate::theme::color32_at("nav_pill_stroke", 60))
         };
         painter.rect_stroke(rect, rounding, stroke, egui::StrokeKind::Inside);
     }
@@ -213,7 +213,7 @@ fn paint_pill(
         rect.center(),
         egui::Align2::CENTER_CENTER,
         label,
-        egui::FontId::proportional(15.0),
+        egui::FontId::proportional(crate::theme::font_size("label")),
         text_color,
     );
 }

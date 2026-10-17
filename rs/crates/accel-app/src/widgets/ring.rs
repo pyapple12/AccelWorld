@@ -1,7 +1,7 @@
 //! 进度环控件（自绘圆弧类，PL014.03）
 //! 外弧背景 + 进度弧（accent token）+ 中心百分比；自绘圆弧留边 ≥1px 纪律平移
 
-use egui::{Color32, Pos2, Rect, Vec2};
+use egui::{Pos2, Rect, Vec2};
 
 /// 进度 → 弧度换算（纯函数）：0.0=12 点钟起顺时针 1.0=满圈；含 0/100 边界钳制
 /// 返回 (起始角, 扫过角)，单位弧度（-90° 起即 12 点方向）
@@ -41,7 +41,7 @@ pub fn draw_at(painter: &egui::Painter, rect: Rect, progress: f64, percent_text:
     painter.circle_stroke(
         center,
         arc_r,
-        egui::Stroke::new(stroke_w, Color32::from_rgba_premultiplied(70, 70, 80, 90)),
+        egui::Stroke::new(stroke_w, crate::theme::color32_at("ring_track", 70)),
     );
     // 进度弧（accent token；0 进度不画——零长度弧在部分驱动出锯齿伪影）
     // egui 0.37 无 Painter::arc——48 段折线逼近（半径 40+ 时弦差 <0.1px，观感真圆）
@@ -66,7 +66,7 @@ pub fn draw_at(painter: &egui::Painter, rect: Rect, progress: f64, percent_text:
         center,
         egui::Align2::CENTER_CENTER,
         percent_text,
-        egui::FontId::proportional(15.0),
+        egui::FontId::proportional(crate::theme::font_size("label")),
         ink.strong,
     );
 }
@@ -78,7 +78,7 @@ pub fn draw_at(painter: &egui::Painter, rect: Rect, progress: f64, percent_text:
 // 设计理由：自绘圆弧留边纪律（2026-09-12 定案）——circle 比控件 inset 2px，
 //   弧线半径再收 stroke_w/2 保证描边不触裁剪界；accent 走 token（theme::accent_color）
 // 异常处理：progress 越界钳 [0,1]；零进度跳弧（驱动伪影防御）
-// 关联配置：progress_ring_size（页面布局用 size 参数，PL015 观感轮接 token）；
+// 关联配置：progress_ring_size（调用方 layout token 取值）；
 //   消费方：pages/clock.rs 加速时间卡（PL014.05）
 #[cfg(test)]
 mod tests {

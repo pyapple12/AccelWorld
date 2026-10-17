@@ -485,6 +485,30 @@ mod config_parity {
         }
     }
 
+    /// 临时目录守卫（A005 #26 / FIX006.20）：drop 即清理——原实现为「首尾 remove_dir_all」，
+    /// 中途断言 panic 会跳过后置清理，连跑残留 %TEMP%/accel_cfgparity_*
+    struct SandboxDir(std::path::PathBuf);
+
+    impl SandboxDir {
+        fn new(tag: &str) -> SandboxDir {
+            let dir =
+                std::env::temp_dir().join(format!("accel_cfgparity_{tag}_{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).expect("临时目录创建失败");
+            SandboxDir(dir)
+        }
+
+        fn path(&self) -> &std::path::Path {
+            &self.0
+        }
+    }
+
+    impl Drop for SandboxDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     #[test]
     fn defaults_match_python() {
         // 默认值快照：Python 键子集全等（新增键 countdown_targets 为 PL014.06 演进）
@@ -535,11 +559,9 @@ mod config_parity {
     fn corrupt_backup_behavior() {
         // 损坏转存：原文进 .bak + 默认值恢复（本地临时目录复刻 Python 用例）
         let cb = &fixture()["corrupt_backup"];
-        // A005 #26：用例末尾清理临时目录（原实现反复运行残留）
-        let dir = std::env::temp_dir().join(format!("accel_cfgparity_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("临时目录创建失败");
-        let path = dir.join("user_config.json");
+        // FIX006.20：RAII 守卫（drop 即清理，panic 亦不残留）
+        let dir = SandboxDir::new("corrupt");
+        let path = dir.path().join("user_config.json");
         std::fs::write(&path, cb["in_file"].as_str().expect("in_file 应为字符串"))
             .expect("写入失败");
         let restored = settings::load(&path).to_json_value();
@@ -551,9 +573,11 @@ mod config_parity {
             bak_text,
             cb["in_file"].as_str().expect("in_file 应为字符串")
         );
-        // A005 #26：清理现场（连跑两次不留残留）
-        let _ = std::fs::remove_dir_all(&dir);
+        // 清理由 SandboxDir::drop 保证（无需显式 remove）
     }
+
+    /// 夹具清单（FIX006.26：计数/哈希结构自检的数据源）
+    const MANIFEST: &str = include_str!("../../../fixtures/manifest.json");
 
     #[test]
     fn unknown_key_ignored() {
@@ -565,6 +589,63 @@ mod config_parity {
             payload
         });
         assert_python_keys_subset(&uk["out"], &cfg.to_json_value(), "unknown_key");
+    }
+
+    #[test]
+    fn manifest_counts_match_tables() {
+        // FIX006.26：夹具清单计数断言（原实现仅逐数组遍历，counts 漂移不被捕获）
+        let m: Value = serde_json::from_str(MANIFEST).expect("manifest.json 解析失败");
+        let counts = m["counts"].as_object().expect("counts 应为对象");
+        for key in [
+            "config_dirty_cases",
+            "festival_years",
+            "festival_days",
+            "n_cities",
+            "n_tz",
+            "n_codes",
+            "n_days",
+            "n_probe",
+            "time_vectors",
+            "n_samples",
+        ] {
+            let v = counts.get(key).and_then(Value::as_i64);
+            assert!(v.is_some_and(|v| v > 0), "counts.{key} 应为正整数: {v:?}");
+        }
+        // 与真实数据面交叉核对（计数口径可证：n_cities == 天气城市表规模）
+        assert_eq!(
+            counts["n_cities"].as_i64(),
+            Some(accel_core::data::cities::all().len() as i64),
+            "n_cities 应与 data::cities 表规模一致"
+        );
+        assert_eq!(
+            counts["n_tz"].as_i64(),
+            Some(accel_core::data::timezones::all().len() as i64),
+            "n_tz 应与 data::timezones 表规模一致"
+        );
+        assert_eq!(
+            counts["n_codes"].as_i64(),
+            Some(accel_core::data::weather_codes::all().len() as i64),
+            "n_codes 应与 data::weather_codes 表规模一致"
+        );
+    }
+
+    #[test]
+    fn manifest_hashes_are_well_formed() {
+        // FIX006.26 配套：sha256 清单结构自检（64 位十六进制 + 六大夹具齐备）
+        let m: Value = serde_json::from_str(MANIFEST).expect("manifest.json 解析失败");
+        let sha = m["sha256"].as_object().expect("sha256 应为对象");
+        for name in [
+            "config_behavior.json",
+            "data_tables.json",
+            "festival_derive.json",
+            "lunar_samples.json",
+            "time_vectors.json",
+            "weather_samples.json",
+        ] {
+            let h = sha.get(name).and_then(Value::as_str).unwrap_or("");
+            assert_eq!(h.len(), 64, "{name} 的 sha256 应为 64 位十六进制");
+            assert!(h.bytes().all(|b| b.is_ascii_hexdigit()), "{name} 哈希非法");
+        }
     }
 }
 

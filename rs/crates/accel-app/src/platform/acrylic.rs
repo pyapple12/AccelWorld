@@ -1,8 +1,6 @@
 //! Acrylic 窗口背板（ui/backdrop.py 的 Rust 对等物，PL013.04）
 //! DwmSetWindowAttribute(38=SYSTEMBACKDROP_TYPE, 3=TRANSIENTWINDOW)；失败降级实底
 
-use tracing::error;
-
 // DWM 常量（Windows SDK dwmapi 头文件；属性 38 = SYSTEMBACKDROP_TYPE）
 const DWMSBT_TRANSIENTWINDOW: u32 = 3; // Acrylic（2=Mica、4=Mica Alt 均不采用）
 
@@ -12,6 +10,8 @@ const DWMSBT_TRANSIENTWINDOW: u32 = 3; // Acrylic（2=Mica、4=Mica Alt 均不�
 pub fn apply_acrylic(hwnd: isize) -> bool {
     #[cfg(windows)]
     {
+        // FIX006.28：导入随 cfg 块（非 Windows 构建不再产生 unused_imports）
+        use tracing::error;
         use windows::Win32::Foundation::HWND;
         use windows::Win32::Graphics::Dwm::{
             DWMWA_SYSTEMBACKDROP_TYPE as ATTR, DwmExtendFrameIntoClientArea, DwmSetWindowAttribute,
@@ -90,6 +90,8 @@ pub fn apply_acrylic_invalid_for_probe(hwnd: isize) -> bool {
 //   组成透明链路；失败降级实底（field.top token 由 theme 背板兜底——透明 viewport
 //   在 DWM 失败时由 egui CentralPanel 实底填充）
 // 异常处理：仅 DWM 返回码判定，不 panic；非 Windows 平台恒 false（编译期裁剪）
+// FIX006.28：`use tracing::error` 移入 `#[cfg(windows)]` 块（原置文件顶层，非 Windows
+//   构建产生 unused_imports 告警）
 // 关联依赖：windows-rs（Win32_Graphics_Dwm）；消费方：window.rs（创建后挂接）、
 //   .04 检验探针（apply_acrylic_invalid_for_probe 灵敏度验证）
 #[cfg(test)]

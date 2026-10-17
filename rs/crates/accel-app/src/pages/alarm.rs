@@ -1,23 +1,19 @@
 //! 闹钟页（PL014.14/.15）：四快捷按钮 + 自定义添加 + 列表行卡（开关/删除）
 
-use crate::bus::PageId;
 use crate::glass::surface::GlassScene;
 use crate::tools::alarm_text::format_repeat_display;
-use accel_core::alarm::quick_target;
+use accel_core::alarm::{default_sound_type, default_sound_value, quick_target};
 use accel_core::types::FrontendCommand;
 use chrono::Local;
-use tokio::sync::mpsc::Sender;
 
 impl crate::pages::Page for crate::pages::AlarmPage {
     fn ui(
         &mut self,
         ui: &mut egui::Ui,
         state: &mut crate::bus::UiState,
-        cmd: &Sender<FrontendCommand>,
-        scene: &mut GlassScene,
+        bus: &crate::bus::Bus,
+        _scene: &mut GlassScene,
     ) {
-        let page_rect = crate::window::content_page_rect(ui.ctx());
-        crate::window::register_page_surface(scene, PageId::Alarm, page_rect);
         // A005 #9：语义色 token（不再写字面色值）
         let ink = crate::theme::ink();
 
@@ -26,12 +22,16 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                 ui.add_space(crate::window::content_left_inset());
                 ui.vertical(|ui| {
                     // 四快捷按钮（分钟数读 base.json quick_alarm_minutes token）
-                    ui.label(egui::RichText::new("快捷添加").size(15.0).color(ink.muted));
+                    ui.label(
+                        egui::RichText::new("快捷添加")
+                            .size(crate::theme::font_size("label"))
+                            .color(ink.muted),
+                    );
                     ui.horizontal(|ui| {
-                        for minutes in crate::pages::quick_alarm_minutes() {
+                        for &minutes in crate::pages::quick_alarm_minutes() {
                             if ui.button(format!("＋{minutes} 分钟")).clicked() {
                                 let draft = quick_target(minutes, Local::now());
-                                let _ = cmd.try_send(FrontendCommand::AddAlarm(draft));
+                                bus.send(FrontendCommand::AddAlarm(draft));
                             }
                         }
                     });
@@ -50,16 +50,15 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                                 .desired_width(80.0),
                         );
                         if ui.button("＋ 添加").clicked() {
-                            let _ = cmd.try_send(FrontendCommand::AddAlarm(
-                                accel_core::alarm::AlarmDraft {
-                                    label: state.alarm_draft_label.clone(),
-                                    time: state.alarm_draft_time.clone(),
-                                    sound_type: "preset".into(),
-                                    sound_value: "classic".into(),
-                                    repeat_days: Vec::new(),
-                                    enabled: true,
-                                },
-                            ));
+                            // FIX006.5：默认铃声取 base.json token（不再代码侧硬编码）
+                            bus.send(FrontendCommand::AddAlarm(accel_core::alarm::AlarmDraft {
+                                label: state.alarm_draft_label.clone(),
+                                time: state.alarm_draft_time.clone(),
+                                sound_type: default_sound_type(),
+                                sound_value: default_sound_value(),
+                                repeat_days: Vec::new(),
+                                enabled: true,
+                            }));
                             state.alarm_draft_label.clear();
                             state.alarm_draft_time.clear();
                         }
@@ -74,7 +73,7 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                             // 时间大字
                             ui.label(
                                 egui::RichText::new(&alarm.time)
-                                    .size(24.0)
+                                    .size(crate::theme::font_size("alarm_time"))
                                     .color(if alarm.enabled { ink.strong } else { ink.dim }),
                             );
                             ui.label(
@@ -83,7 +82,7 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                                     alarm.label,
                                     format_repeat_display(&alarm.repeat_days)
                                 ))
-                                .size(14.0)
+                                .size(crate::theme::font_size("body"))
                                 .color(ink.muted),
                             );
                             // 开关
@@ -94,13 +93,12 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                                 )
                                 .clicked()
                             {
-                                let _ =
-                                    cmd.try_send(FrontendCommand::ToggleAlarm(alarm.id.clone()));
+                                // FIX006.2：命令统一经 bus.send（CmdQueue 待发队列保底）
+                                bus.send(FrontendCommand::ToggleAlarm(alarm.id.clone()));
                             }
                             // 删除
                             if ui.small_button("删除").clicked() {
-                                let _ =
-                                    cmd.try_send(FrontendCommand::RemoveAlarm(alarm.id.clone()));
+                                bus.send(FrontendCommand::RemoveAlarm(alarm.id.clone()));
                             }
                         });
                     }

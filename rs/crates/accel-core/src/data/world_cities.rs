@@ -1,4 +1,5 @@
-//! 统一城市表（PL012.09：世界时钟/天气多城市共用的城市检索层）
+//! 世界时钟专用城市表（50 城；PL012.09 建表，FIX006.23 澄清职责边界）
+//! 天气域城市候选另取 `data::cities`（rs/data/cities.json，17 城坐标表）——两表职责分离
 //! config/static/world_cities.json 编译期嵌入；tz 逐条经 chrono-tz 编译期类型可解析
 
 use std::sync::OnceLock;
@@ -39,6 +40,11 @@ pub fn all_names() -> Vec<&'static str> {
 /// 城市名 → IANA 时区串
 pub fn tz_of(name: &str) -> Option<&'static str> {
     by_name(name).map(|c| c.tz)
+}
+
+/// IANA 时区串 → 城市名（FIX006.1：常驻城市以 IANA 串持久化，显示时反查友好名）
+pub fn name_of_tz(tz: &str) -> Option<&'static str> {
+    all().iter().find(|c| c.tz == tz).map(|c| c.name)
 }
 
 /// 城市名 → (lat, lon) 检索（A005 #15：coords_of 生产零调用已删除——
@@ -100,5 +106,19 @@ mod tests {
         assert!(by_name("不存在城").is_none());
         let tokyo = by_name("东京").expect("东京应在表");
         assert_eq!((tokyo.lat, tokyo.lon), (35.6762, 139.6503));
+    }
+
+    #[test]
+    fn default_world_pins_resolve_to_city_names() {
+        // FIX006.1 回归：默认常驻城市为 IANA 时区串，且全表能反查出友好名
+        // （世界时钟页按 IANA 解析走时 + 反查显示名，不再按城市名检索 tz）
+        let pins = crate::static_config::Static::get().base_str_list("default_world_pins");
+        assert!(pins.len() >= 4, "默认常驻城市应有多条，实际 {}", pins.len());
+        for p in &pins {
+            assert!(p.contains('/'), "默认常驻城市应为 IANA 时区串: {p}");
+            let name = name_of_tz(p);
+            assert!(name.is_some(), "IANA 串应能反查城市名: {p}");
+            assert_ne!(name.unwrap(), *p, "反查名不应等于 IANA 串: {p}");
+        }
     }
 }

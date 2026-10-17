@@ -80,10 +80,8 @@ fn main() {
                 mismatches += 1;
             }
             println!(
-                "{} {:>2} {:>2} | {:<10} rust={:<14} py={:<14} {}",
+                "{} | {:<10} rust={:<14} py={:<14} {}",
                 d.date,
-                0,
-                0,
                 name,
                 format!("{rust:?}"),
                 format!("{expect:?}"),

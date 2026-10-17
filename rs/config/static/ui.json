@@ -3,9 +3,18 @@
   "font_family_digits": "Bahnschrift",
   "scale": {
     "hero_time": 64,
-    "city_time": 20,
     "std_time": 34,
-    "slider_value": 28
+    "slider_value": 28,
+    "alarm_time": 24,
+    "city_time": 20,
+    "heading": 18,
+    "chip_value": 16,
+    "body_lg": 16,
+    "label": 15,
+    "body": 14,
+    "meta": 12,
+    "chip_label": 12,
+    "tiny": 11
   },
   "field": {
     "dark": {
@@ -44,9 +53,9 @@
     }
   },
   "radius": {
-    "xl": 24,
     "lg": 18,
-    "md": 14
+    "md": 14,
+    "sm": 8
   },
   "layout": {
     "page_margin": [24, 24, 24, 24],
@@ -56,7 +65,8 @@
     "nav_pill_pad": 6,
     "nav_rail_margin_top": 56,
     "progress_ring_size": 88,
-    "slider_track": 24
+    "slider_track": 24,
+    "chip_size": [120, 64]
   },
   "colors": {
     "primary": "#E4B36A",
@@ -68,6 +78,10 @@
     "text_card": "#E1E6F0",
     "knob": "#F0F3FA",
     "info": "#8CAAD2",
+    "nav_pill_stroke": "#3C3C3C3C",
+    "ring_track": "#5A464650",
+    "slider_track": "#783C3C48",
+    "faint_bg": "#06060606",
     "panel_dark": "#121218",
     "window_dark": "#16161E",
     "bg_dark": "#0C0C10",

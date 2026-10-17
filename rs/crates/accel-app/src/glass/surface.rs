@@ -203,15 +203,20 @@ impl GlassScene {
 }
 
 // ===== src/glass/surface.rs 说明区 =====
-// 输入：GlassSurface 注册流（widget/导航/浮窗）；输出：draw_list（painter 消费）
-// 逻辑步骤：register 幂等替换 → set_visible/set_selected/update_geometry 原位改 →
-//   draw_list 过滤可见面按 elevation 排序
-// 设计理由：Python GlassScene 契约一比一（id 幂等注册/静默注销/无变化不置脏/
-//   elevation 绘制序）；Vec 线性检索（16 面上限内零开销且保注册序稳定）；
-//   touch→repaint_hook 直连重绘（FIX004.7 语义平移：hover 呼吸期高帧率，
-//   静态期无 touch 即零重绘）；touch_count 供探针断言 hook 生效
+// 输入：GlassSurface 注册流（widget/导航/浮窗面）；输出：surfaces()（painter 帧内栈数组
+//   消费）＋ draw_list（仅可见面按 elevation 升序——单测/探针消费）
+// 逻辑步骤：register 幂等替换（超 MAX_SURFACES 拒收并告警）→ set_visible/set_selected/
+//   set_tint_all 原位改（无变化不置脏）→ painter 收集 surfaces() 过滤可见面插入排序
+// 设计理由：Python GlassScene 契约一比一（id 幂等注册/静默注销/elevation 绘制序）；
+//   Vec 线性检索（16 面上限内零开销且保注册序稳定）；touch→repaint_hook 直连重绘
+//   （FIX004.7 语义平移：hover 呼吸期高帧率，静态期无 touch 即零重绘）；touch_count
+//   供探针断言 hook 生效
+// FIX006.14 裁决（保留理由就地登记）：unregister/update_geometry/draw_list/total_count/
+//   dirty()/clear_dirty 生产零调用，但属注册表契约 API 且被单测消费（生命周期/幂等替换/
+//   隐藏过滤/无变化不置脏/elevation 序/面上限），按"测试即契约"保留；dirty 位保留用于
+//   断言「无变化不置脏」（忙碌重绘防护的可证性），painter 已改 surfaces() 栈数组收集
 // 异常处理：全部操作无 panic 面（未知 id 静默——控件销毁竞态安全）
-// 关联依赖：egui::Rect（几何）；消费方：painter.rs（draw_list → uniforms）
+// 关联依赖：egui::Rect（几何）；消费方：painter.rs（surfaces→uniforms）、pages/nav/widgets
 #[cfg(test)]
 mod tests {
     use super::*;

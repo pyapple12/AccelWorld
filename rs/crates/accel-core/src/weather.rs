@@ -345,6 +345,10 @@ impl WeatherClient {
         ))
     }
 
+    /// 测试构造默认缓存 TTL（FIX006.21：与 base.json weather_cache_ttl 同值单处定义——
+    /// 生产 `new()` 读 token 覆盖，测试/定制构造用本常量兜底，避免双源漂移）
+    const DEFAULT_CACHE_TTL: Duration = Duration::from_secs(1800);
+
     /// 测试构造：注入 base/重试规格/超时（httpmock 桩服务用）
     pub fn custom(base: String, retry_spec: RetrySpec, timeout: Duration) -> Self {
         let client = reqwest::Client::builder()
@@ -356,7 +360,7 @@ impl WeatherClient {
             client,
             base,
             cache: Mutex::new(HashMap::new()),
-            ttl: Duration::from_secs(1800),
+            ttl: Self::DEFAULT_CACHE_TTL,
             retry_spec,
         }
     }

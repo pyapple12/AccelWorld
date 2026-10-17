@@ -97,9 +97,22 @@ impl Clock for VirtualClock {
 
 // ===== 闹钟数据模型 =====
 
-// 预设铃声类型标记（sound_type 字段取值）
+// 预设铃声类型标记（sound_type 字段取值——协议标识，与业务默认值分离）
 const SOUND_TYPE_PRESET: &str = "preset";
-const SOUND_VALUE_CLASSIC: &str = "classic";
+
+/// 默认铃声类型（base.json `default_alarm_sound_type` token；FIX006.5：不再代码侧硬编码）
+pub fn default_sound_type() -> String {
+    crate::static_config::Static::get()
+        .base_str("default_alarm_sound_type")
+        .to_string()
+}
+
+/// 默认铃声取值（base.json `default_alarm_sound_value` token；FIX006.5：不再代码侧硬编码）
+pub fn default_sound_value() -> String {
+    crate::static_config::Static::get()
+        .base_str("default_alarm_sound_value")
+        .to_string()
+}
 
 /// 闹钟实体（Python Alarm.to_dict 字段名/默认值完全一致——持久化兼容硬约束）
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -107,9 +120,9 @@ pub struct Alarm {
     pub label: String,
     /// 触发时分（"HH:MM"）
     pub time: String,
-    #[serde(default = "default_preset")]
+    #[serde(default = "default_sound_type")]
     pub sound_type: String,
-    #[serde(default = "default_classic")]
+    #[serde(default = "default_sound_value")]
     pub sound_value: String,
     /// 重复星期（0-6 周一至周日，空 = 一次性）
     #[serde(default)]
@@ -169,13 +182,13 @@ impl Alarm {
             Some(SOUND_TYPE_PRESET) | Some("custom") => {
                 obj["sound_type"].as_str().unwrap().to_string()
             }
-            _ => SOUND_TYPE_PRESET.to_string(),
+            _ => default_sound_type(),
         };
         let sound_value = obj
             .get("sound_value")
             .and_then(Value::as_str)
-            .unwrap_or(SOUND_VALUE_CLASSIC)
-            .to_string();
+            .map(String::from)
+            .unwrap_or_else(default_sound_value);
         let repeat_days_raw = match obj.get("repeat_days") {
             Some(Value::Array(arr)) => arr.clone(),
             _ => Vec::new(),
@@ -357,14 +370,6 @@ fn normalize_repeat_days(days: &[Value]) -> Vec<i64> {
         }
     }
     normalized
-}
-
-fn default_preset() -> String {
-    SOUND_TYPE_PRESET.to_string()
-}
-
-fn default_classic() -> String {
-    SOUND_VALUE_CLASSIC.to_string()
 }
 
 fn default_true() -> bool {
@@ -562,8 +567,8 @@ pub fn quick_target(minutes: i64, now: chrono::DateTime<Local>) -> AlarmDraft {
     AlarmDraft {
         label: format!("快捷 {minutes} 分钟"),
         time: format!("{:02}:{:02}", target.hour(), target.minute()),
-        sound_type: SOUND_TYPE_PRESET.to_string(),
-        sound_value: SOUND_VALUE_CLASSIC.to_string(),
+        sound_type: default_sound_type(),
+        sound_value: default_sound_value(),
         repeat_days: Vec::new(),
         enabled: true,
     }

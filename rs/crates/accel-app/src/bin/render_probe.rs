@@ -196,12 +196,18 @@ fn main() {
     slice.map_async(wgpu::MapMode::Read, move |result| {
         let _ = tx.send(result);
     });
-    let _ = device.poll(wgpu::PollType::Wait {
+    // 阻塞等待映射完成（FIX006.17：poll 结果判定 + recv 超时兜底——原实现丢弃 poll 结果
+    // 且 recv 无超时，poll 出错时探针会永久挂起）
+    if let Err(e) = device.poll(wgpu::PollType::Wait {
         submission_index: None,
         timeout: None,
-    });
-    if rx.recv().is_err() {
-        panic!("map_async 回调未到达");
+    }) {
+        panic!("device.poll 失败: {e:?}");
+    }
+    match rx.recv_timeout(std::time::Duration::from_secs(10)) {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => panic!("map_async 回调失败: {e:?}"),
+        Err(e) => panic!("map_async 回调超时未到达: {e}"),
     }
     let data: Vec<u8> = slice.get_mapped_range().expect("映射失败").to_vec();
     // slice 为 Copy 借位句柄无须显式 drop；映射在 out_buf 生命周期内有效
@@ -249,8 +255,8 @@ fn main() {
         );
         failures += !pass as i32;
     }
-    // 断言 3 rim 增量：峰值在面内侧 ~1.3px（abs(-d-0.002)，卡片顶缘像素 y=290）
-    // 采样 rim 峰 (320,288) vs 面外 6px 基线 (320,296)
+    // 断言 3 rim 增量：峰值在卡片**底缘内侧 ~2px**（card rect y∈[190,290]，y=288 距底缘 2px）
+    // 采样 rim 峰 (320,288) vs 底缘外 6px 基线 (320,296)
     {
         let rim = px(320, 288);
         let far = px(320, 296);

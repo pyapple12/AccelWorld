@@ -1,12 +1,10 @@
 //! 时钟页（ui/panels/clock_panel.py + date_panel 的 Rust 对等物，PL014.05）
 //! 标准时计卡 + 加速时间卡（hero + 进度环）+ 倍率卡（滑杆）+ 农历 chips 行
 
-use crate::bus::PageId;
 use crate::glass::surface::GlassScene;
 use crate::tools::clock::split_lunar_info;
 use crate::widgets::{chip, ring, slider};
 use accel_core::types::FrontendCommand;
-use tokio::sync::mpsc::Sender;
 
 impl crate::pages::Page for crate::pages::ClockPage {
     /// 三卡一 chips 行装配（PL014.05）：全部数据取 UiState Tick 快照，零后端直查
@@ -14,11 +12,9 @@ impl crate::pages::Page for crate::pages::ClockPage {
         &mut self,
         ui: &mut egui::Ui,
         state: &mut crate::bus::UiState,
-        cmd: &Sender<FrontendCommand>,
+        bus: &crate::bus::Bus,
         scene: &mut GlassScene,
     ) {
-        let page_rect = crate::window::content_page_rect(ui.ctx());
-        crate::window::register_page_surface(scene, PageId::Clock, page_rect);
         // A005 #9：语义色 token（不再写字面色值）
         let ink = crate::theme::ink();
 
@@ -32,7 +28,7 @@ impl crate::pages::Page for crate::pages::ClockPage {
                         if let Some(info) = &state.time {
                             ui.heading(
                                 egui::RichText::new(&info.chinese_date)
-                                    .size(18.0)
+                                    .size(crate::theme::font_size("heading"))
                                     .color(ink.muted),
                             );
                             ui.add_space(4.0);
@@ -43,8 +39,10 @@ impl crate::pages::Page for crate::pages::ClockPage {
                             );
                             ui.add_space(16.0);
                             // 加速时间卡：hero 大字 + 进度环（已过占比）
+                            // FIX006.27：day_hours 理论可为 0（rate 派生）——分母钳制防除零
                             let passed = 1.0
-                                - (info.remaining_hours / info.day_hours as f64).clamp(0.0, 1.0);
+                                - (info.remaining_hours / info.day_hours.max(1) as f64)
+                                    .clamp(0.0, 1.0);
                             ui.horizontal(|ui| {
                                 ui.label(
                                     egui::RichText::new(&info.custom_time)
@@ -63,7 +61,7 @@ impl crate::pages::Page for crate::pages::ClockPage {
                                     "一天 {} 小时 · 剩余 {:.2} 小时",
                                     info.day_hours, info.remaining_hours
                                 ))
-                                .size(14.0)
+                                .size(crate::theme::font_size("body"))
                                 .color(ink.soft),
                             );
                         }
@@ -80,21 +78,25 @@ impl crate::pages::Page for crate::pages::ClockPage {
                         );
                         let (min, max) = state.rate_bounds;
                         let mut rate = state.rate;
-                        let tx_change = cmd.clone();
-                        let tx_commit = cmd.clone();
+                        // FIX006.2：回调只登记意图，落回本帧统一经 bus.send 出口
+                        // （走 CmdQueue 待发队列——通道满不丢命令）
+                        let mut set_rate: Option<f64> = None;
+                        let mut apply_rate: Option<f64> = None;
                         slider::show(
                             ui,
                             crate::theme::layout_i64("slider_track") as f32,
                             min,
                             max,
                             &mut rate,
-                            move |r| {
-                                let _ = tx_change.try_send(FrontendCommand::SetRate(r));
-                            },
-                            move |r| {
-                                let _ = tx_commit.try_send(FrontendCommand::ApplyRate(r));
-                            },
+                            |r| set_rate = Some(r),
+                            |r| apply_rate = Some(r),
                         );
+                        if let Some(r) = set_rate {
+                            bus.send(FrontendCommand::SetRate(r));
+                        }
+                        if let Some(r) = apply_rate {
+                            bus.send(FrontendCommand::ApplyRate(r));
+                        }
                         // 滑杆本地值立即回写（拖动期间 Tick 快照不回刷旧值）
                         state.rate = rate;
                         ui.add_space(16.0);
@@ -115,10 +117,13 @@ impl crate::pages::Page for crate::pages::ClockPage {
 
 // ===== src/pages/clock.rs 说明区 =====
 // 输入：UiState（Tick 快照：时间/倍率域）；输出：三卡一 chips 装配 + SetRate/ApplyRate
-// 逻辑步骤：页卡面注册 → 标准时计（日期+走秒）→ 加速 hero + 进度环（已过占比）→
-//   倍率滑杆（拖动 SetRate 实时/松手 ApplyRate 落盘）→ 农历三 chips（split 三段）
+// 逻辑步骤：页卡面注册（容器统一，页内不再重复）→ 标准时计（日期+走秒）→ 加速 hero +
+//   进度环（已过占比，分母 day_hours.max(1) 防除零）→ 倍率滑杆（拖动 SetRate 实时/
+//   松手 ApplyRate 落盘，回调登记后统一经 bus.send 出口）→ 农历三 chips（split 三段）
 // 设计理由：Python clock_panel+date_panel 合并（数据同源 TimeInfo）；滑杆值本地
 //   立即回写（拖动期间 Tick 快照回刷旧值问题——本地态优先，RateChanged 事件后由
 //   后端权威值校准）；进度环显示已过占比（对齐 hero 语义）
+// FIX006.2：命令一律经 bus.send（CmdQueue 待发队列保底，满载不丢）；FIX006.27：
+//   day_hours 理论可为 0（rate 派生），分母钳制
 // 异常处理：time 为 None（首 Tick 前）时间两卡跳过不崩
 // 关联依赖：widgets（ring/slider/chip）/tools::clock；消费方：pages::Pages

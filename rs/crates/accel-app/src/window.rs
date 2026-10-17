@@ -37,7 +37,6 @@ pub struct AppHandle {
     pub scene: GlassScene,
     pub nav: NavRail,
     pub pages: Pages,
-    pub settings_pop: crate::pages::SettingsPop,
     start_time: std::time::Instant,
     pipeline_attached: bool,
     /// Acrylic 挂接一次性标记（.04）
@@ -109,13 +108,8 @@ impl eframe::App for AppHandle {
         self.sync_page_visibility();
         let accent = crate::theme::accent_rgba();
         self.nav.ui(&ctx, &mut self.state, &mut self.scene, accent);
-        self.pages.ui(
-            ui,
-            &mut self.state,
-            &self.bus,
-            &mut self.scene,
-            &mut self.settings_pop,
-        );
+        self.pages
+            .ui(ui, &mut self.state, &self.bus, &mut self.scene);
         self.paint_settings_pop(&ctx);
 
         // 重绘节奏：Tick 间隔（空闲 1s 兜底）——零忙转纪律
@@ -175,6 +169,9 @@ impl AppHandle {
             match self.exit_save_started {
                 None => {
                     self.exit_save_started = Some(std::time::Instant::now());
+                    // FIX006.6：先复位历史回执——否则会话内任一次保存成功即令 exit_ready
+                    // 立即为真，本次 SaveNow 的回执等待被短路（等价原「SaveNow 后立即 Close」）
+                    self.state.save_ack = false;
                     self.bus.send(FrontendCommand::SaveNow);
                     return;
                 }
@@ -282,22 +279,19 @@ impl AppHandle {
         };
         if !self.pipeline_attached {
             let mut renderer = rs.renderer.write();
-            let ok = attach_pipeline(
+            // FIX006.7：管线构造恒成功路径——真实错误由 wgpu uncaptured_error 处理器
+            // 记日志（不 panic）；降级面 = 无 wgpu render state（上方早退分支）
+            attach_pipeline(
                 &rs.device,
                 rs.target_format,
                 &mut renderer.callback_resources,
             );
             drop(renderer);
-            if let Err(e) = ok {
-                tracing::error!("玻璃管线构造失败，降级纯色背板: {e}");
-                self.pipeline_attached = false;
-            } else {
-                self.pipeline_attached = true;
-                // touch → repaint 直连（FIX004.7 平移）：hook 持 ctx 弱引用
-                let ctx_weak = ctx.clone();
-                self.scene
-                    .set_repaint_hook(Some(Box::new(move || ctx_weak.request_repaint())));
-            }
+            self.pipeline_attached = true;
+            // touch → repaint 直连（FIX004.7 平移）：hook 持 ctx 弱引用
+            let ctx_weak = ctx.clone();
+            self.scene
+                .set_repaint_hook(Some(Box::new(move || ctx_weak.request_repaint())));
         }
         // 场景几何 → uniforms → 全屏回调
         let pixels_per_point = ctx.pixels_per_point();
@@ -592,6 +586,13 @@ pub fn run_with_counter(
             let bus =
                 tokio::task::block_in_place(|| Bus::spawn_on(Arc::clone(&iface), &rt_for_app));
 
+            // FIX006.4：冷启动天气首拉——core spawn 首帧只推 Tick，不推天气；装配期按
+            // 持久化的 last_city 拉一次（否则天气页在用户手动刷新前整段空白）
+            bus.send(FrontendCommand::RefreshWeather {
+                city: state.prefs.last_city.clone(),
+                force: false,
+            });
+
             // 平台集成（PL015.01/.02）：托盘 + 全局热键（主线程创建，winit 泵消息；
             // 失败降级 None 继续运行——无托盘/热键环境行为无损）
             let tray = match crate::platform::tray::TrayHandles::new() {
@@ -616,7 +617,6 @@ pub fn run_with_counter(
                 scene: GlassScene::new(),
                 nav: NavRail::new(),
                 pages: Pages::new(),
-                settings_pop: crate::pages::SettingsPop::default(),
                 start_time: std::time::Instant::now(),
                 pipeline_attached: false,
                 acrylic_applied: false,

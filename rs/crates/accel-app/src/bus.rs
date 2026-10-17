@@ -350,12 +350,8 @@ impl Bus {
         n
     }
 
-    /// 命令出口克隆（页/子部件需要独立 Sender 时；主出口仍走 send()）
-    pub fn cmd_tx(&self) -> Sender<FrontendCommand> {
-        self.cmd.tx.clone()
-    }
-
     // 启动期偏好快照（A005 #15：生产零调用已删除——装配期用 `iface.get_ui_preferences()`）
+    // FIX006.2：原 cmd_tx()（裸 Sender 出口，绕过 CmdQueue 待发队列）已删除——页面统一经 bus.send
 }
 
 /// 闹钟铃声分发（Python play_preset_sound/play_custom_sound 分支对等）：

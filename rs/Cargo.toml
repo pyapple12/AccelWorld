@@ -27,7 +27,7 @@ eframe = { version = "0.37.0", default-features = false, features = ["default_fo
 egui = "0.37.0"
 pollster = "1.0.1"
 image = { version = "0.25.10", default-features = false, features = ["png"] }
-windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_UI_WindowsAndMessaging", "Win32_UI_Controls"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_UI_Controls"] }
 # 与 eframe 0.37 内部 wgpu 同版（30.x）——render_probe 离屏断言复用同一 WGSL
 wgpu = "30.0.1"
 # A005 #25：egui-wgpu 原直写在 crate 内，收归 workspace 统一版本表

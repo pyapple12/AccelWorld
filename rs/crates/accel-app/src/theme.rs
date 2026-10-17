@@ -1,6 +1,9 @@
 //! 主题设计系统（Python qss/token 体系的 Rust 对等物，PL013.08）
 //! Theme 装载 ui.json 全 token → egui Visuals 深浅两套 apply；色值 #AARRGGBB 解析
 
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
 use accel_core::static_config::Static;
 use egui::{Color32, Context, Visuals};
 use serde_json::Value;
@@ -115,26 +118,36 @@ impl Theme {
 
     /// 生效态玻璃提亮（ui.json glass.{mode}.gl_lift，0-255 → 0..1；缺键兜底 0.10）
     /// A005 #5 修正：原读不存在的 /glass/gl_lift 恒走兜底，且深浅不分
+    /// FIX006.10：按 mode 键缓存（背板每帧两次调用零解析开销）
     pub fn glass_lift(&self) -> f32 {
-        let ptr = format!("/glass/{}/gl_lift", self.mode());
-        Static::get()
-            .ui
-            .pointer(&ptr)
-            .and_then(Value::as_f64)
-            .map(|v| (v / 255.0) as f32)
-            .unwrap_or(0.10)
+        static C: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();
+        let mode = self.mode();
+        cached(&C, mode, || {
+            let ptr = format!("/glass/{mode}/gl_lift");
+            Static::get()
+                .ui
+                .pointer(&ptr)
+                .and_then(Value::as_f64)
+                .map(|v| (v / 255.0) as f32)
+                .unwrap_or(0.10)
+        })
     }
 
     /// 生效态玻璃 tint（ui.json glass.{mode}.gl_tint 的 rgb 0..1；解析失败兜底深色值）
+    /// FIX006.10：按 mode 键缓存
     pub fn glass_tint(&self) -> [f32; 3] {
-        let ptr = format!("/glass/{}/gl_tint", self.mode());
-        Static::get()
-            .ui
-            .pointer(&ptr)
-            .and_then(Value::as_str)
-            .and_then(parse_aarrggbb)
-            .map(|c| [c[0], c[1], c[2]])
-            .unwrap_or([0.16, 0.14, 0.20])
+        static C: OnceLock<Mutex<HashMap<String, [f32; 3]>>> = OnceLock::new();
+        let mode = self.mode();
+        cached(&C, mode, || {
+            let ptr = format!("/glass/{mode}/gl_tint");
+            Static::get()
+                .ui
+                .pointer(&ptr)
+                .and_then(Value::as_str)
+                .and_then(parse_aarrggbb)
+                .map(|c| [c[0], c[1], c[2]])
+                .unwrap_or([0.16, 0.14, 0.20])
+        })
     }
 
     /// 应用到 egui 上下文：双主题并存体系（0.37）——深浅各自 set_visuals_of +
@@ -157,13 +170,13 @@ fn dark_visuals() -> Visuals {
     v.panel_fill = color32_at("panel_dark", 18);
     v.window_fill = color32_at("window_dark", 22);
     v.extreme_bg_color = color32_at("bg_dark", 12);
-    v.faint_bg_color = Color32::from_white_alpha(6);
+    v.faint_bg_color = color32_at("faint_bg", 6);
     v.override_text_color = Some(color32_at("text_strong", 235));
     v.widgets.noninteractive.fg_stroke.color = color32_at("text_strong", 235);
     v.selection.stroke.color = color32_at("selection_dark", 25);
     v.window_corner_radius = corner(radius_px("lg") as u8);
     v.menu_corner_radius = corner(radius_px("md") as u8);
-    widget_rounding(&mut v, corner(8));
+    widget_rounding(&mut v, corner(radius_px("sm") as u8));
     v
 }
 
@@ -177,7 +190,7 @@ fn light_visuals() -> Visuals {
     v.widgets.noninteractive.fg_stroke.color = color32_at("text_light", 35);
     v.window_corner_radius = corner(radius_px("lg") as u8);
     v.menu_corner_radius = corner(radius_px("md") as u8);
-    widget_rounding(&mut v, corner(8));
+    widget_rounding(&mut v, corner(radius_px("sm") as u8));
     v
 }
 
@@ -193,9 +206,30 @@ fn corner(px: u8) -> egui::epaint::CornerRadius {
     egui::epaint::CornerRadius::same(px)
 }
 
-/// 字号 token → 逻辑点（scale.{key}：hero_time/page_title/city_time/std_time/slider_value）
+/// 字号 token → 逻辑点（scale.{key}：hero_time/city_time/std_time/slider_value/
+/// heading/body_lg/label/body/meta/tiny/alarm_time/chip_label/chip_value）
+/// FIX006.10：结果缓存（键为编译期字面量，值编译期嵌入 —— 运行期恒定）
 pub fn font_size(key: &str) -> f32 {
-    Static::get().ui_nested_i64("scale", key) as f32
+    static C: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();
+    cached(&C, key, || Static::get().ui_nested_i64("scale", key) as f32)
+}
+
+/// 键值 token 缓存（FIX006.10）：消除每帧 pointer 解析与键串分配
+fn cached<T: Clone + 'static>(
+    cache: &'static OnceLock<Mutex<HashMap<String, T>>>,
+    key: &str,
+    load: impl FnOnce() -> T,
+) -> T {
+    let mut m = cache
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .expect("token 缓存锁中毒");
+    if let Some(v) = m.get(key) {
+        return v.clone();
+    }
+    let v = load();
+    m.insert(key.to_string(), v.clone());
+    v
 }
 
 /// 选中强调色（colors.primary token，非预乘 rgba——GL u_accent 与导航描边/文字单源）
@@ -227,27 +261,33 @@ pub struct Ink {
 }
 
 /// colors.{key} → Color32（#RRGGBB / #AARRGGBB 均收；缺键/非法回退灰度兜底）
+/// FIX006.10：结果缓存（token 编译期嵌入，运行期恒定）
 pub fn color32_at(key: &str, fallback_gray: u8) -> Color32 {
-    let ptr = format!("/colors/{key}");
-    Static::get()
-        .ui
-        .pointer(&ptr)
-        .and_then(Value::as_str)
-        .and_then(parse_aarrggbb)
-        .map(|c| {
-            Color32::from_rgba_premultiplied(
-                (c[0] * 255.0) as u8,
-                (c[1] * 255.0) as u8,
-                (c[2] * 255.0) as u8,
-                (c[3] * 255.0) as u8,
-            )
-        })
-        .unwrap_or(Color32::from_gray(fallback_gray))
+    static C: OnceLock<Mutex<HashMap<String, Color32>>> = OnceLock::new();
+    cached(&C, key, || {
+        let ptr = format!("/colors/{key}");
+        Static::get()
+            .ui
+            .pointer(&ptr)
+            .and_then(Value::as_str)
+            .and_then(parse_aarrggbb)
+            .map(|c| {
+                Color32::from_rgba_premultiplied(
+                    (c[0] * 255.0) as u8,
+                    (c[1] * 255.0) as u8,
+                    (c[2] * 255.0) as u8,
+                    (c[3] * 255.0) as u8,
+                )
+            })
+            .unwrap_or(Color32::from_gray(fallback_gray))
+    })
 }
 
 /// 装载语义色（colors.* 逐键；缺键/非法回退灰度兜底，仅防御路径）
+/// FIX006.10：整组一次装载后缓存（每页每帧多次调用零解析开销）
 pub fn ink() -> Ink {
-    Ink {
+    static CACHE: OnceLock<Ink> = OnceLock::new();
+    *CACHE.get_or_init(|| Ink {
         strong: color32_at("text_strong", 235),
         muted: color32_at("text_muted", 200),
         soft: color32_at("text_soft", 170),
@@ -256,17 +296,42 @@ pub fn ink() -> Ink {
         knob: color32_at("knob", 240),
         danger: color32_at("danger", 228),
         info: color32_at("info", 140),
-    }
+    })
 }
 
-/// 数值型 layout token（A005 #9：进度环径/滑轨高等几何参数单源）
+/// 数值型 layout token（A005 #9：进度环径/滑轨高等几何参数单源；FIX006.10 缓存）
 pub fn layout_i64(key: &str) -> i64 {
-    Static::get().ui_nested_i64("layout", key)
+    static C: OnceLock<Mutex<HashMap<String, i64>>> = OnceLock::new();
+    cached(&C, key, || Static::get().ui_nested_i64("layout", key))
 }
 
-/// 页面圆角（ui.json radius.lg；A005 #9：页卡/浮窗圆角单源）
+/// 双值 layout token（如 chip_size [w,h]；缺键回退入参；FIX006.10 缓存）
+pub fn layout_vec2(key: &str, fallback: [f32; 2]) -> [f32; 2] {
+    static C: OnceLock<Mutex<HashMap<String, [f32; 2]>>> = OnceLock::new();
+    cached(&C, key, || {
+        Static::get()
+            .ui
+            .pointer(&format!("/layout/{key}"))
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                let mut out = fallback;
+                for (i, slot) in out.iter_mut().enumerate() {
+                    if let Some(v) = a.get(i).and_then(|x| x.as_f64()) {
+                        *slot = v as f32;
+                    }
+                }
+                out
+            })
+            .unwrap_or(fallback)
+    })
+}
+
+/// 页面圆角（ui.json radius.*；A005 #9：页卡/浮窗圆角单源；FIX006.10 缓存）
 pub fn radius_px(key: &str) -> f32 {
-    Static::get().ui_nested_i64("radius", key) as f32
+    static C: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();
+    cached(&C, key, || {
+        Static::get().ui_nested_i64("radius", key) as f32
+    })
 }
 
 /// 强调色 Color32 形态（egui 矢量描边/文字用；非预乘 → 预乘换算；A005 #23 同源缓存）
@@ -316,12 +381,16 @@ pub fn parse_aarrggbb(text: &str) -> Option<[f32; 4]> {
 }
 
 // ===== src/theme.rs 说明区 =====
-// 输入：ui.json field/scale 等 token；输出：FieldTokens（渲染 uniforms 源）+ Visuals 应用
+// 输入：ui.json field/scale/colors/radius/layout/glass 等 token；输出：FieldTokens
+//   （渲染 uniforms 源）+ Visuals 应用 + 语义色/字号/几何取值
 // 逻辑步骤：load（#AARRGGBB 解析 + 嵌套 f64 取值）→ active()（三态）→ apply(ctx)
 // 设计理由：Python 版主题三件（qss 深浅、field 渐变光场、gl_lift）在 Rust 拆为
 //   theme.rs（Visuals/文字色）与 glass uniform 源（FieldTokens 直传 painter）；
 //   三态偏好经 SetTheme 命令持久化（interface 已接线），Theme::pref 由 UiState 回推重建
-// 异常处理：token 缺键由 static_config panic（启动期暴露）；色值非法降级透明
+// FIX006.10：token 取值全部经 `cached` 键缓存（accent/ink/字号/几何/语义色/glass lift/tint）
+//   ——键为编译期字面量、值为编译期嵌入配置，运行期恒定，消除每帧 pointer 解析与键串分配
+// FIX006.5：语义色（nav 描边/环轨/滑轨/淡底）与字号档位全部取自 token，控件不再写字面值
+// 异常处理：token 缺键由 static_config panic（启动期暴露）；色值非法降级透明/灰度
 //   （field 域全键齐备，防御路径）
 // 关联配置：ui.json field.*（dark/light 全键）；消费方：window.rs（apply/传 token）、
 //   glass/painter.rs（FieldTokens → uniforms）

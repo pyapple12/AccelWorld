@@ -60,20 +60,19 @@ impl CallbackTrait for GlassFrame {
     }
 }
 
-/// 构造管线（frame 首帧 wgpu_render_state 可用时调用一次）
-/// A005 #14 修正：以 wgpu error scope 捕获校验/编译错误并转 Err——
-/// 调用方据此降级纯色背板（原实现无 Err 路径，"失败降级"承诺不可达且会走
-/// wgpu uncaptured error 默认 panic）
+/// 构造管线（frame 首帧 wgpu_render_state 可用时调用一次；已构造则早退）
+/// FIX006.7：真实错误经 wgpu uncaptured_error 处理器记日志（不 panic）——本函数恒成功，
+/// 降级面 = 「无 wgpu render state」（window.rs 早退分支走纯色背板）
 pub fn attach_pipeline(
     device: &wgpu::Device,
     target_format: wgpu::TextureFormat,
     resources: &mut egui_wgpu::CallbackResources,
-) -> Result<(), String> {
+) {
     if resources
         .get::<GlassResources>()
         .is_some_and(|r| r.pipeline.is_some())
     {
-        return Ok(());
+        return;
     }
     // TypeMap 首次挂载：条目不存在则插入（否则尾部 get_mut panic——真窗首帧实证）
     if resources.get::<GlassResources>().is_none() {
@@ -155,7 +154,6 @@ pub fn attach_pipeline(
         uniform_buf,
         bind_group,
     });
-    Ok(())
 }
 
 /// 场景 → uniforms 打包（uv 换算：像素 rect / 画布尺寸，y 翻底原点）
@@ -237,7 +235,8 @@ pub fn push_paint_callback(painter: &egui::Painter, uniforms: GlassUniforms) {
 //   管线挂 CallbackResources 惰性构造一次（eframe wgpu_render_state 就绪后）；
 //   回调数据仅 1.2KB uniforms 快照（Send+Sync 安全克隆，场景本体不跨线程）；
 //   uv y 翻转在 uniforms 组装端完成（wgpu 帧原点左上），shader 保持 GL 语义逐行
-// 异常处理：attach_pipeline 编译失败返 Err 由调用方降级纯色（GL 失败降级纪律）；
+// 异常处理：管线错误走 wgpu uncaptured_error 处理器（日志不 panic，FIX006.7 后本函数
+//   无 Result）；降级面 = 无 wgpu render state（window.rs 早退走纯色背板）；
 //   paint 缺资源静默跳过（竞态防御）
 // 已知偏移：①blend 用 wgpu PREMULTIPLIED_ALPHA_BLENDING（对齐预乘输出）；
 //   ②重绘调度（touch→request_repaint）由 window.rs 注入 hook，painter 只负责绘制

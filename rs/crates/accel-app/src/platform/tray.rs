@@ -2,7 +2,9 @@
 //! tray-icon + muda：菜单树（显示/隐藏/分隔/当前倍率[禁用]/退出）+ 左键双击还原
 //! 事件经 muda 全局通道（主线程 winit 消息泵驱动），window 每帧 drain → TrayCommand
 
+#[cfg(windows)]
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
+#[cfg(windows)]
 use tray_icon::{MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
 // 菜单项 id（command_for 映射契约；倍率只读项无命令语义）
@@ -12,6 +14,7 @@ pub const ID_RATE: &str = "rate";
 pub const ID_QUIT: &str = "quit";
 
 // 托盘图标（32×32 品牌金时钟环，rs/assets/accelworld-tray.png，gen_icon 产物）
+#[cfg(windows)]
 const TRAY_PNG: &[u8] = include_bytes!("../../../../assets/accelworld-tray.png");
 
 /// 托盘命令（菜单/双击事件归一后的窗口意图）
@@ -35,6 +38,7 @@ pub fn command_for(id: &str) -> Option<TrayCommand> {
 
 /// 托盘句柄集（TrayIcon 保活 + 倍率菜单文本更新入口）
 /// 全部在主线程创建与调用（winit 事件循环泵消息，无须独立线程）
+#[cfg(windows)]
 pub struct TrayHandles {
     _tray: TrayIcon,
     rate_item: MenuItem,
@@ -42,6 +46,7 @@ pub struct TrayHandles {
     last_tooltip: std::cell::RefCell<String>,
 }
 
+#[cfg(windows)]
 impl TrayHandles {
     /// 构造托盘 + 菜单树（失败上抛由调用方降级——无托盘环境行为无损）
     pub fn new() -> Result<Self, String> {
@@ -110,12 +115,32 @@ impl TrayHandles {
 }
 
 /// 解码内嵌 PNG → 托盘 Icon（image crate 解 32×32 直通 RGBA）
+#[cfg(windows)]
 fn tray_icon() -> Result<tray_icon::Icon, String> {
     let img = image::load_from_memory(TRAY_PNG)
         .map_err(|e| format!("{e}"))?
         .into_rgba8();
     let (w, h) = img.dimensions();
     tray_icon::Icon::from_rgba(img.into_raw(), w, h).map_err(|e| format!("{e}"))
+}
+
+/// 非 Windows 编译期桩（FIX006.28）：平台能力不可用——构造即 Err，
+/// window 侧按「托盘降级」路径运行（行为无损：无托盘即关闭按钮直退）
+#[cfg(not(windows))]
+pub struct TrayHandles;
+
+#[cfg(not(windows))]
+impl TrayHandles {
+    /// 非 Windows 无系统托盘（上抛由调用方降级——与 Windows 侧失败同形）
+    pub fn new() -> Result<Self, String> {
+        Err("非 Windows 平台不支持系统托盘".to_string())
+    }
+
+    pub fn set_status(&self, _rate: f64, _tooltip: &str) {}
+
+    pub fn poll(&self) -> Vec<TrayCommand> {
+        Vec::new()
+    }
 }
 
 // ===== src/platform/tray.rs 说明区 =====
@@ -126,11 +151,14 @@ fn tray_icon() -> Result<tray_icon::Icon, String> {
 // 设计理由：Python QSystemTrayIcon 对等（菜单结构/双击还原/悬停文本逐项对齐）；
 //   主线程创建（winit 泵消息）省独立线程与消息泵——托盘隐藏窗口消息由 eframe
 //   事件循环统一分发；command_for 纯函数化使命令映射可单测（无须真实托盘）
+// FIX006.28：模块按 cfg 分档——tray-icon/muda 仅在 Windows 依赖（见 Cargo.toml
+//   [target.'cfg(windows)'.dependencies]），非 Windows 走编译期桩（new 返 Err →
+//   与 Windows 侧构造失败同形的降级路径）；ID_*/TrayCommand/command_for 纯逻辑不分档
 // 异常处理：图标解码/菜单构建/托盘创建失败全部上抛 → window 降级无托盘运行
 //   （对齐 Python 托盘可选语义）；set_tooltip 失败静默（外观层不影响行为）
 // 已知偏移：①Python 左键单击弹出菜单，本版对齐 plan A 改右键弹菜单+双击还原
-//   （plan「托盘菜单树」定案）；②通知时长由 WinRT toast 自管（token 已删，A005 #8）
-//   ——WinRT toast 自管时长，token 留 base.json 不删（Python showMessage 遗产）
+//   （plan「托盘菜单树」定案）；②通知时长由 WinRT toast 自管（notification_duration_ms
+//   token 已于 A005 #8 从 base.json 删除——原「token 留 base.json 不删」句已订正）
 // 关联配置：default_rate（菜单初始文本）/版本（初始 tooltip）；消费方：window.rs
 #[cfg(test)]
 mod tests {
