@@ -57,3 +57,11 @@ mod tests {
         assert!(by_iana("Mars/Olympus").is_none());
     }
 }
+
+// ===== src/data/timezones.rs 说明区 =====
+// 输入：rs/data/timezones.json（编译期嵌入，8 时区与 Python TIMEZONES 展示序一致）
+// 输出：all()/by_iana()/iana_list() 检索（世界时钟下拉与配置校验共用）
+// 逻辑步骤：OnceLock 惰性解析 → 线性查找（显示名含 DST 双档标注，E12 修正延续）
+// 设计理由：时区表外置复用（Python FIX002.15 同因）；巴黎双档显示名测试锚定
+// 异常处理：JSON 解析失败 expect 快速失败（嵌入产物损坏级）
+// 关联配置：rs/data/timezones.json；消费方：interface 时区域（get_timezone_options）

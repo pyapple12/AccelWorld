@@ -306,12 +306,13 @@ impl AppInterface {
         let (sd_tx, sd_rx) = tokio::sync::watch::channel(false);
 
         // 闹钟调度任务：固定周期轮询（去重由 manager 同分钟键保证）
+        // panic 监控包裹：join Err 记 error 不静默（PL013.12 检验项）
         {
             let itf = Arc::clone(&self);
             let evt_tx = evt_tx.clone();
             let clock = Arc::clone(&clock);
             let mut sd_rx = sd_rx.clone();
-            tokio::spawn(async move {
+            let handle = tokio::spawn(async move {
                 let check_ms = Static::get().base_i64("alarm_check_ms").max(1) as u64;
                 loop {
                     tokio::select! {
@@ -339,9 +340,15 @@ impl AppInterface {
                     }
                 }
             });
+            tokio::spawn(async move {
+                if let Err(e) = handle.await {
+                    tracing::error!("闹钟调度任务 panic 中止: {e}");
+                }
+            });
         }
 
-        tokio::spawn(async move {
+        // 主循环任务（panic 监控包裹：join Err 记 error 不静默——PL013.12 检验项）
+        let main_handle = tokio::spawn(async move {
             loop {
                 let period = Duration::from_millis(self.get_tick_interval_ms().max(1) as u64);
                 tokio::select! {
@@ -453,6 +460,12 @@ impl AppInterface {
                 }
             }
         });
+        // 主循环 panic 监控（join Err 记 error 不静默）
+        tokio::spawn(async move {
+            if let Err(e) = main_handle.await {
+                tracing::error!("命令主循环任务 panic 中止: {e}");
+            }
+        });
         (cmd_tx, evt_rx)
     }
 }
@@ -504,7 +517,7 @@ mod tests {
         assert_eq!(itf.get_rate(), 2.0);
         assert_eq!(AppInterface::get_rate_bounds(), (1.0, 20.0));
         assert_eq!(AppInterface::get_weather_refresh_interval_ms(), 1_800_000);
-        assert_eq!(AppInterface::get_version(), "0.6.0.1");
+        assert_eq!(AppInterface::get_version(), "0.6.0.2");
     }
 
     #[test]

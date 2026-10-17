@@ -40,6 +40,8 @@ dist/
 
 # Log files
 *.log
+# 运行时日志目录整忽略（tracing_appender 命名 accel-.log.日期 逃逸 *.log 规则）
+logs/
 
 # Claude Code
 .claude/

@@ -8,6 +8,27 @@ description = "AccelWorld egui 前端：窗口/玻璃渲染/六页导航/系统�
 
 [dependencies]
 accel-core = { path = "../accel-core" }
+serde_json = { workspace = true }
+eframe = { workspace = true }
+egui = { workspace = true }
+egui_extras = { workspace = true }
+pollster = { workspace = true }
+image = { workspace = true }
+chrono = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
+wgpu = { workspace = true }
+egui-wgpu = "0.37.0"
+raw-window-handle = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true }
+
+[[bin]]
+name = "render_probe"
+path = "src/bin/render_probe.rs"
 
 # ===== crates/accel-app/Cargo.toml 说明区 =====
 # version = "0.6.0"：对齐产品版本段 0.6.0.0（semver 三段上限）

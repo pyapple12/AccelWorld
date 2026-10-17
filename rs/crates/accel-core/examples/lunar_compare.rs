@@ -125,3 +125,12 @@ fn main() {
         picked.len()
     );
 }
+
+// ===== examples/lunar_compare.rs 说明区 =====
+// 输入：rs/fixtures/lunar_samples.json（365 天期望值）；输出：stdout 每字段一行比对
+// 逻辑步骤：代表日抽取（节气日全取/农历月初/月末廿八至三十/节日日/年首年末/均匀普通日）
+//   → lunar-rust 逐字段调取 → 与夹具并列比对 → DIFF 行附带三级兜底归属分析
+// 设计理由：PL012.01 API 面清点证据（107 日 × 7 字段 = 749 条比对，六字段直调/
+//   节日三级兜底定案依据）——实现定案后的回归工具（lunar-rust 升级时复跑）
+// 异常处理：夹具解析失败 expect 快速失败；无异常分支
+// 关联依赖：lunar_rust/serde_json；运行：cargo run -p accel-core --example lunar_compare

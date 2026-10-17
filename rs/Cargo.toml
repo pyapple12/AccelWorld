@@ -19,12 +19,22 @@ lunar_rust = "1.0.1"
 rodio = "0.23.0"
 thiserror = "2.0.21"
 tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+tracing-appender = "0.2.5"
 httpmock = "0.8.3"
+# PL013 GUI 栈（app 侧；wayland/x11 为 eframe default-features 组件，Linux CI 兼容）
+eframe = { version = "0.37.0", default-features = false, features = ["default_fonts", "wgpu", "wayland", "x11"] }
+egui = "0.37.0"
+egui_extras = "0.37.0"
+pollster = "1.0.1"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_UI_WindowsAndMessaging", "Win32_UI_Controls"] }
+# 与 eframe 0.37 内部 wgpu 同版（30.x）——render_probe 离屏断言复用同一 WGSL
+wgpu = "30.0.1"
+raw-window-handle = "0.6.2"
 
 # ===== rs/Cargo.toml 说明区 =====
 # [workspace]：members 通配 crates/*，后续新增 crate 无须改本文件
-# 依赖引入节奏（z.plan 修订二·B）：eframe/egui/egui_extras/pollster/image/windows/
-#   tray-icon/global-hotkey/rodio/chrono-tz 系 PL013/PL015 引入；lunar-rust 系 PL012 引入
-# reqwest 关 default-features + rustls-tls：不链接系统 OpenSSL，纯 Rust TLS 栈
-# chrono 仅开 clock 特性：Local 时区与格式化足够（旧解析特性不需要）
+# 依赖引入节奏（z.plan 修订二·B）：tray-icon/global-hotkey 系 PL015 引入
+# reqwest 关 default-features + rustls：不链接系统 OpenSSL，纯 Rust TLS 栈
 # httpmock 为 dev 依赖（core 单测桩服务），不进正式依赖树

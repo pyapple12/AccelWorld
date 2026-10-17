@@ -203,6 +203,16 @@
 5. 95 测试全绿 + CI 四关卡零警告；豁免清单复核（延续 9/core 消解 12/UI 域 16 随 PL013-015 重评）✅
 6. 工程背景：Python 版全量归档 .archived/（PL011），golden 夹具体系（五类快照）持续作为 parity 基准
 
+## 版本 0.6.0.2 的 MileStone（RS 重构三期：egui 外壳与玻璃地基落地，2026-10-17 发布）
+
+1. eframe/wgpu 真窗跑通：logic/ui 分离主循环 + 信号总线 drain + 正常退出码 0 ✅
+2. WGSL 玻璃管线：GLSL 逐行移植（SDF/判向/预乘/光场），离屏探针五断言全过且破坏注入即红 ✅
+3. Acrylic 背板：底座扩展 + SYSTEMBACKDROP 覆写（无底座窗口不可见的实证修复）✅
+4. 双主题/胶囊导航/设置浮窗（点外关闭）/五页占位接入全链路，截图 AI 读图核验 ✅
+5. tracing 每日滚动 + panic hook + 后台任务 join 监控；帧探针静置 50 帧/5s 零忙转 ✅
+6. accent 与导航几何全走 token 单源；等宽断言实做并实证 Bahnschrift 可变字体漂移（方案决策留 PL014.01）✅
+7. 119 测试全绿 + clippy -D warnings 零错误；审计复核修复九项 + 适配偏移十一项登记（z.plan K 节）✅
+
 ## 后续版本的 MileStone（暂不定版本号）
 
 1. 已知问题排查：GUI 进程退出期硬崩溃（y.problems#6，P3，不阻塞功能）

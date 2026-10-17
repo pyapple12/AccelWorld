@@ -86,3 +86,13 @@ mod tests {
         assert_eq!(unknown().icon, "🌡️");
     }
 }
+
+// ===== src/data/weather_codes.rs 说明区 =====
+// 输入：rs/data/weather_codes.json（编译期嵌入，28 码升序与 Python WEATHER_CODE_INFO 一致）
+// 输出：lookup(code)（未知码回退 UNKNOWN_WEATHER 兜底）/all()/unknown()
+// 逻辑步骤：OnceLock 惰性解析 → 码查找（CodeRow 平铺字段——serde flatten 与借用
+//   &str 不变性冲突的实证规避）→ WeatherCodeInfo 复制出
+// 设计理由：WMO 码 → 中文短名/emoji/描述单表（Python S2 合并决策延续）；
+//   未知码回退语义与 Python get(code, UNKNOWN_WEATHER) 对等
+// 异常处理：JSON 解析失败 expect 快速失败（嵌入产物损坏级）
+// 关联配置：rs/data/weather_codes.json；消费方：weather 解析层（scalar_code_key 查表）

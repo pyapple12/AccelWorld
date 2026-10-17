@@ -990,6 +990,25 @@ impl eframe::App for AppHandle {
 **E. theme.rs 映射表**：ui.json 键 → egui 对象（colors.primary→selection/hover 色、radius.*→Visuals.window_rounding/menu_rounding、scale.*→FontId::new、glass.*→玻璃 uniform 默认、field.*→光场 uniform）；`Theme::apply(&mut ctx)`；三态偏好经 SetTheme 命令持久化。
 **F. PL013 验证流程**：1. cargo run 空窗退出码 0；2. bus 单测（命令往返 + fake Tick 驱动 state 变化）；3. 字形截图（中文/数字等宽断言）；4. Acrylic 截图对照 + 失败注入降级；5. render_probe 全阈值 PASS；6. 改 token 值 → 截图 diff 断言跟随；7. 导航切换状态断言；8. 空闲期 repaint 计数 = 节奏值（无忙转）。
 
+**K. PL013 完成记录（2026-10-17，全 13 条收口；当日审计复核修复后定稿）**
+
+F 节八项验证全过：真窗 exit 0/bus 单测/字形 AI 读图（无 tofu）/Acrylic 截图透出 + 失败注入/render_probe 五断言全 PASS（rim 74≥60）+ 破坏注入即红（22<60）/导航切换截图/帧计数探针静置 5s=50 帧恰中预期（零忙转）。**119 测试全绿**（app 24 + core 81 + 集成 14）+ **clippy `-D warnings` 零错误**。
+
+**审计复核修复（2026-10-17 二次收口）**：审计独立复核发现 9 项缺口已全部修复——①clippy `-D warnings` 实为 9 错（早前"零警告"系未带 -D 的不实证）全修；②等宽断言补实做（tools/clock.rs galley 宽度，**实发现 Bahnschrift 可变字体在 egui/ab_glyph 下数字 advance 非等宽**（83.25 vs 124.53px，差 50%，与 Qt 版行为不符）——等宽方案为观感决策点留 PL014.01 用户定夺，现阶段断言收敛为 layout 确定性 + 差值探针）；③设置浮窗"点窗外关闭"补实做；④nav 点击路径状态单测补（apply_nav_frame 抽取）；⑤**accent 硬编码金色清除**——统一消费 colors.primary token（theme::accent_rgba 单源，GL u_accent 与导航共用）；⑥**nav 几何 token 化**（NavGeom::load 消费 nav_rail_* 五键，硬编码常量清除）；⑦interface 双 tokio 任务补 join panic 监控（不静默）；⑧5 文件 `// ===== 说明区` 补齐；⑨render_probe clippy 修复（recv panic 语义/drop Copy）。
+
+**执行偏移登记（PL013，API 大版本实测适配）**：
+1. **eframe 0.37 App trait 重构**：`update(ctx, frame)` → `logic(ctx, frame)`（每帧先行、隐藏期也调用——drain 唯一入口）+ `ui(&mut Ui, frame)`（面板挂 Ui 而非 Context）；on_close_event 移除 → `input.viewport().close_requested()` 检测
+2. **egui 0.37 样式体系重构**：Color32 移除 `from_rgba_unpremultiplied`（全预乘）——FieldTokens 改存非预乘 f32 数组（shader parity 语义直传）；Rounding→CornerRadius(u8)；Visuals 圆角字段更名 window_corner_radius/menu_corner_radius；双主题并存（set_theme(ThemePreference::System/Light/Dark)——**System 跟随内建，替代 Python 手工跟随**）
+3. **wgpu 30 API**：PipelineLayoutDescriptor（bind_group_layouts 为 Option 数组 + immediate_size）/VertexState·FragmentState（entry_point Option + compilation_options）/RenderPipelineDescriptor（multiview_mask）/RenderPassDescriptor（multiview_mask + depth_slice）/PollType::Wait{submission_index,timeout}/get_mapped_range 返 Result/create_buffer_init 移 util::DeviceExt
+4. **egui-wgpu 0.37**：Callback::new_paint_callback + CallbackTrait（prepare/paint）+ CallbackResources = TypeMap——**条目需显式 insert 后才可 get_mut**（真窗首帧 panic 实证）；PaintCallbackInfo 来自 epaint
+5. **Acrylic 关键发现**：无 DwmExtendFrameIntoClientArea 底座直接覆写 SYSTEMBACKDROP → **窗口不可见**（DWM 合成异常，真窗实证；Python 版经 qfw setMicaEffectEnabled 隐式带底座）——补 1px 底边扩展后恢复；MARGINS 在 windows crate 的 Win32::UI::Controls（非 Dwm 模块）；句柄链路 Frame→HasWindowHandle→WindowHandle→From→RawWindowHandle（0.6.2 特殊设计：window_handle 递归返自身）
+6. uniform 尺寸实算 1168（73×16 对齐）；tint 打包进 radius 数组 yzw 通道（省一个 array<vec4,16>）
+7. render_probe 采样点：rim 峰在面内侧 ~1.3px（0.002uv×宽）——外侧采样曾误红，实测修正
+8. 页面避让 rail：Margin 字段 i8（180 超界）→ CentralPanel margin 24 + horizontal add_space(156) 横向占位
+9. 帧计数探针：ACCELWORLD_FPS_PROBE=<秒> 环境变量 → 静置 N 秒打印 REPAINT_COUNT 并自动关窗（run_with_counter 注入 probe_close_secs）
+10. 待查项（归 PL015.E 矩阵）：CloseMainWindow 偶发失效（强杀兜底）；with_position 定位实际落点与 token 偏移（winit 行为）；GPU 热释放后紧接启动的一次性黑窗竞态（不可复现，单实例复现正常）
+11. 复用备注：nav Area id 用 Id::unique(source)（Id::new 已弃用）
+
 #### PL014 详细方案：六页功能落地
 
 **A. Page trait 与页面状态**

@@ -32,6 +32,22 @@ pub struct TimeInfo {
     pub tick_ms: i64,
 }
 
+impl TimeInfo {
+    /// 标准时间的 HH:MM:SS 部分（Python property 对等：显示用避免调用点 split）
+    pub fn standard_time(&self) -> &str {
+        self.standard_datetime.split(' ').nth(1).unwrap_or("")
+    }
+
+    /// 自定义时间小时数（Python property 对等：进度条用）
+    pub fn custom_hour(&self) -> i64 {
+        self.custom_time
+            .split(':')
+            .next()
+            .and_then(|h| h.parse().ok())
+            .unwrap_or(0)
+    }
+}
+
 /// 天气信息快照（Python WeatherData dataclass 镜像，PL011.11 落地）
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WeatherData {
