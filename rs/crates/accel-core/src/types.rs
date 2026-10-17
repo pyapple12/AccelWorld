@@ -48,7 +48,33 @@ impl TimeInfo {
     }
 }
 
-/// 天气信息快照（Python WeatherData dataclass 镜像，PL011.11 落地）
+/// 逐小时点（PL014.11）
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HourlyPoint {
+    /// "YYYY-MM-DDTHH:MM"
+    pub time: String,
+    /// 温度（℃）
+    pub temperature: f64,
+    /// 降水概率（%）
+    pub precip_prob: f64,
+}
+
+/// 七日概要点（PL014.11）
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DailyPoint {
+    /// "YYYY-MM-DD"
+    pub date: String,
+    /// 最高温（℃）
+    pub t_max: f64,
+    /// 最低温（℃）
+    pub t_min: f64,
+    /// 日出（"YYYY-MM-DDTHH:MM"）
+    pub sunrise: String,
+    /// 日落
+    pub sunset: String,
+}
+
+/// 天气信息快照（Python WeatherData dataclass 镜像 + PL014.11 扩展）
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WeatherData {
     /// 温度（℃）
@@ -67,6 +93,12 @@ pub struct WeatherData {
     pub description: String,
     /// emoji 图标
     pub icon: String,
+    /// 逐小时 24 点（PL014.11）
+    #[serde(default)]
+    pub hourly: Vec<HourlyPoint>,
+    /// 七日概要（PL014.11）
+    #[serde(default)]
+    pub daily: Vec<DailyPoint>,
 }
 
 /// UI 会话偏好快照（Python UiPreferences dataclass 镜像）

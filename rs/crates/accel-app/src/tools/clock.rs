@@ -1,64 +1,80 @@
-//! 时钟展示运算（ui/tools/clock_tools.py 的 Rust 对等物）
-//! 数字等宽验证：Bahnschrift（Monospace 族首字体）下任意 HH:MM:SS 文本宽度一致
+//! 时钟展示运算（ui/tools/clock_tools.py + date_panel._split_lunar 的 Rust 对等物）
+//! 农历串三段拆分 / 进度上界 / Hero 显示格式化——纯函数零 egui 依赖
 
-use egui::{Color32, Context, FontId};
-
-// 时钟数字字号（ui.json scale.std_time token 单源）
-fn clock_font() -> FontId {
-    FontId::monospace(crate::theme::font_size("std_time"))
+/// 农历串拆解（Python _split_lunar 逐字符对等）：
+/// "主体…月相：X 财神：Y" → (主体, 月相, 财神)；任一标记缺失整体归主体、其余置空
+/// （值段不含标记字样——FIX004.3 契约由 modules 产出端保证，此处容错兜底）
+pub fn split_lunar_info(text: &str) -> (String, String, String) {
+    const PHASE_MARK: &str = "月相：";
+    const GOD_MARK: &str = "财神：";
+    if text.contains(PHASE_MARK) && text.contains(GOD_MARK) {
+        let (lunar, rest) = text.split_once(PHASE_MARK).expect("已验含标记");
+        let (phase, god) = rest.split_once(GOD_MARK).expect("已验含标记");
+        return (
+            lunar.trim().to_string(),
+            phase.trim().to_string(),
+            god.trim().to_string(),
+        );
+    }
+    (text.trim().to_string(), String::new(), String::new())
 }
 
-/// 文本布局宽度（galley 宽，逻辑点；layout 需写缓存 → fonts_mut 通路）
-fn galley_width(ctx: &Context, text: &str) -> f32 {
-    let font = clock_font();
-    ctx.fonts_mut(|f| {
-        f.layout_no_wrap(text.to_string(), font, Color32::WHITE)
-            .rect
-            .width()
-    })
+/// 进度条上界（Python progress_bounds 对等：膨胀日长 int 截断）
+pub fn progress_bounds(expanded_hours_per_day: f64) -> i64 {
+    expanded_hours_per_day as i64
 }
 
-/// 数字等宽断言：两组不同数字串宽度相等（PL003.04 纪律——Bahnschrift 数字天然等宽；
-/// 系统无 Bahnschrift 时 egui 内置等宽族兜底，数字同为等宽，断言语义不变）
-pub fn digits_monospace_check(ctx: &Context) -> bool {
-    let w1 = galley_width(ctx, "11:11:11");
-    let w2 = galley_width(ctx, "58:25:39");
-    (w1 - w2).abs() < f32::EPSILON
+/// 秒数 → "HH:MM:SS"（标准/加速时间共用；小时两位起不封顶由调用方格式化）
+pub fn format_hms(hour: i64, minute: i64, second: i64) -> String {
+    format!("{hour:02}:{minute:02}:{second:02}")
+}
+
+/// 倍率百分比格式化（"200%"形态；四舍五入取整——UI 展示用非精确值）
+pub fn fmt_percent(rate: f64) -> String {
+    format!("{:.0}%", rate * 100.0)
 }
 
 // ===== src/tools/clock.rs 说明区 =====
-// 输入：egui Context（字体栈已由 window::install_fonts 注入）；输出：等宽判定 bool
-// 逻辑步骤：Monospace 族 layout 两串数字 → galley 宽度严格相等断言
-// 设计理由：PL013.03 检验承诺——时钟数字排版宽度不随数值漂移（59:39 之类宽数字
-//   不得撑宽行）；layout 层断言比截图目测可靠（可入 CI）；字体缺失时内置等宽兜底
-//   保持断言有效性（Bahnschrift 与内置等宽的数字 advance 均恒定）
-// 异常处理：无 panic 面（layout 恒成功）
-// 关联配置：scale.std_time（字号 token）；消费方：单测 + PL014.01 时钟页
+// 输入：TimeInfo.lunar_info 串 / expanded_hours / rate；输出：展示字符串（纯函数）
+// 逻辑步骤：split_lunar_info 双标记 partition → strip 三段；format_hms 零填充拼接
+// 设计理由：date_panel._split_lunar 迁出的 Rust 对等（展示运算出面板，面板只剩
+//   控件装配）；标记契约由 core::chinese_calendar 产出端单源，此处只消费容错
+// 异常处理：无 panic 面（split_once 前置 contains 校验）
+// 关联配置：无（纯函数）；消费方：pages/clock.rs（PL014.05）
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn digits_layout_deterministic_and_monospace_probe() {
-        // PL013.03 等宽检验（两段式，2026-10-17 审计实测定案）：
-        // ①确定性：同一文本重复 layout 宽度恒定（渲染管线无随机性）
-        // ②等宽现状：Bahnschrift 为可变字体，egui/ab_glyph 下数字 advance 非等宽
-        //   （实测 "11:11:11"=83.25px vs "58:25:39"=124.53px，差 50%）——与 Qt 版
-        //   「Bahnschrift 数字天然等宽」不符，时钟数字等宽方案（内置等宽族 /
-        //   tnum 特性 / 接受漂移）为观感决策点，留 PL014.01 用户定夺（登记 z.plan K 节）
-        let ctx = Context::default();
-        crate::window::install_fonts(&ctx);
-        ctx.begin_pass(Default::default());
-        // ①确定性断言
-        let a = galley_width(&ctx, "11:11:11");
-        let b = galley_width(&ctx, "11:11:11");
-        assert!((a - b).abs() < f32::EPSILON, "同文本 layout 宽度应确定");
-        // ②等宽现状探针：记录差值（不设阈值断言——观感决策后按定案收紧）
-        let w1 = galley_width(&ctx, "11:11:11");
-        let w2 = galley_width(&ctx, "58:25:39");
-        println!(
-            "等宽现状: 11:11:11={w1:.3}px 58:25:39={w2:.3}px 差={:.3}px",
-            (w1 - w2).abs()
-        );
+    fn split_lunar_roundtrip_and_missing_marks() {
+        // Python 用例移植：正常三段 / 标记缺失整体归主体 / FIX004.3 无"拜"回归
+        let (lunar, phase, god) =
+            split_lunar_info("丙午年（马年）八月十三午时 月相：渐盈凸月 财神：正北方向（坎位）");
+        assert_eq!(lunar, "丙午年（马年）八月十三午时");
+        assert_eq!(phase, "渐盈凸月");
+        assert_eq!(god, "正北方向（坎位）");
+        // 标记缺失：整体归主体
+        let (lunar, phase, god) = split_lunar_info("纯文本无标记");
+        assert_eq!(lunar, "纯文本无标记");
+        assert_eq!((phase.as_str(), god.as_str()), ("", ""));
+        // 月相段无"拜"（FIX004.3 回归：真实产出串经 split 后 phase 不含"拜"）
+        let (_, phase, _) =
+            split_lunar_info("乙巳年（蛇年）腊月廿九午时 月相：晓月 财神：东北方向（艮位）");
+        assert!(!phase.contains('拜'));
+    }
+
+    #[test]
+    fn progress_bounds_truncates() {
+        // Python 用例移植：整数直过 / 小数截断（FIX003.4 整数日长下 1.1 → 26）
+        assert_eq!(progress_bounds(48.0), 48);
+        assert_eq!(progress_bounds(26.4), 26);
+    }
+
+    #[test]
+    fn hms_and_percent_formats() {
+        assert_eq!(format_hms(1, 2, 3), "01:02:03");
+        assert_eq!(format_hms(25, 59, 59), "25:59:59");
+        assert_eq!(fmt_percent(2.0), "200%");
+        assert_eq!(fmt_percent(1.1), "110%");
     }
 }

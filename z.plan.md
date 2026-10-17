@@ -1029,6 +1029,27 @@ pub struct CountdownTarget { name: String, at: DateTime<Local> }
 **E. 闹钟快捷换算**：`fn quick_target(minutes: u64, now) -> AlarmDraft`（now+minutes → HH:MM + created_at=now，一次性 repeat_days 空——跨午夜由既有顺延语义自然覆盖）。
 **F. PL014 验证流程**：每页 = ①纯函数单测（对 Python 用例移植）②虚拟数据渲染截图断言 ③交互走查三件套；六页过完跑 135 用例行为映射表核对（PL014.16 交付物：Python 用例编号 → Rust 测试名对照清单）。
 
+**L. PL014 完成记录（2026-10-17，全 16 条收口）**
+
+F 节验证全过：**145 测试全绿**（app 40 + core 87 + parity 集成 18）+ clippy `-D warnings` 零错误。分域清单：
+- tools 纯函数（.01）：split_lunar_info 三段拆分（FIX004.3 无"拜"回归）/progress_bounds/format_hms/fmt_percent/format_repeat_display/format_sound_button_name（Python test_ui_tools 用例逐条移植）/parse_target_text 三格式/format_remaining
+- widgets（.02-.04）：GlassCard（注册幂等/选中两值化 FIX004.4 平移/减号响应区几何锚定）/Chip（elevation 5 契约）/ring（progress_to_arc 含 0/100 边界钳制 + 48 段折线逼近弧——Painter::arc 已移除）/slider（ratio_to_rate 0.1 步进/零进度整圆定案/旋钮浮点居中）
+- 倒计时域（.06-.08）：CountdownTarget 模型 + Legacy 迁移矩阵六用例（19/16/10 位/空/非法/新格式优先）/year_chips 三年夹具 parity（lunar-python 同规则 39+10+10 条）+ next_spring_festival 五用例 + 清明漂移抽查；pages/countdown（hero/网格/减号/加号 validate_add 校验）
+- 天气域（.11-.13）：HourlyPoint/DailyPoint DTO + 请求参数扩展 + 同纪律拒绝（null/错型/长度）/缺键→空序列向后兼容（Python 快照 parity 保持——偏移登记）；pages/weather（当前卡/逐时 24 横条/七日/城市切换 chips/强制刷新）
+- 世界域（.09-.10）：now_in_tz 纯函数（chrono-tz DST 表驱动）+ 城市矩阵（昼夜指示/点卡选基准/减号 ≤1 禁用/候选下拉 = 全表−已添加）
+- 闹钟域（.14-.15）：quick_target 换算（15min@23:50→次日 00:05 一次性/240min 跨日）+ 四快捷按钮 + 自定义添加 + 列表行卡（开关/删除/重复文案）；**IME 组合事件模拟**——ImeEvent::Commit 与 Event::Text 双通路 InputState 可读断言（run_ui 全渲染 pass 测试环境 textures delta 崩溃——收敛为 InputState 层，实证登记）
+
+**执行偏移登记（PL014）**：
+1. untaged 双格式改为显式双字段（countdown_target 旧串 + countdown_targets 列表各自 Option<Value> 装载）——语义等价且校验粒度更细，无 untagged 歧义
+2. weather hourly/daily **键缺失→空序列**（非 Err）：Python 0.6.0.0 快照无此键，严格拒绝会破坏 61 样本 parity——键存在时 null/错型/长度不一致仍全严拒绝（任务文本"缺字段→Err"收窄为此，偏移登记）
+3. weather series 提取的 SeriesMissing 键名参数需 'static——literal 常量传参
+4. 节日夹具三年份（2026/2027/2028）：2027 年中窗口跨至 2028 春节（次轮正月初一），两年份夹具不完备
+5. IME 模拟收敛为 InputState 层：run_ui 全渲染 pass 留未处理 textures delta（0xC0000409 崩溃）——TextEdit 消费链路由 egui 自带测试覆盖
+6. 页面输入态（countdown_draft/alarm_draft）挂 UiState——各页自持临时输入态的 trait 定案延续
+7. ring 弧线 48 段折线逼近（egui 0.37 移除 Painter::arc）；半径 40+ 弦差 <0.1px 观感真圆
+8. 法定+传统合并定案：传统名覆盖法定同日（夹具实证：春节正月初一覆盖元旦跨度重合日——无观察差异）
+9. 135 用例映射表（PL014.16 交付物）落 .archived/tests_migration.md（Python 用例名 → Rust 测试名逐条对照，无对应者标注原因）
+
 #### PL015 详细方案：系统集成与定版
 
 **A. 托盘**：tray-icon 菜单树（显示窗口/隐藏到托盘/分隔/当前倍率 x.x[禁用项随 Tick 更新]/退出）；关闭按钮 → 隐藏驻留（对齐 closeEvent 语义）；悬停文本 = 加速时间 + 倍率（Tick 更新，节流 1s）。

@@ -49,6 +49,36 @@ pub struct UiState {
     pub prefs: UiPreferences,
     /// 设置浮窗开合（.10）
     pub settings_open: bool,
+    /// 倒计时目标列表（ConfigSaved 后由 drain 重拉 iface 同步快照）
+    pub countdown_targets: Vec<accel_core::settings::CountdownTarget>,
+    /// 倒计时加号草稿（页面临时输入态）
+    pub countdown_draft_name: String,
+    pub countdown_draft_at: String,
+    /// 世界时钟常驻城市（ConfigSaved 后由 drain 重拉）
+    pub world_pins: Vec<String>,
+    /// 选中基准时区（IANA）
+    pub base_timezone: Option<String>,
+    /// 天气已集城市（多城市切换 chips；含 last_city）
+    pub weather_cities: Vec<String>,
+    /// 闹钟自定义添加草稿
+    pub alarm_draft_label: String,
+    pub alarm_draft_time: String,
+}
+
+impl UiState {
+    /// 世界常驻城市视图（只读借用）
+    pub fn world_pins_view(&self) -> &[String] {
+        &self.world_pins
+    }
+
+    /// 天气已集城市视图（缺省含 last_city——至少一城）
+    pub fn weather_cities_view(&self) -> Vec<String> {
+        let mut cities = self.weather_cities.clone();
+        if !cities.contains(&self.prefs.last_city) {
+            cities.push(self.prefs.last_city.clone());
+        }
+        cities
+    }
 }
 
 impl Default for UiState {
@@ -70,6 +100,14 @@ impl Default for UiState {
                 countdown_target: String::new(),
             },
             settings_open: false,
+            countdown_targets: Vec::new(),
+            countdown_draft_name: String::new(),
+            countdown_draft_at: String::new(),
+            world_pins: Vec::new(),
+            base_timezone: None,
+            weather_cities: Vec::new(),
+            alarm_draft_label: String::new(),
+            alarm_draft_time: String::new(),
         }
     }
 }
@@ -143,12 +181,22 @@ impl Bus {
     }
 
     /// 每帧 drain：while try_recv 消费全部积压事件 → UiState::apply
+    /// ConfigSaved 后重拉倒计时目标同步快照（iface 拉取式通道）
     /// 返回本轮消费条数（帧计数/节奏探针用）；logic(&mut self) 调用
     pub fn drain(&mut self, state: &mut UiState) -> usize {
         let mut n = 0;
+        let mut need_reload = false;
         while let Ok(evt) = self.evt_rx.try_recv() {
+            if matches!(evt, BackendEvent::ConfigSaved(_)) {
+                need_reload = true;
+            }
             state.apply(evt);
             n += 1;
+        }
+        if need_reload {
+            state.countdown_targets = self.iface.get_countdown_targets();
+            state.world_pins = self.iface.get_world_pins();
+            state.base_timezone = Some(self.iface.get_ui_preferences().last_timezone);
         }
         n
     }
@@ -215,6 +263,8 @@ mod tests {
             weather: "晴".into(),
             description: "晴".into(),
             icon: "☀".into(),
+            hourly: Vec::new(),
+            daily: Vec::new(),
         };
         state.apply(BackendEvent::WeatherUpdated {
             city: "北京".into(),

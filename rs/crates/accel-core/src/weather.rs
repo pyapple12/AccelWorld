@@ -6,7 +6,7 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::data::weather_codes;
-use crate::types::WeatherData;
+use crate::types::{DailyPoint, HourlyPoint, WeatherData};
 
 // 必要响应字段（与请求 current 参数一致；缺失或 null 判失败，FIX001.14/FIX002.4）
 const REQUIRED_FIELDS: [&str; 5] = [
@@ -38,11 +38,124 @@ pub enum WeatherErr {
     NullField(&'static str),
     #[error("天气响应数值字段类型非法: {0}")]
     BadType(&'static str),
+    #[error("逐小时数据含 null: {0}")]
+    HourlyNull(&'static str),
+    #[error("逐小时/七日数组缺失或长度不一致: {0}")]
+    SeriesMissing(&'static str),
+    #[error("七日数据含 null: {0}")]
+    DailyNull(&'static str),
+}
+
+// HourlyPoint/DailyPoint DTO 在 types.rs 单源（weather.rs 只做提取与校验）
+
+/// 逐小时/七日系列提取（同 null/长度纪律）：键缺失或长度不一致 → SeriesMissing，
+/// 元素 null → *Null 变体，数值错型 → BadType（与 current 域同拒绝纪律）
+fn extract_hourly_daily(
+    root: &serde_json::Map<String, Value>,
+) -> Result<
+    (
+        Vec<crate::types::HourlyPoint>,
+        Vec<crate::types::DailyPoint>,
+    ),
+    WeatherErr,
+> {
+    // 键缺失 → 空序列（向后兼容：Python 0.6.0.0 快照无此键；新 API 恒带参返回）
+    // 键存在则全严校验（null/错型/长度不一致 → Err，同 current 域纪律）
+    let Some(hourly) = root.get("hourly").and_then(Value::as_object) else {
+        return Ok((Vec::new(), Vec::new()));
+    };
+    let Some(daily) = root.get("daily").and_then(Value::as_object) else {
+        return Ok((Vec::new(), Vec::new()));
+    };
+
+    let h_times = series_strings(hourly, "time")?;
+    let h_temps = series_numbers(hourly, "temperature_2m", "HourlyNull")?;
+    let h_precips = series_numbers(hourly, "precipitation_probability", "HourlyNull")?;
+    if h_times.len() != h_temps.len() || h_times.len() != h_precips.len() {
+        return Err(WeatherErr::SeriesMissing("hourly 长度不一致"));
+    }
+    let hourly_points: Vec<HourlyPoint> = h_times
+        .iter()
+        .zip(h_temps.iter().zip(h_precips.iter()))
+        .map(|(t, (temp, p))| HourlyPoint {
+            time: t.clone(),
+            temperature: *temp,
+            precip_prob: *p,
+        })
+        .collect();
+
+    let d_dates = series_strings(daily, "time")?;
+    let d_max = series_numbers(daily, "temperature_2m_max", "DailyNull")?;
+    let d_min = series_numbers(daily, "temperature_2m_min", "DailyNull")?;
+    let d_sunrise = series_strings(daily, "sunrise")?;
+    let d_sunset = series_strings(daily, "sunset")?;
+    if d_dates.len() != d_max.len()
+        || d_dates.len() != d_min.len()
+        || d_dates.len() != d_sunrise.len()
+        || d_dates.len() != d_sunset.len()
+    {
+        return Err(WeatherErr::SeriesMissing("daily 长度不一致"));
+    }
+    let daily_points: Vec<DailyPoint> = d_dates
+        .iter()
+        .enumerate()
+        .map(|(i, d)| DailyPoint {
+            date: d.clone(),
+            t_max: d_max[i],
+            t_min: d_min[i],
+            sunrise: d_sunrise[i].clone(),
+            sunset: d_sunset[i].clone(),
+        })
+        .collect();
+    Ok((hourly_points, daily_points))
+}
+
+/// 字符串系列提取（键缺失/非串元素 → SeriesMissing/对应 Null 变体由调用方语义定）
+fn series_strings(
+    obj: &serde_json::Map<String, Value>,
+    key: &'static str,
+) -> Result<Vec<String>, WeatherErr> {
+    match obj.get(key) {
+        None => Err(WeatherErr::SeriesMissing(key)),
+        Some(Value::Array(arr)) => arr
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .map(String::from)
+                    .ok_or(WeatherErr::SeriesMissing(key))
+            })
+            .collect(),
+        Some(_) => Err(WeatherErr::SeriesMissing(key)),
+    }
+}
+
+/// 数值系列提取（null → *Null 变体；错型 → BadType）
+fn series_numbers(
+    obj: &serde_json::Map<String, Value>,
+    key: &'static str,
+    null_variant: &'static str,
+) -> Result<Vec<f64>, WeatherErr> {
+    match obj.get(key) {
+        None => Err(WeatherErr::SeriesMissing(key)),
+        Some(Value::Array(arr)) => arr
+            .iter()
+            .map(|v| match v {
+                Value::Null => match null_variant {
+                    "HourlyNull" => Err(WeatherErr::HourlyNull(key)),
+                    _ => Err(WeatherErr::DailyNull(key)),
+                },
+                Value::Number(_) => v.as_f64().ok_or(WeatherErr::BadType(key)),
+                _ => Err(WeatherErr::BadType(key)),
+            })
+            .collect(),
+        Some(_) => Err(WeatherErr::SeriesMissing(key)),
+    }
 }
 
 /// 解析 Open-Meteo 响应（Python get_weather_by_coords 校验段对等）
 /// 判定顺序与 Python 一致：根对象 → current 对象 → 五必要字段（缺失/null）→
 /// 四数值字段类型（bool/string/容器拒）→ weather_code 查表（未知回退）
+/// PL014.11：追加 hourly/daily 系列解析（同 null/缺字段/长度纪律）
 pub fn parse_open_meteo(v: &Value) -> Result<WeatherData, WeatherErr> {
     let root = v.as_object().ok_or(WeatherErr::NotObject)?;
     let current = root
@@ -65,6 +178,7 @@ pub fn parse_open_meteo(v: &Value) -> Result<WeatherData, WeatherErr> {
     // （Python dict 键 True==1 命中码 1——夹具实证）、字符串等按未知码回退
     let code_key = scalar_code_key(&current["weather_code"]);
     let info = weather_codes::lookup(code_key);
+    let (hourly, daily) = extract_hourly_daily(root)?;
     Ok(WeatherData {
         temperature: current["temperature_2m"].as_f64().expect("已过数值校验"),
         humidity: current["relative_humidity_2m"]
@@ -78,6 +192,8 @@ pub fn parse_open_meteo(v: &Value) -> Result<WeatherData, WeatherErr> {
         weather: info.name.to_string(),
         description: info.description.to_string(),
         icon: info.icon.to_string(),
+        hourly,
+        daily,
     })
 }
 
@@ -258,7 +374,9 @@ impl WeatherClient {
             return Err(FetchErr::CoordsOutOfRange { lat, lon });
         }
         let url = format!(
-            "{}/v1/forecast?latitude={lat}&longitude={lon}&current={}&timezone=auto",
+            "{}/v1/forecast?latitude={lat}&longitude={lon}&current={}&timezone=auto\
+             &hourly=temperature_2m,precipitation_probability\
+             &daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&forecast_days=7",
             self.base,
             REQUIRED_FIELDS.join(","),
         );
@@ -413,10 +531,23 @@ mod tests {
     use crate::util::retry::RetrySpec;
     use httpmock::{Method, MockServer};
 
-    fn sample_body(code: i64) -> serde_json::Value {
-        serde_json::json!({"current": {
-            "temperature_2m": 20.5, "relative_humidity_2m": 55, "weather_code": code,
-            "wind_speed_10m": 8.4, "apparent_temperature": 21.0 }})
+    fn full_body(code: i64) -> serde_json::Value {
+        // PL014.11 全量样本：current + hourly（2 点）+ daily（2 点）
+        serde_json::json!({
+            "current": {
+                "temperature_2m": 20.5, "relative_humidity_2m": 55, "weather_code": code,
+                "wind_speed_10m": 8.4, "apparent_temperature": 21.0 },
+            "hourly": {
+                "time": ["2026-10-17T00:00", "2026-10-17T01:00"],
+                "temperature_2m": [18.0, 17.5],
+                "precipitation_probability": [10, 20] },
+            "daily": {
+                "time": ["2026-10-17", "2026-10-18"],
+                "temperature_2m_max": [24.0, 23.0],
+                "temperature_2m_min": [15.0, 14.5],
+                "sunrise": ["2026-10-17T06:20", "2026-10-18T06:21"],
+                "sunset": ["2026-10-17T17:45", "2026-10-18T17:44"] }
+        })
     }
 
     fn stub(server: &MockServer) -> httpmock::Mock<'_> {
@@ -426,7 +557,7 @@ mod tests {
                 .query_param("latitude", "39.9042")
                 .query_param("longitude", "116.4074")
                 .query_param("timezone", "auto");
-            then.status(200).json_body(sample_body(0));
+            then.status(200).json_body(full_body(0));
         })
     }
 
@@ -539,5 +670,76 @@ mod tests {
         client.fetch_by_city("北京", false).await.expect("应成功");
         mock.assert();
         assert_eq!(mock.calls(), 1, "拒绝路径零请求 + 成功路径恰一次");
+    }
+
+    // ===== PL014.11 天气扩展（hourly/daily）路径 =====
+
+    #[tokio::test]
+    async fn hourly_daily_parsed_and_cached_as_one() {
+        // 全字段断言 + 缓存一体（current+hourly+daily 同缓存键，命中不重发）
+        let server = MockServer::start();
+        let mock = stub(&server);
+        let client = fast_client(server.base_url()).with_ttl(Duration::from_secs(3600));
+        let w = client.fetch_by_city("北京", false).await.expect("应成功");
+        assert_eq!(w.hourly.len(), 2);
+        assert_eq!(w.hourly[0].time, "2026-10-17T00:00");
+        assert_eq!(w.hourly[0].precip_prob, 10.0);
+        assert_eq!(w.daily.len(), 2);
+        assert_eq!(w.daily[0].t_max, 24.0);
+        assert_eq!(w.daily[0].sunrise, "2026-10-17T06:20");
+        client.fetch_by_city("北京", false).await.expect("缓存命中");
+        assert_eq!(mock.calls(), 1, "缓存命中不重发");
+    }
+
+    #[tokio::test]
+    async fn hourly_null_rejects_whole_packet() {
+        // hourly 含 null → 整包 Err（HourlyNull）
+        let server = MockServer::start();
+        let mut body = full_body(0);
+        body["hourly"]["temperature_2m"][1] = serde_json::Value::Null;
+        server.mock(|when, then| {
+            when.method(Method::GET).path("/v1/forecast");
+            then.status(200).json_body(body);
+        });
+        let client = fast_client(server.base_url());
+        let err = client
+            .fetch_by_city("北京", false)
+            .await
+            .expect_err("null 应整包拒绝");
+        assert!(err.to_string().contains("逐小时数据含 null"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn daily_missing_sunset_rejects() {
+        // daily 缺 sunset 键 → 整包 Err（SeriesMissing）
+        let server = MockServer::start();
+        let mut body = full_body(0);
+        body["daily"]
+            .as_object_mut()
+            .expect("对象")
+            .remove("sunset");
+        server.mock(|when, then| {
+            when.method(Method::GET).path("/v1/forecast");
+            then.status(200).json_body(body);
+        });
+        let client = fast_client(server.base_url());
+        let err = client
+            .fetch_by_city("北京", false)
+            .await
+            .expect_err("缺 sunset 应拒绝");
+        assert!(
+            err.to_string().contains("长度不一致") || err.to_string().contains("缺失"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn parse_legacy_sample_without_hourly_yields_empty_series() {
+        // 向后兼容：无 hourly/daily 键（Python 0.6.0.0 快照形态）→ 空序列不拒绝
+        let raw = serde_json::json!({"current": {
+            "temperature_2m": 1.0, "relative_humidity_2m": 2.0, "weather_code": 0,
+            "wind_speed_10m": 3.0, "apparent_temperature": 4.0 }});
+        let w = parse_open_meteo(&raw).expect("旧形态应解析");
+        assert!(w.hourly.is_empty() && w.daily.is_empty());
     }
 }

@@ -257,6 +257,119 @@ mod lunar_parity {
     }
 }
 
+/// 节日派生 parity（PL014.07）：year_chips 对 lunar-python 夹具全年断言 + 春节推导
+mod festival_parity {
+    use accel_core::chinese_calendar::{next_spring_festival, year_chips};
+    use chrono::NaiveDate;
+
+    const FESTIVAL_DERIVE: &str = include_str!("../../../fixtures/festival_derive.json");
+
+    fn fixture() -> serde_json::Value {
+        serde_json::from_str(FESTIVAL_DERIVE).expect("festival_derive.json 解析失败")
+    }
+
+    #[test]
+    fn year_chips_match_python_snapshot() {
+        // 夹具 = lunar-python 同规则全年快照（法定+传统合并、传统覆盖）
+        // 以两年各一时点派生，断言：返回条目 ∈ 夹具（三年并集）且名称一致
+        let v = fixture();
+        let years = ["2026", "2027", "2028"];
+        for iso_now in ["2026-06-01", "2027-06-01"] {
+            let now = NaiveDate::parse_from_str(iso_now, "%Y-%m-%d").expect("now 解析");
+            for (d, name) in year_chips(now) {
+                let key = d.format("%Y-%m-%d").to_string();
+                // 条目可能来自次年轮（跨 365 天窗口）——三年夹具并集校验
+                let matched = years.iter().any(|y| {
+                    v[*y]
+                        .as_object()
+                        .expect("年份对象")
+                        .get(&key)
+                        .and_then(|n| n.as_str())
+                        == Some(name.as_str())
+                });
+                assert!(matched, "{iso_now} 派生 {key}/{name} 不在夹具（三年并集）");
+            }
+        }
+    }
+
+    #[test]
+    fn year_chips_covers_future_365() {
+        // 完备性：夹具中 [now, now+365] 窗口内条目必在派生结果（无漏节日）
+        let now = NaiveDate::parse_from_str("2026-06-01", "%Y-%m-%d").expect("now");
+        let chips: std::collections::BTreeMap<String, String> = year_chips(now)
+            .into_iter()
+            .map(|(d, n)| (d.format("%Y-%m-%d").to_string(), n))
+            .collect();
+        let v = fixture();
+        let mut missing = 0;
+        let horizon = now + chrono::Duration::days(365);
+        for table in v.as_object().expect("对象").values() {
+            for (iso, name) in table.as_object().expect("表") {
+                if let Ok(d) = NaiveDate::parse_from_str(iso, "%Y-%m-%d") {
+                    let in_window = d >= now && d <= horizon;
+                    if in_window && chips.get(iso).map(|s| s.as_str()) != name.as_str() {
+                        missing += 1;
+                        println!("缺: {iso}/{name}（got {:?}）", chips.get(iso));
+                    }
+                }
+            }
+        }
+        assert_eq!(missing, 0, "未来 365 天窗口内夹具节日不应缺席");
+    }
+
+    #[test]
+    fn next_spring_festival_cases() {
+        // 跨年用例 + 年中推导（夹具锚点：2026 春节 02-17、2027 春节 02-06）
+        let d = |y: i32, m: u32, dd: u32| NaiveDate::from_ymd_opt(y, m, dd).expect("合法");
+        assert_eq!(
+            next_spring_festival(d(2026, 2, 10)),
+            d(2026, 2, 17),
+            "年前推导当年"
+        );
+        assert_eq!(
+            next_spring_festival(d(2026, 2, 17)),
+            d(2026, 2, 17),
+            "当日含当日"
+        );
+        assert_eq!(
+            next_spring_festival(d(2026, 2, 18)),
+            d(2027, 2, 6),
+            "年后切次年"
+        );
+        assert_eq!(
+            next_spring_festival(d(2026, 12, 31)),
+            d(2027, 2, 6),
+            "跨年边界"
+        );
+        assert_eq!(
+            next_spring_festival(d(2026, 6, 1)),
+            d(2027, 2, 6),
+            "年中推导次年"
+        );
+    }
+
+    #[test]
+    fn qingming_drift_spot_check() {
+        // 清明节气年际漂移抽查：两年清明都派生（04-04/05 节气漂移带内）
+        let now = NaiveDate::from_ymd_opt(2026, 1, 1).expect("合法");
+        let chips = year_chips(now);
+        let qingmings: Vec<String> = chips
+            .iter()
+            .filter(|(_, n)| n == "清明节")
+            .map(|(d, _)| d.format("%Y-%m-%d").to_string())
+            .collect();
+        assert!(
+            qingmings.contains(&"2026-04-05".to_string())
+                || qingmings.contains(&"2026-04-04".to_string()),
+            "清明应在 04-04/05（节气漂移带）：{qingmings:?}"
+        );
+        assert!(
+            chips.iter().filter(|(_, n)| n == "清明节").count() >= 2,
+            "两年清明都应派生"
+        );
+    }
+}
+
 /// 时间域 parity（PL011.10）：47 向量全量断言（42 合法 + 5 越界，位级浮点一致）
 mod time_parity {
     use accel_core::time_dilation::TimeDilation;
@@ -361,19 +474,35 @@ mod config_parity {
         serde_json::from_str(CONFIG_BEHAVIOR).expect("config_behavior.json 解析失败")
     }
 
+    /// Python 键值子集断言（PL014.06 schema 演进适配）：Rust 输出是 Python 快照的
+    /// 向后兼容超集（新增 countdown_targets 键）——夹具每键值仍须逐一相等
+    fn assert_python_keys_subset(expect: &Value, actual: &Value, ctx: &str) {
+        let (Some(expect_obj), Some(actual_obj)) = (expect.as_object(), actual.as_object()) else {
+            panic!("{ctx}: 双方均应为对象");
+        };
+        for (k, v) in expect_obj {
+            assert_eq!(actual_obj.get(k), Some(v), "{ctx} 键 {k} 不一致");
+        }
+    }
+
     #[test]
     fn defaults_match_python() {
-        // 默认值快照全量相等（default_factory 单源语义的跨语言锚定）
+        // 默认值快照：Python 键子集全等（新增键 countdown_targets 为 PL014.06 演进）
         let expect: UserConfig = serde_json::from_value(fixture()["defaults"].clone()).unwrap();
+        assert_python_keys_subset(
+            &fixture()["defaults"],
+            &UserConfig::default().to_json_value(),
+            "defaults",
+        );
         assert_eq!(UserConfig::default(), expect);
     }
 
     #[test]
     fn roundtrip_in_to_out_on_disk() {
-        // 样本实例 → lenient 构造 → 序列化 == Python 落盘内容（含 alarms 透传）
+        // 样本实例 → lenient 构造 → 序列化：Python 落盘键子集全等（含 alarms 透传）
         let rt = &fixture()["roundtrip"];
         let cfg = UserConfig::from_json_value(&rt["in"]);
-        assert_eq!(cfg.to_json_value(), rt["out_on_disk"]);
+        assert_python_keys_subset(&rt["out_on_disk"], &cfg.to_json_value(), "roundtrip");
         assert_eq!(rt["saved_ok"], Value::Bool(true));
     }
 
@@ -412,7 +541,7 @@ mod config_parity {
         std::fs::write(&path, cb["in_file"].as_str().expect("in_file 应为字符串"))
             .expect("写入失败");
         let restored = settings::load(&path).to_json_value();
-        assert_eq!(restored, cb["default_restored"]);
+        assert_python_keys_subset(&cb["default_restored"], &restored, "corrupt_restored");
         let bak = path.with_file_name("user_config.json.bak");
         assert!(bak.exists(), "应生成 .bak 转存");
         let bak_text = std::fs::read_to_string(&bak).expect("bak 应可读");
@@ -424,14 +553,14 @@ mod config_parity {
 
     #[test]
     fn unknown_key_ignored() {
-        // 未知键忽略且无副作用
+        // 未知键忽略且无副作用（Python 键子集全等）
         let uk = &fixture()["unknown_key_ignored"];
         let cfg = UserConfig::from_json_value(&{
             let mut payload = uk["out"].clone();
             payload["unknown_key"] = serde_json::json!({"x": 1});
             payload
         });
-        assert_eq!(cfg.to_json_value(), uk["out"]);
+        assert_python_keys_subset(&uk["out"], &cfg.to_json_value(), "unknown_key");
     }
 }
 

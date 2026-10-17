@@ -554,6 +554,20 @@ impl Default for AlarmManager {
     }
 }
 
+/// 快捷闹钟换算（PL014.14 纯函数）：now + minutes → HH:MM 草稿
+/// （一次性 repeat_days 空，created_at=now——跨午夜由既有顺延语义覆盖）
+pub fn quick_target(minutes: i64, now: chrono::DateTime<Local>) -> AlarmDraft {
+    let target = now + chrono::Duration::minutes(minutes);
+    AlarmDraft {
+        label: format!("快捷 {minutes} 分钟"),
+        time: format!("{:02}:{:02}", target.hour(), target.minute()),
+        sound_type: SOUND_TYPE_PRESET.to_string(),
+        sound_value: SOUND_VALUE_CLASSIC.to_string(),
+        repeat_days: Vec::new(),
+        enabled: true,
+    }
+}
+
 // ===== src/alarm.rs 说明区 =====
 // 输入：闹钟 JSON（lenient）/ 草稿 / 注入检查时刻；输出：实体/管理器操作结果/命中列表
 // 逻辑步骤（状态机顺序即实现顺序，z.plan 修订二·E）：enabled → HH:MM 等值 →
@@ -904,5 +918,29 @@ mod tests {
         let v = a.to_json_value();
         let back = Alarm::from_json_value(&v).expect("往返应成功");
         assert_eq!(back, a);
+    }
+
+    #[test]
+    fn quick_target_conversion() {
+        // PL014.14 验收：15min 于 23:50 → 次日 00:05；240min 跨日；created_at=now
+        use chrono::TimeZone;
+        let at = |h: u32, m: u32| {
+            let naive = NaiveDate::from_ymd_opt(2026, 10, 17)
+                .expect("日期合法")
+                .and_hms_opt(h, m, 0)
+                .expect("时刻合法");
+            Local.from_local_datetime(&naive).single().expect("无歧义")
+        };
+        // 15min 于 23:50 → 次日 00:05（一次性）
+        let q1 = quick_target(15, at(23, 50));
+        assert_eq!(q1.time, "00:05");
+        assert_eq!(q1.repeat_days, Vec::<i64>::new(), "快捷为一次性");
+        // 240min 于 12:00 → 同日 16:00
+        let q2 = quick_target(240, at(12, 0));
+        assert_eq!(q2.time, "16:00");
+        // 草稿落库后 created_at 生成 + 一次性语义确认
+        let a1 = Alarm::from_draft(q1).expect("合法草稿应落库");
+        assert!(a1.is_one_time());
+        assert!(!a1.created_at.is_empty());
     }
 }

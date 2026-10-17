@@ -285,6 +285,44 @@ impl AppInterface {
         settings::save(&self.config_path, &config)
     }
 
+    // ===== 倒计时目标域（PL014.06/.08：列表化多目标持久化）=====
+
+    /// 当前倒计时目标列表（同步快照，按 at 升序由页面层排序）
+    pub fn get_countdown_targets(&self) -> Vec<crate::settings::CountdownTarget> {
+        settings::load(&self.config_path).countdown_targets
+    }
+
+    /// 添加倒计时目标（同名拒/空名拒；at 转存储串落盘）
+    pub fn add_countdown_target(&self, name: &str, at: &chrono::DateTime<Local>) -> bool {
+        if name.is_empty() {
+            tracing::warn!("倒计时目标名为空，拒绝添加");
+            return false;
+        }
+        let mut config = settings::load(&self.config_path);
+        if config.countdown_targets.iter().any(|t| t.name == name) {
+            tracing::warn!("同名倒计时目标已存在，拒绝添加: {name}");
+            return false;
+        }
+        config
+            .countdown_targets
+            .push(crate::settings::CountdownTarget {
+                name: name.to_string(),
+                at: at.format("%Y-%m-%d %H:%M:%S").to_string(),
+            });
+        settings::save(&self.config_path, &config)
+    }
+
+    /// 移除倒计时目标（按名；不存在返 false）
+    pub fn remove_countdown_target(&self, name: &str) -> bool {
+        let mut config = settings::load(&self.config_path);
+        let before = config.countdown_targets.len();
+        config.countdown_targets.retain(|t| t.name != name);
+        if config.countdown_targets.len() == before {
+            return false;
+        }
+        settings::save(&self.config_path, &config)
+    }
+
     // ===== 信号总线（spawn：后台任务主循环 + 闹钟调度）=====
 
     /// 启动后台任务（真实时钟）：命令分发主循环 + tick 推送 + 闹钟调度
@@ -425,6 +463,14 @@ impl AppInterface {
                                 let ok = self.set_base_timezone(&tz);
                                 let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
                             }
+                            Some(FrontendCommand::AddCountdownTarget { name, at }) => {
+                                let ok = self.add_countdown_target(&name, &at);
+                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                            }
+                            Some(FrontendCommand::RemoveCountdownTarget(name)) => {
+                                let ok = self.remove_countdown_target(&name);
+                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                            }
                             Some(FrontendCommand::SetTheme(pref)) => {
                                 let theme = match pref {
                                     crate::types::ThemePref::Auto => "auto",
@@ -517,7 +563,7 @@ mod tests {
         assert_eq!(itf.get_rate(), 2.0);
         assert_eq!(AppInterface::get_rate_bounds(), (1.0, 20.0));
         assert_eq!(AppInterface::get_weather_refresh_interval_ms(), 1_800_000);
-        assert_eq!(AppInterface::get_version(), "0.6.0.2");
+        assert_eq!(AppInterface::get_version(), "0.6.0.3");
     }
 
     #[test]

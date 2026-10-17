@@ -8,6 +8,7 @@ version = "0.6.0"
 dependencies = [
  "accel-core",
  "chrono",
+ "chrono-tz 0.10.4",
  "eframe",
  "egui",
  "egui-wgpu",

@@ -163,6 +163,17 @@ pub fn accent_rgba() -> [f32; 4] {
         .unwrap_or([0.89, 0.70, 0.42, 1.0]) // 键损坏兜底（暖金近似值，仅防御路径）
 }
 
+/// 强调色 Color32 形态（egui 矢量描边/文字用；非预乘 → 预乘换算）
+pub fn accent_color() -> Color32 {
+    let [r, g, b, a] = accent_rgba();
+    Color32::from_rgba_premultiplied(
+        (r * a * 255.0) as u8,
+        (g * a * 255.0) as u8,
+        (b * a * 255.0) as u8,
+        (a * 255.0) as u8,
+    )
+}
+
 /// "#AARRGGBB" → 非预乘 rgba f32（Python QColor 同格式；非法串返 None 降级）
 /// egui 0.37 Color32 移除非预乘构造——token 层直接以 f32 数组承载（shader 直传）
 pub fn parse_aarrggbb(text: &str) -> Option<[f32; 4]> {

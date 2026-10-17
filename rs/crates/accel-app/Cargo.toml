@@ -21,6 +21,7 @@ tracing-subscriber = { workspace = true }
 tracing-appender = { workspace = true }
 wgpu = { workspace = true }
 egui-wgpu = "0.37.0"
+chrono-tz = { workspace = true }
 raw-window-handle = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]

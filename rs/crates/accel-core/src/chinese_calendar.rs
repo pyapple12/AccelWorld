@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use chrono::{DateTime, Datelike, Local, Timelike};
+use chrono::{DateTime, Datelike, Local, NaiveDate, Timelike};
 use lunar_rust::lunar::LunarRefHelper;
 use lunar_rust::solar::SolarRefHelper;
 use serde::Deserialize;
@@ -117,6 +117,103 @@ fn holidays_table() -> &'static HashMap<String, HashMap<String, String>> {
 /// None = 年份超数据范围（优雅降级空表语义，对齐 NotImplementedError 捕获路径）
 pub fn holidays(year: i32) -> Option<&'static HashMap<String, String>> {
     holidays_table().get(&year.to_string())
+}
+
+// ===== 节日派生（PL014.07：倒计时默认目标与节日 chips 数据源）=====
+
+/// 传统节日农历规则表（农历月, 农历日, 名称；除夕单独按次年正月初一回退一天）
+const LUNAR_FESTIVAL_RULES: [(i64, i64, &str); 8] = [
+    (1, 1, "春节"),
+    (1, 15, "元宵节"),
+    (5, 5, "端午节"),
+    (7, 7, "七夕节"),
+    (7, 15, "中元节"),
+    (8, 15, "中秋节"),
+    (9, 9, "重阳节"),
+    (12, 8, "腊八节"),
+];
+
+/// 农历日期 → 公历（lunar-rust Lunar 构造转 Solar）
+fn lunar_ymd_to_solar(lunar_year: i64, lunar_month: i64, lunar_day: i64) -> NaiveDate {
+    use lunar_rust::lunar::LunarRefHelper;
+    let solar = lunar_rust::lunar::from_ymd(lunar_year, lunar_month, lunar_day).get_solar();
+    NaiveDate::from_ymd_opt(
+        solar.get_year() as i32,
+        solar.get_month() as u32,
+        solar.get_day() as u32,
+    )
+    .expect("lunar 转公历日期必合法")
+}
+
+/// 某农历年的正月初一公历（春节）
+pub fn spring_festival_of_lunar_year(lunar_year: i32) -> NaiveDate {
+    lunar_ymd_to_solar(lunar_year as i64, 1, 1)
+}
+
+/// 下一个春节公历日期（now 当天含当日；已过本年春节则取次年）
+pub fn next_spring_festival(now: NaiveDate) -> NaiveDate {
+    let mut lunar_year = now.year();
+    loop {
+        let d = spring_festival_of_lunar_year(lunar_year);
+        if d >= now {
+            return d;
+        }
+        lunar_year += 1;
+    }
+}
+
+/// 清明公历日期（lunar-rust 节气表；锚定当年任一日的 lunar 实例取全表）
+fn qingming_of_gregorian_year(year: i32) -> Option<NaiveDate> {
+    use lunar_rust::lunar::LunarRefHelper;
+    let lunar = lunar_rust::solar::from_ymd(year as i64, 6, 1).get_lunar();
+    lunar.get_jie_qi_table().get("清明").and_then(|solar| {
+        NaiveDate::from_ymd_opt(
+            solar.get_year() as i32,
+            solar.get_month() as u32,
+            solar.get_day() as u32,
+        )
+    })
+}
+
+/// 全年节日 chips 派生（PL014.07）：法定（holidays 当年+次年）+ 传统（农历规则 +
+/// 清明节气 + 除夕回退）合并去重（传统覆盖同名法定日）→ 排序 → 截 [now, now+365]
+/// 返回 (公历日, 名称) 升序列表；倒计时默认目标 = next_spring_festival（UI 派生不落盘）
+pub fn year_chips(now: NaiveDate) -> Vec<(NaiveDate, String)> {
+    let mut merged: std::collections::BTreeMap<NaiveDate, String> =
+        std::collections::BTreeMap::new();
+    for gregorian_year in [now.year(), now.year() + 1] {
+        // 法定（holidays.json：中文名内嵌；超范围年静默无条目）
+        if let Some(table) = holidays(gregorian_year) {
+            for (md, name) in table {
+                if let Ok(d) =
+                    NaiveDate::parse_from_str(&format!("{gregorian_year}-{md}"), "%Y-%m-%d")
+                {
+                    merged.entry(d).or_insert_with(|| name.clone());
+                }
+            }
+        }
+        // 传统（农历年 = 公历年对齐：春节/腊八等跨年项由次年轮补齐）
+        for (m, d, name) in LUNAR_FESTIVAL_RULES {
+            merged.insert(
+                lunar_ymd_to_solar(gregorian_year as i64, m, d),
+                name.to_string(),
+            );
+        }
+        // 清明（节气法，年际漂移随节气表）
+        if let Some(qm) = qingming_of_gregorian_year(gregorian_year) {
+            merged.insert(qm, "清明节".to_string());
+        }
+        // 除夕 = 次年正月初一 - 1 天（含腊月廿九/三十大小月差异）
+        let eve = spring_festival_of_lunar_year(gregorian_year + 1).pred_opt();
+        if let Some(eve) = eve {
+            merged.insert(eve, "除夕".to_string());
+        }
+    }
+    let horizon = now + chrono::Duration::days(365);
+    merged
+        .into_iter()
+        .filter(|(d, _)| *d >= now && *d <= horizon)
+        .collect()
 }
 
 /// 农历计算核心（Python get_chinese_lunar_calendar 对等）
