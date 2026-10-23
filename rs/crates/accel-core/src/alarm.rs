@@ -74,6 +74,7 @@ pub const PRESET_BEEP_DURATION_MS: u64 = 200;
 
 /// 时钟 trait：调度任务与触发判定经此注入（RealClock 生产 / VirtualClock 测试拨钟）
 pub trait Clock: Send + Sync {
+    /// 取当前本地时刻（调度轮询与触发判定的时间源）
     fn now(&self) -> DateTime<Local>;
 }
 
@@ -372,6 +373,7 @@ fn normalize_repeat_days(days: &[Value]) -> Vec<i64> {
     normalized
 }
 
+/// serde 默认值：enabled 字段缺省为启用（Python dataclass default 对等）
 fn default_true() -> bool {
     true
 }

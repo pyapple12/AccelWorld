@@ -1,5 +1,5 @@
-//! 玻璃滑杆控件（ui/glass_card.py CapsuleSlider 的 Rust 对等物，PL014.04）
-//! 三层几何：胶囊底轨 + 橙色填充（零进度保留整圆）+ 旋钮；值映射与命令频率可测
+//! 胶囊滑杆（ui/glass_card.py CapsuleSlider 的 Rust 对等物，PL014.04；UIR 实心蒙皮）
+//! 三层几何：胶囊底轨 + accent 填充 + 旋钮；值映射与命令频率可测
 
 use egui::{Rect, Sense, Vec2};
 

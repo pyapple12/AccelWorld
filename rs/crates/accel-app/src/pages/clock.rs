@@ -1,5 +1,5 @@
 //! 时钟页（UIR 重塑：表盘式布局）——标准时小字 + 加速 hero 等宽大字 +
-//! 日进度细条 + 倍率滑杆 + 农历三 chips（页前缀 id，FIX007.3 纪律延续）
+//! 日进度细条 + 倍率滑杆 + 农历三 chips（A008 #7：玻璃面废除后 chip 无 id）
 //! 纯函数 day_progress 可测（分母钳制，FIX006.27 延续）
 
 use crate::tools::clock::split_lunar_info;
@@ -128,9 +128,9 @@ impl crate::pages::Page for crate::pages::ClockPage {
             let (lunar, phase, god) = split_lunar_info(&info.lunar_info);
             ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
                 ui.horizontal(|ui| {
-                    chip::show(ui, "clock_lunar_main", "农历", &lunar);
-                    chip::show(ui, "clock_lunar_phase", "月相", &phase);
-                    chip::show(ui, "clock_lunar_god", "财神", &god);
+                    chip::show(ui, "农历", &lunar);
+                    chip::show(ui, "月相", &phase);
+                    chip::show(ui, "财神", &god);
                 });
             });
         }

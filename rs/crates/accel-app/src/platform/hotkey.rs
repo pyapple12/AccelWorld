@@ -1,5 +1,5 @@
 //! 全局热键（global-hotkey 集成，PL015.02）
-//! 键位读 base.json shortcuts token（Ctrl+S 保存 / Ctrl+Q 退出 / Ctrl+T 主题循环）
+//! 键位读 base.json shortcuts token（Ctrl+S 保存 / Ctrl+Q 退出；A008 #2 主题键退役）
 //! 注册于主线程（winit 消息泵驱动 WM_HOTKEY），window 每帧 drain → HotkeyKind
 
 #[cfg(windows)]
@@ -10,22 +10,17 @@ use global_hotkey::hotkey::HotKey;
 #[cfg(windows)]
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager};
 
-/// 热键动作（与 base.json shortcuts 三键一一对应）
+/// 热键动作（与 base.json shortcuts 两键一一对应——A008 #2 主题键已删）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HotkeyKind {
     Save,
     Quit,
-    Theme,
 }
 
 /// 快捷键 token → 动作清单（base.json /shortcuts/*；缺键降级跳过并记日志）
 pub fn shortcut_specs() -> Vec<(HotkeyKind, String)> {
     let base = &accel_core::static_config::Static::get().base;
-    let keys = [
-        (HotkeyKind::Save, "save"),
-        (HotkeyKind::Quit, "quit"),
-        (HotkeyKind::Theme, "theme"),
-    ];
+    let keys = [(HotkeyKind::Save, "save"), (HotkeyKind::Quit, "quit")];
     keys.iter()
         .filter_map(|(kind, name)| {
             let spec = base
@@ -97,8 +92,8 @@ impl HotkeyHandles {
 // #[cfg(windows)] 装载，文件内 cfg(not(windows)) 桩永不编译属死代码，已删）
 
 // ===== src/platform/hotkey.rs 说明区 =====
-// 输入：base.json /shortcuts/{save,quit,theme} token + GlobalHotKeyEvent 全局通道
-// 输出：HotkeyKind 流（Save/Quit/Theme）
+// 输入：base.json /shortcuts/{save,quit} token + GlobalHotKeyEvent 全局通道
+// 输出：HotkeyKind 流（Save/Quit；A008 #2 主题键退役，/shortcuts/theme 键同步删除）
 // 逻辑步骤：shortcut_specs 读 token → parse_binding 解析（global-hotkey FromStr，
 //   大小写不敏感）→ manager.register 注册（id→动作映射留存）→ poll 每帧 drain
 // 设计理由：键位零硬编码（token 单源）；注册失败降级不崩（对齐 plan「注册失败降级
@@ -109,19 +104,25 @@ impl HotkeyHandles {
 //   非 Windows 为编译期桩（new 返 Err → 与 Windows 侧注册失败同形的降级路径）
 // 异常处理：管理器创建失败整体上抛 → window 降级无热键；单键解析/注册失败跳过
 //   该键位（其余键继续生效——局部降级不整体放弃）
-// 关联配置：base.json shortcuts 三键；消费方：window.rs poll_platform
+// 关联配置：base.json shortcuts 两键；消费方：window.rs poll_platform
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn shortcut_specs_reads_base_tokens() {
-        // 三键位 token 齐备且取值与 base.json 一致
+        // 两键位 token 齐备且取值与 base.json 一致（A008 #2：theme 键已删不再出现）
         let specs = shortcut_specs();
-        assert_eq!(specs.len(), 3);
+        assert_eq!(specs.len(), 2);
         assert!(specs.contains(&(HotkeyKind::Save, "Ctrl+S".to_string())));
         assert!(specs.contains(&(HotkeyKind::Quit, "Ctrl+Q".to_string())));
-        assert!(specs.contains(&(HotkeyKind::Theme, "Ctrl+T".to_string())));
+        assert!(
+            !accel_core::static_config::Static::get()
+                .base
+                .pointer("/shortcuts/theme")
+                .is_some(),
+            "主题热键 token 应已随定案删除"
+        );
     }
 
     #[cfg(windows)]
@@ -131,7 +132,6 @@ mod tests {
         let (k, hk) = parse_binding(HotkeyKind::Save, "Ctrl+S").expect("Ctrl+S 应可解析");
         assert_eq!(k, HotkeyKind::Save);
         assert!(parse_binding(HotkeyKind::Quit, "Ctrl+Q").is_some());
-        assert!(parse_binding(HotkeyKind::Theme, "Ctrl+T").is_some());
         assert!(parse_binding(HotkeyKind::Save, "不是键位").is_none());
         // 解析产物 id 可作映射键（u32 稳定唯一性由库保证）
         let _id: u32 = hk.id();
@@ -144,7 +144,7 @@ mod tests {
         // （按键沿注入属 SendInput 真窗验证——PL015.02 检验项；同场景人工矩阵已取消）
         match HotkeyHandles::new() {
             Ok(handles) => {
-                assert!(!handles.ids.is_empty(), "base.json 三键至少应有注册成功者");
+                assert!(!handles.ids.is_empty(), "base.json 两键至少应有注册成功者");
                 assert!(handles.poll().is_empty(), "无按键事件时 poll 应为空");
             }
             Err(e) => tracing::warn!("热键注册失败（受限环境允许）: {e}"),

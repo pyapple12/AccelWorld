@@ -128,7 +128,7 @@
 
 ---
 
-## 审计观察项豁免定案清单（2026-09-10 随工作流体系接入初始化；2026-09-13 A001-A004 四轮观察项归拢定案；2026-10-18 补录 A005 七条；2026-10-18 再补录 A006 十八条＝15 永久 + 3 条件；2026-10-18 再补录 A007 九条＝8 永久 + 1 条件）
+## 审计观察项豁免定案清单（2026-09-10 随工作流体系接入初始化；2026-09-13 A001-A004 四轮观察项归拢定案；2026-10-18 补录 A005 七条；2026-10-18 再补录 A006 十八条＝15 永久 + 3 条件；2026-10-18 再补录 A007 九条＝8 永久 + 1 条件；2026-10-23 补录 A008 十四条＝14 永久，同轮清理指向已删文件的陈旧条目）
 
 > 豁免唯一权威源：已定案项审计时不再重复报告。新定案条目由归档环节（`.agents/skills/audit-report`）经用户确认后追加。
 > 分级规则：①**永久豁免**——设计定案/用户保证/容错体系覆盖，后续轮次不再报告不再讨论；②**条件豁免**——当前条件下不可达或可接受，**触发条件变化时重新评估**（每项标注触发条件）。
@@ -136,6 +136,7 @@
 > 归拢说明（2026-10-18，A005 / Rust 侧首轮）：参考级观察项 13 条经用户复核——**6 条提升为 P3** 并入 FIX005（隐藏期事件时延 / 退出保存 / 边界 panic / auto 主题 GL / file_io 注释 / hourly 取数），余 **7 条**永久豁免（下表 2026-10-18 行）；Python 时代条目（A001-A004）保留原样，其对象代码已全量归档 `.archived/`（本轮不审计归档代码）。
 > 归拢说明（2026-10-18，A006 / Rust 侧第 2 轮）：参考级观察项 22 条经用户复核——**4 条提升为 P3** 并入 FIX006（夹具计数断言 / clock 除零理论缺口 / 非 Windows 构建告警与桩缺对等导出 / lunar_compare 冗余列），余 **18 条**定案（下表 2026-10-18 A006 行：15 永久 + 3 条件）；A005 与本轮均已闭环的 Python 时代条目保留原样不复核。
 > 归拢说明（2026-10-18，A007 / Rust 侧第 3 轮）：参考级观察项 11 条经用户复核——**2 条提升为 P3** 并入 FIX007（日志与配置路径基准不一致 / weather_code 非标量宽松容错），余 **9 条**定案（下表 2026-10-18 A007 行：8 永久 + 1 条件＝file_io 符号链接 TOCTOU）；「任何非 ASCII 上下文」类历史条目与已闭环项不复核。
+> 归拢说明（2026-10-23，A008 / Rust 侧第 4 轮）：参考级观察项 18 条经用户复核——**2 条提升为 P3** 并入 FIX008（bus.rs Tick 回退字面量改读 token／Cargo.toml 版本注释同步），**2 条由归档动作即时消解**（z.plan 补 UIR 衔接纪要／本清单清理指向已删文件的陈旧条目：nav.rs/glass 族/render_probe/acrylic/ring 及 A005-A006 重叠行），余 **14 条**定案（下表 2026-10-23 行：全部永久）；UIR 重塑后部分旧行号漂移，同源条目按性质适用、行号以现行代码为准。
 
 ### ① 永久豁免（不再讨论）
 
@@ -168,23 +169,16 @@
 | ui/gl/glass_canvas.py:53-55                                              | 场景脏轮询 QTimer 启动后无 stop（隐藏期空转）                                         | 空闲期仅布尔比较，开销可忽略                                                                                    | 2026-09-13 |
 | ui/gl/glass_canvas.py:134                                                | monotonic % 3600 每小时呼吸相位跳变一次                                               | hover 呼吸可见性极低                                                                                            | 2026-09-13 |
 | ui/gl/shaders.py                                                         | 材质微调常量（云雾/rim/bezel/spec/投影/色散错位/veil/alpha 档）                       | GLSL 材质参数，有注释依据，非业务配色                                                                           | 2026-09-13 |
-| accel-app/src/nav.rs:13-46、widgets/{ring,slider,chip}.rs                | Rust：派生局部几何常量（rail_x/pill_w、ring inset 与段数、TRACK_PAD、窗口锚点）       | 绘制几何细节参数，无调参诉求（应 token 化项已并入 FIX005.9，不在此豁免）                                        | 2026-10-18 |
-| accel-app/src/glass/shader.rs:96-131 等                                  | Rust：shader 内算法常量（投影/衰减/rim/bezel/spec/色散）                              | 有注释依据的算法参数（HINT002 逐条勾销，A005 复核零变化）                                                       | 2026-10-18 |
-| accel-app/src/glass/shader.rs:221-225                                    | Rust：to_bytes() 内每帧 assert_eq!(len, UNIFORMS_SIZE)                                | 布局不变量、单测已锚定，改动布局时立即暴露属期望                                                                | 2026-10-18 |
 | accel-core/src/alarm.rs:188                                              | Rust：obj["sound_type"].as_str().unwrap()                                             | 前置匹配已保证该键为字符串（可证明安全），仅风格问题                                                            | 2026-10-18 |
 | rs/fixtures/manifest.json:12、z.plan.md 工程树/字段名                    | Rust：manifest generated_by 与计划文本路径/字段名漂移                                 | 属历史方案 spec 与已登记执行偏移（z.plan.md:899、910）                                                          | 2026-10-18 |
 | accel-core/tests/parity.rs 静态计数 155                                  | Rust：与 m.milestone 快照计数 145（PL014 时点）不冲突                                 | 时点快照口径差异，非缺陷                                                                                        | 2026-10-18 |
 | rs/Cargo.lock 多版本传递依赖                                             | Rust：chrono-tz 0.8.6/0.10.4、thiserror 1/2、windows 0.61/0.62 并存                   | 直接依赖版本单一、清单一致，属第三方传递依赖                                                                    | 2026-10-18 |
-| accel-app/src/nav.rs:38-45,88,110,143,234、widgets/{ring,slider,chip}.rs | Rust：派生局部几何常量（rail_x/pill_w/pill_h、TRACK_PAD、环 inset 与段数、chip 内距） | 绘制几何细节参数，无调参诉求（应 token 化项已并入 FIX006.5）                                                    | 2026-10-18 |
-| accel-app/src/glass/shader.rs:61-72,95-131、surface.rs:31-34             | Rust：shader 材质算法常量与 GlassSurface 默认值                                       | 有注释依据的材质参数，非业务配色                                                                                | 2026-10-18 |
-| accel-app/src/glass/shader.rs:221-225                                    | Rust：to_bytes() 每帧 assert_eq!(len, UNIFORMS_SIZE)                                  | 布局不变量、单测已锚定，改动布局即暴露属期望                                                                    | 2026-10-18 |
 | accel-core/src/alarm.rs:63-71,170                                        | Rust：PRESET_SOUND_CONFIG 枚举参数表；obj["sound_type"].as_str().unwrap()             | 有注释依据的固定枚举表；前置 match 已保证该键为字符串（可证明安全）                                             | 2026-10-18 |
 | accel-core/src/interface.rs:24                                           | Rust：BUS_CAPACITY=64 通道容量                                                        | 单次使用无调参场景常量（满载对策已由 FIX005.22 落地）                                                           | 2026-10-18 |
 | accel-core/src/weather.rs:307-308                                        | Rust：LAT_RANGE/LON_RANGE 地理定义域常量                                              | 地理常量、有注释依据（SSRF 校验用）                                                                             | 2026-10-18 |
 | accel-core/src/data/world_cities.rs:18                                   | Rust：world_cities.json 置 config/static/ 而其余表在 rs/data/                         | 说明区已登记 z.plan 执行偏移，非缺陷                                                                            | 2026-10-18 |
 | accel-core/src/settings.rs:216、alarm.rs:212                             | Rust：to_json_value 用 .expect("不可能失败")                                          | 全字段 serde 可序列化，不可达                                                                                   | 2026-10-18 |
-| accel-app/src/platform/notify.rs:5、acrylic.rs:7、tray.rs 菜单文案       | Rust：AUMID ／ 中文菜单文案 ／ DWMSBT_TRANSIENTWINDOW                                 | 平台常量与 UI 文案，单次使用无调参场景                                                                          | 2026-10-18 |
-| accel-app/src/bin/render_probe.rs:13-15                                  | Rust：探针断言阈值（12／60／BG_ALPHA_RANGE）                                          | 有注释依据的实测基线（PL013.07），非业务参数                                                                    | 2026-10-18 |
+| accel-app/src/platform/notify.rs:5、tray.rs 菜单文案                     | Rust：AUMID ／ 中文菜单文案（DWMSBT_TRANSIENTWINDOW／acrylic.rs 引用已随 UIR 删除）   | 平台常量与 UI 文案，单次使用无调参场景                                                                          | 2026-10-18 |
 | accel-app/src/pages/ime_sim.rs                                           | Rust：整文件 #![cfg(test)]                                                            | 设计定案（真机 IME 实测取消）                                                                                   | 2026-10-18 |
 | accel-app/src/window.rs:692-696                                          | Rust：字体搜索目录固定 C:/Windows/Fonts 等                                            | 平台集成路径常量（族名已 token 化）                                                                             | 2026-10-18 |
 | accel-app/src/theme.rs:211,238,277                                       | Rust：accent/tint 键损坏兜底色值                                                      | 纯防御路径，键齐备时不可达                                                                                      | 2026-10-18 |
@@ -193,14 +187,24 @@
 
 | 文件:行号                                                                                                      | 描述                                                                                               | 定案理由                                                            | 定案日期   |
 | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ---------- |
-| accel-app/src/nav.rs:31,38-45,88,119-130,202-247、widgets/{ring,slider,chip}.rs、各页 add_space、window.rs:340 | Rust：派生局部几何/间距字面量（含设置浮窗锚点）                                                    | 绘制几何细节参数，无调参诉求（A006 同源延续；应 token 化项已落地）  | 2026-10-18 |
-| accel-app/src/glass/shader.rs:61-72,95-131,221-225、surface.rs:31-34、theme.rs:211,238,277                     | Rust：shader 材质常量 / to_bytes 断言 / GlassSurface 默认值 / 键损坏兜底色                         | 有注释依据 + 单测锚定 + 键齐备时不可达（A005/A006 延续）            | 2026-10-18 |
-| accel-app/src/glass/surface.rs:105,117,178,185,192-202                                                         | Rust：注册表六方法（unregister/update_geometry/draw_list/total_count/dirty/clear_dirty）生产零调用 | A006 #14 定案「测试即契约」保留并就地登记理由                       | 2026-10-18 |
+| accel-app 各 UI 文件（window/pages/widgets/theme）                        | Rust：派生局部几何/间距字面量（含设置浮窗锚点；nav/ring 等已删文件引用随之失效，UIR 新 UI 同源适用） | 绘制几何细节参数，无调参诉求（A005-A008 同源延续；应 token 化项已落地） | 2026-10-18 |
 | accel-core/src/audio.rs:20-31,52,59-60                                                                         | Rust：amplify(0.2)／静音段 44.1kHz 单声道／懒初始化持锁探测设备                                    | 有注释依据的音频参数；单次点火无可达性能危害                        | 2026-10-18 |
-| accel-app/src/bin/render_probe.rs:13-15                                                                        | Rust：探针断言阈值 12／60／BG_ALPHA_RANGE                                                          | 有注释依据的实测基线（PL013.07）                                    | 2026-10-18 |
 | accel-core/src/weather.rs:338-339、alarm.rs:563-571、accel-app/src/pages/countdown.rs:55                       | Rust：固定 API base（SSRF 防线组成部分）／quick_target 中文标签／24h 校验常量                      | 构造期固定 base 有注释依据；UI 文案与 UX 规则无调参诉求             | 2026-10-18 |
-| z.plan.md:170/177、171/178、172/179                                                                            | Rust：豁免清单 A005 与 A006 同源条目重叠                                                           | 归拢说明已声明「多轮去重 + 留印」口径，保留各轮日期留档，无实际危害 | 2026-10-18 |
 | w.study.md:46、y.problems.md:18-19,21-24、z.plan.md:948,1028                                                   | Rust：三表表述瑕疵／行内自引用／总纲仍列 egui_extras                                               | 表述瑕疵 + 历史 spec 漂移（A005 已豁免）                            | 2026-10-18 |
+| accel-core/src/alarm.rs:395-399                                                                                | Rust：gen_id 8 位十六进制域的跨进程/跨重启理论碰撞（计数器随进程重置）                             | uuid4[:8] 形态 parity 硬约束＋概率极低＋说明区已登记语义            | 2026-10-23 |
+| accel-core/src/alarm.rs:118,139-147                                                                            | Rust：Alarm/AlarmDraft 的 serde derive 未使用（序列化走 to_json_value）                            | 总线为进程内枚举，零成本 API 面，删除收益趋零                       | 2026-10-23 |
+| accel-core/src/interface.rs:21、alarm.rs:580、settings.rs:199、chinese_calendar.rs:212                         | Rust：THEME_CHOICES／「快捷 N 分钟」／「我的目标」迁移文案／365 天 chips 窗口                      | UI 文案与有注释算法参数，非「配置承诺存在而未进」形态               | 2026-10-23 |
+| accel-core/src/interface.rs:399-412                                                                            | Rust：闹钟一次性自动禁用仅内存，延迟到下次保存落盘                                                 | 装载期 is_expired_at 自愈禁用，终点状态一致                         | 2026-10-23 |
+| accel-core/src/weather.rs:150-158                                                                              | Rust：错型元素复用 SeriesMissing 变体                                                              | 仅诊断文案归类不精确                                                | 2026-10-23 |
+| accel-app/src/window.rs:353,614,236,385、bus.rs:207                                                            | Rust：托盘 1s 节流／退出存档 300ms／平台轮询 200ms／PENDING_CAP=256／探针 1200ms                   | 工程节奏常量，单点使用，无调参场景                                  | 2026-10-23 |
+| accel-app/src/window.rs:79-93                                                                                  | Rust：每帧 DWM 属性写入                                                                            | 幂等且受 repaint 节流约束                                           | 2026-10-23 |
+| accel-app/src/window.rs:926                                                                                    | Rust：字体兜底表含 msyhbd.ttc（粗体）                                                              | 极罕见命中（常规 msyh 缺失才轮到），留观察                          | 2026-10-23 |
+| accel-app/src/window.rs:421                                                                                    | Rust：探针目录不存在无 mkdir，capture 恒 FAIL 但流程走完                                           | 开发期专用路径，日志可辨                                            | 2026-10-23 |
+| accel-app/src/pages/alarm.rs:48,116 ↔ theme.rs:38                                                              | Rust：faint_bg 兜底灰 10 与 38 两处不同                                                            | 键恒存在兜底不可达                                                  | 2026-10-23 |
+| accel-app/src/widgets/digits.rs                                                                                | Rust：cell_width 每帧多次 layout "0"（hero 一帧 4 次）                                             | 单字符量宽开销极小                                                  | 2026-10-23 |
+| accel-core/src/types.rs:114                                                                                    | Rust：UiPreferences.countdown_target app 侧零消费                                                  | settings.rs:62 已登记 legacy 读兼容                                 | 2026-10-23 |
+| rs/crates/accel-app/src/bin/                                                                                   | Rust：空目录本地残留                                                                               | git 不跟踪空目录，clone 者不可见，工作区卫生                        | 2026-10-23 |
+| y.problems.md:55、x.progress/milestone 历史注记                                                                | 玻璃/render_probe 历史表述                                                                         | 历史执行记录当时真实，历史豁免                                      | 2026-10-23 |
 
 ### ② 条件豁免（触发条件变化时重新评估）
 
@@ -1018,6 +1022,69 @@ Acrylic 技术要点：
 - **注释房规 53/53**：全仓 `.rs` 文件模块头 + 函数 `///` + 文件尾说明区齐备。
 - **架构不变量机器化 + 依赖收敛**：core 依赖树零 egui 由 CI 强制；`windows` 无未用 feature；双 bin 经 `default-run` 消歧。
 - **上轮增量落地率高**：30 项中 16 项完整在位、14 项为覆盖面/表述缺口，仅 2 项属真实新缺陷（P1×2）、1 项为处置表述不准（P2）；无一项回退到修复前状态。
+
+---
+
+## UIR 界面推倒重塑执行纪要（2026-10-23，V0.6.1.0；补录于 A008 归档时）
+
+> 缘由：A007 修复收口后用户发起 UI 修复评估，定案「方案 C 推倒重来，不受原设计约束」；一阶段（玻璃框架内 Dock/表盘重塑）执行中被用户否决——「现在的界面就和屎一样……不要在意以前的设定，什么玻璃……我要的是一个人机交互看上去没问题的界面」→ 二阶段全盘去玻璃，改用实心桌面应用语法。
+> 定案：「Calm Instrument」实心体系——暗底单色板（window #171A21/侧栏 #12141B/卡片 #1F232E/品牌金 #E4B36A 唯一强调色）+ 左侧栏导航 + 五页重排 + 零透明零 shader；eframe 渲染器 wgpu→glow。任务清单 UIR.1-8（x.progress.md，全勾选）。
+> 拆除面：src/glass/{mod,painter,shader,surface}.rs、bin/render_probe.rs、platform/acrylic.rs、nav.rs、widgets/{dock,ring}.rs；wgpu/egui-wgpu 依赖移除（GPU 黑窗面与 exe 体积同步收敛）。
+> 新增面：widgets/{digits,icons,icon_button,switch}（等宽数字位槽宽制根治 y.problems#12 Bahnschrift 走秒抖动；矢量图标库零字体依赖）、ACCELWORLD_UI_SHOT 真窗截图探针、FrontendCommand::SetWindowGeometry 窗口几何记忆契约、DWM 标题栏钉色。
+> 验证：四关卡 ALL_GREEN + 测试 180 项 + 真窗探针 exit 0 + 截图六帧自检；提交 a60cc09（39 文件，+2502/-3527）。
+> 遗留：本轮 A008 审计接续体检（浅色主题失效/Tick 饿死等 19 条）；PrintWindow 截图底部白条判定为采集伪影（DWM 阴影 alpha 丢失），待真机复核。
+
+## 附录 A008：全量代码审计报告（第 8 轮，Rust 侧第 4 轮，2026-10-23）
+
+> 范围：`rs/` 双 crate 全部 71 个源文件 + 4 份静态配置 + Cargo 清单×3 + 工具链与 CI（rs/ci.ps1、rs-ci.yml）+ fixtures + 根文档九件；`.archived/`、`rs/target/`、`.temp/` 排除。
+> 方式：只读审计。主会话亲做 FIX007 回归复核（grep + git show 双口径）并对全部 P1/P2 条目逐一亲核确证；core 业务／app 呈现／工程与文档三路并行全文通读后主会话合并去重（跨组同根因合并：几何解析、UIR 注释清扫等）。本轮为 UIR 界面推倒重塑（a60cc09）后的首轮全量审计，重点为全新 UI 代码。
+> 状态：✅ 修复完成（2026-10-24，FIX008 全 19 条 + 收尾落地——四关卡 ALL_GREEN + 测试 185 通过（app 57 + bin 1 + core 107 + parity 20）+ 真窗 fps 探针 55/6s + 截图六帧自检；反向验收 `.temp/verify_fix008_accept.md`；FIX008.2 经用户定案**仅深色**——浅色体系整体删除属产品定案非回退，ThemePref 配置域保留存档）
+
+### 零、上轮（FIX007，提交 c914b74，经 UIR 重写后）修复复核清单
+
+**16 项 P 级修复全部在位，零回退**（grep + git show 双口径；UIR 对修复语义的平移——退出存档/冷启动天气/命令待发队列/cfg 分档——逐项核对无丢失）：
+
+| 上轮条目 | 现状 | 证据 |
+| --- | --- | --- |
+| gen_id 计数+椒盐 / world_pins 城市名权威域 / 在飞表替换标记协议 / TTL 单源 / weather_code 容器 Parse / 路径基准 exe_dir / 死代码五项 | ✅ 仍在 | alarm.rs:382-399（3 条反向验收单测）；settings.rs:260-269 + interface 名域 + 夹具同步；interface.rs:609-663；weather.rs:340-357；weather.rs:207-213；util/paths.rs + interface.rs:90 + logging.rs:24；core 全域 rg glass/acrylic/wgpu 零命中 |
+| color32_at 键含兜底 / cached_by_date 按日缓存 / tick 钳制 / 线程失败留痕 / 夹具计数全 assert_eq! / 非 Windows 桩 / 文档清扫 | ✅ 仍在 | theme.rs:71（`{key}#{fallback_gray}`+单测）；countdown.rs:44-61,135,277；main.rs:52；bus.rs:175-184；parity.rs 72 处 assert_eq!；acrylic.rs 整文件已删；文档七处已清（残留见 #6） |
+| ——（非修复项发现） | ⚠️ UIR 丢失既有能力 | 旧版浅色主题消费 panel_light 等四键，UIR 重写后 light_visuals 读深色键 → 本轮 #2（新增，非 FIX007 回退） |
+
+### 一、P0–P3 修复清单（P0 无；共 19 条 = P1×2 + P2×3 + P3×14）
+
+> 性质：遗留 = 历轮已列未修；新增 = 本轮新发现。★ = 本轮观察项经用户复核提升。
+
+| # | 级别 | 文件:行号 | 类型 | 描述 | 建议 | 性质 | 影响面 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | P1 | accel-core/src/interface.rs:429-431 ＋ accel-app/src/widgets/slider.rs:60-71 ＋ pages/clock.rs:28,127 | 1/8 | **Tick 饿死：拖动倍率滑杆时时钟走秒冻结**。主循环 `loop { sleep(period); select! }` 的 sleep 每轮重建，命令分支每轮优先；滑杆拖动期每帧一发 SetRate（约 16ms < tick 100ms）→ Tick 持续缺位，时钟页 hero 时间纯 Tick 驱动。确定性复现：按住滑杆拖动 1 秒以上走秒冻结，松手恢复 | core 侧改 `tokio::time::interval`（或对既有 deadline sleep_until）；app 侧无需动 | 新增 | 时间膨胀显示/接口层 |
+| 2 | P1 | accel-app/src/theme.rs:229-268 ＋ config/static/ui.json ＋ pages/alarm.rs:58 ＋ window.rs:92 | 1/12 | **浅色主题完全失效**：light_visuals 与 dark_visuals 读同一套深色键（仅兜底灰不同而键恒存在兜底不可达）→ 切「浅色」无任何变化（确定性）；ui.json colors 单板全深色，7 键（panel_dark/window_dark/selection_dark/panel_light/window_light/bg_light/text_light）全仓零消费（rg 实证）；alarm.rs:58 无条件用 bg_dark、window.rs:92 标题栏恒钉深色为同根因症状 | 定案二选一：①恢复双主题（light_visuals 改读浅色键 + ink()/color32_at 增模式维度 + 标题栏钉色随主题）；②定案仅深色（删 7 死键 + 删浅色分支 + 设置项收敛）。顺带归位 alarm.rs:58 为 on_accent 语义 | 新增（UIR 丢失既有能力） | GUI 面板/配置体系 |
+| 3 | P2 | accel-core/src/interface.rs:626-640（消费方 window.rs:818-830） | 2 | **窗口几何存档解析接受 NaN/inf/非正宽高**：`f32::from_str` 接受 "NaN"/"inf"/"1e30"，无 is_finite、无 w/h>0 校验，set_window_geometry 将原文落盘；user_config.json 用户可手编 → 启动恢复把非法四元组直达 with_position/with_inner_size | 解析后四值 is_finite() 且 w/h>0（可加屏幕域钳制），存档规范化 | 新增（UIR.7 引入） | 配置体系/GUI |
+| 4 | P2 | accel-core/src/interface.rs:502-533 | 11/13 | **闹钟四命令失败零回推**：AddAlarm/RemoveAlarm/ReplaceAlarm/ToggleAlarm 失败路径无任何事件；同文件 SetRate 失败有 RateRejected（A005 #19 定案）、SetWeatherCity（:534-536）恒回推——同文件两套口径，用户操作被静默吞掉 | 失败也回推 AlarmsChanged（现值）或引入拒绝事件，与 RateRejected 对齐 | 新增 | 闹钟服务/接口层 |
+| 5 | P2 | accel-app/src/pages/weather.rs:78-84（:73 vs :231 自相矛盾） | 1/6 | **天气现象图标恒为云**：hero 图标硬编码 Icon::Cloud，WeatherData.icon 与 weather_code 在 app 侧零消费——雨/雪/晴显示完全相同（确定性）；:73 注释与 :231 说明区口径矛盾；icons.rs 无雨雪等图标 | 按 weather_code 映射矢量图标（扩 icons.rs）或恢复消费 icon 字段，统一两处口径 | 新增 | GUI 面板 |
+| 6 | P3 | 多处（合并，同根因＝UIR 未同步周边文本） | 6 | **UIR 残留失实注释与文档成片清扫**。代码侧：lib.rs:2（已删的 render_probe）；window.rs:1118-1143 说明区成片失效（透明 viewport/wgpu alpha/Acrylic/玻璃面注册/glass_lift/glass.gl_lift/ui.json field.*，其中「几何恢复未做」与 UIR.7 已实现直接冲突）；pages/mod.rs:113（nav.rs 已删）；icons.rs:330；main.rs:21/74/77；slider.rs:1-2；icon_button.rs:2；chip.rs:3（称上限 200，:20 实为 240）；theme.rs:2；accel-app/Cargo.toml:7-10,41-43（description「玻璃渲染」/双 bin default-run 消歧/wgpu 依赖注释）；interface.rs:667-668＋types.rs:190-194（命令「16 变体」实为 17，「协议 v1 不再变动」未登记 SetWindowGeometry）。文档侧：**x.progress.md:45-46 现役速查节仍列 `--bin render_probe`（确定性跑不通）**；x.progress.md:5（「待提交」失实）与 :6（wgpu 未清）；README.md:70-71（代码块重复两份）；w.study.md:4（注记称 3.7 留档作废，:127 实为重写现役）；y.problems.md:22,94-95（#10 称「当前无几何恢复需求」失实） | 一次清扫收口；✅ 断言与产物一致 | 新增 | 文档/跨模块 |
+| 7 | P3 | theme.rs:50-52 ＋ window.rs:31/477/561 ＋ tools/clock.rs:23 ＋ widgets/switch.rs:8-32 ＋ pages/alarm.rs:119-150 ＋ widgets/chip.rs:20 ＋ pages/countdown.rs:290 ＋ interface.rs:159-167 | 4/5 | **死代码与空耗（合并）**：Theme::mode() 零调用；AppHandle.theme 只写不读；fmt_percent 零生产调用（遗留）；switch::show 生产零调用而 alarm.rs 内联逐行复刻同一开关（注释自证）；chip.rs id 死参＋countdown.rs:290 每帧 format! 空耗；fetch_weather 七域契约遗留零调用（错误策略与总线双轨） | 逐项删除/接线：alarm 行卡改调 switch::show 或删 switch.rs；删 fetch_weather 与死参 | 新增（fmt_percent 遗留） | GUI 面板/接口层 |
+| 8 | P3 | window.rs:822-831 ＋ pages/weather.rs:190、countdown.rs:188、world.rs:37 | 2 | **窗口无最小尺寸下限，页内减法布局可为负宽**：无 with_min_inner_size，缩到极小时 bar_w/card_w/tile_w 变负构造倒置 Rect（tessellator 行为需验证，预计退化绘制不 panic，布局破损） | min_inner_size 入 token 设下限；页内宽度 max(0) 钳制 | 新增 | GUI 面板 |
+| 9 | P3 | accel-core/src/weather.rs:64-84 | 2/6 | hourly/daily「键存在但容器错型」被静默按缺失处理（`hourly:"x"` → 空序列无 Err 无日志），与 :64-65 注释承诺（键存在则全严校验）相反 | 区分 is_some 时错型返 SeriesMissing，或修正注释 | 新增 | 天气服务 |
+| 10 | P3 | accel-core/src/weather.rs:383,391,399 | 8/13 | 同一缓存锁三种中毒策略并存：force 清键 expect（panic）/写缓存静默跳过/读缓存 expect | 统一为 expect（中毒属不可恢复编程错误） | 新增 | 天气服务 |
+| 11 | P3 | accel-core/src/util/file_io.rs:17-19 ↔ util/paths.rs:9-14 | 4 | 写白名单 exe 基准双轨残余：allowed_roots 自行 current_exe 推导（失败丢根）未复用 FIX007.15 的 exe_dir（失败回退 "."），语义分叉 | allowed_roots 改调 exe_dir，回归写白名单单测 | 新增 | 配置体系 |
+| 12 | P3 | accel-app/src/window.rs:753-777 | 13/10 | DWM 钉色失败完全静默（双 `let _ =`）：Win10 <22000 不支持该属性恒失败，标题栏不同色且无日志；与托盘/热键降级有 warn 的纪律不一 | 失败记一次（去抖）warn/debug | 新增 | GUI 面板/日志 |
+| 13 | P3 | accel-app/src/pages/alarm.rs:82-94 | 10/13 | 闹钟自定义添加：非法时间点击即发 AddAlarm 并无条件清空草稿，UI 零反馈（core 侧仅 warn 日志）；对照 countdown.rs:340-342 同场景有内联红字校验——一处有反馈一处静默（并放大 #4 静默面） | client 侧校验 HH:MM 或失败不清草稿/显示错误 | 遗留 | GUI 面板 |
+| 14 | P3 | accel-core/src/interface.rs:354-362 | 10 | remove_countdown_target 不存在时静默返 false；对照 remove_world_city（:286-295）有 info 日志 | 补同款日志 | 新增 | 接口层 |
+| 15 | P3 | accel-core/src/interface.rs:697-702 ＋ settings.rs:306-311 | 10 | 单元测试临时目录无 RAII 清理（断言失败即残留 %TEMP%）；对照 parity.rs:490-510 SandboxDir 已确立 RAII 标准 | 照搬 SandboxDir 模式 | 新增 | 测试 |
+| 16 | P3 | accel-app/src/pages/weather.rs:8 vs :27 | 1/6 | 温度曲线注释称「平线居中」，公式实际把等温序列画在底缘（ratio=0 → y=height）；单点分支才居中；测试未覆盖平线 | 改公式（平线取中）或改注释，以设计意图为准 | 新增 | GUI 面板 |
+| 17 | P3 | accel-core/src/alarm.rs:77,375 | 6 | `Clock::now` 与 `default_true` 缺 `///` 文档注释（房规每函数必备） | 各补一行中文 /// | 新增 | 规范 |
+| 18 | P3 | accel-app/src/platform/tray.rs:88 | 9 | 托盘倍率菜单每秒无条件 set_text（tooltip 有未变化跳过，菜单文本无同款镜像） | 镜像上次倍率文本跳过 | 遗留 | 托盘与音频 |
+| 19 ★ | P3 | accel-app/src/bus.rs:142 | 12 | Tick 未到的重绘回退 `unwrap_or(100)` 字面量与 clock_tick_ms token 同值双源 | 改读 `Static::get().base_i64("clock_tick_ms")` | 新增（★本轮提升） | 配置体系 |
+
+### 二、参考级观察项（18 条经用户复核处置：2 条提升为 #19 与 #6 内 Cargo.toml 版本注释；2 条由归档动作即时消解——z.plan 补 UIR 纪要、豁免清单清理陈旧条目；余 14 条定案永久豁免，见「审计观察项豁免定案清单」2026-10-23 行）
+
+### 三、亮点
+
+- **FIX007 零回退**：上轮 16 项修复经 UIR 大面积重写后 100% 在位（grep＋git show 双口径），语义平移核查无丢失。
+- **配置对账全绿**：base.json 26 顶层键零死键、app 消费键零缺键；夹具 sha256 6/6＋counts 10/10 实测相符；world_cities 50 城名唯一、默认八城全存在；默认值无双处漂移。
+- **UIR 删除面完整**：glass/acrylic/wgpu/render_probe/nav/ring 在代码层零残留（残留仅注释层，见 #6）；core 侧零 UIR 污染。
+- **CI 同源有效**：ci.ps1 与 rs-ci.yml 四关卡逐字一致且全部可跑；AGENTS「运行与验证」命令除速查节一处残留外均有效。
+- **UIR 新基建单测锚定**：等宽数字位/矢量图标/按日缓存/几何解析均有就近测试。
 
 ---
 

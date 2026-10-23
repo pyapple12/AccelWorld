@@ -1,6 +1,6 @@
 # AccelWorld —— 加速世界世界钟
 
-[![Version](https://img.shields.io/badge/Version-0.6.1.0-blue.svg)](rs/config/static/base.json)
+[![Version](https://img.shields.io/badge/Version-0.6.1.1-blue.svg)](rs/config/static/base.json)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](rs/rust-toolchain.toml)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
@@ -63,9 +63,6 @@ cargo build --release        # 产物 rs/target/release/accel-app.exe
 ```powershell
 # 四关卡 CI：格式 / clippy / 全量测试 / core 依赖树零 GUI
 pwsh rs/ci.ps1
-
-# 仅测试
-cargo test --workspace
 
 # 仅测试
 cargo test --workspace

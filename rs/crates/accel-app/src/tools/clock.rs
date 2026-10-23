@@ -1,5 +1,5 @@
 //! 时钟展示运算（ui/tools/clock_tools.py + date_panel._split_lunar 的 Rust 对等物）
-//! 农历串三段拆分 / 进度上界 / Hero 显示格式化——纯函数零 egui 依赖
+//! 农历串三段拆分——纯函数零 egui 依赖（A008 #7：fmt_percent 生产零调用已删）
 
 /// 农历串拆解（Python _split_lunar 逐字符对等）：
 /// "主体…月相：X 财神：Y" → (主体, 月相, 财神)；任一标记缺失整体归主体、其余置空
@@ -19,18 +19,14 @@ pub fn split_lunar_info(text: &str) -> (String, String, String) {
     (text.trim().to_string(), String::new(), String::new())
 }
 
-/// 倍率百分比格式化（"200%"形态；四舍五入取整——UI 展示用非精确值）
-pub fn fmt_percent(rate: f64) -> String {
-    format!("{:.0}%", rate * 100.0)
-}
-
 // ===== src/tools/clock.rs 说明区 =====
-// 输入：TimeInfo.lunar_info 串 / rate；输出：展示字符串（纯函数）
-// 逻辑步骤：split_lunar_info 双标记 partition → strip 三段；fmt_percent 取整
+// 输入：TimeInfo.lunar_info 串；输出：展示字符串（纯函数）
+// 逻辑步骤：split_lunar_info 双标记 partition → strip 三段
 // 设计理由：date_panel._split_lunar 迁出的 Rust 对等（展示运算出面板，面板只剩
 //   控件装配）；标记契约由 core::chinese_calendar 产出端单源，此处只消费容错
 // A005 #15：progress_bounds / format_hms 生产零调用已删除（日长与时间串分别由
-//   TimeInfo.day_hours / custom_time 直接提供）
+//   TimeInfo.day_hours / custom_time 直接提供）；A008 #7：fmt_percent 同判删除
+//   （UIR 后倍率以「×N.N」徽标直出，百分比形态零调用）
 // 异常处理：无 panic 面（split_once 前置 contains 校验）
 // 关联配置：无（纯函数）；消费方：pages/clock.rs（PL014.05）
 #[cfg(test)]
@@ -53,15 +49,5 @@ mod tests {
         let (_, phase, _) =
             split_lunar_info("乙巳年（蛇年）腊月廿九午时 月相：晓月 财神：东北方向（艮位）");
         assert!(!phase.contains('拜'));
-    }
-
-    #[test]
-    fn hms_and_percent_formats() {
-        assert_eq!(
-            crate::tools::clock::fmt_percent(2.0),
-            "200%",
-            "A005 #15：format_hms 生产零调用已删（时间串由 core::TimeDilation 产出）"
-        );
-        assert_eq!(fmt_percent(1.1), "110%");
     }
 }

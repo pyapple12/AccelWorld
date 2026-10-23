@@ -1,5 +1,5 @@
 {
-  "version": "0.6.1.0",
+  "version": "0.6.1.1",
   "rate_min": 1.0,
   "rate_max": 20.0,
   "default_rate": 2.0,
@@ -7,8 +7,7 @@
   "default_alarm_sound_value": "classic",
   "shortcuts": {
     "save": "Ctrl+S",
-    "quit": "Ctrl+Q",
-    "theme": "Ctrl+T"
+    "quit": "Ctrl+Q"
   },
   "default_theme": "auto",
   "default_city": "北京",
@@ -29,6 +28,8 @@
   "window_y": 100,
   "window_width": 900,
   "window_height": 500,
+  "window_min_width": 520,
+  "window_min_height": 420,
   "clock_tick_ms": 100,
   "alarm_check_ms": 1000,
   "weather_cache_ttl": 1800,

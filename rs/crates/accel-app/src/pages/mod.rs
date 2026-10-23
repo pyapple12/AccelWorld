@@ -110,7 +110,8 @@ pub struct WeatherPage;
 #[derive(Default)]
 pub struct AlarmPage;
 
-// 页面枚举循环工具（A005 #15：next_page 生产零调用已删除——导航点击切换见 nav.rs）
+// 页面枚举循环工具（A005 #15：next_page 生产零调用已删除——UIR 后导航点击切换
+// 内联在 window.rs 侧栏）
 
 // ===== src/pages/mod.rs 说明区 =====
 // 输入：UiState（current_page/settings_open 等）+ 各页自持临时输入态；输出：当前页装配

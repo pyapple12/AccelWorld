@@ -13,6 +13,20 @@ pub fn quick_label(minutes: i64) -> String {
     format!("{minutes} 分钟后")
 }
 
+/// HH:MM 合法性（纯函数可测，A008 #13）：两位小时(00-23)+冒号+两位分钟(00-59)——
+/// 与 core Alarm 装载规则同口径（单 digit 小时/"25:00" 均拒），让拒绝在 UI 可见
+pub fn valid_hhmm(text: &str) -> bool {
+    let b = text.as_bytes();
+    b.len() == 5
+        && b[0].is_ascii_digit()
+        && b[1].is_ascii_digit()
+        && b[2] == b':'
+        && b[3].is_ascii_digit()
+        && b[4].is_ascii_digit()
+        && text[0..2].parse::<u8>().is_ok_and(|h| h <= 23)
+        && text[3..5].parse::<u8>().is_ok_and(|m| m <= 59)
+}
+
 impl crate::pages::Page for crate::pages::AlarmPage {
     fn ui(&mut self, ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
         let ink = crate::theme::ink();
@@ -55,7 +69,7 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                         text,
                         egui::FontId::proportional(crate::theme::font_size("body")),
                         if resp.hovered() {
-                            crate::theme::color32_at("bg_dark", 20)
+                            crate::theme::on_accent_color()
                         } else {
                             ink.card
                         },
@@ -69,6 +83,8 @@ impl crate::pages::Page for crate::pages::AlarmPage {
             ui.add_space(8.0);
 
             // 自定义添加行：标签 + HH:MM + 加号图标按钮
+            // A008 #13：client 侧先校验 HH:MM——非法不发送不清草稿（原实现点击即发
+            // 且无条件清空，拒绝只发生在 core 装载路径，UI 零反馈）
             ui.horizontal(|ui| {
                 egui::TextEdit::singleline(&mut state.alarm_draft_label)
                     .hint_text("标签")
@@ -79,7 +95,8 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                     .desired_width(80.0)
                     .show(ui);
                 let add = icon_button::show(ui, crate::widgets::icons::Icon::Plus, 16.0, false);
-                if add.on_hover_text("添加闹钟").clicked() {
+                if add.on_hover_text("添加闹钟").clicked() && valid_hhmm(&state.alarm_draft_time)
+                {
                     // FIX006.5：默认铃声取 base.json token；FIX006.2：统一经 bus.send
                     bus.send(FrontendCommand::AddAlarm(accel_core::alarm::AlarmDraft {
                         label: state.alarm_draft_label.clone(),
@@ -93,6 +110,14 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                     state.alarm_draft_time.clear();
                 }
             });
+            // 非法时间红字提示（已输入才显——对照 countdown 页内联校验同语言）
+            if !state.alarm_draft_time.is_empty() && !valid_hhmm(&state.alarm_draft_time) {
+                ui.label(
+                    egui::RichText::new("时间格式应为 HH:MM（如 07:30）")
+                        .size(crate::theme::font_size("meta"))
+                        .color(ink.danger),
+                );
+            }
             ui.add_space(10.0);
 
             // 列表行卡（AlarmsChanged 全量回推重建——UI 无状态）
@@ -125,7 +150,7 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                     egui::Id::unique(("alarm_sw", &alarm.id)),
                     egui::Sense::click(),
                 );
-                // 复用 switch 绘制几何（此处直接画——响应态与行卡同层）
+                // 开关行内定位绘制（widgets::switch 已随 A008 #7 删除——几何同构）
                 let on = alarm.enabled;
                 let anim =
                     ui.ctx()
@@ -202,22 +227,38 @@ impl crate::pages::Page for crate::pages::AlarmPage {
 // ===== src/pages/alarm.rs 说明区 =====
 // 输入：UiState.alarms（AlarmsChanged 全量回推）+ 草稿输入态；输出：快捷 chips +
 //   自定义添加 + 列表行卡（开关/等宽时刻/标签重复/垃圾桶）
-// 逻辑步骤：quick_target(15/30/60/240) → AddAlarm；自定义文本行 → AddAlarm；
+// 逻辑步骤：quick_target(15/30/60/240) → AddAlarm；自定义文本行经 valid_hhmm
+//   client 校验后 → AddAlarm（A008 #13：非法不发送不清草稿并红字提示）；
 //   行内开关 → ToggleAlarm；垃圾桶 → RemoveAlarm（后端 roundtrip 后回推刷新）
 // 设计理由（UIR 重塑）：闹钟列表的视觉主角是时刻——等宽数字位 + 大档字号；
 //   开关从「开/关」文本改胶囊开关（状态一眼可辨）；删除悬停显形（界面安静）；
-//   快捷 chips 金底 hover（与 accent 单源）
-// 异常处理：草稿时间非法由 AddAlarm 装载路径拒绝（warn + 忽略）；空列表安静文案
+//   快捷 chips 金底 hover（与 accent 单源，悬停前景 on_accent——A008 #2 键名归位）
+// 异常处理：草稿时间非法由 client 校验拦截（红字可见）；core 装载拒绝为第二道
+//   防线（失败回推现值列表——A008 #4）；空列表安静文案
 // 关联依赖：core::alarm（quick_target/AlarmDraft）/tools::alarm_text/widgets；
 //   消费方：pages::Pages
 #[cfg(test)]
 mod tests {
-    use super::quick_label;
+    use super::{quick_label, valid_hhmm};
 
     #[test]
     fn quick_label_format() {
         // 快捷 chips 文案锚点
         assert_eq!(quick_label(15), "15 分钟后");
         assert_eq!(quick_label(240), "240 分钟后");
+    }
+
+    #[test]
+    fn valid_hhmm_matrix() {
+        // A008 #13 验收：与 core 装载同口径——补零两位合法，单 digit/越界/缺位拒
+        assert!(valid_hhmm("07:30"));
+        assert!(valid_hhmm("23:59"));
+        assert!(valid_hhmm("00:00"));
+        assert!(!valid_hhmm("9:30"), "单 digit 小时拒");
+        assert!(!valid_hhmm("24:00"), "小时越界拒");
+        assert!(!valid_hhmm("07:60"), "分钟越界拒");
+        assert!(!valid_hhmm("0730"), "缺冒号拒");
+        assert!(!valid_hhmm("07:3"), "缺位拒");
+        assert!(!valid_hhmm(""), "空串拒");
     }
 }

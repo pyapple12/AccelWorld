@@ -12,8 +12,16 @@ pub enum Icon {
     Hourglass,
     /// 地球（世界时钟）
     Globe,
-    /// 云（天气）
+    /// 云（天气：阴/默认）
     Cloud,
+    /// 雨（云 + 落雨丝）
+    Rain,
+    /// 雪（云 + 雪点）
+    Snow,
+    /// 雾（三道横线）
+    Fog,
+    /// 雷暴（云 + 闪电）
+    Storm,
     /// 铃铛（闹钟）
     Bell,
     /// 齿轮（设置）
@@ -40,6 +48,41 @@ fn arc_points(center: Pos2, r: f32, a0: f32, a1: f32, segs: usize) -> Vec<Pos2> 
             egui::pos2(center.x + r * a.cos(), center.y + r * a.sin())
         })
         .collect()
+}
+
+/// 云形折线（底线 + 三段半圆凸包；Cloud/Rain/Snow/Storm 共用几何，升腾排布由调用方定）
+fn cloud_line(painter: &Painter, center: Pos2, r: f32, st: Stroke) {
+    let y = center.y + r * 0.30;
+    let left = egui::pos2(center.x - r * 0.62, y);
+    let right = egui::pos2(center.x + r * 0.62, y);
+    let mut pts = Vec::new();
+    pts.push(left);
+    // 左凸包（半圆向上，半径 0.26）
+    pts.extend(arc_points(
+        egui::pos2(left.x + r * 0.26, y),
+        r * 0.26,
+        std::f32::consts::PI,
+        0.0,
+        10,
+    ));
+    // 中凸包（半圆向上，半径 0.40）
+    pts.extend(arc_points(
+        egui::pos2(left.x + r * 0.60, y),
+        r * 0.40,
+        std::f32::consts::PI,
+        0.0,
+        12,
+    ));
+    // 右凸包（半圆向上，半径 0.26）
+    pts.extend(arc_points(
+        egui::pos2(right.x - r * 0.26, y),
+        r * 0.26,
+        std::f32::consts::PI,
+        0.0,
+        10,
+    ));
+    pts.push(right);
+    painter.add(egui::Shape::line(pts, st));
 }
 
 /// 图标绘制：以 center 为中心、边长 size 的方形域内描线（线宽随尺寸缩放）
@@ -121,38 +164,71 @@ pub fn draw(painter: &Painter, center: Pos2, size: f32, icon: Icon, color: Color
             painter.add(egui::Shape::line(pts, st));
         }
         Icon::Cloud => {
-            // 底线 + 三段半圆凸包（左小/中大/右小），单条折线描边
-            let y = center.y + r * 0.30;
-            let left = egui::pos2(center.x - r * 0.62, y);
-            let right = egui::pos2(center.x + r * 0.62, y);
-            let mut pts = Vec::new();
-            pts.push(left);
-            // 左凸包（半圆向上，半径 0.26）
-            pts.extend(arc_points(
-                egui::pos2(left.x + r * 0.26, y),
-                r * 0.26,
-                std::f32::consts::PI,
-                0.0,
-                10,
+            cloud_line(painter, center, r, st);
+        }
+        Icon::Rain => {
+            // 云升 + 三道斜落雨丝（A008 #5：现象图标随天气码）
+            cloud_line(
+                painter,
+                egui::pos2(center.x, center.y - r * 0.22),
+                r * 0.78,
+                st,
+            );
+            for i in 0..3 {
+                let x = center.x - r * 0.34 + r * 0.34 * i as f32;
+                painter.line_segment(
+                    [
+                        egui::pos2(x, center.y + r * 0.28),
+                        egui::pos2(x - r * 0.10, center.y + r * 0.62),
+                    ],
+                    st,
+                );
+            }
+        }
+        Icon::Snow => {
+            // 云升 + 三粒雪点
+            cloud_line(
+                painter,
+                egui::pos2(center.x, center.y - r * 0.22),
+                r * 0.78,
+                st,
+            );
+            for i in 0..3 {
+                let x = center.x - r * 0.34 + r * 0.34 * i as f32;
+                painter.circle_filled(egui::pos2(x, center.y + r * 0.48), sw * 0.95, color);
+            }
+        }
+        Icon::Fog => {
+            // 三道横雾线（中长上下短，雾的通用记法）
+            for (i, w) in [1.00_f32, 0.72, 0.86].iter().enumerate() {
+                let y = center.y - r * 0.34 + r * 0.34 * i as f32;
+                let half = r * 0.62 * w;
+                painter.line_segment(
+                    [
+                        egui::pos2(center.x - half, y),
+                        egui::pos2(center.x + half, y),
+                    ],
+                    st,
+                );
+            }
+        }
+        Icon::Storm => {
+            // 云升 + 折线闪电
+            cloud_line(
+                painter,
+                egui::pos2(center.x, center.y - r * 0.22),
+                r * 0.78,
+                st,
+            );
+            painter.add(egui::Shape::line(
+                vec![
+                    egui::pos2(center.x + r * 0.12, center.y + r * 0.16),
+                    egui::pos2(center.x - r * 0.14, center.y + r * 0.50),
+                    egui::pos2(center.x + r * 0.08, center.y + r * 0.50),
+                    egui::pos2(center.x - r * 0.16, center.y + r * 0.88),
+                ],
+                st,
             ));
-            // 中凸包（半圆向上，半径 0.40）
-            pts.extend(arc_points(
-                egui::pos2(left.x + r * 0.60, y),
-                r * 0.40,
-                std::f32::consts::PI,
-                0.0,
-                12,
-            ));
-            // 右凸包（半圆向上，半径 0.26）
-            pts.extend(arc_points(
-                egui::pos2(right.x - r * 0.26, y),
-                r * 0.26,
-                std::f32::consts::PI,
-                0.0,
-                10,
-            ));
-            pts.push(right);
-            painter.add(egui::Shape::line(pts, st));
         }
         Icon::Bell => {
             // 钟 dome（上弧）+ 两侧裙线 + 底沿 + 钟舌
@@ -327,7 +403,7 @@ pub fn draw(painter: &Painter, center: Pos2, size: f32, icon: Icon, color: Color
 //   且与玻璃质感割裂；矢量绘制零字体依赖、随主题语义色、随 Dock 缩放；
 //   月牙用厚弧（stroke=0.42r）而非双圆布尔（epaint 无减法，路径解算过重）
 // 异常处理：无 panic 面（纯几何）；size 过小时线宽下限 1.2 保可辨识
-// 关联依赖：egui Painter/Shape；消费方：widgets::dock/widgets::icon_button/各页
+// 关联依赖：egui Painter/Shape；消费方：window.rs 侧栏/widgets::icon_button/各页
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -356,6 +432,10 @@ mod tests {
             Icon::Hourglass,
             Icon::Globe,
             Icon::Cloud,
+            Icon::Rain,
+            Icon::Snow,
+            Icon::Fog,
+            Icon::Storm,
             Icon::Bell,
             Icon::Gear,
             Icon::Plus,

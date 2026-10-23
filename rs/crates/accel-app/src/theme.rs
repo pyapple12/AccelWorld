@@ -1,5 +1,6 @@
 //! 主题设计系统（UIR 重塑：实心桌面主题，玻璃 token 体系已删）
-//! ui.json colors.* 单色板（深浅两套）→ egui Visuals 应用 + 语义色/字号/几何取值
+//! ui.json colors.* 深色单板 → egui Visuals 应用 + 语义色/字号/几何取值
+//! （A008 #2 定案仅深色：浅色体系与三态偏好切换已删，ThemePref 配置域仅存档）
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -8,60 +9,12 @@ use accel_core::static_config::Static;
 use egui::{Color32, Context, Visuals};
 use serde_json::Value;
 
-/// 主题（偏好三态 + egui Visuals 应用；色值全部取 colors.* 实心域）
-pub struct Theme {
-    /// 三态偏好（auto=跟随系统 / light / dark）
-    pub pref: &'static str,
-    /// 系统深浅（auto 态生效色由它决定，与 egui ThemePreference::System 同源）
-    system_is_dark: bool,
-}
-
-impl Theme {
-    /// 全量装载（偏好归一；色值经 colors_* 访问器按需取用）
-    pub fn load(pref: &str) -> Theme {
-        Theme {
-            pref: match pref {
-                "light" | "dark" => match pref {
-                    "light" => "light",
-                    _ => "dark",
-                },
-                _ => "auto",
-            },
-            system_is_dark: true,
-        }
-    }
-
-    /// 注入系统深浅（auto 态的生效主题与 egui 的 System 偏好必须同源）
-    pub fn with_system(mut self, system_is_dark: bool) -> Self {
-        self.system_is_dark = system_is_dark;
-        self
-    }
-
-    /// 深色判定（Visuals 选择与文字色基准；auto 随系统）
-    pub fn is_dark(&self) -> bool {
-        match self.pref {
-            "light" => false,
-            "dark" => true,
-            _ => self.system_is_dark,
-        }
-    }
-
-    /// 生效主题标识（"dark"/"light"——colors 域后缀取值口径）
-    pub fn mode(&self) -> &'static str {
-        if self.is_dark() { "dark" } else { "light" }
-    }
-
-    /// 应用到 egui 上下文：双主题并存体系（0.37）——深浅各自 set_visuals_of +
-    /// ThemePreference 三态（auto=System 跟随，egui 内建）
-    pub fn apply(&self, ctx: &Context) {
-        ctx.set_theme(match self.pref {
-            "light" => egui::ThemePreference::Light,
-            "dark" => egui::ThemePreference::Dark,
-            _ => egui::ThemePreference::System,
-        });
-        ctx.set_visuals_of(egui::Theme::Dark, dark_visuals());
-        ctx.set_visuals_of(egui::Theme::Light, light_visuals());
-    }
+/// 应用到 egui 上下文（A008 #2 定案仅深色）：偏好钉深 + 双槽位都注入深色
+/// Visuals——即便 egui 主题被切到 Light 槽也是同款深色，浅色体系无分叉残留
+pub fn apply(ctx: &Context) {
+    ctx.set_theme(egui::ThemePreference::Dark);
+    ctx.set_visuals_of(egui::Theme::Dark, dark_visuals());
+    ctx.set_visuals_of(egui::Theme::Light, dark_visuals());
 }
 
 /// colors.{key} → Color32（#RRGGBB；缺键/非法回退灰度兜底，仅防御路径）
@@ -246,27 +199,6 @@ fn dark_visuals() -> Visuals {
     v
 }
 
-/// 浅色 Visuals（实心主题：亮底/深字）
-fn light_visuals() -> Visuals {
-    let mut v = Visuals::light();
-    v.panel_fill = color32_at("window_bg", 244);
-    v.window_fill = color32_at("card_bg", 255);
-    v.extreme_bg_color = color32_at("sidebar_bg", 233);
-    v.faint_bg_color = color32_at("faint_bg", 232);
-    v.override_text_color = Some(color32_at("text_strong", 30));
-    v.selection.stroke.color = color32_at("selection", 220);
-    v.widgets.noninteractive.bg_fill = color32_at("card_bg", 255);
-    v.widgets.inactive.bg_fill = color32_at("card_bg", 255);
-    v.widgets.hovered.bg_fill = color32_at("faint_bg", 232);
-    v.widgets.active.bg_fill = color32_at("selection", 220);
-    v.widgets.inactive.fg_stroke.color = color32_at("text_strong", 30);
-    v.widgets.hovered.fg_stroke.color = color32_at("text_strong", 30);
-    v.window_corner_radius = corner(radius_px("lg") as u8);
-    v.menu_corner_radius = corner(radius_px("md") as u8);
-    widget_rounding(&mut v, corner(radius_px("sm") as u8));
-    v
-}
-
 /// 交互态控件圆角统一（inactive/hovered/active 三态同值）
 fn widget_rounding(v: &mut Visuals, r: egui::epaint::CornerRadius) {
     v.widgets.inactive.corner_radius = r;
@@ -282,8 +214,8 @@ fn corner(px: u8) -> egui::epaint::CornerRadius {
 // ===== src/theme.rs 说明区 =====
 // 输入：ui.json colors/scale/layout/radius token；输出：Visuals 应用 + 语义色/
 //   字号/几何/色值取值（全部实心色，无透明无 GL）
-// 逻辑步骤：load（偏好归一）→ apply（双主题 set_visuals_of）→ color32_at/ink/
-//   font_size/layout/radius 取值（cached 键缓存，运行期恒定）
+// 逻辑步骤：apply（A008 #2 定案仅深色：偏好钉深 + 双槽位同款深色 Visuals）→
+//   color32_at/ink/font_size/layout/radius 取值（cached 键缓存，运行期恒定）
 // 设计理由（UIR 重塑定案）：玻璃拟态整体废弃——半透明面在高 DPI/动态背景上
 //   对比度不可控（截图探针实证文字淹没）；实体色板 + 单强调色纪律（金=选中/
 //   当前值/主操作，余皆灰阶）是可用性优先的桌面语法；parse_hex 直接产预乘
@@ -323,15 +255,11 @@ mod tests {
     }
 
     #[test]
-    fn theme_three_state_and_apply() {
-        // 三态归一 + apply 后 ctx 双主题断言（0.37 样式体系）
-        assert_eq!(Theme::load("auto").pref, "auto");
-        let light = Theme::load("light");
-        assert!(!light.is_dark());
+    fn dark_only_apply() {
+        // A008 #2 验收：仅深色定案——apply 后 egui 主题钉深；
+        // 浅色体系（light_visuals/Theme 三态）已删，无分叉可回退
         let ctx = Context::default();
-        Theme::load("light").apply(&ctx);
-        assert_eq!(ctx.theme(), egui::Theme::Light);
-        Theme::load("dark").apply(&ctx);
+        apply(&ctx);
         assert_eq!(ctx.theme(), egui::Theme::Dark);
     }
 

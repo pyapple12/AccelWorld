@@ -2,8 +2,22 @@
 //! 七日温度距条 + 城市选择与刷新（图标按钮）
 //! 纯函数 temp_curve_points 可测（温度序列 → 归一化折线采样点）
 
+use crate::widgets::icons::Icon;
 use crate::widgets::{digits, icon_button};
 use accel_core::types::{FrontendCommand, HourlyPoint};
+
+/// 天气码 → 现象矢量图标（Open-Meteo WMO 码段映射；未知码回退云——纯函数可测）
+pub fn icon_for_code(code: i64) -> Icon {
+    match code {
+        0..=2 => Icon::Sun,
+        3 => Icon::Cloud,
+        45 | 48 => Icon::Fog,
+        51..=67 | 80..=82 => Icon::Rain,
+        71..=77 | 85 | 86 => Icon::Snow,
+        95..=99 => Icon::Storm,
+        _ => Icon::Cloud,
+    }
+}
 
 /// 温度曲线采样点（纯函数）：等宽横轴布点 + 归一化纵轴（min/max 双锚，平线居中）
 /// 返回 (x, y)（y 越小越冷——屏幕坐标）；空序列返空
@@ -14,6 +28,8 @@ pub fn temp_curve_points(temps: &[f64], width: f32, height: f32) -> Vec<(f32, f3
     let min = temps.iter().cloned().fold(f64::INFINITY, f64::min);
     let max = temps.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
     let span = (max - min).max(0.001);
+    // A008 #16：等温序列取中位（原 ratio=0 → 平线贴底缘，与「平线居中」注释相反）
+    let flat = max - min <= f64::EPSILON;
     let n = temps.len();
     temps
         .iter()
@@ -24,7 +40,12 @@ pub fn temp_curve_points(temps: &[f64], width: f32, height: f32) -> Vec<(f32, f3
             } else {
                 width * (i as f32 / (n - 1) as f32)
             };
-            let y = height * (1.0 - ((t - min) / span) as f32);
+            let ratio = if flat {
+                0.5_f32
+            } else {
+                ((t - min) / span) as f32
+            };
+            let y = height * (1.0 - ratio);
             (x, y)
         })
         .collect()
@@ -70,7 +91,8 @@ impl crate::pages::Page for crate::pages::WeatherPage {
         };
 
         // 当下 hero：现象矢量图标 + 大字温度（等宽数字位）+ 现象文字
-        // （码表 emoji 在 egui 内置字体缺字形渲染 tofu——UIR 改矢量图标）
+        // （码表 emoji 在 egui 内置字体缺字形渲染 tofu——A008 #5 起图标随
+        //   weather_code 映射矢量集，雨/雪/雾/雷各具其形）
         let temp_text = format!("{:.1}°", w.temperature);
         let temp_font = digits::digit_font(crate::theme::font_size("std_time") * 1.6);
         let icon_x = ui.max_rect().left() + 8.0;
@@ -79,7 +101,7 @@ impl crate::pages::Page for crate::pages::WeatherPage {
             ui.painter(),
             egui::pos2(icon_x + 24.0, hero_y),
             40.0,
-            crate::widgets::icons::Icon::Cloud,
+            icon_for_code(w.weather_code),
             ink.muted,
         );
         digits::draw_centered(
@@ -178,7 +200,6 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                 .fold(f64::NEG_INFINITY, f64::max);
             let span = (week_max - week_min).max(0.001);
             let body_font = egui::FontId::proportional(crate::theme::font_size("body"));
-            let meta_font = egui::FontId::proportional(crate::theme::font_size("meta"));
             for d in &days {
                 ui.horizontal(|ui| {
                     ui.label(
@@ -186,8 +207,8 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                             .font(egui::FontId::monospace(crate::theme::font_size("body")))
                             .color(ink.muted),
                     );
-                    // 距条（相对周域；accent 填充 + 全域弱轨）
-                    let bar_w = ui.available_width() - 110.0;
+                    // 距条（相对周域；accent 填充 + 全域弱轨）；A008 #8：极窄窗负宽钳 0
+                    let bar_w = (ui.available_width() - 110.0).max(0.0);
                     let track = egui::Rect::from_min_size(
                         egui::pos2(ui.cursor().left(), ui.cursor().center().y - 3.0),
                         egui::vec2(bar_w, 6.0),
@@ -213,7 +234,6 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                             .font(body_font.clone())
                             .color(ink.strong),
                     );
-                    let _ = meta_font;
                 });
             }
         }
@@ -228,17 +248,18 @@ impl crate::pages::Page for crate::pages::WeatherPage {
 //   3 小时刻度）→ 七日距条（相对全周 min/max 域）
 // 设计理由（UIR 重塑）：天气页的信息主角是"现在几度、接下来冷热走势"——大字
 //   温度 + 一条曲线替代 24 根竖排横条（原实现 24 列 label 堆叠既挤又难读）；七日
-//   距条让一周温差一眼成泡；emoji 保留（码表数据语义图标，与 UI chrome 矢量图标分工）
+//   距条让一周温差一眼成泡；现象图标随 weather_code 映射矢量集（A008 #5——码表
+//   emoji 字段仅数据保留，egui 内置字体缺字形不直出）
 // FIX006.2 延续：命令统一经 bus.send；A005 #4 单城模型；UI 无状态重建
-// 异常处理：数据缺失（首查前）整段静默；失败红字展示；空曲线/单点退化居中
+// 异常处理：数据缺失（首查前）整段静默；失败红字展示；空曲线/单点/平线退化居中
 // 关联依赖：UiState.weather + widgets(digits/icon_button/icons)；消费方：pages::Pages
 #[cfg(test)]
 mod tests {
-    use super::temp_curve_points;
+    use super::{icon_for_code, temp_curve_points};
 
     #[test]
     fn curve_points_normalization() {
-        // 归一化锚点：min 贴底、max 顶、单点居中、空序列空
+        // 归一化锚点：min 贴底、max 顶、单点居中、空序列空、平线居中（A008 #16）
         let pts = temp_curve_points(&[10.0, 20.0, 15.0], 100.0, 50.0);
         assert_eq!(pts.len(), 3);
         assert!((pts[0].1 - 50.0).abs() < 1e-5, "min 贴底（y=height）");
@@ -246,5 +267,25 @@ mod tests {
         assert!((pts[2].0 - 100.0).abs() < 1e-5, "末点贴右缘");
         assert!(temp_curve_points(&[], 100.0, 50.0).is_empty());
         assert_eq!(temp_curve_points(&[7.0], 100.0, 50.0).len(), 1);
+        // 等温序列：全部居中（y=height/2），不再贴底缘
+        for (_, y) in temp_curve_points(&[21.0, 21.0, 21.0], 100.0, 50.0) {
+            assert!((y - 25.0).abs() < 1e-5, "平线应居中，实际 {y}");
+        }
+    }
+
+    #[test]
+    fn icon_mapping_covers_wmo_segments() {
+        // A008 #5 验收：码段映射各具其形；未知码回退云
+        use crate::widgets::icons::Icon;
+        assert_eq!(icon_for_code(0), Icon::Sun);
+        assert_eq!(icon_for_code(2), Icon::Sun);
+        assert_eq!(icon_for_code(3), Icon::Cloud);
+        assert_eq!(icon_for_code(45), Icon::Fog);
+        assert_eq!(icon_for_code(63), Icon::Rain);
+        assert_eq!(icon_for_code(81), Icon::Rain);
+        assert_eq!(icon_for_code(73), Icon::Snow);
+        assert_eq!(icon_for_code(86), Icon::Snow);
+        assert_eq!(icon_for_code(95), Icon::Storm);
+        assert_eq!(icon_for_code(42), Icon::Cloud, "未知码回退云");
     }
 }

@@ -34,7 +34,9 @@ impl crate::pages::Page for crate::pages::WorldPage {
         // 内容包 ScrollArea（城市多时不出窗）
         let gap = 10.0_f32;
         let cols = 3usize;
-        let tile_w = ((ui.available_width() - gap * (cols - 1) as f32) / cols as f32).min(260.0);
+        // A008 #8：极窄窗负宽钳 0（clamp 下限 0，上限 260 恒大于下限不 panic）
+        let tile_w =
+            ((ui.available_width() - gap * (cols - 1) as f32) / cols as f32).clamp(0.0, 260.0);
         let tile_h = 86.0_f32;
         let radius = crate::theme::radius_px("md") as u8;
         egui::ScrollArea::vertical().show(ui, |ui| {

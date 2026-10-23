@@ -1,7 +1,7 @@
 # AccelWorld 项目分析报告
 
 > 2026-10-17 重做：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow），本报告按 Rust 现役实现改写；Python 版分析随 `.archived/` 归档留档。
-> 2026-10-23 UIR 更新：界面推倒重塑——玻璃管线/Acrylic 整体废弃，实心主题 + 侧栏导航（本文 3.7 玻璃渲染节留档作废）。
+> 2026-10-23 UIR 更新：界面推倒重塑——玻璃管线/Acrylic 整体废弃，实心主题 + 侧栏导航（本文 3.7 已按实心界面装配重写为现役口径）。
 
 ---
 

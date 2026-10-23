@@ -2,7 +2,7 @@
 //! UiState 持后端事实快照；update() 每帧 drain 事件逐一 apply；锁不跨帧
 
 use accel_core::interface::AppInterface;
-use accel_core::types::{BackendEvent, ThemePref, TimeInfo, UiPreferences, WeatherData};
+use accel_core::types::{BackendEvent, TimeInfo, UiPreferences, WeatherData};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -134,22 +134,19 @@ impl UiState {
 
     /// 下一重绘截止：Tick 间隔与空闲兜底取小（空闲 1s 兜底 + Tick 节奏）
     /// 返回 request_repaint_after 的时长（.13 空闲节奏核对的依据）
+    /// A008 #19：Tick 未到的兜底值改读 token（原 unwrap_or(100) 与 clock_tick_ms
+    /// 同值双源——token 变更即漂移）
     pub fn next_repaint_interval(&self) -> std::time::Duration {
         let tick = self
             .time
             .as_ref()
             .map(|t| t.tick_ms.max(1) as u64)
-            .unwrap_or(100);
+            .unwrap_or_else(|| {
+                accel_core::static_config::Static::get()
+                    .base_i64("clock_tick_ms")
+                    .max(1) as u64
+            });
         std::time::Duration::from_millis(tick.min(1000))
-    }
-
-    /// 当前主题偏好（三态）
-    pub fn theme_pref(&self) -> ThemePref {
-        match self.prefs.theme.as_str() {
-            "light" => ThemePref::Light,
-            "dark" => ThemePref::Dark,
-            _ => ThemePref::Auto,
-        }
     }
 }
 
@@ -553,14 +550,15 @@ mod tests {
     }
 
     #[test]
-    fn theme_pref_mapping() {
-        // 三态映射 + 非法回退 auto
-        let mut state = UiState::default();
-        state.prefs.theme = "dark".into();
-        assert_eq!(state.theme_pref(), ThemePref::Dark);
-        state.prefs.theme = "light".into();
-        assert_eq!(state.theme_pref(), ThemePref::Light);
-        state.prefs.theme = "whatever".into();
-        assert_eq!(state.theme_pref(), ThemePref::Auto);
+    fn repaint_fallback_reads_token() {
+        // A008 #19 验收：Tick 未到的兜底间隔取 clock_tick_ms token（单源，钳 1ms）
+        let state = UiState::default();
+        let expected = accel_core::static_config::Static::get()
+            .base_i64("clock_tick_ms")
+            .max(1) as u64;
+        assert_eq!(
+            state.next_repaint_interval(),
+            std::time::Duration::from_millis(expected.min(1000))
+        );
     }
 }

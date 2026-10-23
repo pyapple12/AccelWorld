@@ -18,7 +18,7 @@ fn main() {
     let result = accel_app::window::run();
 
     // 退出路径：run_native 正常返回即零 hack 退出（对齐 y.problems#6 教训——
-    // Python 版 exit 期 GL 驱动线程内核调用不可中断；wgpu/eframe 期望常规 drop）
+    // Python 版 exit 期 GL 驱动线程内核调用不可中断；eframe glow 期望常规 drop）
     if let Err(e) = result {
         tracing::error!("应用异常退出: {e}");
         std::process::exit(1);
@@ -71,9 +71,9 @@ mod tests {
 // 逻辑步骤：logging::init（token 级别）→ panic hook → window::run()（构造
 //   AppInterface + runtime + eframe::run_native）→ 正常返回退出
 // 设计理由：Python 版 exit 期 GL 驱动硬崩溃（y.problems#6/#7）教训平移——Rust 侧
-//   坚持常规 drop 退出路径（eframe/wgpu 生命周期管理），绝不 os._exit 等价物；
+//   坚持常规 drop 退出路径（eframe glow 生命周期管理），绝不 os._exit 等价物；
 //   runtime 在 window::run 内 Arc 持有（AppInterface::spawn 任务附着其上，drop 即收）
 // 模块对位（树单源在 lib.rs）：window ← ui/main_window.py；bus ← 信号总线；
-//   theme ← qss/token；nav ← glass_nav；glass ← ui/gl；pages ← panels；
-//   widgets ← 自绘控件；tools ← ui/tools；platform ← backdrop/system_tray/notify/hotkey
+//   theme ← qss/token；pages ← panels（UIR：侧栏导航内联 window.rs，nav/glass 已删）；
+//   widgets ← 自绘控件；tools ← ui/tools；platform ← system_tray/notify/hotkey
 // 关联配置：log_level/logs_dir（base.json）；消费方：操作系统

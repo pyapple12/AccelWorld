@@ -303,11 +303,29 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
 
-    fn temp_cfg(tag: &str) -> PathBuf {
-        // 每测试独立目录（并行测试同进程不得共用配置路径）
-        let dir = std::env::temp_dir().join(format!("accel_settings_{tag}_{}", std::process::id()));
-        fs::create_dir_all(&dir).expect("临时目录创建失败");
-        dir.join("user_config.json")
+    /// 测试沙箱目录（RAII：drop 即整目录清理——A008 #15，与 parity.rs 同款模式，
+    /// 断言失败不再残留 %TEMP%/accel_settings_*）
+    struct SandboxDir(PathBuf);
+
+    impl SandboxDir {
+        fn new(tag: &str) -> Self {
+            // 每测试独立目录（并行测试同进程不得共用配置路径）；先清同 pid 上次残留
+            let dir =
+                std::env::temp_dir().join(format!("accel_settings_{tag}_{}", std::process::id()));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).expect("临时目录创建失败");
+            Self(dir)
+        }
+
+        fn path(&self) -> PathBuf {
+            self.0.join("user_config.json")
+        }
+    }
+
+    impl Drop for SandboxDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
     }
 
     #[test]
@@ -384,7 +402,8 @@ mod tests {
     fn world_pins_legacy_iana_migrated_on_load() {
         // FIX007.2 双向兼容读：旧存档 IANA 串装载期迁移为城市名（下次落盘固化）；
         // 两域皆不收的值原样保留（显示回显/走时占位）
-        let path = temp_cfg("pinmigrate");
+        let sandbox = SandboxDir::new("pinmigrate");
+        let path = sandbox.path();
         let legacy = serde_json::json!({
             "world_pins": ["Asia/Shanghai", "Asia/Tokyo", "Mars/Olympus"]
         });
@@ -411,7 +430,8 @@ mod tests {
     #[test]
     fn save_load_roundtrip_local() {
         // 本地往返：保存 → 重读等价（原子写 + lenient 装载链路）
-        let path = temp_cfg("roundtrip");
+        let sandbox = SandboxDir::new("roundtrip");
+        let path = sandbox.path();
         let cfg = UserConfig {
             time_dilation_rate: 3.5,
             theme: "dark".into(),
@@ -431,7 +451,8 @@ mod tests {
     fn countdown_legacy_migration_matrix() {
         // PL014.06 验收：旧格式迁移矩阵（19/16/10 位/空/非法/新格式优先）
         let cfg_from = |payload: Value| {
-            let path = temp_cfg("cdmatrix");
+            let sandbox = SandboxDir::new("cdmatrix");
+            let path = sandbox.path();
             let mut base = UserConfig::default().to_json_value();
             for (k, v) in payload.as_object().expect("对象") {
                 base[k] = v.clone();
@@ -474,7 +495,8 @@ mod tests {
             "16 位补秒规范化"
         );
         // 保存 → 重读 roundtrip 为新格式（列表持久化）
-        let path = temp_cfg("cdroundtrip");
+        let sandbox = SandboxDir::new("cdroundtrip");
+        let path = sandbox.path();
         let mut write_back = cfg.clone();
         write_back.countdown_target = String::new();
         assert!(save(&path, &write_back));
@@ -485,7 +507,8 @@ mod tests {
     #[test]
     fn corrupt_file_backed_up_and_defaults_restored() {
         // 损坏 → .bak 转存 + 默认值（Python FIX001.2 语义）
-        let path = temp_cfg("corrupt");
+        let sandbox = SandboxDir::new("corrupt");
+        let path = sandbox.path();
         fs::write(&path, "{ this is not json !!!").expect("写入失败");
         let cfg = load(&path);
         assert_eq!(cfg, UserConfig::default());

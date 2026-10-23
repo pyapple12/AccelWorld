@@ -63,24 +63,25 @@ fn extract_hourly_daily(
 > {
     // 键缺失 → 空序列（向后兼容：Python 0.6.0.0 快照无此键；新 API 恒带参返回）
     // 键存在则全严校验（null/错型/长度不一致 → Err，同 current 域纪律）
-    let Some(hourly) = root.get("hourly").and_then(Value::as_object) else {
-        // A005 #18：hourly 缺失不再连带丢弃 daily——两者独立判定
-        return Ok((
-            Vec::new(),
-            match root.get("daily").and_then(Value::as_object) {
-                Some(daily) => extract_daily(daily)?,
-                None => Vec::new(),
-            },
-        ));
+    // A008 #9：容器本身错型（hourly 为串/数组等非对象）同样 Err——原写法
+    // and_then(as_object) 把错型当缺失静默吞掉，与注释承诺相反
+    let hourly = match root.get("hourly") {
+        None => None,
+        Some(Value::Object(map)) => Some(map),
+        Some(_) => return Err(WeatherErr::BadType("hourly")),
     };
-    let Some(_) = root.get("daily").and_then(Value::as_object) else {
-        return Ok((extract_hourly(hourly)?, Vec::new()));
+    // A005 #18：hourly 缺失不再连带丢弃 daily——两者独立判定
+    let daily = match root.get("daily") {
+        None => None,
+        Some(Value::Object(map)) => Some(map),
+        Some(_) => return Err(WeatherErr::BadType("daily")),
     };
-    let daily = root
-        .get("daily")
-        .and_then(Value::as_object)
-        .expect("前置判定保证存在");
-    Ok((extract_hourly(hourly)?, extract_daily(daily)?))
+    match (hourly, daily) {
+        (None, None) => Ok((Vec::new(), Vec::new())),
+        (Some(h), None) => Ok((extract_hourly(h)?, Vec::new())),
+        (None, Some(d)) => Ok((Vec::new(), extract_daily(d)?)),
+        (Some(h), Some(d)) => Ok((extract_hourly(h)?, extract_daily(d)?)),
+    }
 }
 
 /// 逐小时序列提取（A005 #18：从 extract_hourly_daily 拆出，与 daily 独立判定）
@@ -388,9 +389,12 @@ impl WeatherClient {
             cities::get(city).ok_or_else(|| FetchErr::UnknownCity(city.to_string()))?;
         let result = self.fetch_by_coords(lat, lon).await?;
         // 仅缓存成功（失败可立即重试，Python 语义）
-        if let Ok(mut cache) = self.cache.lock() {
-            cache.insert(city.to_string(), (Instant::now(), result.clone()));
-        }
+        // A008 #10：锁中毒策略与 force/读路径统一为 expect（不可恢复编程错误，
+        // 原写路径静默放弃缓存与另两处分叉）
+        self.cache
+            .lock()
+            .expect("天气缓存锁中毒")
+            .insert(city.to_string(), (Instant::now(), result.clone()));
         Ok(result)
     }
 
@@ -776,6 +780,27 @@ mod tests {
             "wind_speed_10m": 3.0, "apparent_temperature": 4.0 }});
         let w = parse_open_meteo(&raw).expect("旧形态应解析");
         assert!(w.hourly.is_empty() && w.daily.is_empty());
+    }
+
+    #[test]
+    fn series_container_wrong_type_rejects() {
+        // A008 #9 验收：hourly/daily 键存在但容器错型（串/数组）→ BadType 拒绝，
+        // 不再静默按缺失处理（原 and_then(as_object) 把错型当缺失与注释承诺相反）
+        let base = serde_json::json!({"current": {
+            "temperature_2m": 1.0, "relative_humidity_2m": 2.0, "weather_code": 0,
+            "wind_speed_10m": 3.0, "apparent_temperature": 4.0 }});
+        let mut raw = base.clone();
+        raw["hourly"] = serde_json::json!("oops");
+        assert_eq!(
+            parse_open_meteo(&raw).expect_err("hourly 错型应拒绝"),
+            WeatherErr::BadType("hourly")
+        );
+        let mut raw = base;
+        raw["daily"] = serde_json::json!([1, 2]);
+        assert_eq!(
+            parse_open_meteo(&raw).expect_err("daily 错型应拒绝"),
+            WeatherErr::BadType("daily")
+        );
     }
 
     #[test]

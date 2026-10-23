@@ -44,14 +44,6 @@
     "ring_track": "#3A4050",
     "slider_track": "#3A4050",
     "on_accent": "#1A1608",
-    "selection": "#2E3442",
-    "panel_dark": "#171A21",
-    "window_dark": "#1F232E",
-    "bg_dark": "#12141B",
-    "selection_dark": "#2E3442",
-    "panel_light": "#F4F5F8",
-    "window_light": "#FFFFFF",
-    "bg_light": "#E9EBF1",
-    "text_light": "#1E222C"
+    "selection": "#2E3442"
   }
 }

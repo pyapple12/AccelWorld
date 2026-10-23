@@ -185,7 +185,8 @@ impl crate::pages::Page for crate::pages::CountdownPage {
         // 内容包 ScrollArea（目标多时不出窗）
         let card_h = 84.0_f32;
         let gap = 10.0_f32;
-        let card_w = ((ui.available_width() - gap) / 2.0).min(340.0);
+        // A008 #8：极窄窗负宽钳 0（clamp 下限 0，上限 340 恒大于下限不 panic）
+        let card_w = ((ui.available_width() - gap) / 2.0).clamp(0.0, 340.0);
         let radius = crate::theme::radius_px("md") as u8;
         egui::ScrollArea::vertical().show(ui, |ui| {
             if !targets.is_empty() {
@@ -194,7 +195,7 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                     .spacing([gap, gap])
                     .show(ui, |ui| {
                         for (idx, (name, at)) in targets.iter().enumerate() {
-                            let (rect, resp) = ui.allocate_exact_size(
+                            let (rect, _) = ui.allocate_exact_size(
                                 egui::vec2(card_w, card_h),
                                 egui::Sense::hover(),
                             );
@@ -257,7 +258,6 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                                     del_color,
                                 );
                             }
-                            let _ = resp;
                             if del_resp.clicked() {
                                 bus.send(FrontendCommand::RemoveCountdownTarget(
                                     (*name).to_string(),
@@ -285,9 +285,9 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                         .size(crate::theme::font_size("label"))
                         .color(ink.muted),
                 );
-                for (i, (_, fest)) in chips.iter().take(6).enumerate() {
-                    // 固定序号 id（UIR 后 id 仅作调试标识——玻璃面已废）
-                    chip::show(ui, &format!("countdown_festival_{i}"), "节日", fest);
+                for (_, fest) in chips.iter().take(6) {
+                    // A008 #7：chip id 形参已删（玻璃面废除后零消费，不再每帧 format!）
+                    chip::show(ui, "节日", fest);
                 }
             });
         }

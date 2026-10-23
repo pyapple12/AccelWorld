@@ -9,17 +9,14 @@ use serde_json::Value;
 
 /// 写白名单根目录：exe 同目录（安装态随应用走）+ 系统临时目录（测试隔离）+
 /// 环境变量 ACCELWORLD_WRITE_ROOT 注入根（子进程测试隔离，对齐 Python env 手段）
+/// A008 #11：exe 基准复用 util::paths::exe_dir 单源（原自行 current_exe 推导，
+/// 失败语义与之分叉：exe_dir 回退 "." 而 dedup 前实现直接丢根）
 pub fn allowed_roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Ok(root) = std::env::var("ACCELWORLD_WRITE_ROOT") {
         roots.push(PathBuf::from(root));
     }
-    let exe_root = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(Path::to_path_buf));
-    if let Some(dir) = exe_root {
-        roots.push(dir);
-    }
+    roots.push(super::paths::exe_dir());
     roots.push(std::env::temp_dir());
     roots
 }

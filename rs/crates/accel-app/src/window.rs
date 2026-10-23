@@ -11,7 +11,6 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 use crate::bus::{Bus, PAGE_ORDER, PageId, UiState};
 use crate::pages::Pages;
-use crate::theme::Theme;
 
 /// 窗口几何 token 基准（base.json；恢复优先用户存档几何，缺档时用本基准）
 fn default_window_rect() -> (f32, f32, f32, f32) {
@@ -28,7 +27,6 @@ fn default_window_rect() -> (f32, f32, f32, f32) {
 pub struct AppHandle {
     pub bus: Bus,
     pub state: UiState,
-    pub theme: Theme,
     pub pages: Pages,
     start_time: std::time::Instant,
     /// 探针自动退窗秒数（None=正常模式；到时走退出序列——fps/矩阵探针）
@@ -226,7 +224,7 @@ impl eframe::App for AppHandle {
         self.paint_settings_pop(&ctx);
 
         // UI 截图探针（UIR.2：逐页 PrintWindow 出 PNG 后自动退出）
-        self.ui_shot_tick(&ctx, frame);
+        self.ui_shot_tick(frame);
 
         // 重绘节奏：Tick 间隔（空闲 1s 兜底）——零忙转纪律
         // A005 #27：有平台集成（托盘/热键）时间隔收紧到 ≤200ms——平台事件仅在帧内
@@ -376,7 +374,7 @@ impl AppHandle {
     /// step 0-4 五页（每拍完切下一页，step 4 拍完开设置浮窗）、step 5 拍设置浮窗
     /// （拍完关闭）、step 6 触发退出（不再出图——防覆盖设置帧）。
     /// 观感终审权仍在用户真机目测；本探针只服务开发迭代（视觉设计不得向测试环境妥协）
-    fn ui_shot_tick(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+    fn ui_shot_tick(&mut self, frame: &mut eframe::Frame) {
         let Some(dir) = self.ui_shot_dir.clone() else {
             return;
         };
@@ -393,7 +391,6 @@ impl AppHandle {
         if step > PAGE_ORDER.len() {
             self.quit_requested = true;
             self.ui_shot_step = step + 1;
-            let _ = ctx;
             return;
         }
 
@@ -432,7 +429,6 @@ impl AppHandle {
             self.state.settings_open = step == PAGE_ORDER.len() - 1;
         }
         self.ui_shot_step = step + 1;
-        let _ = ctx;
     }
 
     /// 托盘/热键事件轮询（logic 每帧调用；事件归一到 PlatformAction 后应用）
@@ -460,27 +456,12 @@ impl AppHandle {
             }
             PlatformAction::SaveNow => self.bus.send(FrontendCommand::SaveNow),
             PlatformAction::Quit => self.quit_requested = true,
-            PlatformAction::CycleTheme => self.cycle_theme(ctx),
         }
     }
 
-    /// 主题三态循环（热键 Ctrl+T；跟随系统→浅色→深色→跟随系统）
-    /// 与设置浮窗选择器同一乐观更新路径（SetTheme 回推前 UI 即响应）
-    fn cycle_theme(&mut self, ctx: &Context) {
-        let next = match self.state.theme_pref() {
-            accel_core::types::ThemePref::Auto => accel_core::types::ThemePref::Light,
-            accel_core::types::ThemePref::Light => accel_core::types::ThemePref::Dark,
-            accel_core::types::ThemePref::Dark => accel_core::types::ThemePref::Auto,
-        };
-        self.bus.send(FrontendCommand::SetTheme(next));
-        self.state.prefs.theme = pref_value(next).to_string();
-        self.theme = Theme::load(self.state.prefs.theme.as_str())
-            .with_system(ctx.system_theme() == Some(egui::Theme::Dark));
-        self.theme.apply(ctx);
-    }
-
-    /// 设置浮窗绘制（PL013.10：egui::Window + 主题三段 + 失焦/ESC 关）
-    /// UIR 实心蒙皮：窗体 fill 走 token、圆角随 radius.lg、主题三段为分段胶囊
+    /// 设置浮窗绘制（PL013.10：egui::Window + 失焦/ESC 关）
+    /// UIR 实心蒙皮：窗体 fill 走 token、圆角随 radius.lg
+    /// A008 #2：主题三段切换段已删（定案仅深色），浮窗留存版本信息
     fn paint_settings_pop(&mut self, ctx: &Context) {
         if !self.state.settings_open {
             return;
@@ -507,71 +488,20 @@ impl AppHandle {
                 ],
             )
             .show(ctx, |ui| {
-                ui.label(
-                    egui::RichText::new("主题")
-                        .size(crate::theme::font_size("label"))
-                        .color(crate::theme::ink().muted),
-                );
-                ui.add_space(4.0);
-                // 主题三段分段胶囊（选中金底深字，与 Dock/快捷 chips 同语言）
-                let radius = crate::theme::radius_px("sm") as u8;
-                ui.horizontal(|ui| {
-                    ui.style_mut().spacing.item_spacing = egui::vec2(6.0, 0.0);
-                    for (label, pref) in [
-                        ("跟随系统", accel_core::types::ThemePref::Auto),
-                        ("浅色", accel_core::types::ThemePref::Light),
-                        ("深色", accel_core::types::ThemePref::Dark),
-                    ] {
-                        let selected = self.state.theme_pref() == pref;
-                        let (rect, resp) =
-                            ui.allocate_exact_size(egui::vec2(72.0, 28.0), egui::Sense::click());
-                        let fill = if selected || resp.hovered() {
-                            crate::theme::hover_bg()
-                        } else {
-                            crate::theme::card_bg()
-                        };
-                        ui.painter().rect_filled(
-                            rect,
-                            egui::epaint::CornerRadius::same(radius),
-                            fill,
-                        );
-                        if selected {
-                            ui.painter().rect_stroke(
-                                rect,
-                                egui::epaint::CornerRadius::same(radius),
-                                egui::Stroke::new(1.4, crate::theme::accent_color()),
-                                egui::StrokeKind::Inside,
-                            );
-                        }
-                        ui.painter().text(
-                            rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            label,
-                            egui::FontId::proportional(crate::theme::font_size("body")),
-                            if selected {
-                                crate::theme::ink().strong
-                            } else {
-                                crate::theme::ink().card
-                            },
-                        );
-                        if resp.clicked() {
-                            self.bus.send(FrontendCommand::SetTheme(pref));
-                            // 乐观更新本地偏好（事件回推前 UI 即响应）
-                            self.state.prefs.theme = pref_value(pref).to_string();
-                            self.theme = Theme::load(self.state.prefs.theme.as_str())
-                                .with_system(ctx.system_theme() == Some(egui::Theme::Dark));
-                            self.theme.apply(ctx);
-                        }
-                    }
-                });
-                ui.add_space(8.0);
+                // A008 #2：主题三段切换段已删（定案仅深色，ThemePref 配置域仅存档）
                 ui.label(
                     egui::RichText::new(format!(
-                        "版本 {}",
+                        "加速世界 · 版本 {}",
                         accel_core::static_config::Static::get().version()
                     ))
-                    .size(crate::theme::font_size("meta"))
-                    .color(crate::theme::ink().dim),
+                    .size(crate::theme::font_size("body"))
+                    .color(crate::theme::ink().strong),
+                );
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new("深色主题（实心桌面）")
+                        .size(crate::theme::font_size("meta"))
+                        .color(crate::theme::ink().dim),
                 );
             });
         // 点窗外关闭：主键点击且交互点不在窗体 rect 内（.10 检验项）
@@ -593,14 +523,6 @@ impl AppHandle {
         if !keep_open {
             self.state.settings_open = false;
         }
-    }
-}
-
-fn pref_value(pref: accel_core::types::ThemePref) -> &'static str {
-    match pref {
-        accel_core::types::ThemePref::Auto => "auto",
-        accel_core::types::ThemePref::Light => "light",
-        accel_core::types::ThemePref::Dark => "dark",
     }
 }
 
@@ -644,13 +566,13 @@ fn fill_startup_snapshot(iface: &AppInterface, state: &mut UiState) {
 }
 
 /// 平台事件归一后的动作（纯数据；单测可断言 tray/hotkey → 动作映射）
+/// A008 #2：CycleTheme 已删（仅深色定案——热键与浮窗主题切换面整体退役）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlatformAction {
     ShowWindow,
     HideWindow,
     SaveNow,
     Quit,
-    CycleTheme,
 }
 
 /// 托盘命令 → 动作（纯函数；只读项/未知 id 已在 tray::command_for 返 None）
@@ -662,12 +584,11 @@ fn tray_action(cmd: crate::platform::tray::TrayCommand) -> PlatformAction {
     }
 }
 
-/// 热键动作 → 动作（纯函数；保存/退出/主题循环三键一一对应）
+/// 热键动作 → 动作（纯函数；保存/退出两键一一对应——A008 #2 主题键退役）
 fn hotkey_action(kind: crate::platform::hotkey::HotkeyKind) -> PlatformAction {
     match kind {
         crate::platform::hotkey::HotkeyKind::Save => PlatformAction::SaveNow,
         crate::platform::hotkey::HotkeyKind::Quit => PlatformAction::Quit,
-        crate::platform::hotkey::HotkeyKind::Theme => PlatformAction::CycleTheme,
     }
 }
 
@@ -749,30 +670,37 @@ fn capture_window_png(_hwnd: isize, _path: &std::path::Path) -> bool {
 
 /// 标题栏底色钉制（UIR：系统「标题栏强调色」设置会盖掉深浅跟随——
 /// DWMWA_CAPTION_COLOR 显式设为侧栏底色，标题栏与界面同体）
+/// A008 #12：失败去抖留痕一次（Win10 <22000 不支持该属性恒失败——
+/// 原双 `let _ =` 完全静默，标题栏不同色时无从诊断）
 #[cfg(windows)]
 fn apply_caption_color(hwnd: isize, color: egui::Color32) {
+    use std::sync::atomic::{AtomicBool, Ordering};
     use windows::Win32::Foundation::HWND;
     use windows::Win32::Graphics::Dwm::{
         DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DwmSetWindowAttribute,
     };
+    static WARNED: AtomicBool = AtomicBool::new(false);
     // COLORREF = 0x00BBGGRR（egui 0.37 预乘存储，实心色 alpha=255 无预乘损耗）
     let colorref =
         (u32::from(color.b()) << 16) | (u32::from(color.g()) << 8) | u32::from(color.r());
     unsafe {
         let hwnd = HWND(hwnd as *mut _);
-        let _ = DwmSetWindowAttribute(
+        let caption = DwmSetWindowAttribute(
             hwnd,
             DWMWA_CAPTION_COLOR,
             &colorref as *const u32 as *const std::ffi::c_void,
             std::mem::size_of::<u32>() as u32,
         );
         // BORDER 同色：CAPTION 设色后底边框区会渲染白条（DWM 副作用，截图实证）
-        let _ = DwmSetWindowAttribute(
+        let border = DwmSetWindowAttribute(
             hwnd,
             DWMWA_BORDER_COLOR,
             &colorref as *const u32 as *const std::ffi::c_void,
             std::mem::size_of::<u32>() as u32,
         );
+        if (caption.is_err() || border.is_err()) && !WARNED.swap(true, Ordering::Relaxed) {
+            tracing::warn!("DWM 标题栏钉色失败（系统或版本不支持，标题栏将保持系统底色）");
+        }
     }
 }
 
@@ -815,6 +743,7 @@ pub fn run_with_counter(
     let iface = Arc::new(AppInterface::new());
 
     // 窗口几何恢复（UIR.7）：用户存档 "x,y,w,h" 优先，缺档/非法回退 token 基准
+    let base = accel_core::static_config::Static::get();
     let (x, y, w, h) = iface
         .get_window_geometry()
         .and_then(|ref g| accel_core::interface::parse_window_geometry(g))
@@ -823,6 +752,11 @@ pub fn run_with_counter(
         viewport: egui::ViewportBuilder::default()
             .with_inner_size(Vec2::new(w, h))
             .with_position(Pos2::new(x, y))
+            // A008 #8：最小尺寸下限入 token（页内减法布局不再塌负宽）
+            .with_min_inner_size(Vec2::new(
+                base.base_f64("window_min_width") as f32,
+                base.base_f64("window_min_height") as f32,
+            ))
             .with_title(format!(
                 "加速世界 {}",
                 accel_core::static_config::Static::get().version()
@@ -835,9 +769,8 @@ pub fn run_with_counter(
     let create_app =
         move |cc: &eframe::CreationContext<'_>| -> Result<Box<dyn eframe::App>, String> {
             let prefs = iface.get_ui_preferences();
-            let theme = Theme::load(prefs.theme.as_str())
-                .with_system(cc.egui_ctx.system_theme() == Some(egui::Theme::Dark));
-            theme.apply(&cc.egui_ctx);
+            // A008 #2 定案仅深色：主题偏好不再驱动 Visuals（ThemePref 配置域仅存档）
+            crate::theme::apply(&cc.egui_ctx);
             install_fonts(&cc.egui_ctx);
             let mut state = UiState {
                 rate: iface.get_rate(),
@@ -881,7 +814,6 @@ pub fn run_with_counter(
             Ok(Box::new(AppHandle {
                 bus,
                 state,
-                theme,
                 pages: Pages::new(),
                 start_time: std::time::Instant::now(),
                 probe_close_secs,
@@ -1026,10 +958,9 @@ mod tests {
 
     #[test]
     fn hotkey_maps_to_platform_action() {
-        // 热键 → 命令意图：保存/退出/主题循环三键一一对应（.02 检验项）
+        // 热键 → 命令意图：保存/退出两键一一对应（.02 检验项；A008 #2 主题键退役）
         assert_eq!(hotkey_action(HotkeyKind::Save), PlatformAction::SaveNow);
         assert_eq!(hotkey_action(HotkeyKind::Quit), PlatformAction::Quit);
-        assert_eq!(hotkey_action(HotkeyKind::Theme), PlatformAction::CycleTheme);
     }
 
     #[test]
@@ -1117,27 +1048,29 @@ mod tests {
 
 // ===== src/window.rs 说明区 =====
 // 输入：无（装配期读 token/配置）；输出：GUI 主窗进程
-// 逻辑步骤：build_runtime → AppInterface::new → NativeOptions（token 几何+透明）
-//   → run_native（create_app：theme/fonts/state 装配 + 托盘/热键挂接 → AppHandle）
-//   → logic（drain → 平台事件 → 探针时序 → 退出/驻留 → 托盘状态）→ ui（背板→部件→节奏）
-// 设计理由：drain→背板→部件→节奏四步对齐 z.plan A 节主循环骨架；透明 viewport +
-//   wgpu alpha 供 Acrylic 透出（.04 在 platform/acrylic.rs 挂接 DWM）；页面玻璃面
-//   惰性注册 + 切页 set_visible（PL009 僵尸面教训平移：面随页注册，隐藏页剔除绘制）；
-//   **隐藏期不重绘但 logic 仍逐轮驱动**——视口命令（托盘恢复/退出/探针）与托盘状态
-//   推送一律落在 logic，落在 ui 会在隐藏驻留后失效（.01 真窗实证的返工教训）
+// 逻辑步骤：build_runtime → AppInterface::new → NativeOptions（token 几何 + 最小
+//   尺寸下限 + 存档几何优先恢复）→ run_native（create_app：主题 apply/fonts/state
+//   装配 + 托盘/热键挂接 → AppHandle）→ logic（drain → 平台事件 → 探针时序 →
+//   退出/驻留 → 托盘状态）→ ui（侧栏 → 当前页 → 设置浮窗 → 截图探针 → 节奏）
+// 设计理由：drain→部件→节奏对齐 z.plan A 节主循环骨架（UIR 重塑后背板为 CentralPanel
+//   实心 window_bg，玻璃面注册/acrylic/透明 viewport 整体废弃——A008 #6 说明区
+//   随实心现状重写）；**隐藏期不重绘但 logic 仍逐轮驱动**——视口命令（托盘恢复/
+//   退出/探针）与托盘状态推送一律落在 logic，落在 ui 会在隐藏驻留后失效（.01 真窗
+//   实证的返工教训）
 // 退出语义（PL015.01 定案，对齐 Python closeEvent）：关闭按钮 → CancelClose+隐藏
 //   驻留（不落盘——倍率经 ApplyRate 内聚实时落盘）；托盘退出/热键退出/探针 →
-//   quit_requested → SaveNow+Quit+Close 一次放行（quit_sent 区分两种 Close 来源）
+//   quit_requested → SaveNow+Quit+Close 一次放行（quit_sent 区分两种 Close 来源）；
+//   退出序列发 SetWindowGeometry 存档外框矩形（UIR.7：位置/大小记忆，启动恢复）
 // 平台事件归一（PL015.01/.02）：tray::TrayCommand 与 hotkey::HotkeyKind 经纯函数
 //   tray_action/hotkey_action 归一到 PlatformAction，再由 apply_platform_action 汇合
-//   应用（窗口/命令出口唯一入口——映射可单测，无须真实托盘/热键）
-// 探针通路：ACCELWORLD_HIDE_AFTER / ACCELWORLD_SHOW_AFTER / ACCELWORLD_FPS_PROBE
-//   模拟"隐藏驻留 → 显示恢复 → 退出"全链路；隐藏与显示两侧打印同源状态指纹，
-//   供"隐藏→显示状态保持"断言比对
-// 已知偏移：①几何恢复（用户拖拽记忆）未做（PL015 无对应任务，随 UI 雕刻阶段处理）；
-//   ②玻璃 lift/tint 经 theme.rs 的 glass_lift()/glass_tint() 读 glass.{mode} 域
-//   （A005 #5 修正后不再直读 pointer）
-// 异常处理：无 wgpu render state 时降级纯色背板（FIX006.7：管线构造恒成功路径，
-//   真实管线错误由 wgpu uncaptured_error 处理器记日志；行为无损纪律）；字体缺失
-//   降级内置（告警）；托盘/热键构造失败降级 None（无系统集成环境行为无损）
-// 关联配置：window_*/glass.gl_lift/ui.json field.*；消费方：main.rs
+//   应用（窗口/命令出口唯一入口——映射可单测，无须真实托盘/热键；A008 #2 起
+//   CycleTheme 退役，PlatformAction 仅 Show/Hide/SaveNow/Quit）
+// 标题栏钉色（UIR）：DWMWA_CAPTION_COLOR/BORDER_COLOR 显式设侧栏底色（系统
+//   「标题栏强调色」会盖深浅跟随）；A008 #2 定案仅深色恒钉深色；失败去抖留痕一次
+//   （A008 #12，Win10 <22000 不支持该属性）
+// 探针通路：ACCELWORLD_HIDE_AFTER / ACCELWORLD_SHOW_AFTER / ACCELWORLD_FPS_PROBE /
+//   ACCELWORLD_UI_SHOT（UIR.2 真窗逐页 PrintWindow 出 PNG 后自动退出）
+// 异常处理：字体缺失降级内置（告警）；托盘/热键构造失败降级 None（无系统集成
+//   环境行为无损）；截图采集任何环节失败返 false 走日志（探针专用路径）
+// 关联配置：window_*/window_min_*/shortcuts.*/logs_dir（base.json）+ ui.json
+//   layout.*/colors.*；消费方：main.rs

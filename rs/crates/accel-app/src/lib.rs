@@ -1,5 +1,5 @@
 //! AccelWorld RS 应用库（accel-app）
-//! bin 形态（main/render_probe）共享的模块根；GUI 依赖仅本 crate
+//! bin 形态（main——render_probe 已随 UIR 玻璃拆除删除）共享的模块根；GUI 依赖仅本 crate
 
 pub mod bus;
 pub mod logging;

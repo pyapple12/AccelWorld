@@ -22,7 +22,7 @@ tracing = { workspace = true }
 httpmock = { workspace = true }
 
 # ===== crates/accel-core/Cargo.toml 说明区 =====
-# version = "0.6.0"：对齐产品版本段 0.6.0.0（semver 三段上限）；显示版本单一来源
+# version = "0.6.0"：对齐产品版本段 0.6.1（semver 三段上限）；显示版本单一来源
 #   在 config/static/base.json，经 app 侧 build.rs 注入，core 自身不感知版本
 # 依赖全部经 workspace.dependencies 继承，本文件禁止直写版本号（版本单源）
 # httpmock 仅 dev：本地桩服务支撑 weather 传输层五路径单测，不进正式产物

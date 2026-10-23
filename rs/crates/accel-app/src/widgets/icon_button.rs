@@ -1,5 +1,5 @@
 //! 图标按钮（UIR 重塑新增）：矢量图标 + 状态底色的自绘点击控件
-//! 替代原 egui small_button 文本按钮——与玻璃质感同语言的唯一操作入口
+//! 替代原 egui small_button 文本按钮——实心主题下唯一的图标操作入口
 
 use egui::{Color32, Response, Sense, Vec2};
 

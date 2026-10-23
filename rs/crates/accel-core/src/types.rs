@@ -192,4 +192,6 @@ pub enum BackendEvent {
 // A005 #4 修订（2026-10-18）：删除从未接线的 AddWeatherCity/RemoveWeatherCity，
 //   新增 SetWeatherCity（单城市模型的换城入口）；命令分发 match 已穷尽——新增
 //   变体不接线即编译失败（协议演进由编译器强制）
+// 协议 v1.1（2026-10-23，UIR.7）：FrontendCommand 扩 SetWindowGeometry（窗口
+//   几何记忆契约，17 变体——「协议 v1 定死」自本条起为「演进须登记」口径）
 // 关联依赖：serde/chrono/alarm（数据形状）；消费方：interface（分发）/ app bus

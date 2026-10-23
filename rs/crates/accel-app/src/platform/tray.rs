@@ -44,6 +44,8 @@ pub struct TrayHandles {
     rate_item: MenuItem,
     // 上次悬停文本（tray-icon 无 tooltip getter——本地镜像实现未变化跳过语义）
     last_tooltip: std::cell::RefCell<String>,
+    // 上次倍率菜单文本（A008 #18：与 tooltip 同款镜像——倍率未变不再每秒 set_text）
+    last_rate_text: std::cell::RefCell<String>,
 }
 
 #[cfg(windows)]
@@ -80,12 +82,18 @@ impl TrayHandles {
             _tray: tray,
             rate_item: rate,
             last_tooltip: std::cell::RefCell::new(String::new()),
+            last_rate_text: std::cell::RefCell::new(String::new()),
         })
     }
 
     /// 倍率菜单文本 + 悬停文本更新（window 每秒节流推送；文本未变化时跳过防重绘）
     pub fn set_status(&self, rate: f64, tooltip: &str) {
-        self.rate_item.set_text(format!("当前倍率: {rate:.1}x"));
+        // A008 #18：倍率文本未变化跳过（镜像 tooltip 同款语义，不再每秒 set_text）
+        let rate_text = format!("当前倍率: {rate:.1}x");
+        if self.last_rate_text.borrow().as_str() != rate_text {
+            self.last_rate_text.replace(rate_text.clone());
+            self.rate_item.set_text(rate_text);
+        }
         // Tooltip 相同则跳过（Python update_tooltip 未变化不 setToolTip 语义平移）
         if self.last_tooltip.borrow().as_str() != tooltip {
             self.last_tooltip.replace(tooltip.to_string());

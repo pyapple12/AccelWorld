@@ -14,7 +14,7 @@ use crate::data::{cities, timezones, world_cities};
 use crate::settings;
 use crate::static_config::Static;
 use crate::time_dilation::TimeDilation;
-use crate::types::{BackendEvent, FrontendCommand, TimeInfo, UiPreferences, WeatherData};
+use crate::types::{BackendEvent, FrontendCommand, TimeInfo, UiPreferences};
 use crate::weather::WeatherClient;
 
 // 主题偏好合法取值（PL002.02 三态）
@@ -153,17 +153,6 @@ impl AppInterface {
         let mut names: Vec<String> = cities::names().into_iter().map(String::from).collect();
         names.sort();
         names
-    }
-
-    /// 城市天气查询（缓存/重试内聚；失败返回 None 不外抛——Python 降级语义对等）
-    pub async fn fetch_weather(&self, city: &str, force: bool) -> Option<WeatherData> {
-        match self.weather.fetch_by_city(city, force).await {
-            Ok(w) => Some(w),
-            Err(e) => {
-                tracing::error!("获取天气信息失败: {city} {e}");
-                None
-            }
-        }
     }
 
     /// 自动刷新周期 = 缓存 TTL × 1000（单源派生，E15）
@@ -312,14 +301,15 @@ impl AppInterface {
         settings::load(&self.config_path).window_geometry
     }
 
-    /// 窗口几何存档（UI 直接发 SetWindowGeometry；合法数字四元组才收）
+    /// 窗口几何存档（UI 直接发 SetWindowGeometry；合法数字四元组才收，
+    /// 存档规范化为 "x,y,w,h" 无空白形态——A008 #3，手编带空格/科学计数不入档）
     pub fn set_window_geometry(&self, geometry: &str) -> bool {
-        if parse_window_geometry(geometry).is_none() {
+        let Some((x, y, w, h)) = parse_window_geometry(geometry) else {
             tracing::warn!("窗口几何串非法，拒绝存档: {geometry}");
             return false;
-        }
+        };
         let mut config = settings::load(&self.config_path);
-        config.window_geometry = Some(geometry.to_string());
+        config.window_geometry = Some(format!("{x:.0},{y:.0},{w:.0},{h:.0}"));
         settings::save(&self.config_path, &config)
     }
 
@@ -350,12 +340,14 @@ impl AppInterface {
         settings::save(&self.config_path, &config)
     }
 
-    /// 移除倒计时目标（按名；不存在返 false）
+    /// 移除倒计时目标（按名；不存在记日志返 false——与 remove_world_city 同款可观测）
     pub fn remove_countdown_target(&self, name: &str) -> bool {
         let mut config = settings::load(&self.config_path);
         let before = config.countdown_targets.len();
         config.countdown_targets.retain(|t| t.name != name);
         if config.countdown_targets.len() == before {
+            // A008 #14：不存在分支补日志（原静默返 false 诊断盲点）
+            tracing::info!("倒计时目标不存在，移除无变更: {name}");
             return false;
         }
         settings::save(&self.config_path, &config)
@@ -425,8 +417,20 @@ impl AppInterface {
 
         // 主循环任务（panic 监控包裹：join Err 记 error 不静默——PL013.12 检验项）
         let main_handle = tokio::spawn(async move {
+            // A008 #1：tick 改绝对截止时间（sleep 句柄跨循环复用，倍率变化时 reset 重排）——
+            // 原写法每轮循环重建 sleep，命令到达快于 tick 周期时（滑杆拖动每帧一发
+            // SetRate）sleep 永远到不了期，Tick 被饿死 → 时钟页走秒冻结
+            let mut period = self.get_tick_interval_ms().max(1) as u64;
+            let mut tick_sleep = std::pin::pin!(tokio::time::sleep(Duration::from_millis(period)));
             loop {
-                let period = Duration::from_millis(self.get_tick_interval_ms().max(1) as u64);
+                let now_period = self.get_tick_interval_ms().max(1) as u64;
+                if now_period != period {
+                    // 倍率变化 → 新节奏即刻重排（保留原「SetRate 后下一轮即新节奏」语义）
+                    period = now_period;
+                    tick_sleep
+                        .as_mut()
+                        .reset(tokio::time::Instant::now() + Duration::from_millis(period));
+                }
                 tokio::select! {
                     cmd = cmd_rx.recv() => {
                         match cmd {
@@ -501,35 +505,38 @@ impl AppInterface {
                             }
                             Some(FrontendCommand::AddAlarm(draft)) => {
                                 // 草稿落库 + 入表 + 回推全量列表（UI 无状态重建）
+                                // A008 #4：失败同样回推现值——添加被拒（时间非法/上限/重复）
+                                // 时 UI 不静默偏离，对齐 A005 #19 RateRejected 口径
                                 let ok = Alarm::from_draft(draft)
                                     .map(|alarm| self.alarms.lock().expect("闹钟锁中毒").add_alarm(alarm))
                                     .unwrap_or(false);
                                 if ok {
                                     let _ = self.save_config_now();
-                                    let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
                                 }
+                                let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
                             }
                             Some(FrontendCommand::RemoveAlarm(id)) => {
                                 let removed =
                                     self.alarms.lock().expect("闹钟锁中毒").remove_alarm(&id);
                                 if removed {
                                     let _ = self.save_config_now();
-                                    let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
                                 }
+                                // A008 #4：不存在 id 同样回推现值，UI 不静默
+                                let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
                             }
                             Some(FrontendCommand::ReplaceAlarm(alarm)) => {
                                 let ok = self.alarms.lock().expect("闹钟锁中毒").replace_alarm(alarm);
                                 if ok {
                                     let _ = self.save_config_now();
-                                    let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
                                 }
+                                let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
                             }
                             Some(FrontendCommand::ToggleAlarm(id)) => {
                                 let ok = self.alarms.lock().expect("闹钟锁中毒").toggle_alarm(&id);
                                 if ok {
                                     let _ = self.save_config_now();
-                                    let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
                                 }
+                                let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
                             }
                             Some(FrontendCommand::SetWeatherCity(city)) => {
                                 let ok = self.set_weather_city(&city);
@@ -587,11 +594,15 @@ impl AppInterface {
                             }
                         }
                     }
-                    _ = tokio::time::sleep(period) => {
+                    _ = tick_sleep.as_mut() => {
                         let info = self.get_time_info();
                         if evt_tx.send(BackendEvent::Tick(info)).await.is_err() {
                             break;
                         }
+                        // 周期到点后重排下一轮（截止时间绝对，与命令到达节奏解耦——A008 #1）
+                        tick_sleep
+                            .as_mut()
+                            .reset(tokio::time::Instant::now() + Duration::from_millis(period));
                     }
                 }
             }
@@ -621,8 +632,10 @@ fn weather_should_skip(inflight: &WeatherInflight, city: &str, force: bool) -> b
     !force && inflight.contains_key(city)
 }
 
-/// 窗口几何串解析（纯函数）：`"x,y,w,h"` → 四元组（非数字/缺项 None——启动恢复
-/// 回退 token 基准）；旧 Python base64 存档天然解析失败即弃档（一次性迁移）
+/// 窗口几何串解析（纯函数）：`"x,y,w,h"` → 四元组（非数字/缺项/NaN/inf/非正宽高
+/// None——启动恢复回退 token 基准）；旧 Python base64 存档天然解析失败即弃档
+/// （一次性迁移）。A008 #3：f32::from_str 接受 "NaN"/"inf"，user_config 为用户
+/// 可手编外部输入，非法四元组不得喂给窗口几何
 pub fn parse_window_geometry(text: &str) -> Option<(f32, f32, f32, f32)> {
     let parts: Vec<&str> = text.split(',').collect();
     if parts.len() != 4 {
@@ -632,7 +645,12 @@ pub fn parse_window_geometry(text: &str) -> Option<(f32, f32, f32, f32)> {
         .iter()
         .map(|p| p.trim().parse::<f32>().ok())
         .collect::<Option<Vec<_>>>()?;
-    Some((nums[0], nums[1], nums[2], nums[3]))
+    let (x, y, w, h) = (nums[0], nums[1], nums[2], nums[3]);
+    let finite = x.is_finite() && y.is_finite() && w.is_finite() && h.is_finite();
+    if !finite || w <= 0.0 || h <= 0.0 {
+        return None;
+    }
+    Some((x, y, w, h))
 }
 
 /// force 替换旧在飞条目（FIX007.5）：置替换标记 + abort——abort 不生效时标记兜底
@@ -664,14 +682,16 @@ fn inflight_abort_all(map: &mut WeatherInflight) {
 
 // ===== src/interface.rs 说明区 =====
 // 输入：FrontendCommand 流（UI 写意图）；输出：同步查询 DTO 快照 + BackendEvent 流
-// 逻辑步骤：spawn 主循环 select——命令分支（16 变体逐一接线，match 穷尽无兜底——
-//   A005 #4 起新增变体不接线即编译失败）与 tick 分支（每轮现读倍率定周期，
-//   SetRate 后下一轮即新节奏，等价「重排 interval」）并发
+// 逻辑步骤：spawn 主循环 select——命令分支（17 变体逐一接线，match 穷尽无兜底——
+//   A005 #4 起新增变体不接线即编译失败；UIR.7 扩 SetWindowGeometry 为协议 v1.1）
+//   与 tick 分支（绝对截止时间，倍率变化比较后 reset 重排）并发
 // 设计理由：对齐 Python AppInterface 七域契约方法名（get_time_info/get_rate/
-//   set_rate/apply_rate/get_city_names/fetch_weather/get_ui_preferences/...），
+//   set_rate/apply_rate/get_city_names/get_ui_preferences/...；fetch_weather
+//   拉取式残留已删——A008 #7，总线 RefreshWeather 为唯一天气入口），
 //   Python 拉取式 + Rust 推送式并存：同步查询供 UI 直拉（Python 习惯对等物），
-//   总线供帧循环 drain（z.plan 修订一信号接口）；tick 用 sleep-每轮现读而非
-//   固定 interval（tokio interval 周期不可变，重建即重排）；天气拉取独立
+//   总线供帧循环 drain（z.plan 修订一信号接口）；tick 用绝对截止时间而非
+//   每轮重建 sleep（A008 #1：命令快于 tick 周期时 sleep 重建会被饿死，
+//   截止时间与命令节奏解耦，倍率变化经比较后 reset 即刻重排）；天气拉取独立
 //   tokio 任务（重试/超时最长秒级，不得阻塞命令通道）
 // 异常处理：倍率非法回退默认（构造期）/拒绝 false（set/apply）；天气失败降级
 //   None + 日志（Python 对等），总线事件则回推 WeatherFailed 供 UI 提示；
@@ -682,7 +702,7 @@ fn inflight_abort_all(map: &mut WeatherInflight) {
 // FIX006.22：写操作幂等规则统一——「已存在 = true（不重复落盘）」/「非法入参 = false」/
 //   「移除类不存在 = false」；FIX006.23：天气城市候选 = data::cities（与世界时钟
 //   world_cities 两表职责分离）
-// 已知偏移：①fetch_weather 的 force 清该城缓存键（Python 清全表；z.plan 修订二
+// 已知偏移：①总线天气任务的 force 清该城缓存键（Python 清全表；z.plan 修订二
 //   per-city 定案，多城市语义更正确）；②配置读经每调用 load（Python 有模块级
 //   缓存；Rust 由调用频率低 + 原子写保证一致性，缓存层 PL013 视性能引入）
 // 关联配置：config_path（env 注入/exe 同目录）；base.json 各 token；消费方：app bus
@@ -694,11 +714,29 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    fn temp_config(tag: &str) -> PathBuf {
-        // 每测试独立目录（并行测试同进程不得共用配置路径）
-        let dir = std::env::temp_dir().join(format!("accel_iface_{tag}_{}", std::process::id()));
-        fs::create_dir_all(&dir).expect("临时目录创建失败");
-        dir.join("user_config.json")
+    /// 测试沙箱目录（RAII：drop 即整目录清理——A008 #15，与 parity.rs 同款模式，
+    /// 断言失败不再残留 %TEMP%/accel_iface_*）
+    struct SandboxDir(PathBuf);
+
+    impl SandboxDir {
+        fn new(tag: &str) -> Self {
+            // 每测试独立目录（并行测试同进程不得共用配置路径）；先清同 pid 上次残留
+            let dir =
+                std::env::temp_dir().join(format!("accel_iface_{tag}_{}", std::process::id()));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).expect("临时目录创建失败");
+            Self(dir)
+        }
+
+        fn path(&self) -> PathBuf {
+            self.0.join("user_config.json")
+        }
+    }
+
+    impl Drop for SandboxDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
     }
 
     fn iface(path: &Path) -> AppInterface {
@@ -708,7 +746,8 @@ mod tests {
     #[test]
     fn three_domain_sync_queries() {
         // 三域拉取走通：时钟快照形态/倍率域/天气派生周期
-        let path = temp_config("sync");
+        let sandbox = SandboxDir::new("sync");
+        let path = sandbox.path();
         let itf = iface(&path);
         let info = itf.get_time_info();
         assert!(info.custom_time.contains(':'), "加速时间应为 HH:MM:SS 形态");
@@ -728,7 +767,8 @@ mod tests {
     #[test]
     fn rate_set_and_apply_paths() {
         // set_rate 轻量路径（不落盘）与 apply_rate 内聚路径（落盘可复读）
-        let path = temp_config("rate");
+        let sandbox = SandboxDir::new("rate");
+        let path = sandbox.path();
         let itf = iface(&path);
         assert!(itf.set_rate(5.5));
         assert_eq!(itf.get_rate(), 5.5);
@@ -746,7 +786,8 @@ mod tests {
     #[test]
     fn city_names_sorted_and_preferences() {
         // get_city_names 排序返回；偏好组装与主题归一化
-        let path = temp_config("prefs");
+        let sandbox = SandboxDir::new("prefs");
+        let path = sandbox.path();
         let names = AppInterface::get_city_names();
         assert_eq!(names.len(), 17);
         let mut sorted_check = names.clone();
@@ -773,7 +814,8 @@ mod tests {
     #[test]
     fn persisted_dirty_rate_falls_back() {
         // 持久化倍率脏值回退默认（FIX004.2 对等：clamp 域外不崩溃）
-        let path = temp_config("dirty");
+        let sandbox = SandboxDir::new("dirty");
+        let path = sandbox.path();
         let config = UserConfig {
             time_dilation_rate: 99.0,
             ..UserConfig::default()
@@ -786,7 +828,8 @@ mod tests {
     #[tokio::test]
     async fn bus_rate_and_quit_flow() {
         // 总线：SetRate → RateChanged；Quit → 循环退出（事件通道关闭）
-        let path = temp_config("busrate");
+        let sandbox = SandboxDir::new("busrate");
+        let path = sandbox.path();
         let itf = Arc::new(iface(&path));
         let (cmd_tx, mut evt_rx) = AppInterface::spawn(Arc::clone(&itf));
         cmd_tx
@@ -813,7 +856,8 @@ mod tests {
     #[tokio::test]
     async fn bus_tick_stream_flows() {
         // 总线：tick 推送按倍率节奏到达（默认 2.0 → 100ms 周期，2 秒内必有多个）
-        let path = temp_config("bustick");
+        let sandbox = SandboxDir::new("bustick");
+        let path = sandbox.path();
         let itf = Arc::new(iface(&path));
         let (_cmd_tx, mut evt_rx) = AppInterface::spawn(itf);
         let mut ticks = 0;
@@ -837,7 +881,8 @@ mod tests {
                 "temperature_2m": 18.0, "relative_humidity_2m": 40, "weather_code": 0,
                 "wind_speed_10m": 5.0, "apparent_temperature": 17.5 }}));
         });
-        let path = temp_config("busweather");
+        let sandbox = SandboxDir::new("busweather");
+        let path = sandbox.path();
         let client = WeatherClient::custom(
             server.base_url(),
             RetrySpec {
@@ -893,7 +938,8 @@ mod tests {
         let fire = at(9, 0);
         let before = at(8, 59);
 
-        let path = temp_config("vclock");
+        let sandbox = SandboxDir::new("vclock");
+        let path = sandbox.path();
         let itf = Arc::new(iface(&path));
         // 两条闹钟直入管理器：重复型（周三 [2]）测去重；一次性（created_at 昨日 07:00
         // → 计划日 = 今日）测自动禁用回推
@@ -988,7 +1034,8 @@ mod tests {
     #[tokio::test]
     async fn bus_alarm_crud_and_persistence() {
         // .10 验收：AddAlarm→get_alarms 反查 + RemoveAlarm 回推 + 落盘可复载
-        let path = temp_config("acrud");
+        let sandbox = SandboxDir::new("acrud");
+        let path = sandbox.path();
         let itf = Arc::new(iface(&path));
         let (cmd_tx, mut evt_rx) = AppInterface::spawn(Arc::clone(&itf));
         cmd_tx
@@ -1039,7 +1086,8 @@ mod tests {
         // .10 验收 + FIX007.2 域验收：AddWorldCity 按城市名落盘（大阪独立于东京——
         // 同 tz 多城共存，不再被表序首城吞并）+ 重复添加幂等 + SetBaseTimezone
         // roundtrip + SetTheme 落盘
-        let path = temp_config("citycmd");
+        let sandbox = SandboxDir::new("citycmd");
+        let path = sandbox.path();
         let itf = Arc::new(iface(&path));
         let (cmd_tx, mut evt_rx) = AppInterface::spawn(Arc::clone(&itf));
         cmd_tx
@@ -1091,7 +1139,8 @@ mod tests {
     #[tokio::test]
     async fn set_weather_city_persists_and_rejects_unknown() {
         // A005 #4 验收：SetWeatherCity 持久化 last_city 并回推 ConfigSaved(true)；未知城市拒
-        let path = temp_config("wcity");
+        let sandbox = SandboxDir::new("wcity");
+        let path = sandbox.path();
         let itf = Arc::new(iface(&path));
         let (cmd_tx, mut evt_rx) = AppInterface::spawn(Arc::clone(&itf));
         cmd_tx
@@ -1116,7 +1165,8 @@ mod tests {
     #[test]
     fn lunar_domain_via_time_info() {
         // .10 验收：农历域经 get_time_info 快照携带（chinese_date/lunar_info 非空且形态正确）
-        let path = temp_config("lunarinfo");
+        let sandbox = SandboxDir::new("lunarinfo");
+        let path = sandbox.path();
         let itf = iface(&path);
         let info = itf.get_time_info();
         assert!(
@@ -1239,5 +1289,108 @@ mod tests {
             None,
             "旧 Python base64 存档天然弃档"
         );
+    }
+
+    #[test]
+    fn window_geometry_parse_rejects_nonfinite_and_nonpositive() {
+        // A008 #3 验收：NaN/inf（f32::from_str 可解析）与非正宽高拒绝，
+        // 非法四元组不得喂给窗口几何
+        assert_eq!(parse_window_geometry("NaN,100,900,500"), None, "NaN 拒");
+        assert_eq!(parse_window_geometry("100,inf,900,500"), None, "inf 拒");
+        assert_eq!(parse_window_geometry("100,100,0,500"), None, "零宽拒");
+        assert_eq!(parse_window_geometry("100,100,900,-5"), None, "负高拒");
+        assert_eq!(
+            parse_window_geometry("1e39,1e39,1e39,1e39"),
+            None,
+            "科学计数溢出 f32（→inf）拒"
+        );
+    }
+
+    #[test]
+    fn window_geometry_archive_is_canonical() {
+        // A008 #3 验收：存档规范化为无空白 "x,y,w,h"（手编带空格不入原样）；
+        // 非法四元组拒存档
+        let sandbox = SandboxDir::new("geocanon");
+        let path = sandbox.path();
+        let itf = iface(&path);
+        assert!(itf.set_window_geometry(" 120 , 240 , 960 , 540 "));
+        assert_eq!(
+            itf.get_window_geometry().as_deref(),
+            Some("120,240,960,540"),
+            "存档应规范化"
+        );
+        assert!(!itf.set_window_geometry("NaN,0,0,0"), "非法四元组拒存档");
+    }
+
+    #[tokio::test]
+    async fn bus_alarm_rejection_pushes_unchanged_list() {
+        // A008 #4 验收：非法时间 AddAlarm / 不存在 id RemoveAlarm 失败——
+        // 均回推现值列表（UI 不静默偏离，对齐 RateRejected 口径）
+        let sandbox = SandboxDir::new("alarmrej");
+        let path = sandbox.path();
+        let itf = Arc::new(iface(&path));
+        let (cmd_tx, mut evt_rx) = AppInterface::spawn(Arc::clone(&itf));
+        cmd_tx
+            .send(FrontendCommand::AddAlarm(AlarmDraft {
+                label: "非法".into(),
+                time: "9:30".into(), // 单 digit 小时即拒（alarm 装载规则）
+                sound_type: "preset".into(),
+                sound_value: "classic".into(),
+                repeat_days: vec![],
+                enabled: true,
+            }))
+            .await
+            .expect("发送失败");
+        let mut pushed_empty = false;
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            if let Some(BackendEvent::AlarmsChanged(list)) = evt_rx.recv().await {
+                pushed_empty = list.is_empty();
+                break;
+            }
+        }
+        assert!(pushed_empty, "失败添加也应回推（空）列表");
+        assert!(itf.get_alarms().is_empty(), "非法草稿不得入表");
+        // 不存在 id 移除同样回推
+        cmd_tx
+            .send(FrontendCommand::RemoveAlarm("ghost".into()))
+            .await
+            .expect("发送失败");
+        let mut pushed_again = false;
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            if matches!(evt_rx.recv().await, Some(BackendEvent::AlarmsChanged(_))) {
+                pushed_again = true;
+                break;
+            }
+        }
+        assert!(pushed_again, "不存在 id 移除也应回推现值");
+    }
+
+    #[tokio::test]
+    async fn tick_not_starved_by_command_burst() {
+        // A008 #1 验收：命令爆发（模拟滑杆拖动每帧一发 SetRate）期间 Tick 仍按期到达
+        let sandbox = SandboxDir::new("tickstarve");
+        let path = sandbox.path();
+        let itf = Arc::new(iface(&path));
+        let (cmd_tx, mut evt_rx) = AppInterface::spawn(itf);
+        let sender = tokio::spawn(async move {
+            for i in 0..60 {
+                let _ = cmd_tx
+                    .send(FrontendCommand::SetRate(1.0 + (i % 10) as f64 * 0.5))
+                    .await;
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        });
+        let deadline = std::time::Instant::now() + Duration::from_millis(500);
+        let mut got_tick = false;
+        while std::time::Instant::now() < deadline {
+            if matches!(evt_rx.recv().await, Some(BackendEvent::Tick(_))) {
+                got_tick = true;
+                break;
+            }
+        }
+        assert!(got_tick, "命令爆发期内 Tick 不得被饿死（A008 #1）");
+        let _ = sender.await;
     }
 }
