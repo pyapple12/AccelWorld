@@ -1,7 +1,7 @@
 # AccelWorld RS
 
-时间膨胀时钟的 Rust 重构版（egui + eframe/wgpu），接替 Python 0.6.0.0。
-重构总纲与任务切分见仓库根 `z.plan.md`（Rust 重构总纲节）与 `x.progress.md`（PL011–PL015）；
+时间膨胀时钟的 Rust 重构版（egui + eframe/glow 实心桌面 UI），接替 Python 0.6.0.0。
+重构总纲与任务切分见仓库根 `z.plan.md`（Rust 重构总纲节）与 `x.progress.md`（PL011–PL015、UIR）；
 项目分析与房规见根 `w.study.md` 与 `AGENTS.md`。
 
 ## 结构
@@ -9,14 +9,14 @@
 cargo workspace 双 crate，依赖单向 `app → core`（CI 机器强制零反向）：
 
 - `crates/accel-core`：纯业务（时间膨胀/农历/天气/闹钟/配置/数据表/工具/接口契约），零 GUI 依赖
-- `crates/accel-app`：egui 前端（窗口/玻璃渲染/五页导航 + 设置浮窗/自绘控件/系统集成），一切后端写操作经 core::interface 命令/事件总线（只读 token/DTO 允许直取，见 AGENTS 契约边界）
+- `crates/accel-app`：egui 前端（实心主题窗口/侧栏导航五页 + 设置浮窗/自绘控件/系统集成），一切后端写操作经 core::interface 命令/事件总线（只读 token/DTO 允许直取，见 AGENTS 契约边界）
 
 ## 构建与运行
 
 ```powershell
 cargo run -p accel-app                          # 开发运行（真窗）
 cargo build --release                           # 发布构建 → target/release/accel-app.exe
-cargo run -p accel-app --bin render_probe       # 玻璃离屏渲染断言探针
+$env:ACCELWORLD_UI_SHOT=".temp/ui_shots"; cargo run -p accel-app   # UI 截图探针（逐页 PNG 后自动退出）
 ```
 
 ## 验证
@@ -54,4 +54,5 @@ pub fn time_info(&self, now: DateTime<Local>) -> TimeInfo {
 - 夹具 parity：`rs/fixtures/*.json` 为 Python 0.6.0.0 行为快照（golden），
   core 行为断言一律对夹具（`.archived/` 可再生）
 - 平台集成降级：托盘/热键/通知构造失败一律降级日志不崩；非 Windows 平台编译期桩化
-- 渲染质量门：玻璃观感/管线改动须过 `render_probe` 离屏断言再进人工走查
+- 视觉走查：UI 观感改动经 `ACCELWORLD_UI_SHOT` 截图探针自检 + 用户真机目测终审
+  （视觉设计不得向测试环境妥协；玻璃管线已废弃——UIR 定案）

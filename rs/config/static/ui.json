@@ -16,79 +16,42 @@
     "chip_label": 12,
     "tiny": 11
   },
-  "field": {
-    "dark": {
-      "top": "#230D1322",
-      "bottom": "#23090D16",
-      "glow_a": "#4DE4B36A",
-      "glow_a_x": 0.84,
-      "glow_a_y": 0.0,
-      "glow_a_r": 0.38,
-      "glow_b": "#407C6EDE",
-      "glow_b_x": 0.0,
-      "glow_b_y": 1.0,
-      "glow_b_r": 0.5
-    },
-    "light": {
-      "top": "#2CE7EEF7",
-      "bottom": "#28F2ECDC",
-      "glow_a": "#40C99A4E",
-      "glow_a_x": 0.84,
-      "glow_a_y": 0.0,
-      "glow_a_r": 0.45,
-      "glow_b": "#387896CD",
-      "glow_b_x": 0.0,
-      "glow_b_y": 1.0,
-      "glow_b_r": 0.5
-    }
-  },
-  "glass": {
-    "dark": {
-      "gl_lift": 26,
-      "gl_tint": "#29222E33"
-    },
-    "light": {
-      "gl_lift": 34,
-      "gl_tint": "#293A3E4E"
-    }
-  },
   "radius": {
     "lg": 18,
     "md": 14,
     "sm": 8
   },
   "layout": {
-    "page_margin": [24, 24, 24, 24],
-    "nav_rail_width": 84,
-    "nav_pill_height": 62,
-    "nav_pill_spacing": 10,
-    "nav_pill_pad": 6,
-    "nav_rail_margin_top": 56,
-    "progress_ring_size": 88,
+    "sidebar_width": 148,
     "slider_track": 24,
-    "chip_size": [120, 64]
+    "chip_size": [116, 56]
   },
   "colors": {
     "primary": "#E4B36A",
     "danger": "#E4756A",
-    "text_strong": "#EBEEF5",
-    "text_muted": "#C8CEDC",
-    "text_soft": "#AAB0BE",
-    "text_dim": "#787E8C",
-    "text_card": "#E1E6F0",
-    "knob": "#F0F3FA",
-    "info": "#8CAAD2",
-    "nav_pill_stroke": "#3C3C3C3C",
-    "ring_track": "#5A464650",
-    "slider_track": "#783C3C48",
-    "faint_bg": "#06060606",
-    "panel_dark": "#121218",
-    "window_dark": "#16161E",
-    "bg_dark": "#0C0C10",
-    "selection_dark": "#191E28",
-    "panel_light": "#F4F6FA",
-    "window_light": "#FAFBFD",
-    "bg_light": "#FFFFFF",
-    "text_light": "#232832"
+    "info": "#7FA3D1",
+    "text_strong": "#E8EAF0",
+    "text_muted": "#9AA1B2",
+    "text_soft": "#A9B0C0",
+    "text_dim": "#626979",
+    "text_card": "#D5DAE5",
+    "knob": "#F2F4F8",
+    "faint_bg": "#262B38",
+    "card_bg": "#1F232E",
+    "sidebar_bg": "#12141B",
+    "window_bg": "#171A21",
+    "border": "#2C313E",
+    "ring_track": "#3A4050",
+    "slider_track": "#3A4050",
+    "on_accent": "#1A1608",
+    "selection": "#2E3442",
+    "panel_dark": "#171A21",
+    "window_dark": "#1F232E",
+    "bg_dark": "#12141B",
+    "selection_dark": "#2E3442",
+    "panel_light": "#F4F5F8",
+    "window_light": "#FFFFFF",
+    "bg_light": "#E9EBF1",
+    "text_light": "#1E222C"
   }
 }

@@ -1,6 +1,7 @@
 # AccelWorld 项目分析报告
 
-> 2026-10-17 重做：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/wgpu），本报告按 Rust 现役实现改写；Python 版分析随 `.archived/` 归档留档。
+> 2026-10-17 重做：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow），本报告按 Rust 现役实现改写；Python 版分析随 `.archived/` 归档留档。
+> 2026-10-23 UIR 更新：界面推倒重塑——玻璃管线/Acrylic 整体废弃，实心主题 + 侧栏导航（本文 3.7 玻璃渲染节留档作废）。
 
 ---
 
@@ -11,7 +12,7 @@ cargo workspace 双 crate 桌面应用：基于加速倍率的时间膨胀时钟
 ```
 [输入]   用户设定加速倍率（rate_min 1.0 - rate_max 20.0，来自 config/static/base.json）
 [引擎]   accel-core::time_dilation 按倍率换算：加速时钟 1 秒 = 现实 1/rate 秒
-[展示]   accel-app（egui + eframe/wgpu）：胶囊导航五页 + 设置浮窗 + WGSL 玻璃卡 + Acrylic 背板
+[展示]   accel-app（egui + eframe/glow）：侧栏导航五页 + 设置浮窗 + 实心主题（单强调色）
 [周边]   农历干支节气 / 世界时钟 / 倒计时 / 天气（Open-Meteo）/ 闹钟 / 三态主题 / 托盘 / 全局热键
 [持久化] 用户配置 rs/config/user_config.json（倍率/主题/城市/时区/倒计时/窗口几何/闹钟）
 ```
@@ -47,17 +48,14 @@ rs/                              # cargo workspace 根
     src/util/                    # file_io（原子写/白名单）/ retry（泛型重试）
   crates/accel-app/              # egui 前端 crate
     src/main.rs / lib.rs         # 入口 + 编译期版本（compiled_version）
-    src/window.rs                # 主窗装配器（AppHandle：drain→背板→部件→平台→节奏）
+    src/window.rs                # 主窗装配器（AppHandle：drain→侧栏→页→平台→节奏 + 截图/几何探针）
     src/bus.rs                   # 信号总线（UiState 快照 + drain/apply + 命令出口）
-    src/theme.rs                 # 设计系统（ui.json tokens → Visuals 深浅两套）
-    src/nav.rs                   # 胶囊导航（几何 token 化 + 点击纯逻辑）
+    src/theme.rs                 # 设计系统（ui.json colors 实心色板 → Visuals 深浅两套）
     src/logging.rs               # tracing 每日滚动 + panic hook 崩溃栈
-    src/glass/                   # WGSL 玻璃管线（shader/surface/painter）
     src/pages/                   # 五页（clock/countdown/world/weather/alarm）+ 设置浮窗
-    src/widgets/                 # 自绘控件（glass_card/chip/ring/slider）
+    src/widgets/                 # 自绘控件（digits/icons/icon_button/switch/chip/slider）
     src/tools/                   # 展示运算纯函数（clock/countdown/alarm_text）
-    src/platform/                # 系统集成（acrylic/tray/notify/hotkey，非 Windows 桩化）
-    src/bin/render_probe.rs      # 离屏渲染断言探针
+    src/platform/                # 系统集成（tray/notify/hotkey，非 Windows 桩化）
   assets/                        # 托盘图标等内嵌资源
   logs/                          # 运行日志（每日独立文件，gitignore）
 ```
@@ -126,13 +124,14 @@ pub async fn fetch(&self, city: &str, force: bool) -> Result<WeatherData, Weathe
 - `bus.rs`（app 侧）：每帧 `logic()` 首行 drain 全部事件 → `UiState::apply` 更新快照；命令经 `send` 统一出口
 - 硬保障：CI 关卡 4 校验 core 依赖树零 egui/eframe（单向分层从约定升级为机器强制）
 
-### 3.7 玻璃渲染 — WGSL 管线 + 场景注册表
+### 3.7 界面装配 — 实心主题 + 自绘控件（UIR 重塑后现役）
 
-- `glass/shader.rs`：WGSL 移植 Python GLSL（SDF 圆角/纵横比校正/覆盖判向 `d<0` 面内/光场双晕/rim 方向性/bezel/投影/预乘输出）
-- `glass/surface.rs`：`GlassScene`（保序面表 + register/unregister/set_visible/set_selected/update_geometry/touch）
-- `glass/painter.rs`：每帧对可见面构造 `PaintCallback`（uniforms 快照 + bind group + draw）
-- 质量门：`bin/render_probe.rs` 离屏渲染 + FBO 分区采样量化断言（色差/rim 增量/双晕/预乘不变量/背景 alpha）
-- 能力探测：GL 失败逐级降级栅格/实底且行为无损；Acrylic 需 DWM 底座扩展 + SYSTEMBACKDROP 覆写
+- `window.rs`：`AppHandle`（logic：drain/探针/退出序列 + ui：侧栏 Panel → CentralPanel 当前页 → 设置浮窗）
+- `theme.rs`：ui.json `colors.*` 实心色板（深浅两套）→ egui Visuals + 语义色/字号/几何访问器（cached 键缓存）
+- `widgets/`：digits（等宽数字位——数字串逐字符槽宽绘制，根治 Bahnschrift 非等宽抖动）/ icons（矢量图标零字体依赖）/ icon_button / switch / chip / slider
+- 高 DPI 纪律：面/文本坐标一律逻辑点；标题栏底色经 DWMWA_CAPTION_COLOR 钉制随主题
+- 走查门：`ACCELWORLD_UI_SHOT` 截图探针（真窗逐页 PrintWindow PNG）+ 用户桌面终审
+- 历史：玻璃渲染（WGSL 管线 + GlassScene + Acrylic）已整体废弃删除——半透明面对比度不可控（UIR 定案，留档见 git 历史）
 
 ### 3.8 日志 — 每日滚动 + 崩溃栈
 
@@ -159,7 +158,7 @@ pub async fn fetch(&self, city: &str, force: bool) -> Result<WeatherData, Weathe
 
 | 维度       | AccelWorld RS                                            | DeepTransHub                              |
 | ---------- | -------------------------------------------------------- | ----------------------------------------- |
-| 应用形态   | Rust GUI（egui + eframe/wgpu）                           | CLI 菜单 + subprocess 调度脚本            |
+| 应用形态   | Rust GUI（egui + eframe/glow）                           | CLI 菜单 + subprocess 调度脚本            |
 | 配置管理   | `config/static/` 静态层 + serde 用户配置                 | `config/static/` 静态层 + key.json        |
 | 配置加载   | `Static::get()` 单例（include_str + OnceLock）           | `get_static_config()` 单例                |
 | 上下文聚合 | `TimeInfo`/`LunarInfo`/`WeatherData`/`UserConfig` 四 DTO | `_XxxContext` 四工具各自 dataclass        |

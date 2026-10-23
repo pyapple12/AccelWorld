@@ -151,6 +151,10 @@ pub enum FrontendCommand {
     RemoveWorldCity(String),
     SetBaseTimezone(String),
     SetTheme(ThemePref),
+    /// 窗口几何存档（UIR：退出前保存 "x,y,w,h"，启动恢复——UIR.7 几何记忆）
+    SetWindowGeometry {
+        geometry: String,
+    },
     /// 立即汇总落盘（退出前保存）
     SaveNow,
     Quit,

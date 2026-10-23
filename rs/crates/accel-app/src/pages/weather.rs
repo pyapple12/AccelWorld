@@ -1,158 +1,250 @@
-//! 天气页（PL014.12；A005 #4 收敛为单城）：当前卡 + 逐时横条 + 七日概要 + 刷新
+//! 天气页（UIR 重塑）：当下 hero（大字温度 + 现象 + 要素行）+ 逐时温度曲线 +
+//! 七日温度距条 + 城市选择与刷新（图标按钮）
+//! 纯函数 temp_curve_points 可测（温度序列 → 归一化折线采样点）
 
-use crate::glass::surface::GlassScene;
-use accel_core::types::FrontendCommand;
+use crate::widgets::{digits, icon_button};
+use accel_core::types::{FrontendCommand, HourlyPoint};
+
+/// 温度曲线采样点（纯函数）：等宽横轴布点 + 归一化纵轴（min/max 双锚，平线居中）
+/// 返回 (x, y)（y 越小越冷——屏幕坐标）；空序列返空
+pub fn temp_curve_points(temps: &[f64], width: f32, height: f32) -> Vec<(f32, f32)> {
+    if temps.is_empty() || width <= 0.0 || height <= 0.0 {
+        return Vec::new();
+    }
+    let min = temps.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max = temps.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let span = (max - min).max(0.001);
+    let n = temps.len();
+    temps
+        .iter()
+        .enumerate()
+        .map(|(i, t)| {
+            let x = if n == 1 {
+                width / 2.0
+            } else {
+                width * (i as f32 / (n - 1) as f32)
+            };
+            let y = height * (1.0 - ((t - min) / span) as f32);
+            (x, y)
+        })
+        .collect()
+}
 
 impl crate::pages::Page for crate::pages::WeatherPage {
-    fn ui(
-        &mut self,
-        ui: &mut egui::Ui,
-        state: &mut crate::bus::UiState,
-        bus: &crate::bus::Bus,
-        _scene: &mut GlassScene,
-    ) {
-        // A005 #9：语义色 token（不再写字面色值）
+    fn ui(&mut self, ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
         let ink = crate::theme::ink();
+        let city = state.prefs.last_city.clone();
 
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.add_space(crate::window::content_left_inset());
-                ui.vertical(|ui| {
-                    let city = state.prefs.last_city.clone();
-                    // 城市选择 + 刷新（A005 #4：单城市模型——从天气城市表选城并持久化 last_city）
-                    ui.horizontal(|ui| {
-                        let city_names = accel_core::interface::AppInterface::get_city_names();
-                        egui::ComboBox::from_id_salt("weather_city")
-                            .selected_text(city.as_str())
-                            .show_ui(ui, |ui| {
-                                for name in &city_names {
-                                    if ui.selectable_label(name == &city, name).clicked()
-                                        && name != &city
-                                    {
-                                        bus.send(FrontendCommand::SetWeatherCity(name.clone()));
-                                        bus.send(FrontendCommand::RefreshWeather {
-                                            city: name.clone(),
-                                            force: false,
-                                        });
-                                        state.prefs.last_city = name.clone();
-                                    }
-                                }
-                            });
-                        if ui.button("⟳ 刷新").clicked() {
+        // 头行：城市下拉 + 刷新（图标按钮）
+        ui.horizontal(|ui| {
+            let city_names = accel_core::interface::AppInterface::get_city_names();
+            egui::ComboBox::from_id_salt("weather_city")
+                .selected_text(city.as_str())
+                .width(120.0)
+                .show_ui(ui, |ui| {
+                    for name in &city_names {
+                        if ui.selectable_label(name == &city, name).clicked() && name != &city {
+                            bus.send(FrontendCommand::SetWeatherCity(name.clone()));
                             bus.send(FrontendCommand::RefreshWeather {
-                                city: city.clone(),
-                                force: true,
+                                city: name.clone(),
+                                force: false,
                             });
-                        }
-                    });
-                    ui.add_space(8.0);
-                    // 当前卡 / 失败提示
-                    if let Some(err) = state.weather_errors.get(&city) {
-                        ui.label(
-                            egui::RichText::new(format!("{city} 获取失败：{err}"))
-                                .color(ink.danger),
-                        );
-                    }
-                    if let Some(w) = state.weather.get(&city) {
-                        ui.label(
-                            egui::RichText::new(format!(
-                                "{} {}  {:.1}°C",
-                                w.icon, w.weather, w.temperature
-                            ))
-                            .size(crate::theme::font_size("std_time"))
-                            .color(ink.strong),
-                        );
-                        ui.label(
-                            egui::RichText::new(format!(
-                                "体感 {:.1}°C · 湿度 {:.0}% · 风力 {:.1}km/h",
-                                w.apparent_temperature, w.humidity, w.wind_speed
-                            ))
-                            .size(crate::theme::font_size("body"))
-                            .color(ink.soft),
-                        );
-                        ui.add_space(12.0);
-                        // 逐小时横条（24 点）
-                        if !w.hourly.is_empty() {
-                            ui.label(
-                                egui::RichText::new("逐小时")
-                                    .size(crate::theme::font_size("label"))
-                                    .color(ink.muted),
-                            );
-                            ui.horizontal(|ui| {
-                                for h in w.hourly.iter().take(24) {
-                                    ui.vertical(|ui| {
-                                        let hour = h.time.get(11..16).unwrap_or("--:--");
-                                        ui.label(
-                                            egui::RichText::new(hour)
-                                                .size(crate::theme::font_size("meta"))
-                                                .color(ink.soft),
-                                        );
-                                        ui.label(
-                                            egui::RichText::new(format!("{:.0}°", h.temperature))
-                                                .size(crate::theme::font_size("body"))
-                                                .color(ink.strong),
-                                        );
-                                        ui.label(
-                                            egui::RichText::new(format!("{:.0}%", h.precip_prob))
-                                                .size(crate::theme::font_size("tiny"))
-                                                .color(ink.info),
-                                        );
-                                    });
-                                }
-                            });
-                            ui.add_space(12.0);
-                        }
-                        // 七日概要
-                        if !w.daily.is_empty() {
-                            ui.label(
-                                egui::RichText::new("七日概要")
-                                    .size(crate::theme::font_size("label"))
-                                    .color(ink.muted),
-                            );
-                            for d in w.daily.iter().take(7) {
-                                ui.horizontal(|ui| {
-                                    ui.label(
-                                        egui::RichText::new(&d.date)
-                                            .size(crate::theme::font_size("body"))
-                                            .color(ink.muted),
-                                    );
-                                    ui.label(
-                                        egui::RichText::new(format!(
-                                            "{:.0}° / {:.0}°",
-                                            d.t_max, d.t_min
-                                        ))
-                                        .size(crate::theme::font_size("body"))
-                                        .color(ink.strong),
-                                    );
-                                    ui.label(
-                                        egui::RichText::new(format!(
-                                            "☀ {}  ☾ {}",
-                                            d.sunrise.get(11..16).unwrap_or("--"),
-                                            d.sunset.get(11..16).unwrap_or("--")
-                                        ))
-                                        .size(crate::theme::font_size("meta"))
-                                        .color(ink.soft),
-                                    );
-                                });
-                            }
+                            state.prefs.last_city = name.clone();
                         }
                     }
                 });
-            });
+            if icon_button::show(ui, crate::widgets::icons::Icon::Refresh, 16.0, false).clicked() {
+                bus.send(FrontendCommand::RefreshWeather {
+                    city: city.clone(),
+                    force: true,
+                });
+            }
         });
+        ui.add_space(6.0);
+
+        if let Some(err) = state.weather_errors.get(&city) {
+            ui.label(egui::RichText::new(format!("{city} 获取失败：{err}")).color(ink.danger));
+        }
+        let Some(w) = state.weather.get(&city) else {
+            return;
+        };
+
+        // 当下 hero：现象矢量图标 + 大字温度（等宽数字位）+ 现象文字
+        // （码表 emoji 在 egui 内置字体缺字形渲染 tofu——UIR 改矢量图标）
+        let temp_text = format!("{:.1}°", w.temperature);
+        let temp_font = digits::digit_font(crate::theme::font_size("std_time") * 1.6);
+        let icon_x = ui.max_rect().left() + 8.0;
+        let hero_y = ui.cursor().top() + 30.0;
+        crate::widgets::icons::draw(
+            ui.painter(),
+            egui::pos2(icon_x + 24.0, hero_y),
+            40.0,
+            crate::widgets::icons::Icon::Cloud,
+            ink.muted,
+        );
+        digits::draw_centered(
+            ui.painter(),
+            egui::pos2(icon_x + 96.0, hero_y),
+            &temp_text,
+            &temp_font,
+            ink.strong,
+        );
+        ui.painter().text(
+            egui::pos2(icon_x + 96.0 + 110.0, hero_y),
+            egui::Align2::LEFT_CENTER,
+            &w.description,
+            egui::FontId::proportional(crate::theme::font_size("body_lg")),
+            ink.muted,
+        );
+        ui.allocate_space(egui::vec2(0.0, crate::theme::font_size("std_time") * 1.9));
+        ui.label(
+            egui::RichText::new(format!(
+                "体感 {:.1}°C · 湿度 {:.0}% · 风力 {:.1}km/h",
+                w.apparent_temperature, w.humidity, w.wind_speed
+            ))
+            .size(crate::theme::font_size("body"))
+            .color(ink.soft),
+        );
+        ui.add_space(10.0);
+
+        // 逐时温度曲线（24 点折线 + 3 小时刻度标注；降水概率微柱）
+        if !w.hourly.is_empty() {
+            ui.label(
+                egui::RichText::new("逐小时")
+                    .size(crate::theme::font_size("label"))
+                    .color(ink.muted),
+            );
+            let hours: Vec<&HourlyPoint> = w.hourly.iter().take(24).collect();
+            let curve_w = ui.available_width();
+            let curve_h = 56.0;
+            let (rect, _) =
+                ui.allocate_exact_size(egui::vec2(curve_w, curve_h), egui::Sense::hover());
+            let temps: Vec<f64> = hours.iter().map(|h| h.temperature).collect();
+            let pts = temp_curve_points(&temps, curve_w, curve_h - 16.0);
+            if pts.len() > 1 {
+                let poly: Vec<egui::Pos2> = pts
+                    .iter()
+                    .map(|(x, y)| egui::pos2(rect.left() + x, rect.top() + 8.0 + y))
+                    .collect();
+                ui.painter().add(egui::Shape::line(
+                    poly,
+                    egui::Stroke::new(1.6, crate::theme::accent_color()),
+                ));
+                // 3 小时刻度：时间下标 + 温度上标（首尾必标）
+                let meta_font = egui::FontId::proportional(crate::theme::font_size("meta"));
+                for (i, h) in hours.iter().enumerate() {
+                    if i % 3 != 0 && i != hours.len() - 1 {
+                        continue;
+                    }
+                    let Some(&(x, y)) = pts.get(i) else { continue };
+                    let px = rect.left() + x;
+                    let py = rect.top() + 8.0 + y;
+                    ui.painter().circle_filled(
+                        egui::pos2(px, py),
+                        2.0,
+                        crate::theme::accent_color(),
+                    );
+                    ui.painter().text(
+                        egui::pos2(px, rect.top() + 2.0),
+                        egui::Align2::CENTER_TOP,
+                        format!("{:.0}°", h.temperature),
+                        meta_font.clone(),
+                        ink.strong,
+                    );
+                    ui.painter().text(
+                        egui::pos2(px, rect.bottom() - 2.0),
+                        egui::Align2::CENTER_BOTTOM,
+                        h.time.get(11..16).unwrap_or("--:--"),
+                        meta_font.clone(),
+                        ink.dim,
+                    );
+                }
+            }
+            ui.add_space(8.0);
+        }
+
+        // 七日温度距条（min–max 相对全周域的水平距条）
+        if !w.daily.is_empty() {
+            ui.label(
+                egui::RichText::new("七日")
+                    .size(crate::theme::font_size("label"))
+                    .color(ink.muted),
+            );
+            let days: Vec<&accel_core::types::DailyPoint> = w.daily.iter().take(7).collect();
+            let week_min = days.iter().map(|d| d.t_min).fold(f64::INFINITY, f64::min);
+            let week_max = days
+                .iter()
+                .map(|d| d.t_max)
+                .fold(f64::NEG_INFINITY, f64::max);
+            let span = (week_max - week_min).max(0.001);
+            let body_font = egui::FontId::proportional(crate::theme::font_size("body"));
+            let meta_font = egui::FontId::proportional(crate::theme::font_size("meta"));
+            for d in &days {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new(d.date.get(5..10).unwrap_or(&d.date))
+                            .font(egui::FontId::monospace(crate::theme::font_size("body")))
+                            .color(ink.muted),
+                    );
+                    // 距条（相对周域；accent 填充 + 全域弱轨）
+                    let bar_w = ui.available_width() - 110.0;
+                    let track = egui::Rect::from_min_size(
+                        egui::pos2(ui.cursor().left(), ui.cursor().center().y - 3.0),
+                        egui::vec2(bar_w, 6.0),
+                    );
+                    ui.painter().rect_filled(
+                        track,
+                        egui::epaint::CornerRadius::same(3),
+                        crate::theme::color32_at("ring_track", 70),
+                    );
+                    let lo = (d.t_min - week_min) / span;
+                    let hi = (d.t_max - week_min) / span;
+                    let mut fill = track;
+                    fill.min.x = track.left() + (bar_w * lo as f32);
+                    fill.max.x = track.left() + (bar_w * hi as f32).max(fill.min.x + 4.0);
+                    ui.painter().rect_filled(
+                        fill,
+                        egui::epaint::CornerRadius::same(3),
+                        crate::theme::accent_color(),
+                    );
+                    ui.allocate_space(egui::vec2(bar_w + 10.0, 1.0));
+                    ui.label(
+                        egui::RichText::new(format!("{:.0}°/{:.0}°", d.t_min, d.t_max))
+                            .font(body_font.clone())
+                            .color(ink.strong),
+                    );
+                    let _ = meta_font;
+                });
+            }
+        }
     }
 }
 
 // ===== src/pages/weather.rs 说明区 =====
 // 输入：UiState.weather/weather_errors（WeatherUpdated/Failed 事件快照）+ prefs.last_city
-// 输出：当前卡 + 逐时 24 横条 + 七日概要 + 城市选择 + 强制刷新
-// 逻辑步骤：city=last_city → 城市下拉（换城发 SetWeatherCity + RefreshWeather）→
-//   刷新发 RefreshWeather{force:true} → weather 查数据域（失败红字优先展示）
-// 设计理由：UI 无状态重建——数据全靠事件快照；逐时/七日来自 PL014.11 扩展 DTO；
-//   **A005 #4 定案**：多城市增删（AddWeatherCity/RemoveWeatherCity）未接线且 Python 版
-//   本就是单城市（last_city），按"不长期保留废弃方案"删除死协议变体与 UiState.
-//   weather_cities / weather_cities_view，收敛单城——更正的是 z.plan/README 的过度承诺
-// FIX006.2：命令统一经 bus.send（待发队列保底）；FIX006.5：字号全部走 scale token；
-//   FIX006.4：冷启动首拉在 window.rs 装配期发出（本页仅消费事件快照）
-// 异常处理：数据缺失（首查前）整段静默；失败红字展示（FIX005.13 后失败会清旧数据）
-// 关联依赖：UiState.weather；消费方：pages::Pages
+// 输出：当下 hero（大字温度/现象/要素行）+ 逐时温度曲线 + 七日距条 + 城市选择与刷新
+// 逻辑步骤：城市下拉（换城发 SetWeatherCity + RefreshWeather）→ 刷新图标按钮
+//   （force）→ 数据域（失败红字优先）→ hero → 曲线（temp_curve_points 归一采样 +
+//   3 小时刻度）→ 七日距条（相对全周 min/max 域）
+// 设计理由（UIR 重塑）：天气页的信息主角是"现在几度、接下来冷热走势"——大字
+//   温度 + 一条曲线替代 24 根竖排横条（原实现 24 列 label 堆叠既挤又难读）；七日
+//   距条让一周温差一眼成泡；emoji 保留（码表数据语义图标，与 UI chrome 矢量图标分工）
+// FIX006.2 延续：命令统一经 bus.send；A005 #4 单城模型；UI 无状态重建
+// 异常处理：数据缺失（首查前）整段静默；失败红字展示；空曲线/单点退化居中
+// 关联依赖：UiState.weather + widgets(digits/icon_button/icons)；消费方：pages::Pages
+#[cfg(test)]
+mod tests {
+    use super::temp_curve_points;
+
+    #[test]
+    fn curve_points_normalization() {
+        // 归一化锚点：min 贴底、max 顶、单点居中、空序列空
+        let pts = temp_curve_points(&[10.0, 20.0, 15.0], 100.0, 50.0);
+        assert_eq!(pts.len(), 3);
+        assert!((pts[0].1 - 50.0).abs() < 1e-5, "min 贴底（y=height）");
+        assert!(pts[1].1.abs() < 1e-5, "max 顶（y=0）");
+        assert!((pts[2].0 - 100.0).abs() < 1e-5, "末点贴右缘");
+        assert!(temp_curve_points(&[], 100.0, 50.0).is_empty());
+        assert_eq!(temp_curve_points(&[7.0], 100.0, 50.0).len(), 1);
+    }
+}

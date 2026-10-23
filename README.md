@@ -1,6 +1,6 @@
 # AccelWorld —— 加速世界世界钟
 
-[![Version](https://img.shields.io/badge/Version-0.6.0.7-blue.svg)](rs/config/static/base.json)
+[![Version](https://img.shields.io/badge/Version-0.6.1.0-blue.svg)](rs/config/static/base.json)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](rs/rust-toolchain.toml)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
@@ -10,7 +10,7 @@
 
 基于时间膨胀倍率的自定义小时制时钟应用。根据设定的加速倍率（1.0x - 20.0x），实时显示加速后的时间，同时保留标准时间对照。灵感来自《加速世界》，界面以中文为主，提供农历、生肖、节气等中华传统文化元素。
 
-> 当前技术栈：**Rust**（egui + eframe/wgpu + WGSL 玻璃渲染）。0.6.0.0 为原 Python（PyQt6 + Fluent Widgets）版本的定版，本仓库已在同版本号段内完成引擎重构（PL011–PL015），Python 版归档于 `.archived/`（git 忽略，仅供 golden 夹具再生）。
+> 当前技术栈：**Rust**（egui + eframe/glow 实心桌面 UI）。0.6.0.0 为原 Python（PyQt6 + Fluent Widgets）版本的定版，本仓库已在同版本号段内完成引擎重构（PL011–PL015）与 UI 推倒重塑（UIR，玻璃管线整体废弃），Python 版归档于 `.archived/`（git 忽略，仅供 golden 夹具再生）。
 > 任务清单见 `x.progress.md`，已知问题见 `y.problems.md`，版本路线见 `m.milestone.md`，方案与审计见 `z.plan.md`。
 
 ## 目录
@@ -27,9 +27,9 @@
 ## 特性
 
 - **时间膨胀计算**：根据可配置的加速倍率（1.0x - 20.0x）计算自定义时间流速
-- **实时时钟**：加速时间大字英雄区 + 标准时间对照 + 进度环可视化
-- **玻璃渲染**：WGSL 着色器自绘玻璃卡（折射/色散/rim/光场）+ Windows 11 Acrylic 窗口背板（不支持环境自动降级实底）
-- **胶囊导航**：时钟 / 倒计时 / 世界时钟 / 天气 / 闹钟 五页 + 设置浮窗
+- **实时时钟**：加速时间大字英雄区（等宽数字位不抖动）+ 标准时间对照 + 日进度细条
+- **实心桌面 UI**：侧栏导航 + 深浅两套实心主题 + 矢量图标（零字体依赖）+ 单强调色纪律
+- **侧栏导航**：时钟 / 倒计时 / 世界时钟 / 天气 / 闹钟 五页 + 设置浮窗
 - **农历信息**：天干地支年、生肖、时辰、月相、节气、公历节日、拜财神方向
 - **世界时钟**：城市矩阵走时 + 昼夜指示，支持增删城市与基准时区切换
 - **倒计时功能**：多目标列表，法定/传统节日自动派生
@@ -67,19 +67,21 @@ pwsh rs/ci.ps1
 # 仅测试
 cargo test --workspace
 
-# 玻璃离屏渲染断言探针
-cargo run -p accel-app --bin render_probe
+# 仅测试
+cargo test --workspace
+
+# UI 截图探针（真窗逐页 PNG 后自动退出，输出到指定目录）
+$env:ACCELWORLD_UI_SHOT=".temp/ui_shots"; cargo run -p accel-app
 ```
 
 ## 使用说明
 
 ### 界面操作
 
-- **导航**：左侧胶囊按钮切换 时钟 / 倒计时 / 世界时钟 / 天气 / 闹钟；底部齿轮打开设置浮窗
-- **调节倍率**：时钟页拖动玻璃滑杆（拖动即生效，松手落盘），支持 0.1x 步进
+- **导航**：左侧边栏切换 时钟 / 倒计时 / 世界时钟 / 天气 / 闹钟；底部「设置」打开设置浮窗
+- **调节倍率**：时钟页拖动滑杆（拖动即生效，松手落盘），支持 0.1x 步进
 - **切换主题**：设置浮窗选择 跟随系统/浅色/深色，或热键 Ctrl+T 三态循环；跟随系统时随 Windows 深浅色实时切换
-- **毛玻璃**：Windows 11 下窗口自动启用 Acrylic 材质（壁纸渗透，失焦短暂收起属系统行为）
-- **世界时钟**：点击城市卡切换基准时区，加号添加城市、减号移除（至少保留一个）
+- **世界时钟**：点击城市磁贴切换基准时区，加号添加城市、悬停减号移除（至少保留一个）
 - **倒计时**：加号新增目标（名称 + 日期时间），减号移除；默认目标为下一个春节
 - **天气**：城市选择器切换查看城市（选择即持久化），刷新按钮强制拉取
 - **闹钟**：快捷按钮（15/30/60/240 分钟）或自定义添加（时间/标签/重复星期），行卡开关与删除
@@ -110,13 +112,11 @@ rs/                              # cargo workspace 根（全部命令在此执�
 │   │   └── src/                 # interface/types/time_dilation/chinese_calendar/weather/
 │   │                            #   alarm/settings/static_config/audio/data/util
 │   └── accel-app/               # egui 前端
-│       └── src/                 # window/bus/theme/nav/logging/main.rs
-│           ├── glass/           # WGSL 玻璃管线（shader/surface/painter）
+│       └── src/                 # window/bus/theme/logging/main.rs
 │           ├── pages/           # 五页（clock/countdown/world/weather/alarm）+ 设置浮窗
-│           ├── widgets/         # 自绘控件（glass_card/chip/ring/slider）
+│           ├── widgets/         # 自绘控件（digits/icons/icon_button/switch/chip/slider）
 │           ├── tools/           # 展示运算纯函数
-│           ├── platform/        # 系统集成（acrylic/tray/notify/hotkey）
-│           └── bin/render_probe.rs
+│           └── platform/        # 系统集成（tray/notify/hotkey）
 ├── assets/                      # 托盘图标等内嵌资源
 └── logs/                        # 运行日志（gitignore）
 ```
@@ -127,7 +127,7 @@ rs/                              # cargo workspace 根（全部命令在此执�
 
 | 领域     | 依赖                                                              |
 | -------- | ----------------------------------------------------------------- |
-| GUI      | eframe(wgpu) / egui / wgpu / image                                |
+| GUI      | eframe(glow) / egui / image                                       |
 | 后端     | tokio / reqwest(rustls) / chrono / chrono-tz / lunar_rust / rodio |
 | 序列化   | serde / serde_json                                                |
 | 日志     | tracing / tracing-subscriber / tracing-appender                   |
@@ -165,10 +165,6 @@ A：点击窗口关闭按钮即隐藏到系统托盘驻留；托盘右键菜单�
 ### Q5：倒计时支持哪些目标？
 
 A：任意名称 + 日期时间目标，另自动派生当年/次年法定节假日与传统节日；未设置时默认指向上一个/下一个春节。
-
-### Q6：为什么玻璃效果在半透明/远程桌面下变实底？
-
-A：Acrylic 与 WGSL 玻璃依赖桌面合成能力，在不支持的环境自动降级为实底纯色（行为无损）。
 
 ## 维护者
 

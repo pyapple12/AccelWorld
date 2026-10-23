@@ -1,8 +1,6 @@
-//! 平台集成总装（backdrop.py + system_tray.py 等系统层件的 Rust 对等物）
-//! Acrylic（PL013.04）/ 托盘（PL015.01）/ 通知+热键（PL015.02）四件
+//! 平台集成总装（system_tray.py 等系统层件的 Rust 对等物）
+//! 托盘（PL015.01）/ 通知+热键（PL015.02）；Acrylic 随玻璃体系整体废弃（UIR）
 //! Windows 真实现 + 非 Windows 降级桩（同接口空转——跨平台编译行为无损）
-
-pub mod acrylic;
 
 #[cfg(windows)]
 pub mod hotkey;
@@ -76,8 +74,8 @@ pub mod notify {
 }
 
 // ===== src/platform/mod.rs 说明区 =====
-// 对位：acrylic.rs ← ui/backdrop.py（DWM SYSTEMBACKDROP=3）；
-//   tray.rs ← ui/system_tray.py（tray-icon/muda）；
+// 对位：tray.rs ← ui/system_tray.py（tray-icon/muda）；
 //   notify.rs ← WinRT toast（Python tray showMessage 对等）；hotkey.rs ← global-hotkey
+//   acrylic.rs 已随玻璃体系整体废弃（UIR：实心窗口无 DWM 背板诉求）
 // 降级纪律：全部平台能力失败可降级且行为无损（对齐 Python 版静默降级语义）——
 //   Windows 内部构造失败由调用方降级，非 Windows 编译期即桩化（同接口零分叉）

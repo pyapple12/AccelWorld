@@ -1,7 +1,7 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告 + Rust 重构总纲）
-> 当前版本：0.6.0.7（第 7 轮审计修复完成：三项 P1 与路径基准统一等全量落地；PL015 已收口，不做人工测试与定版仪式）
+> 当前版本：0.6.1.0（UIR 界面推倒重塑完成：玻璃体系整体废弃，实心桌面 UI + 侧栏导航；PL015 已收口，不做人工测试与定版仪式）
 > 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页（+ 设置浮窗）功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式），当前阶段为审计修复（FIX007 第 7 轮已完成待提交）
 > 更新（2026-10-17）：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/wgpu）；Python 版全量归档 `.archived/`（git 忽略），本文件自 PL011 起记录 RS 任务
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
@@ -504,3 +504,16 @@ cargo run -p accel-app --bin render_probe
 > - **执行补录（报告外新发现，一并修正）**：①A007 #1 建议方案「gen_id 取 mix 低 32 位」算术不可行（nanos<<64 使低 32 位恒为 pid）——改计数+椒盐方案并在完成注记留痕；②A007 #16 任务文本「字符串也 Parse」与 Python 对照不符（dict.get(str) 返 None 走未知码）——实现按 Python 实测口径（仅数组/对象 Parse），完成注记修正；③FIX007.2 夹具迁移超出任务文本的「兼容断言」字面——roundtrip/unknown_key_ignored/dirty[12] 保留 IANA 输入域实为**更强的回归锁**（锁定 from_json_value 原样透传与 load 层迁移的分工边界），manifest 增 migration_note 溯源
 >
 > **版本**：提交环节经用户决定 bump 至 **0.6.0.7**（patch 位 +1，`fix` 类型规范），已同步五处引用（base.json / README 徽章 / AGENTS 两处 / 本文件当前版本行 / m.milestone 条目）。
+
+### UIR: RS 界面推倒重塑（用户定案 2026-10-23 两阶段：先玻璃框架内重塑，后全盘去玻璃推倒重来——「现在的界面就和屎一样……不要在意以前的设定，什么玻璃……我要的是一个人机交互看上去没问题的界面」）
+
+> 背景：平台迁移后 UI 层为"结构对等"的粗移植——12 处 egui 默认控件与自绘玻璃混排、label 堆叠排版、文本字符当图标、从未做观感走查。执行中途用户加码：玻璃概念本身废弃——实体桌面应用语法（实心色板/侧栏导航/原生控件统一主题）取代一切半透明概念。
+
+- [x] UIR.1 设计系统定案 —— 一阶段（Dock 导航/表盘时钟/矢量图标/等宽数字位）执行后被用户否决；二阶段定案「Calm Instrument」：实心色板（暗底 #171A21/侧栏 #12141B/卡片 #1F232E/品牌金 #E4B36A 唯一强调色）+ 左侧栏导航 + 原生控件统一主题 + 零透明零 shader（2026-10-23 完成）
+- [x] UIR.2 截图探针 —— `ACCELWORLD_UI_SHOT=<目录>` 真窗逐页 PrintWindow(PW_RENDERFULLCONTENT)→GetDIBits→PNG（五页+设置浮窗共 6 帧后自动退出）；开发期自检闭环（观感终审权仍在用户真机目测）；顺带实证两大玻璃时代隐性缺陷：①高 DPI 下 uniforms「点÷物理像素」致全部玻璃面缩水漂移；②设置浮窗捕获时序（2026-10-23 完成）
+- [x] UIR.3 矢量图标库 —— `widgets/icons.rs`：Clock/Hourglass/Globe/Cloud/Bell/Gear/Plus/Minus/Trash/Sun/Moon/Refresh 十二枚 painter path 绘制（arc_points 采样）；零字体/零 emoji 依赖（天气 emoji 因 egui 内置字体缺字形 tofu 一并替换矢量）（2026-10-23 完成）
+- [x] UIR.4 控件套件 —— widgets/ 重建：digits（等宽数字位槽宽制——根治 y.problems#12 Bahnschrift 走秒抖动；Monospace 族挂 cjk 回退修「105天」tofu）/icons/icon_button/switch（胶囊缓动开关）/chip（自适应宽纸片）/slider 沿用；dock.rs 一阶段产物后随玻璃拆除（侧栏内联进 window.rs）（2026-10-23 完成）
+- [x] UIR.5 主题重构 —— theme.rs 全量重写：colors.* 实心色板（深浅两套）→ egui Visuals + parse_hex 直产预乘 Color32 + 语义色/字号/几何访问器；field/glass GL token 域删除（2026-10-23 完成）
+- [x] UIR.6 五页重塑 —— 时钟（表盘 hero：中文日期+标准时+加速大字+×倍率徽标+日进度细条+滑杆+农历 chips）/ 倒计时（派生春节金框 hero+双列目标卡+悬停减号+节日 chips 换行）/ 世界（三列磁贴+基准金框金点+昼夜图标+悬停减号）/ 天气（当下 hero+逐时温度曲线+3h 刻度+七日距条）/ 闹钟（快捷 chips+行卡+胶囊开关+悬停垃圾桶）；世界/倒计时 Grid 逐行 end_row 退化单列缺陷截图实证后修正（2026-10-23 完成）
+- [x] UIR.7 设置浮窗重蒙皮 + 窗口几何记忆 —— 浮窗实心卡面+主题三段分段胶囊（锚点避让侧栏）；新增 `FrontendCommand::SetWindowGeometry` 契约 + interface 读写 + 退出序列存档外框矩形 + 启动恢复（旧 Python base64 存档天然弃档一次性迁移）；标题栏底色经 DWMWA_CAPTION_COLOR/BORDER_COLOR 钉制随主题（2026-10-23 完成）
+- [x] UIR.8 收尾 —— 四关卡全绿（fmt/clippy -D/test 180 项/依赖树零 egui）+ 真窗探针 exit 0（隐藏→恢复指纹一致 + REPAINT 60-79/6s）+ 截图自检六帧全过 + 文档四件套同步（AGENTS/README×2/w.study 玻璃表述清零）；** demolition 清单**：src/glass//render_probe/acrylic/nav/dock/ring 删除、eframe wgpu→glow、wgpu/egui-wgpu 依赖移除（exe 体积与 GPU 黑窗面同步收敛）；PrintWindow 底部白条为采集伪影（DWM 阴影 alpha 丢失）已记录待真机复核（2026-10-23 完成）

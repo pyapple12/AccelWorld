@@ -1,24 +1,19 @@
-//! 主窗装配器（ui/main_window.py 的 Rust 对等物，PL013.01/.11）
-//! AppHandle + eframe::App 实现：drain → 导航 → 当前页 → 玻璃背板 → 重绘节奏
+//! 主窗装配器（ui/main_window.py 的 Rust 对等物；UIR 重塑：实心桌面装配）
+//! AppHandle + eframe::App 实现：logic（drain/探针/退出）+ ui（侧栏→当前页→设置浮窗）
+//! 玻璃管线/Acrylic/透明窗口整体废弃——标准不透明桌面应用（UIR 定案）
 
 use std::sync::Arc;
 
 use accel_core::interface::AppInterface;
 use accel_core::types::FrontendCommand;
-use egui::{Context, Pos2, Rect, Vec2};
+use egui::{Context, Pos2, Vec2};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 use crate::bus::{Bus, PAGE_ORDER, PageId, UiState};
-use crate::glass::painter::{attach_pipeline, build_uniforms, push_paint_callback};
-use crate::glass::surface::{GlassScene, GlassSurface};
-use crate::nav::NavRail;
 use crate::pages::Pages;
 use crate::theme::Theme;
 
-/// 玻璃面 id（导航 rail / 页卡 / 浮窗）
-pub const SURFACE_NAV: &str = "nav";
-
-/// 窗口几何 token 基准（base.json；restore 时用户拖拽覆盖）
+/// 窗口几何 token 基准（base.json；恢复优先用户存档几何，缺档时用本基准）
 fn default_window_rect() -> (f32, f32, f32, f32) {
     let base = accel_core::static_config::Static::get();
     (
@@ -34,13 +29,8 @@ pub struct AppHandle {
     pub bus: Bus,
     pub state: UiState,
     pub theme: Theme,
-    pub scene: GlassScene,
-    pub nav: NavRail,
     pub pages: Pages,
     start_time: std::time::Instant,
-    pipeline_attached: bool,
-    /// Acrylic 挂接一次性标记（.04）
-    acrylic_applied: bool,
     /// 探针自动退窗秒数（None=正常模式；到时走退出序列——fps/矩阵探针）
     probe_close_secs: Option<u64>,
     /// 探针隐藏秒数（None=正常模式；到时 Visible(false)——模拟关闭按钮隐藏驻留）
@@ -49,6 +39,12 @@ pub struct AppHandle {
     /// 探针显示秒数（None=正常模式；到时 Visible(true)+Focus——模拟托盘"显示窗口"恢复）
     probe_show_secs: Option<u64>,
     probe_show_done: bool,
+    /// UI 截图探针输出目录（None=正常模式；UIR.2 开发期自检——逐页 PrintWindow 出 PNG）
+    ui_shot_dir: Option<std::path::PathBuf>,
+    ui_shot_step: usize,
+    ui_shot_last: std::time::Instant,
+    /// 标题栏句柄缓存（首帧取到后存档——每帧 DWM 钉色用）
+    titlebar_hwnd: Option<isize>,
     /// 托盘句柄（构造失败降级 None——无托盘环境行为无损）
     tray: Option<crate::platform::tray::TrayHandles>,
     /// 全局热键句柄（注册失败降级 None）
@@ -80,37 +76,157 @@ impl eframe::App for AppHandle {
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
 
-    /// 帧绘制：背板 → 导航 → 当前页 → 设置浮窗 → 重绘节奏
+    /// 帧绘制：侧栏导航 → 当前页 → 设置浮窗 → 重绘节奏（UIR 实心装配）
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
-        // A005 #5：玻璃 tint 按生效主题注入全场景面（注册后统一施加；与几何同有 1 帧滞后）
-        self.scene.set_tint_all(self.theme.glass_tint());
-
-        // Acrylic 一次性挂接（.04）：Frame 经 HasWindowHandle 取句柄，WindowHandle
-        // 经 From 转 RawWindowHandle（0.6.2 特殊设计：window_handle 递归返自身）；
-        // 失败静默降级实底（透明 viewport 下 GL 背板仍提供半透明观感）
-        if !self.acrylic_applied
+        // 标题栏底色钉制（首帧缓存句柄；每帧幂等——DWM 属性写入廉价，
+        // 随主题循环自动换色）
+        if self.titlebar_hwnd.is_none()
             && let Ok(h) = frame.window_handle()
+            && let RawWindowHandle::Win32(w) = h.into()
         {
-            let raw: RawWindowHandle = h.into();
-            if let RawWindowHandle::Win32(w) = raw {
-                // A005 #21：仅在真实调用后置位——首帧句柄未就绪时保留重试机会
-                // （原实现无论成败一律置 true，句柄未就绪即永久放弃 Acrylic）
-                self.acrylic_applied = crate::platform::acrylic::apply_acrylic(w.hwnd.get());
-            }
+            self.titlebar_hwnd = Some(w.hwnd.get());
+        }
+        if let Some(hwnd) = self.titlebar_hwnd {
+            apply_caption_color(hwnd, crate::theme::sidebar_bg());
         }
 
-        // 背板：全屏玻璃管线（背景光场 + 场景面合成）；不可用降级纯色
-        self.paint_backplate(&ctx, frame);
+        // 侧栏导航（左；选中金条 + 图标+文字；底部设置行）
+        egui::Panel::left("nav_sidebar")
+            .exact_size(crate::theme::layout_i64("sidebar_width") as f32)
+            .frame(
+                egui::Frame::new()
+                    .fill(crate::theme::sidebar_bg())
+                    .inner_margin(egui::Margin::same(10)),
+            )
+            .show(ui, |ui| {
+                ui.add_space(8.0);
+                // 应用名（侧栏顶部标识）
+                ui.label(
+                    egui::RichText::new("加速世界")
+                        .size(crate::theme::font_size("body_lg"))
+                        .color(crate::theme::ink().strong),
+                );
+                ui.add_space(10.0);
+                let radius = crate::theme::radius_px("sm") as u8;
+                for page in PAGE_ORDER {
+                    let selected = self.state.current_page == page;
+                    let (rect, resp) = ui.allocate_exact_size(
+                        egui::vec2(ui.available_width(), 34.0),
+                        egui::Sense::click(),
+                    );
+                    let fill = if selected {
+                        crate::theme::color32_at("selection", 46)
+                    } else if resp.hovered() {
+                        crate::theme::hover_bg()
+                    } else {
+                        egui::Color32::TRANSPARENT
+                    };
+                    if fill != egui::Color32::TRANSPARENT {
+                        ui.painter().rect_filled(
+                            rect,
+                            egui::epaint::CornerRadius::same(radius),
+                            fill,
+                        );
+                    }
+                    if selected {
+                        // 选中金条（左缘 3px）
+                        ui.painter().rect_filled(
+                            egui::Rect::from_min_size(
+                                egui::pos2(rect.left(), rect.center().y - 9.0),
+                                egui::vec2(3.0, 18.0),
+                            ),
+                            egui::epaint::CornerRadius::same(2),
+                            crate::theme::accent_color(),
+                        );
+                    }
+                    // 图标 + 文字
+                    crate::widgets::icons::draw(
+                        ui.painter(),
+                        egui::pos2(rect.left() + 22.0, rect.center().y),
+                        16.0,
+                        sidebar_icon(page),
+                        if selected {
+                            crate::theme::accent_color()
+                        } else {
+                            crate::theme::ink().soft
+                        },
+                    );
+                    ui.painter().text(
+                        egui::pos2(rect.left() + 42.0, rect.center().y),
+                        egui::Align2::LEFT_CENTER,
+                        sidebar_label(page),
+                        egui::FontId::proportional(crate::theme::font_size("body")),
+                        if selected {
+                            crate::theme::ink().strong
+                        } else {
+                            crate::theme::ink().soft
+                        },
+                    );
+                    if resp.clicked() {
+                        self.state.current_page = page;
+                    }
+                }
+                // 底部设置行（分隔 + 齿轮）
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                    ui.add_space(10.0);
+                    ui.separator();
+                    ui.add_space(6.0);
+                    let (rect, resp) = ui.allocate_exact_size(
+                        egui::vec2(ui.available_width(), 34.0),
+                        egui::Sense::click(),
+                    );
+                    let fill = if self.state.settings_open {
+                        crate::theme::color32_at("selection", 46)
+                    } else if resp.hovered() {
+                        crate::theme::hover_bg()
+                    } else {
+                        egui::Color32::TRANSPARENT
+                    };
+                    if fill != egui::Color32::TRANSPARENT {
+                        ui.painter().rect_filled(
+                            rect,
+                            egui::epaint::CornerRadius::same(radius),
+                            fill,
+                        );
+                    }
+                    crate::widgets::icons::draw(
+                        ui.painter(),
+                        egui::pos2(rect.left() + 22.0, rect.center().y),
+                        16.0,
+                        crate::widgets::icons::Icon::Gear,
+                        if self.state.settings_open {
+                            crate::theme::accent_color()
+                        } else {
+                            crate::theme::ink().soft
+                        },
+                    );
+                    ui.painter().text(
+                        egui::pos2(rect.left() + 42.0, rect.center().y),
+                        egui::Align2::LEFT_CENTER,
+                        "设置",
+                        egui::FontId::proportional(crate::theme::font_size("body")),
+                        if self.state.settings_open {
+                            crate::theme::ink().strong
+                        } else {
+                            crate::theme::ink().soft
+                        },
+                    );
+                    if resp.clicked() {
+                        self.state.settings_open = !self.state.settings_open;
+                    }
+                });
+            });
 
-        // 导航 + 当前页 + 设置浮窗（各部件自绘 + 注册玻璃面）
-        self.sync_page_visibility();
-        let accent = crate::theme::accent_rgba();
-        self.nav.ui(&ctx, &mut self.state, &mut self.scene, accent);
-        self.pages
-            .ui(ui, &mut self.state, &self.bus, &mut self.scene);
+        // 当前页内容（实心 CentralPanel 由容器装配）
+        self.pages.ui(ui, &mut self.state, &self.bus);
+
+        // 设置浮窗
         self.paint_settings_pop(&ctx);
+
+        // UI 截图探针（UIR.2：逐页 PrintWindow 出 PNG 后自动退出）
+        self.ui_shot_tick(&ctx, frame);
 
         // 重绘节奏：Tick 间隔（空闲 1s 兜底）——零忙转纪律
         // A005 #27：有平台集成（托盘/热键）时间隔收紧到 ≤200ms——平台事件仅在帧内
@@ -120,6 +236,28 @@ impl eframe::App for AppHandle {
             interval = interval.min(std::time::Duration::from_millis(200));
         }
         ctx.request_repaint_after(interval);
+    }
+}
+
+/// 页 → 侧栏图标（纯函数可测）
+fn sidebar_icon(page: PageId) -> crate::widgets::icons::Icon {
+    match page {
+        PageId::Clock => crate::widgets::icons::Icon::Clock,
+        PageId::Countdown => crate::widgets::icons::Icon::Hourglass,
+        PageId::World => crate::widgets::icons::Icon::Globe,
+        PageId::Weather => crate::widgets::icons::Icon::Cloud,
+        PageId::Alarm => crate::widgets::icons::Icon::Bell,
+    }
+}
+
+/// 页 → 侧栏文字（纯函数可测）
+fn sidebar_label(page: PageId) -> &'static str {
+    match page {
+        PageId::Clock => "时钟",
+        PageId::Countdown => "倒计时",
+        PageId::World => "世界",
+        PageId::Weather => "天气",
+        PageId::Alarm => "闹钟",
     }
 }
 
@@ -169,6 +307,18 @@ impl AppHandle {
             match self.exit_save_started {
                 None => {
                     self.exit_save_started = Some(std::time::Instant::now());
+                    // UIR.7：退出前存档窗口几何（外框矩形 "x,y,w,h"；无外框信息跳过）
+                    if let Some(rect) = ctx.input(|i| i.viewport().outer_rect) {
+                        self.bus.send(FrontendCommand::SetWindowGeometry {
+                            geometry: format!(
+                                "{:.0},{:.0},{:.0},{:.0}",
+                                rect.min.x,
+                                rect.min.y,
+                                rect.width(),
+                                rect.height()
+                            ),
+                        });
+                    }
                     // FIX006.6：先复位历史回执——否则会话内任一次保存成功即令 exit_ready
                     // 立即为真，本次 SaveNow 的回执等待被短路（等价原「SaveNow 后立即 Close」）
                     self.state.save_ack = false;
@@ -222,6 +372,69 @@ impl AppHandle {
         )
     }
 
+    /// UI 截图探针（UIR.2 开发期自检）：每 1.2s 拍一帧 PrintWindow 出 PNG——
+    /// step 0-4 五页（每拍完切下一页，step 4 拍完开设置浮窗）、step 5 拍设置浮窗
+    /// （拍完关闭）、step 6 触发退出（不再出图——防覆盖设置帧）。
+    /// 观感终审权仍在用户真机目测；本探针只服务开发迭代（视觉设计不得向测试环境妥协）
+    fn ui_shot_tick(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+        let Some(dir) = self.ui_shot_dir.clone() else {
+            return;
+        };
+        // step len+1 = 退出步（不出图）；其后守卫拦空转
+        if self.ui_shot_step > PAGE_ORDER.len() + 1
+            || self.ui_shot_last.elapsed() < std::time::Duration::from_millis(1200)
+        {
+            return;
+        }
+        self.ui_shot_last = std::time::Instant::now();
+        let step = self.ui_shot_step;
+
+        // 退出步（step 6）：不出图，直接走退出序列
+        if step > PAGE_ORDER.len() {
+            self.quit_requested = true;
+            self.ui_shot_step = step + 1;
+            let _ = ctx;
+            return;
+        }
+
+        // 本帧状态出图（tick 在 ui() 末尾——拍到的是当前已绘制状态）
+        let name = if step < PAGE_ORDER.len() {
+            format!("{:02}_{}", step, page_shot_name(PAGE_ORDER[step]))
+        } else {
+            "05_settings".to_string()
+        };
+        let hwnd = match frame.window_handle() {
+            Ok(h) => match h.into() {
+                RawWindowHandle::Win32(w) => w.hwnd.get(),
+                _ => {
+                    probe_note("[UI_SHOT] 非 Win32 句柄，探针跳过");
+                    self.quit_requested = true;
+                    return;
+                }
+            },
+            Err(e) => {
+                probe_note(&format!("[UI_SHOT] 句柄获取失败: {e}"));
+                self.quit_requested = true;
+                return;
+            }
+        };
+        let path = dir.join(format!("ui_{name}.png"));
+        let ok = capture_window_png(hwnd, &path);
+        probe_note(&format!(
+            "[UI_SHOT] {name} → {}",
+            if ok { "ok" } else { "FAIL" }
+        ));
+
+        // 状态推进：拍完当前页切下一页；五页后开设置浮窗；设置帧拍完关闭
+        if step < PAGE_ORDER.len() - 1 {
+            self.state.current_page = PAGE_ORDER[step + 1];
+        } else {
+            self.state.settings_open = step == PAGE_ORDER.len() - 1;
+        }
+        self.ui_shot_step = step + 1;
+        let _ = ctx;
+    }
+
     /// 托盘/热键事件轮询（logic 每帧调用；事件归一到 PlatformAction 后应用）
     fn poll_platform(&mut self, ctx: &Context) {
         let tray_cmds = self.tray.as_ref().map(|t| t.poll()).unwrap_or_default();
@@ -266,84 +479,82 @@ impl AppHandle {
         self.theme.apply(ctx);
     }
 
-    /// 背板绘制：全屏玻璃回调（场景含导航/页卡/浮窗面）+ 场景 touch 直连重绘
-    fn paint_backplate(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
-        let Some(rs) = frame.wgpu_render_state() else {
-            // 无 wgpu（软件回退等）：纯色背板降级，行为无损
-            ctx.set_visuals(if self.theme.is_dark() {
-                egui::Visuals::dark()
-            } else {
-                egui::Visuals::light()
-            });
-            return;
-        };
-        if !self.pipeline_attached {
-            let mut renderer = rs.renderer.write();
-            // FIX006.7：管线构造恒成功路径——真实错误由 wgpu uncaptured_error 处理器
-            // 记日志（不 panic）；降级面 = 无 wgpu render state（上方早退分支）
-            attach_pipeline(
-                &rs.device,
-                rs.target_format,
-                &mut renderer.callback_resources,
-            );
-            drop(renderer);
-            self.pipeline_attached = true;
-            // touch → repaint 直连（FIX004.7 平移）：hook 持 ctx 弱引用
-            let ctx_weak = ctx.clone();
-            self.scene
-                .set_repaint_hook(Some(Box::new(move || ctx_weak.request_repaint())));
-        }
-        // 场景几何 → uniforms → 全屏回调
-        let pixels_per_point = ctx.pixels_per_point();
-        let screen = ctx.input(|i| i.content_rect());
-        let size_px = [
-            screen.width() * pixels_per_point,
-            screen.height() * pixels_per_point,
-        ];
-        let tokens = self.theme.active();
-        // 玻璃提亮 token（A005 #5：glass.{mode}.gl_lift，0-255 → 0..1，随生效主题）
-        let lift_value = self.theme.glass_lift();
-        let uniforms = build_uniforms(
-            &self.scene,
-            size_px,
-            tokens,
-            self.start_time.elapsed().as_secs_f32(),
-            crate::theme::accent_rgba(),
-            lift_value,
-        );
-        let painter = ctx.layer_painter(egui::LayerId::background());
-        push_paint_callback(&painter, uniforms);
-    }
-
-    /// 切页可见性：旧页玻璃面隐藏、新页显示（含惰性注册——PL009 僵尸面教训）
-    fn sync_page_visibility(&mut self) {
-        apply_page_visibility(&mut self.scene, self.state.current_page);
-    }
-
     /// 设置浮窗绘制（PL013.10：egui::Window + 主题三段 + 失焦/ESC 关）
-    /// A005 #15：原 SURFACE_SETTINGS 玻璃面从未注册（只 set_visible，恒静默 no-op），
-    /// 浮窗为 egui 矢量绘制——已删除该常量与三处无效调用
+    /// UIR 实心蒙皮：窗体 fill 走 token、圆角随 radius.lg、主题三段为分段胶囊
     fn paint_settings_pop(&mut self, ctx: &Context) {
         if !self.state.settings_open {
             return;
         }
         let mut keep_open = true;
+        let frame = egui::Frame::new()
+            .fill(crate::theme::card_bg())
+            .corner_radius(egui::epaint::CornerRadius::same(
+                crate::theme::radius_px("lg") as u8,
+            ))
+            .stroke(egui::Stroke::new(1.0, crate::theme::border_color()))
+            .inner_margin(egui::Margin::same(14));
         let settings_window = egui::Window::new("设置")
             .open(&mut keep_open)
             .collapsible(false)
             .resizable(false)
             .title_bar(false)
-            .anchor(egui::Align2::LEFT_BOTTOM, [16.0, -72.0])
+            .frame(frame)
+            .anchor(
+                egui::Align2::LEFT_BOTTOM,
+                [
+                    crate::theme::layout_i64("sidebar_width") as f32 + 16.0,
+                    -24.0,
+                ],
+            )
             .show(ctx, |ui| {
-                ui.label("主题");
+                ui.label(
+                    egui::RichText::new("主题")
+                        .size(crate::theme::font_size("label"))
+                        .color(crate::theme::ink().muted),
+                );
+                ui.add_space(4.0);
+                // 主题三段分段胶囊（选中金底深字，与 Dock/快捷 chips 同语言）
+                let radius = crate::theme::radius_px("sm") as u8;
                 ui.horizontal(|ui| {
+                    ui.style_mut().spacing.item_spacing = egui::vec2(6.0, 0.0);
                     for (label, pref) in [
                         ("跟随系统", accel_core::types::ThemePref::Auto),
                         ("浅色", accel_core::types::ThemePref::Light),
                         ("深色", accel_core::types::ThemePref::Dark),
                     ] {
                         let selected = self.state.theme_pref() == pref;
-                        if ui.selectable_label(selected, label).clicked() {
+                        let (rect, resp) =
+                            ui.allocate_exact_size(egui::vec2(72.0, 28.0), egui::Sense::click());
+                        let fill = if selected || resp.hovered() {
+                            crate::theme::hover_bg()
+                        } else {
+                            crate::theme::card_bg()
+                        };
+                        ui.painter().rect_filled(
+                            rect,
+                            egui::epaint::CornerRadius::same(radius),
+                            fill,
+                        );
+                        if selected {
+                            ui.painter().rect_stroke(
+                                rect,
+                                egui::epaint::CornerRadius::same(radius),
+                                egui::Stroke::new(1.4, crate::theme::accent_color()),
+                                egui::StrokeKind::Inside,
+                            );
+                        }
+                        ui.painter().text(
+                            rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            label,
+                            egui::FontId::proportional(crate::theme::font_size("body")),
+                            if selected {
+                                crate::theme::ink().strong
+                            } else {
+                                crate::theme::ink().card
+                            },
+                        );
+                        if resp.clicked() {
                             self.bus.send(FrontendCommand::SetTheme(pref));
                             // 乐观更新本地偏好（事件回推前 UI 即响应）
                             self.state.prefs.theme = pref_value(pref).to_string();
@@ -353,11 +564,15 @@ impl AppHandle {
                         }
                     }
                 });
-                ui.separator();
-                ui.label(format!(
-                    "版本 {}",
-                    accel_core::static_config::Static::get().version()
-                ));
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new(format!(
+                        "版本 {}",
+                        accel_core::static_config::Static::get().version()
+                    ))
+                    .size(crate::theme::font_size("meta"))
+                    .color(crate::theme::ink().dim),
+                );
             });
         // 点窗外关闭：主键点击且交互点不在窗体 rect 内（.10 检验项）
         if keep_open && let Some(win) = &settings_window {
@@ -419,52 +634,6 @@ pub fn close_action(has_tray: bool, has_hotkey: bool) -> CloseAction {
     }
 }
 
-/// 页面内容区（A005 #9）：由 nav_rail_width + page_margin token 派生，
-/// 替代各页硬编码的 (180,20)/(204,40) 偏移
-pub fn content_page_rect(ctx: &egui::Context) -> Rect {
-    let content = ctx.input(|i| i.content_rect());
-    let rail_w = crate::theme::layout_i64("nav_rail_width") as f32;
-    let m = page_margins();
-    Rect::from_min_max(
-        content.min + Vec2::new(rail_w + m[0], m[1]),
-        content.max - Vec2::new(m[2], m[3]),
-    )
-}
-
-/// 页面外边距 [左,上,右,下]（ui.json layout.page_margin；缺项回退 24）
-/// FIX007.6：结果缓存（FIX006.10 同款——原每帧 3 次调用各解析一遍 pointer）
-pub fn page_margins() -> [f32; 4] {
-    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, [f32; 4]>>> =
-        std::sync::OnceLock::new();
-    crate::theme::cached(&C, "page_margin", || {
-        accel_core::static_config::Static::get()
-            .ui
-            .pointer("/layout/page_margin")
-            .and_then(|v| v.as_array())
-            .map(|a| {
-                let mut out = [24.0f32; 4];
-                for (i, slot) in out.iter_mut().enumerate() {
-                    if let Some(v) = a.get(i).and_then(|x| x.as_f64()) {
-                        *slot = v as f32;
-                    }
-                }
-                out
-            })
-            .unwrap_or([24.0; 4])
-    })
-}
-
-/// 内容左缩进 = nav_rail_width + page_margin 左值（替代各页硬编码 add_space(156.0)）
-pub fn content_left_inset() -> f32 {
-    crate::theme::layout_i64("nav_rail_width") as f32 + page_margins()[0]
-}
-
-/// 页面内边距（CentralPanel inner_margin；取 page_margin 左上值）
-pub fn page_inner_margin() -> egui::Margin {
-    let m = page_margins();
-    egui::Margin::same(m[1].clamp(0.0, i8::MAX as f32) as i8)
-}
-
 /// 启动快照填充（A005 #2）：列表域显式拉取——core 的 spawn 首帧只推 Tick，
 /// 不推 AlarmsChanged/配置快照，故 app 侧必须在装配期拉一次全量
 fn fill_startup_snapshot(iface: &AppInterface, state: &mut UiState) {
@@ -502,50 +671,114 @@ fn hotkey_action(kind: crate::platform::hotkey::HotkeyKind) -> PlatformAction {
     }
 }
 
-/// 页卡玻璃面 id（A005 #23：字面量查表替代每帧 format!——页枚举固定五档）
-pub fn page_surface_id(page: PageId) -> &'static str {
+/// 截图探针文件名段（ASCII 稳妥——文件系统/脚本消费）
+fn page_shot_name(page: PageId) -> &'static str {
     match page {
-        PageId::Clock => "page_Clock",
-        PageId::Countdown => "page_Countdown",
-        PageId::World => "page_World",
-        PageId::Weather => "page_Weather",
-        PageId::Alarm => "page_Alarm",
+        PageId::Clock => "clock",
+        PageId::Countdown => "countdown",
+        PageId::World => "world",
+        PageId::Weather => "weather",
+        PageId::Alarm => "alarm",
     }
 }
 
-/// 注册页卡玻璃面（pages.ui 内每页调用——几何随布局 rect 同步；register 幂等）
-/// A005 #9：圆角取 radius.lg token（原硬编码 16）
-pub fn register_page_surface(scene: &mut GlassScene, page: PageId, rect: Rect) {
-    let mut surface = GlassSurface::new(page_surface_id(page), rect);
-    surface.radius = crate::theme::radius_px("lg");
-    scene.register(surface);
-}
+/// 真窗截图（UIR.2）：PrintWindow(PW_RENDERFULLCONTENT) 采 DWM 合成内容 →
+/// GetDIBits 读 BGRA → 转 RGBA → PNG 落盘；任何环节失败返 false 不 panic
+#[cfg(windows)]
+fn capture_window_png(hwnd: isize, path: &std::path::Path) -> bool {
+    use windows::Win32::Foundation::{HWND, RECT};
+    use windows::Win32::Graphics::Gdi::{
+        BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleBitmap, CreateCompatibleDC, DIB_RGB_COLORS,
+        DeleteDC, DeleteObject, GetDC, GetDIBits, ReleaseDC, SelectObject,
+    };
+    // windows-rs 分类 quirks：PrintWindow 归属 Storage::Xps（UIR.2 实测）
+    use windows::Win32::Storage::Xps::{PRINT_WINDOW_FLAGS, PrintWindow};
+    use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
 
-/// chip 子面的页归属前缀表（页 → 其 chip 子面 id 前缀；FIX007.3——clock 页农历
-/// chips 与 countdown 页节日 chips 各随页开关，其余页无 chip 子面）
-const CHIP_PAGE_PREFIXES: [(&str, PageId); 2] =
-    [("clock_", PageId::Clock), ("countdown_", PageId::Countdown)];
-
-/// 页面玻璃面可见性统一开关（FIX007.3 可测核心）：页卡面 + 页归属 chip 子面——
-/// 原实现只盖页卡面，chip 子面（默认注册即 visible）切页后残留为游离玻璃矩形；
-/// 隐藏不注销（页回归时该页 ui 重注册刷新几何）
-pub fn apply_page_visibility(scene: &mut GlassScene, current: PageId) {
-    for page in PAGE_ORDER {
-        scene.set_visible(page_surface_id(page), page == current);
-    }
-    for (prefix, page) in CHIP_PAGE_PREFIXES {
-        let visible = page == current;
-        let ids: Vec<String> = scene
-            .surfaces()
-            .iter()
-            .filter(|s| s.surface_id.starts_with(prefix))
-            .map(|s| s.surface_id.clone())
-            .collect();
-        for id in ids {
-            scene.set_visible(&id, visible);
+    unsafe {
+        let hwnd = HWND(hwnd as *mut _);
+        let mut rc = RECT::default();
+        if GetClientRect(hwnd, &mut rc).is_err() {
+            return false;
         }
+        let w = (rc.right - rc.left).max(1);
+        let h = (rc.bottom - rc.top).max(1);
+        let hdc_win = GetDC(Some(hwnd));
+        let hdc_mem = CreateCompatibleDC(Some(hdc_win));
+        let hbmp = CreateCompatibleBitmap(hdc_win, w, h);
+        let old = SelectObject(hdc_mem, hbmp.into());
+        // PW_RENDERFULLCONTENT = 0x2：采 DWM 合成后内容（Acrylic/玻璃管线必需）
+        let printed = PrintWindow(hwnd, hdc_mem, PRINT_WINDOW_FLAGS(0x2));
+        let mut bmi = BITMAPINFO::default();
+        bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+        bmi.bmiHeader.biWidth = w;
+        bmi.bmiHeader.biHeight = -h; // top-down 行序
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = DIB_RGB_COLORS.0;
+        let mut buf = vec![0u8; (w * h * 4) as usize];
+        let got = GetDIBits(
+            hdc_mem,
+            hbmp,
+            0,
+            h as u32,
+            Some(buf.as_mut_ptr().cast()),
+            &mut bmi,
+            DIB_RGB_COLORS,
+        );
+        SelectObject(hdc_mem, old);
+        let _ = DeleteObject(hbmp.into());
+        let _ = DeleteDC(hdc_mem);
+        ReleaseDC(Some(hwnd), hdc_win);
+        if !printed.as_bool() || got == 0 {
+            return false;
+        }
+        // BGRA → RGBA（GDI 行序；as_chunks 固定 4 通道步进，clippy 口径）
+        for px in buf.as_chunks_mut::<4>().0 {
+            px.swap(0, 2);
+        }
+        image::save_buffer(path, &buf, w as u32, h as u32, image::ColorType::Rgba8).is_ok()
     }
 }
+
+/// 非 Windows 无截图（探针恒失败——跨平台编译行为无损）
+#[cfg(not(windows))]
+fn capture_window_png(_hwnd: isize, _path: &std::path::Path) -> bool {
+    false
+}
+
+/// 标题栏底色钉制（UIR：系统「标题栏强调色」设置会盖掉深浅跟随——
+/// DWMWA_CAPTION_COLOR 显式设为侧栏底色，标题栏与界面同体）
+#[cfg(windows)]
+fn apply_caption_color(hwnd: isize, color: egui::Color32) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::Graphics::Dwm::{
+        DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DwmSetWindowAttribute,
+    };
+    // COLORREF = 0x00BBGGRR（egui 0.37 预乘存储，实心色 alpha=255 无预乘损耗）
+    let colorref =
+        (u32::from(color.b()) << 16) | (u32::from(color.g()) << 8) | u32::from(color.r());
+    unsafe {
+        let hwnd = HWND(hwnd as *mut _);
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_CAPTION_COLOR,
+            &colorref as *const u32 as *const std::ffi::c_void,
+            std::mem::size_of::<u32>() as u32,
+        );
+        // BORDER 同色：CAPTION 设色后底边框区会渲染白条（DWM 副作用，截图实证）
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_BORDER_COLOR,
+            &colorref as *const u32 as *const std::ffi::c_void,
+            std::mem::size_of::<u32>() as u32,
+        );
+    }
+}
+
+/// 非 Windows 无标题栏定制
+#[cfg(not(windows))]
+fn apply_caption_color(_hwnd: isize, _color: egui::Color32) {}
 
 /// tokio runtime 装配（后台任务宿主：interface spawn 的调度/天气任务在此运行）
 fn build_runtime() -> tokio::runtime::Runtime {
@@ -574,15 +807,22 @@ pub fn run_with_counter(
     let probe_show_secs = std::env::var("ACCELWORLD_SHOW_AFTER")
         .ok()
         .and_then(|v| v.parse().ok());
+    // UI 截图探针（UIR.2）：ACCELWORLD_UI_SHOT=<目录> 逐页 PrintWindow 出 PNG 后自动退出
+    let ui_shot_dir = std::env::var("ACCELWORLD_UI_SHOT")
+        .ok()
+        .map(std::path::PathBuf::from);
     let runtime = Arc::new(build_runtime());
     let iface = Arc::new(AppInterface::new());
 
-    let (x, y, w, h) = default_window_rect();
+    // 窗口几何恢复（UIR.7）：用户存档 "x,y,w,h" 优先，缺档/非法回退 token 基准
+    let (x, y, w, h) = iface
+        .get_window_geometry()
+        .and_then(|ref g| accel_core::interface::parse_window_geometry(g))
+        .unwrap_or_else(default_window_rect);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size(Vec2::new(w, h))
             .with_position(Pos2::new(x, y))
-            .with_transparent(true)
             .with_title(format!(
                 "加速世界 {}",
                 accel_core::static_config::Static::get().version()
@@ -642,17 +882,17 @@ pub fn run_with_counter(
                 bus,
                 state,
                 theme,
-                scene: GlassScene::new(),
-                nav: NavRail::new(),
                 pages: Pages::new(),
                 start_time: std::time::Instant::now(),
-                pipeline_attached: false,
-                acrylic_applied: false,
                 probe_close_secs,
                 probe_hide_secs,
                 probe_hide_done: false,
                 probe_show_secs,
                 probe_show_done: false,
+                ui_shot_dir,
+                ui_shot_step: 0,
+                ui_shot_last: std::time::Instant::now(),
+                titlebar_hwnd: None,
                 tray,
                 hotkeys,
                 quit_requested: false,
@@ -693,6 +933,13 @@ pub fn install_fonts(ctx: &Context) {
             .entry(egui::FontFamily::Proportional)
             .or_default()
             .insert(0, "cjk".into());
+        // 数字族内的 CJK 回退（UIR：等宽数字串含「天/周」等汉字——Bahnschrift
+        // 无 CJK 字形，缺失时数字族渲染 tofu；中文族挂 Monospace 槽位 1 兜底）
+        fonts
+            .families
+            .entry(egui::FontFamily::Monospace)
+            .or_default()
+            .push("cjk".into());
     } else {
         tracing::warn!("{cjk_family} 未找到，中文回退 egui 内置字体（可能 tofu）");
     }
@@ -742,60 +989,31 @@ mod tests {
     use crate::platform::hotkey::HotkeyKind;
     use crate::platform::tray::TrayCommand;
 
-    fn probe_rect() -> Rect {
-        Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(100.0, 60.0))
-    }
-
     #[test]
-    fn page_switch_hides_chip_subsurfaces() {
-        // FIX007.3 验收：连切五页后非当前页可见面数 = 0（页卡 + chip 子面统一开关——
-        // 原实现只盖页卡面，chip 子面残留为游离玻璃矩形）
-        let mut scene = GlassScene::new();
-        // 预注册全部页卡面 + 两页 chip 子面（模拟各页都曾激活过）
-        for p in PAGE_ORDER {
-            scene.register(GlassSurface::new(page_surface_id(p), probe_rect()));
-        }
-        for id in [
-            "clock_lunar_main",
-            "clock_lunar_phase",
-            "clock_lunar_god",
-            "countdown_festival_0",
-            "countdown_festival_5",
-        ] {
-            scene.register(GlassSurface::new(id, probe_rect()));
-        }
-        for current in PAGE_ORDER {
-            apply_page_visibility(&mut scene, current);
-            for s in scene.draw_list() {
-                let owned = s.surface_id == page_surface_id(current)
-                    || CHIP_PAGE_PREFIXES
-                        .iter()
-                        .filter(|(_, pg)| *pg == current)
-                        .any(|(pre, _)| s.surface_id.starts_with(pre));
-                assert!(
-                    owned,
-                    "切到 {current:?} 后不应有他页可见面: {}",
-                    s.surface_id
-                );
-            }
-        }
-        // 隐藏不注销：面总数稳定（可见性开关非生命周期操作）
-        assert_eq!(scene.total_count(), 10, "面总数应稳定（含全部 chip 子面）");
-    }
-
-    #[test]
-    fn festival_chip_ids_stay_fixed_across_days() {
-        // FIX007.3 验收：节日 chip 固定序号 id（countdown_festival_{i}）——原日期键
-        // 跨日累积逼近 MAX_SURFACES=16，页卡面将被拒收致玻璃整体消失
-        let mut scene = GlassScene::new();
-        for _day in 0..3 {
-            for i in 0..6 {
-                let mut s = GlassSurface::new(&format!("countdown_festival_{i}"), probe_rect());
-                s.elevation = 5;
-                scene.register(s);
-            }
-        }
-        assert_eq!(scene.total_count(), 6, "跨日注册应幂等——id 集不增长");
+    fn sidebar_icon_label_matrix() {
+        // 五页侧栏图标/文字矩阵（导航语义锚点——替代原 dock 矩阵测试）
+        assert_eq!(
+            sidebar_icon(PageId::Clock),
+            crate::widgets::icons::Icon::Clock
+        );
+        assert_eq!(
+            sidebar_icon(PageId::Countdown),
+            crate::widgets::icons::Icon::Hourglass
+        );
+        assert_eq!(
+            sidebar_icon(PageId::World),
+            crate::widgets::icons::Icon::Globe
+        );
+        assert_eq!(
+            sidebar_icon(PageId::Weather),
+            crate::widgets::icons::Icon::Cloud
+        );
+        assert_eq!(
+            sidebar_icon(PageId::Alarm),
+            crate::widgets::icons::Icon::Bell
+        );
+        assert_eq!(sidebar_label(PageId::Clock), "时钟");
+        assert_eq!(sidebar_label(PageId::Alarm), "闹钟");
     }
 
     #[test]

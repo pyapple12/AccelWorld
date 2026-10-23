@@ -164,13 +164,13 @@ mod tests {
 
     #[test]
     fn ui_domain_tokens() {
-        // ui 域真实 token 抽样：字体族/字号/玻璃颜色（field 三级经 pointer 直取）
+        // ui 域真实 token 抽样：字体族/字号/实心色板（UIR 后 colors 域为唯一色彩源）
         let s = Static::get();
         assert_eq!(s.ui_str("font_family"), "Microsoft YaHei");
         assert_eq!(s.ui_str("font_family_digits"), "Bahnschrift");
         assert_eq!(s.ui_nested_i64("scale", "hero_time"), 64);
-        let field_top = s.ui.pointer("/field/dark/top").and_then(|v| v.as_str());
-        assert_eq!(field_top, Some("#230D1322"));
+        let window_bg = s.ui.pointer("/colors/window_bg").and_then(|v| v.as_str());
+        assert_eq!(window_bg, Some("#171A21"));
     }
 
     #[test]

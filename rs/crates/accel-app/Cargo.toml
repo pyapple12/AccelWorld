@@ -21,8 +21,6 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-appender = { workspace = true }
-wgpu = { workspace = true }
-egui-wgpu = { workspace = true }
 chrono-tz = { workspace = true }
 raw-window-handle = { workspace = true }
 
@@ -31,10 +29,6 @@ windows = { workspace = true }
 tray-icon = { workspace = true }
 global-hotkey = { workspace = true }
 tauri-winrt-notification = { workspace = true }
-
-[[bin]]
-name = "render_probe"
-path = "src/bin/render_probe.rs"
 
 # 构建期依赖（build.rs 专用，不进运行时依赖树）
 [build-dependencies]

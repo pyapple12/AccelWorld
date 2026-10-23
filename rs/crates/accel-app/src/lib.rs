@@ -2,9 +2,7 @@
 //! bin 形态（main/render_probe）共享的模块根；GUI 依赖仅本 crate
 
 pub mod bus;
-pub mod glass;
 pub mod logging;
-pub mod nav;
 pub mod pages;
 pub mod platform;
 pub mod theme;

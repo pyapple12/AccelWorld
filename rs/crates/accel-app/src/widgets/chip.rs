@@ -1,96 +1,98 @@
-//! chip 控件（小尺寸玻璃卡：label + value 两行布局，PL014.02）
-//! 农历 chips / 节日 chips / 城市卡等小卡的统一容器
+//! chip 纸片徽标（UIR 实心主题：纯矢量小卡——玻璃面注册随 glass 模块删除）
+//! 农历/节日等小信息卡的统一容器：label 上 value 下；宽度按文案自适应
+//! （上限定 200——长农历串不撑破布局）
 
 use egui::{Sense, Vec2};
 
-use crate::glass::surface::{GlassScene, GlassSurface};
-
-/// chip 规格（FIX006.5：尺寸取 ui.json `layout.chip_size`，圆角取 `radius.md`）
-pub fn chip_size() -> Vec2 {
-    let [w, h] = crate::theme::layout_vec2("chip_size", [120.0, 64.0]);
-    Vec2::new(w, h)
+/// chip 高度（layout.chip_size token 的 h；宽度自适应）
+pub fn chip_height() -> f32 {
+    crate::theme::layout_vec2("chip_size", [116.0, 56.0])[1]
 }
 
-/// 绘制一枚 chip（label 上 value 下；selected 金描边）并注册玻璃面（elevation 5）
-/// 返回响应（点击可选中/切换——语义由调用方定义）
-pub fn show(
-    ui: &mut egui::Ui,
-    scene: &mut GlassScene,
-    id: &str,
-    label: &str,
-    value: &str,
-    selected: bool,
-) -> egui::Response {
-    let (rect, resp) = ui.allocate_exact_size(chip_size(), Sense::click());
-    // A005 #9：语义色 + 圆角 token（radius.md）
+/// 自适应宽度（纯函数可测）：双行文案取宽者 + 内边距 20，钳 [64, 240]
+/// （上限 240——最长农历串"丙午年（马年）九月十四玄"实测溢出 200，2026-10-23）
+pub fn chip_width(label_w: f32, value_w: f32) -> f32 {
+    (label_w.max(value_w) + 20.0).clamp(64.0, 240.0)
+}
+
+/// 绘制一枚 chip（label 上 value 下）并返回响应（语义由调用方定义）
+pub fn show(ui: &mut egui::Ui, id: &str, label: &str, value: &str) -> egui::Response {
+    let _ = id; // id 保留参数位（未来交互 chip 复用；当前纯展示）
+    let label_font = egui::FontId::proportional(crate::theme::font_size("chip_label"));
+    let value_font = egui::FontId::proportional(crate::theme::font_size("chip_value"));
+    let label_w = ui
+        .painter()
+        .layout_no_wrap(
+            label.to_string(),
+            label_font.clone(),
+            crate::theme::ink().dim,
+        )
+        .rect
+        .width();
+    let value_w = ui
+        .painter()
+        .layout_no_wrap(
+            value.to_string(),
+            value_font.clone(),
+            crate::theme::ink().card,
+        )
+        .rect
+        .width();
+    let size = Vec2::new(chip_width(label_w, value_w), chip_height());
+    let (rect, resp) = ui.allocate_exact_size(size, Sense::hover());
     let ink = crate::theme::ink();
-    let chip_radius = crate::theme::radius_px("md");
-    let mut surface = GlassSurface::new(id, rect);
-    surface.radius = chip_radius;
-    surface.elevation = 5;
-    surface.selected = if selected { 1.0 } else { 0.0 };
-    scene.register(surface);
-    // 选中金描边（GL selected 呼吸之外的双保险矢量层）
-    if selected {
-        ui.painter().rect_stroke(
-            rect,
-            egui::epaint::CornerRadius::same(chip_radius as u8),
-            egui::Stroke::new(1.6, crate::theme::accent_color()),
-            egui::StrokeKind::Inside,
-        );
-    }
-    ui.painter().text(
-        rect.left_top() + Vec2::new(10.0, 14.0),
-        egui::Align2::LEFT_TOP,
-        label,
-        egui::FontId::proportional(crate::theme::font_size("chip_label")),
-        ink.soft,
+    let radius = crate::theme::radius_px("md") as u8;
+    ui.painter().rect_filled(
+        rect,
+        egui::epaint::CornerRadius::same(radius),
+        crate::theme::card_bg(),
+    );
+    ui.painter().rect_stroke(
+        rect,
+        egui::epaint::CornerRadius::same(radius),
+        egui::Stroke::new(1.0, crate::theme::border_color()),
+        egui::StrokeKind::Inside,
     );
     ui.painter().text(
-        rect.left_bottom() + Vec2::new(10.0, -14.0),
+        rect.left_top() + Vec2::new(10.0, 13.0),
+        egui::Align2::LEFT_TOP,
+        label,
+        label_font,
+        ink.dim,
+    );
+    ui.painter().text(
+        rect.left_bottom() + Vec2::new(10.0, -12.0),
         egui::Align2::LEFT_BOTTOM,
         value,
-        egui::FontId::proportional(crate::theme::font_size("chip_value")),
-        ink.strong,
+        value_font,
+        ink.card,
     );
     resp
 }
 
 // ===== src/widgets/chip.rs 说明区 =====
-// 输入：场景 + chip id/文案/选中态；输出：场景面 + 绘制 + 点击响应
-// 逻辑步骤：chip_size（layout.chip_size token）定矩形 → 场景面注册（elevation 5）→
-//   选中金描边 + 两行文字（字号 chip_label/chip_value token）
-// 设计理由：chip 是"小玻璃卡"而非独立类型（场景面统一渲染光学，矢量只画文字层）；
-//   id 由调用方给业务语义前缀且**必须带页前缀**（FIX007.3：clock_lunar_*／
-//   countdown_festival_*——切页按前缀统一隐藏，不带前缀的 chip 会残留为游离玻璃矩形），
-//   场景幂等注册防重排泄漏
-// FIX006.5：尺寸/圆角/字号全部走 token（原 CHIP_SIZE 常量与 12/16 字面量已收编）
+// 输入：chip id/文案；输出：矢量小卡 + 双行文字（宽度按文案自适应）
+// 逻辑步骤：量双行文案宽（chip_label/chip_value 字号）→ chip_width（+20 内边距，
+//   钳 64..200）→ 卡底 + 描边 → label/value 两行
+// 设计理由（UIR 实心主题）：玻璃面注册删除后 chip 退为纯矢量徽标；定宽版实测
+//   长农历串（丙午年（马年））溢出卡界——自适应宽是排版正确性的前提，上限防撑破
 // 异常处理：无 panic 面
-// 关联依赖：glass::surface/theme（layout/scale/accent）；消费方：pages/clock（农历 chips）、
-//   pages/countdown（节日 chips）
+// 关联依赖：theme；消费方：pages/clock（农历 chips）、pages/countdown（节日 chips）
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::glass::surface::GlassScene;
 
     #[test]
-    fn chip_surface_registration_contract() {
-        // chip 场景面契约：elevation 5 + 选中两值化 + 尺寸来自 token
-        let mut scene = GlassScene::new();
-        let mut surface = GlassSurface::new(
-            "chip_t",
-            egui::Rect::from_min_size(egui::pos2(0.0, 0.0), chip_size()),
-        );
-        surface.elevation = 5;
-        surface.selected = 1.0;
-        scene.register(surface);
-        assert_eq!(scene.draw_list().len(), 1);
-        assert_eq!(scene.draw_list()[0].elevation, 5);
-        assert_eq!(scene.draw_list()[0].selected, 1.0);
-        assert_eq!(
-            chip_size(),
-            Vec2::new(120.0, 64.0),
-            "chip 尺寸 token 应为 120×64"
-        );
+    fn chip_width_clamped() {
+        // 自适应宽：短文案下限 64；长文案上限 240；中段 +20 内边距
+        assert_eq!(chip_width(10.0, 20.0), 64.0);
+        assert_eq!(chip_width(100.0, 90.0), 120.0);
+        assert_eq!(chip_width(500.0, 90.0), 240.0);
+    }
+
+    #[test]
+    fn chip_height_token() {
+        // 高度取 layout.chip_size token 的 h（UIR 定值 56）
+        assert_eq!(chip_height(), 56.0);
     }
 }

@@ -305,6 +305,24 @@ impl AppInterface {
         settings::save(&self.config_path, &config)
     }
 
+    // ===== 窗口几何域（UIR.7：位置/大小记忆）=====
+
+    /// 窗口几何存档读取（"x,y,w,h" 形态；未存档 None——启动恢复依据）
+    pub fn get_window_geometry(&self) -> Option<String> {
+        settings::load(&self.config_path).window_geometry
+    }
+
+    /// 窗口几何存档（UI 直接发 SetWindowGeometry；合法数字四元组才收）
+    pub fn set_window_geometry(&self, geometry: &str) -> bool {
+        if parse_window_geometry(geometry).is_none() {
+            tracing::warn!("窗口几何串非法，拒绝存档: {geometry}");
+            return false;
+        }
+        let mut config = settings::load(&self.config_path);
+        config.window_geometry = Some(geometry.to_string());
+        settings::save(&self.config_path, &config)
+    }
+
     // ===== 倒计时目标域（PL014.06/.08：列表化多目标持久化）=====
 
     /// 当前倒计时目标列表（同步快照，按 at 升序由页面层排序）
@@ -529,6 +547,10 @@ impl AppInterface {
                                 let ok = self.set_base_timezone(&tz);
                                 let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
                             }
+                            Some(FrontendCommand::SetWindowGeometry { geometry }) => {
+                                let ok = self.set_window_geometry(&geometry);
+                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                            }
                             Some(FrontendCommand::AddCountdownTarget { name, at }) => {
                                 let ok = self.add_countdown_target(&name, &at);
                                 let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
@@ -597,6 +619,20 @@ type WeatherInflight = std::collections::HashMap<
 /// 天气去抖判定（FIX006.9 纯逻辑）：同城在飞且非强制刷新 → 跳过重复触发
 fn weather_should_skip(inflight: &WeatherInflight, city: &str, force: bool) -> bool {
     !force && inflight.contains_key(city)
+}
+
+/// 窗口几何串解析（纯函数）：`"x,y,w,h"` → 四元组（非数字/缺项 None——启动恢复
+/// 回退 token 基准）；旧 Python base64 存档天然解析失败即弃档（一次性迁移）
+pub fn parse_window_geometry(text: &str) -> Option<(f32, f32, f32, f32)> {
+    let parts: Vec<&str> = text.split(',').collect();
+    if parts.len() != 4 {
+        return None;
+    }
+    let nums: Vec<f32> = parts
+        .iter()
+        .map(|p| p.trim().parse::<f32>().ok())
+        .collect::<Option<Vec<_>>>()?;
+    Some((nums[0], nums[1], nums[2], nums[3]))
 }
 
 /// force 替换旧在飞条目（FIX007.5）：置替换标记 + abort——abort 不生效时标记兜底
@@ -1181,5 +1217,27 @@ mod tests {
         assert_eq!(names.len(), 50, "世界时钟城市表 50 城（PL012.09 落位实测）");
         assert!(names.contains(&"纽约"));
         assert_eq!(AppInterface::get_max_alarms(), 10);
+    }
+
+    #[test]
+    fn window_geometry_parse_matrix() {
+        // UIR.7 验收：四元组合法/带空白/非法/缺项/旧 base64 弃档
+        assert_eq!(
+            parse_window_geometry("100,200,900,500"),
+            Some((100.0, 200.0, 900.0, 500.0))
+        );
+        assert_eq!(
+            parse_window_geometry(" 1 , 2 , 3 , 4 "),
+            Some((1.0, 2.0, 3.0, 4.0)),
+            "空格容忍"
+        );
+        assert_eq!(parse_window_geometry("a,b,c,d"), None, "非数字拒");
+        assert_eq!(parse_window_geometry("1,2,3"), None, "缺项拒");
+        assert_eq!(parse_window_geometry(""), None, "空串拒");
+        assert_eq!(
+            parse_window_geometry("SGVsbG8="),
+            None,
+            "旧 Python base64 存档天然弃档"
+        );
     }
 }

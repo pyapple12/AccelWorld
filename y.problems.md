@@ -21,7 +21,7 @@
 | 9   | CloseMainWindow 偶发失效（winit）                   | P3     | 登记（强杀兜底，见 #9）                |
 | 10  | 窗口 with_position 定位与 token 偏移（winit）       | P3     | 登记（见 #10）                         |
 | 11  | GPU 热释放后紧接启动的一次性黑窗竞态                | P3     | 登记（不可复现，见 #11）               |
-| 12  | Bahnschrift 可变字体数字非等宽（时钟数字对齐）      | P3     | 登记（方案决策待定，见 #12）           |
+| 12  | Bahnschrift 可变字体数字非等宽（时钟数字对齐）      | P3     | 已根治（UIR digits.rs 槽宽制逐字符绘制，见 #12） |
 
 ---
 
@@ -100,9 +100,8 @@
 - **现状**：不可稳定复现；单实例正常启动无此现象
 - **状态**：📌 登记（不可复现，观察项；真机走查如复现再立项）
 
-## 12. Bahnschrift 可变字体数字非等宽（P3，2026-10-17 PL013.03 登记）
+## 12. Bahnschrift 可变字体数字非等宽（P3，2026-10-17 PL013.03 登记；2026-10-23 UIR 根治）
 
 - **现象**：ui.json `font_family_digits` 指定的 Bahnschrift 为可变字体，egui/ab_glyph 下数字 advance 非等宽（实测 83.25px vs 124.53px，与 Qt 版行为不符）→ 时钟大字逐帧走时会横向抖动
-- **候选方案**：内置等宽族 / OpenType `tnum` 特性 / 接受漂移（观感决策点）
-- **现状**：Bahnschrift 缺失时回退内置等宽族（window.rs）；等宽保真方案待用户定夺
-- **状态**：📌 登记（不阻塞功能；等宽保真方案待定夺，随 UI 雕刻阶段一并评估）
+- **根治（UIR digits.rs）**：等宽数字位槽宽制——以「0」字形宽为满槽、冒号/点占 0.45 窄槽，逐字符 CENTER_CENTER 绘制；与字体 advance 完全解耦（字体缺失回退内置等宽仍有表盘节奏）；槽宽制同时让数字串内汉字（「105天」）经 Monospace 族 cjk 回退正常渲染
+- **状态**：✅ 根治（clock/countdown/world/alarm 四页时刻全部走槽宽制；`widgets/digits.rs` 单测锚定）
