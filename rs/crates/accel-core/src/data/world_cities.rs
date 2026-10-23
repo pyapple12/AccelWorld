@@ -6,14 +6,13 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
-// 城市行（名称/IANA 时区/经纬度/大洲分组）
+// 城市行（名称/IANA 时区/经纬度；JSON 内 region 分组字段无消费方，serde 自动忽略）
 #[derive(Debug, Deserialize)]
 pub struct WorldCity {
     pub name: &'static str,
     pub tz: &'static str,
     pub lat: f64,
     pub lon: f64,
-    pub region: &'static str,
 }
 
 const WORLD_CITIES_JSON: &str = include_str!("../../../../config/static/world_cities.json");
@@ -42,22 +41,27 @@ pub fn tz_of(name: &str) -> Option<&'static str> {
     by_name(name).map(|c| c.tz)
 }
 
-/// IANA 时区串 → 城市名（FIX006.1：常驻城市以 IANA 串持久化，显示时反查友好名）
+/// IANA 时区串 → 城市名（FIX007.2 迁移辅助：world_pins 权威域已改城市名，
+/// 本函数仅服务旧存档 IANA → 城市名的装载期迁移；同 tz 多城表序首匹配）
 pub fn name_of_tz(tz: &str) -> Option<&'static str> {
     all().iter().find(|c| c.tz == tz).map(|c| c.name)
 }
 
-/// 城市名 → (lat, lon) 检索（A005 #15：coords_of 生产零调用已删除——
-/// 天气坐标经 `cities::get` 取，世界时钟城市表仅需 name/tz 分组）
 // ===== src/data/world_cities.rs 说明区 =====
 // 输入：rs/config/static/world_cities.json（50 城静态表）；输出：强类型检索
-// 设计理由：世界时钟（PL014 城市管理）与天气多城市共用同一城市源，杜绝两表漂移；
-//   表放 config/static（随版本发布不运行时改）而加载器在 data/（数据访问职责）——
-//   include_str 路径跨约定，登记 z.plan；tz 存字符串，消费侧 chrono_tz 解析
-//   （编译期无法对 JSON 内容静态校验，故单测遍历全表运行期断言可解析）
+//   （by_name/tz_of 名域 + name_of_tz 迁移辅助）
+// 设计理由：世界时钟专用城市表（FIX006.23/FIX007.11：天气城市候选另用 rs/data/
+//   cities.json 17 城坐标表——两表职责分离，无「统一城市源」）；FIX007.2：常驻集
+//   权威域 = 城市名（原 FIX006.1 的 IANA 存储在同 tz 多城时丢失身份——加入大阪
+//   显示东京、上海被北京吞掉）；表放 config/static（随版本发布不运行时改）而
+//   加载器在 data/（数据访问职责）——include_str 路径跨约定，登记 z.plan；
+//   tz 存字符串，消费侧 chrono_tz 解析（编译期无法对 JSON 内容静态校验，故单测
+//   遍历全表运行期断言可解析）
 // 数据来源：原 17 城坐标自 Python CITIES 平移；增补城市经纬度/IANA 按公开
 //   地理常识核对（PL012.09 落位，后续可按需扩至 60 上限内）
-// 关联依赖：serde_json；消费方：interface 城市域（PL012.10）、PL014 世界时钟/天气页
+// 异常处理：JSON 解析失败 expect 快速失败（嵌入产物损坏级）；region 分组字段
+//   无消费方（FIX007.10 结构体已删该字段，serde 忽略 JSON 冗余键）
+// 关联依赖：serde_json/chrono-tz；消费方：interface 城市域（PL012.10）、PL014 世界时钟页
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,16 +113,21 @@ mod tests {
     }
 
     #[test]
-    fn default_world_pins_resolve_to_city_names() {
-        // FIX006.1 回归：默认常驻城市为 IANA 时区串，且全表能反查出友好名
-        // （世界时钟页按 IANA 解析走时 + 反查显示名，不再按城市名检索 tz）
+    fn default_world_pins_are_unique_city_names() {
+        // FIX007.2 回归：默认常驻集 = 城市名（唯一显示；走时经 tz_of 映射 IANA；
+        // name_of_tz 保留为旧存档装载期迁移辅助）
         let pins = crate::static_config::Static::get().base_str_list("default_world_pins");
         assert!(pins.len() >= 4, "默认常驻城市应有多条，实际 {}", pins.len());
-        for p in &pins {
-            assert!(p.contains('/'), "默认常驻城市应为 IANA 时区串: {p}");
-            let name = name_of_tz(p);
-            assert!(name.is_some(), "IANA 串应能反查城市名: {p}");
-            assert_ne!(name.unwrap(), *p, "反查名不应等于 IANA 串: {p}");
+        let mut sorted = pins.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), pins.len(), "默认常驻集城市名应唯一");
+        for name in &pins {
+            let tz = tz_of(name).unwrap_or_else(|| panic!("默认常驻应为表内城市: {name}"));
+            let parsed: Result<chrono_tz::Tz, _> = tz.parse();
+            assert!(parsed.is_ok(), "映射 IANA 应可解析: {name} → {tz}");
         }
+        // 迁移辅助仍可用：IANA → 首匹配城市名（北京为 Asia/Shanghai 表序首城）
+        assert_eq!(name_of_tz("Asia/Shanghai"), Some("北京"));
     }
 }

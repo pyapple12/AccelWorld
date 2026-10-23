@@ -166,18 +166,22 @@ pub enum SideEffect {
 
 /// 副作用工作线程（A005 #22②）：std mpsc 无界队列（入队恒成功，UI 帧不阻塞）
 /// 可注入 handler 便于单测（生产注入平台实现）
+/// FIX007.13：线程创建失败记 error 留痕（原 .ok() 静默——线程缺席时通知与铃声
+/// 全部缺席，仅靠 send 侧失败日志信息不足）
 fn spawn_side_effect_worker<F>(rx: std::sync::mpsc::Receiver<SideEffect>, handler: F)
 where
     F: Fn(SideEffect) + Send + 'static,
 {
-    std::thread::Builder::new()
+    if let Err(e) = std::thread::Builder::new()
         .name("accel-side-effects".into())
         .spawn(move || {
             while let Ok(effect) = rx.recv() {
                 handler(effect);
             }
         })
-        .ok();
+    {
+        tracing::error!("副作用工作线程创建失败（通知与铃声将缺席）: {e}");
+    }
 }
 
 /// 生产副作用执行（通知 + 铃声；两者失败皆降级不阻塞）
@@ -303,10 +307,10 @@ impl Bus {
     /// 每帧 drain：先补发待发命令 → while try_recv 消费全部积压事件 → UiState::apply
     /// ConfigSaved 后重拉倒计时目标同步快照（iface 拉取式通道）
     /// 闹钟触发/保存失败的平台通知与铃声经副作用线程（A005 #22②）
-    /// 返回本轮消费条数（帧计数/节奏探针用）；logic(&mut self) 调用
-    pub fn drain(&mut self, state: &mut UiState) -> usize {
+    /// FIX007.11：删除返回值（原「帧计数/节奏探针用」口径失实——唯一调用方
+    /// window::logic 直接丢弃；帧计数由 AppHandle.repaint_count 承接）
+    pub fn drain(&mut self, state: &mut UiState) {
         self.cmd.flush();
-        let mut n = 0;
         let mut need_reload = false;
         let mut need_rate_resync = false;
         while let Ok(evt) = self.evt_rx.try_recv() {
@@ -334,7 +338,6 @@ impl Bus {
                 need_reload = true;
             }
             state.apply(evt);
-            n += 1;
         }
         if need_reload {
             state.countdown_targets = self.iface.get_countdown_targets();
@@ -347,7 +350,6 @@ impl Bus {
         if need_rate_resync {
             state.rate = self.iface.get_rate();
         }
-        n
     }
 
     // 启动期偏好快照（A005 #15：生产零调用已删除——装配期用 `iface.get_ui_preferences()`）

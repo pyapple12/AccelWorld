@@ -54,7 +54,8 @@ pub fn lookup(code: i64) -> WeatherCodeInfo {
         .unwrap_or(UNKNOWN_WEATHER)
 }
 
-/// 未知码兜底信息
+/// 未知码兜底信息（FIX007.10 注明：生产零调用——`lookup` 已内含同一兜底；
+/// 保留供 parity 断言（tests/parity.rs）与单测对照 UNKNOWN_WEATHER 常量内容）
 pub fn unknown() -> WeatherCodeInfo {
     UNKNOWN_WEATHER
 }
@@ -90,6 +91,7 @@ mod tests {
 // ===== src/data/weather_codes.rs 说明区 =====
 // 输入：rs/data/weather_codes.json（编译期嵌入，28 码升序与 Python WEATHER_CODE_INFO 一致）
 // 输出：lookup(code)（未知码回退 UNKNOWN_WEATHER 兜底）/all()/unknown()
+//   （FIX007.10：unknown 生产零调用，仅 parity 断言与单测对照消费）
 // 逻辑步骤：OnceLock 惰性解析 → 码查找（CodeRow 平铺字段——serde flatten 与借用
 //   &str 不变性冲突的实证规避）→ WeatherCodeInfo 复制出
 // 设计理由：WMO 码 → 中文短名/emoji/描述单表（Python S2 合并决策延续）；

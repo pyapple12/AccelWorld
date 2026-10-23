@@ -30,6 +30,37 @@ pub fn derived_spring_festival(today: NaiveDate) -> Option<(&'static str, NaiveD
         .map(|at| ("春节", at))
 }
 
+/// 日粒度缓存槽类型（FIX007.7；模块级别名消解 clippy type_complexity）
+type DateCache<T> = std::sync::OnceLock<std::sync::Mutex<Option<(NaiveDate, T)>>>;
+
+/// 春节派生日缓存槽（hero 兜底目标）
+static DERIVED_CACHE: DateCache<Option<(&'static str, NaiveDateTime)>> = DateCache::new();
+
+/// 近期节日 chips 日缓存槽
+static CHIPS_CACHE: DateCache<Vec<(NaiveDate, String)>> = DateCache::new();
+
+/// 日粒度结果缓存（FIX007.7 可测核心）：同日期只算一次，跨日换槽——
+/// 农历派生输入为日粒度（春节转换循环/节日 BTreeMap 重建/节气取表），
+/// 原实现每帧重算属纯浪费；单槽即可（同一帧内日期恒定，日切时换值）
+fn cached_by_date<T: Clone>(
+    slot: &DateCache<T>,
+    today: NaiveDate,
+    load: impl FnOnce(NaiveDate) -> T,
+) -> T {
+    let mut guard = slot
+        .get_or_init(|| std::sync::Mutex::new(None))
+        .lock()
+        .expect("日粒度缓存锁中毒");
+    if let Some((d, v)) = guard.as_ref()
+        && *d == today
+    {
+        return v.clone();
+    }
+    let v = load(today);
+    *guard = Some((today, v.clone()));
+    v
+}
+
 /// 本地时刻解析（FIX006.8）：歧义取较早一侧；不存在（DST 前跳）返 None——不静默改写目标
 pub fn local_from_naive(at: NaiveDateTime) -> Option<chrono::DateTime<chrono::Local>> {
     match chrono::Local.from_local_datetime(&at) {
@@ -116,7 +147,9 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                             }
                         }
                         // hero：最近目标大字（FIX006.3：持久目标与派生春节目标取更近者——空列表亦有兜底）
-                        let derived = derived_spring_festival(now.date());
+                        // FIX007.7：派生结果按日缓存（原每帧重算春节循环）
+                        let derived =
+                            cached_by_date(&DERIVED_CACHE, now.date(), derived_spring_festival);
                         if let Some((name, at)) = hero_target(&targets, derived, now) {
                             let (text, ended) = format_remaining(at, now);
                             ui.label(
@@ -167,7 +200,10 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                             });
                         }
                         // 近期节日 chips（PL014.07 + FIX006.3：year_chips 派生取最近 6 枚，不落盘）
-                        let chips = accel_core::chinese_calendar::year_chips(now.date());
+                        // FIX007.7：按日缓存（原每帧重建 BTreeMap/遍历两年规则/节气取表）
+                        let chips = cached_by_date(&CHIPS_CACHE, now.date(), |d| {
+                            accel_core::chinese_calendar::year_chips(d)
+                        });
                         if !chips.is_empty() {
                             ui.add_space(12.0);
                             ui.label(
@@ -176,11 +212,13 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                                     .color(ink.muted),
                             );
                             ui.horizontal(|ui| {
-                                for (d, fest) in chips.iter().take(6) {
+                                for (i, (_, fest)) in chips.iter().take(6).enumerate() {
+                                    // FIX007.3：固定序号 id（原日期键跨日累积逼近
+                                    // MAX_SURFACES=16 上限）+ countdown_ 页前缀
                                     chip::show(
                                         ui,
                                         scene,
-                                        &format!("festival_{d}"),
+                                        &format!("countdown_festival_{i}"),
                                         "节日",
                                         fest,
                                         false,
@@ -304,5 +342,31 @@ mod tests {
         let input = at(2027, 2, 6, 8);
         let local = local_from_naive(input).expect("常规时刻应可解析");
         assert_eq!(local.naive_local(), input, "不得改写用户所填时刻");
+    }
+
+    #[test]
+    fn cached_by_date_loads_once_per_date() {
+        // FIX007.7 验收：同日期两次调用只解析一次（计数桩）；跨日重新解析
+        static SLOT: DateCache<u32> = DateCache::new();
+        let d1 = NaiveDate::from_ymd_opt(2026, 10, 23).expect("日期合法");
+        let d2 = NaiveDate::from_ymd_opt(2026, 10, 24).expect("日期合法");
+        let mut loads = 0;
+        let a = cached_by_date(&SLOT, d1, |_| {
+            loads += 1;
+            7u32
+        });
+        let b = cached_by_date(&SLOT, d1, |_| {
+            loads += 1;
+            99
+        });
+        assert_eq!(a, 7, "首调返回装载值");
+        assert_eq!(b, 7, "同日期二次调用命中缓存");
+        assert_eq!(loads, 1, "同日期只解析一次");
+        let c = cached_by_date(&SLOT, d2, |_| {
+            loads += 1;
+            8
+        });
+        assert_eq!(c, 8, "跨日重新解析");
+        assert_eq!(loads, 2, "跨日装载恰一次");
     }
 }

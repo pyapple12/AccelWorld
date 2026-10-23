@@ -317,11 +317,7 @@ impl AppHandle {
 
     /// 切页可见性：旧页玻璃面隐藏、新页显示（含惰性注册——PL009 僵尸面教训）
     fn sync_page_visibility(&mut self) {
-        let current = self.state.current_page;
-        for page in PAGE_ORDER {
-            self.scene
-                .set_visible(page_surface_id(page), page == current);
-        }
+        apply_page_visibility(&mut self.scene, self.state.current_page);
     }
 
     /// 设置浮窗绘制（PL013.10：egui::Window + 主题三段 + 失焦/ESC 关）
@@ -436,20 +432,26 @@ pub fn content_page_rect(ctx: &egui::Context) -> Rect {
 }
 
 /// 页面外边距 [左,上,右,下]（ui.json layout.page_margin；缺项回退 24）
+/// FIX007.6：结果缓存（FIX006.10 同款——原每帧 3 次调用各解析一遍 pointer）
 pub fn page_margins() -> [f32; 4] {
-    let s = accel_core::static_config::Static::get();
-    s.ui.pointer("/layout/page_margin")
-        .and_then(|v| v.as_array())
-        .map(|a| {
-            let mut out = [24.0f32; 4];
-            for (i, slot) in out.iter_mut().enumerate() {
-                if let Some(v) = a.get(i).and_then(|x| x.as_f64()) {
-                    *slot = v as f32;
+    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, [f32; 4]>>> =
+        std::sync::OnceLock::new();
+    crate::theme::cached(&C, "page_margin", || {
+        accel_core::static_config::Static::get()
+            .ui
+            .pointer("/layout/page_margin")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                let mut out = [24.0f32; 4];
+                for (i, slot) in out.iter_mut().enumerate() {
+                    if let Some(v) = a.get(i).and_then(|x| x.as_f64()) {
+                        *slot = v as f32;
+                    }
                 }
-            }
-            out
-        })
-        .unwrap_or([24.0; 4])
+                out
+            })
+            .unwrap_or([24.0; 4])
+    })
 }
 
 /// 内容左缩进 = nav_rail_width + page_margin 左值（替代各页硬编码 add_space(156.0)）
@@ -517,6 +519,32 @@ pub fn register_page_surface(scene: &mut GlassScene, page: PageId, rect: Rect) {
     let mut surface = GlassSurface::new(page_surface_id(page), rect);
     surface.radius = crate::theme::radius_px("lg");
     scene.register(surface);
+}
+
+/// chip 子面的页归属前缀表（页 → 其 chip 子面 id 前缀；FIX007.3——clock 页农历
+/// chips 与 countdown 页节日 chips 各随页开关，其余页无 chip 子面）
+const CHIP_PAGE_PREFIXES: [(&str, PageId); 2] =
+    [("clock_", PageId::Clock), ("countdown_", PageId::Countdown)];
+
+/// 页面玻璃面可见性统一开关（FIX007.3 可测核心）：页卡面 + 页归属 chip 子面——
+/// 原实现只盖页卡面，chip 子面（默认注册即 visible）切页后残留为游离玻璃矩形；
+/// 隐藏不注销（页回归时该页 ui 重注册刷新几何）
+pub fn apply_page_visibility(scene: &mut GlassScene, current: PageId) {
+    for page in PAGE_ORDER {
+        scene.set_visible(page_surface_id(page), page == current);
+    }
+    for (prefix, page) in CHIP_PAGE_PREFIXES {
+        let visible = page == current;
+        let ids: Vec<String> = scene
+            .surfaces()
+            .iter()
+            .filter(|s| s.surface_id.starts_with(prefix))
+            .map(|s| s.surface_id.clone())
+            .collect();
+        for id in ids {
+            scene.set_visible(&id, visible);
+        }
+    }
 }
 
 /// tokio runtime 装配（后台任务宿主：interface spawn 的调度/天气任务在此运行）
@@ -714,6 +742,62 @@ mod tests {
     use crate::platform::hotkey::HotkeyKind;
     use crate::platform::tray::TrayCommand;
 
+    fn probe_rect() -> Rect {
+        Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(100.0, 60.0))
+    }
+
+    #[test]
+    fn page_switch_hides_chip_subsurfaces() {
+        // FIX007.3 验收：连切五页后非当前页可见面数 = 0（页卡 + chip 子面统一开关——
+        // 原实现只盖页卡面，chip 子面残留为游离玻璃矩形）
+        let mut scene = GlassScene::new();
+        // 预注册全部页卡面 + 两页 chip 子面（模拟各页都曾激活过）
+        for p in PAGE_ORDER {
+            scene.register(GlassSurface::new(page_surface_id(p), probe_rect()));
+        }
+        for id in [
+            "clock_lunar_main",
+            "clock_lunar_phase",
+            "clock_lunar_god",
+            "countdown_festival_0",
+            "countdown_festival_5",
+        ] {
+            scene.register(GlassSurface::new(id, probe_rect()));
+        }
+        for current in PAGE_ORDER {
+            apply_page_visibility(&mut scene, current);
+            for s in scene.draw_list() {
+                let owned = s.surface_id == page_surface_id(current)
+                    || CHIP_PAGE_PREFIXES
+                        .iter()
+                        .filter(|(_, pg)| *pg == current)
+                        .any(|(pre, _)| s.surface_id.starts_with(pre));
+                assert!(
+                    owned,
+                    "切到 {current:?} 后不应有他页可见面: {}",
+                    s.surface_id
+                );
+            }
+        }
+        // 隐藏不注销：面总数稳定（可见性开关非生命周期操作）
+        assert_eq!(scene.total_count(), 10, "面总数应稳定（含全部 chip 子面）");
+    }
+
+    #[test]
+    fn festival_chip_ids_stay_fixed_across_days() {
+        // FIX007.3 验收：节日 chip 固定序号 id（countdown_festival_{i}）——原日期键
+        // 跨日累积逼近 MAX_SURFACES=16，页卡面将被拒收致玻璃整体消失
+        let mut scene = GlassScene::new();
+        for _day in 0..3 {
+            for i in 0..6 {
+                let mut s = GlassSurface::new(&format!("countdown_festival_{i}"), probe_rect());
+                s.elevation = 5;
+                scene.register(s);
+            }
+        }
+        assert_eq!(scene.total_count(), 6, "跨日注册应幂等——id 集不增长");
+    }
+
     #[test]
     fn tray_command_maps_to_platform_action() {
         // 菜单事件 → 窗口意图：显示/隐藏/退出三项各自归位（.01 检验项）
@@ -764,7 +848,7 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("临时目录创建失败");
         let path = dir.join("user_config.json");
         let cfg = accel_core::settings::UserConfig {
-            world_pins: vec!["Asia/Tokyo".to_string(), "Europe/Paris".to_string()],
+            world_pins: vec!["东京".to_string(), "巴黎".to_string()],
             last_timezone: "Europe/Paris".to_string(),
             alarms: vec![serde_json::json!({
                 "label": "起床", "time": "07:30", "repeat_days": [1],
@@ -835,6 +919,7 @@ mod tests {
 // 已知偏移：①几何恢复（用户拖拽记忆）未做（PL015 无对应任务，随 UI 雕刻阶段处理）；
 //   ②玻璃 lift/tint 经 theme.rs 的 glass_lift()/glass_tint() 读 glass.{mode} 域
 //   （A005 #5 修正后不再直读 pointer）
-// 异常处理：管线失败降级纯色背板（行为无损纪律）；字体缺失降级内置（告警）；
-//   托盘/热键构造失败降级 None（无系统集成环境行为无损）
+// 异常处理：无 wgpu render state 时降级纯色背板（FIX006.7：管线构造恒成功路径，
+//   真实管线错误由 wgpu uncaptured_error 处理器记日志；行为无损纪律）；字体缺失
+//   降级内置（告警）；托盘/热键构造失败降级 None（无系统集成环境行为无损）
 // 关联配置：window_*/glass.gl_lift/ui.json field.*；消费方：main.rs

@@ -317,7 +317,7 @@ fn show(pass: bool) -> &'static str {
 // 逻辑步骤：离屏 wgpu 适配器/设备 → 同一 WGSL（build_shader_source）管线 →
 //   uniforms 打包提交 → 渲染 → buffer readback → 五区采样断言
 // 断言与阈值（沿用 Python 版探针实测基线）：背景 alpha 0.05-0.25 / 面内外色差 ≥12 /
-//   rim 增量 ≥60（峰在面内侧 ~1.3px）/ 光场双晕色相 / 预乘不变量（alpha ≥ RGB）
+//   rim 增量 ≥60（峰在面底缘内侧 ~2px）/ 光场双晕色相 / 预乘不变量（alpha ≥ RGB）
 // 设计理由：玻璃观感缺陷无法用功能探针捕捉（PL009 三轮返工教训）——渲染质量门
 //   机器化，任何 WGSL/uniform 改动先过本探针
 // 异常处理：适配器/设备缺失 panic（无 GPU 环境探针无法运行，属环境错误）

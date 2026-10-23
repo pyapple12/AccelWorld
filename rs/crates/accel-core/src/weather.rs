@@ -44,6 +44,8 @@ pub enum WeatherErr {
     SeriesMissing(&'static str),
     #[error("七日数据含 null: {0}")]
     DailyNull(&'static str),
+    #[error("天气响应字段类型非法（非标量）: {0}")]
+    Parse(&'static str),
 }
 
 // HourlyPoint/DailyPoint DTO 在 types.rs 单源（weather.rs 只做提取与校验）
@@ -202,9 +204,14 @@ pub fn parse_open_meteo(v: &Value) -> Result<WeatherData, WeatherErr> {
             return Err(WeatherErr::BadType(field));
         }
     }
-    // weather_code 任意标量可过（Python 语义）：数值取整查表、布尔按 1/0 查表
-    // （Python dict 键 True==1 命中码 1——夹具实证）、字符串等按未知码回退
-    let code_key = scalar_code_key(&current["weather_code"]);
+    // weather_code 标量纪律（FIX007.16）：布尔/数值查表、字符串按未知码回退
+    // （Python dict.get(str) 返 None 同语义）；数组/对象 → Parse（Python
+    // dict.get(list) 抛 TypeError 走失败路径——原实现误与字符串同归未知）
+    let code_value = &current["weather_code"];
+    if !code_value.is_boolean() && !code_value.is_number() && !code_value.is_string() {
+        return Err(WeatherErr::Parse("weather_code"));
+    }
+    let code_key = scalar_code_key(code_value);
     let info = weather_codes::lookup(code_key);
     let (hourly, daily) = extract_hourly_daily(root)?;
     Ok(WeatherData {
@@ -227,7 +234,8 @@ pub fn parse_open_meteo(v: &Value) -> Result<WeatherData, WeatherErr> {
 
 /// 标量 → 码表查键：布尔按 1/0；数值取整值（整值浮点 0.0 命中码 0——Python dict
 /// 查找语义对齐，serde Number::as_i64 对浮点底数恒 None 须自判整值）；
-/// 小数浮点/字符串等返未知哨兵（i64::MIN，不命中任何整键 → 未知）
+/// 字符串返未知哨兵（i64::MIN，不命中任何整键 → 未知）；数组/对象已在调用方
+/// 拒绝（FIX007.16 Parse），不达此处
 fn scalar_code_key(v: &Value) -> i64 {
     match v {
         Value::Bool(b) => *b as i64,
@@ -328,6 +336,7 @@ impl Default for WeatherClient {
 
 impl WeatherClient {
     /// 生产构造：base 固定官方接口，TTL/超时/重试参数全部取 base.json token
+    /// （FIX007.9：TTL 单源于 token——原 DEFAULT_CACHE_TTL 字面量双源已删）
     pub fn new() -> Self {
         let base = Static::get();
         let timeout = Duration::from_secs_f64(base.base_f64("weather_timeout_s"));
@@ -335,22 +344,18 @@ impl WeatherClient {
             retries: base.base_i64("weather_retries").max(1) as u32,
             delay: Duration::from_secs_f64(base.base_f64("weather_retry_delay")),
         };
+        let ttl = Duration::from_secs(base.base_i64("weather_cache_ttl") as u64);
         WeatherClient::custom(
             "https://api.open-meteo.com".to_string(),
             retry_spec,
             timeout,
+            ttl,
         )
-        .with_ttl(Duration::from_secs(
-            base.base_i64("weather_cache_ttl") as u64
-        ))
     }
 
-    /// 测试构造默认缓存 TTL（FIX006.21：与 base.json weather_cache_ttl 同值单处定义——
-    /// 生产 `new()` 读 token 覆盖，测试/定制构造用本常量兜底，避免双源漂移）
-    const DEFAULT_CACHE_TTL: Duration = Duration::from_secs(1800);
-
-    /// 测试构造：注入 base/重试规格/超时（httpmock 桩服务用）
-    pub fn custom(base: String, retry_spec: RetrySpec, timeout: Duration) -> Self {
+    /// 测试构造：注入 base/重试规格/超时/缓存 TTL（httpmock 桩服务用）
+    /// FIX007.9：TTL 改由调用方注入（原 DEFAULT_CACHE_TTL 与 token 同值双源漂移风险）
+    pub fn custom(base: String, retry_spec: RetrySpec, timeout: Duration, ttl: Duration) -> Self {
         let client = reqwest::Client::builder()
             .timeout(timeout)
             .redirect(reqwest::redirect::Policy::none())
@@ -360,7 +365,7 @@ impl WeatherClient {
             client,
             base,
             cache: Mutex::new(HashMap::new()),
-            ttl: Self::DEFAULT_CACHE_TTL,
+            ttl,
             retry_spec,
         }
     }
@@ -597,6 +602,7 @@ mod tests {
                 delay: Duration::ZERO,
             },
             Duration::from_secs(5),
+            Duration::from_secs(3600),
         )
     }
 
@@ -653,6 +659,7 @@ mod tests {
                 delay: Duration::ZERO,
             },
             Duration::from_secs(5),
+            Duration::from_secs(3600),
         );
         let err = client
             .fetch_by_city("北京", false)
@@ -769,5 +776,23 @@ mod tests {
             "wind_speed_10m": 3.0, "apparent_temperature": 4.0 }});
         let w = parse_open_meteo(&raw).expect("旧形态应解析");
         assert!(w.hourly.is_empty() && w.daily.is_empty());
+    }
+
+    #[test]
+    fn weather_code_container_yields_parse_error() {
+        // FIX007.16：weather_code 为数组/对象 → Parse 错误（Python dict.get(list)
+        // 抛 TypeError 走失败路径对齐；原实现误与字符串同归未知）
+        let mk = |code: Value| {
+            serde_json::json!({"current": {
+                "temperature_2m": 1.0, "relative_humidity_2m": 2.0, "weather_code": code,
+                "wind_speed_10m": 3.0, "apparent_temperature": 4.0 }})
+        };
+        for code in [serde_json::json!([0]), serde_json::json!({"c": 0})] {
+            let err = parse_open_meteo(&mk(code)).expect_err("容器码应 Parse 错误");
+            assert_eq!(err, WeatherErr::Parse("weather_code"));
+        }
+        // 字符串仍走未知码回退不报错（Python dict.get(str) → None 同语义）
+        let w = parse_open_meteo(&mk(serde_json::json!("sunny"))).expect("字符串码应成功");
+        assert_eq!(w.weather, "未知");
     }
 }

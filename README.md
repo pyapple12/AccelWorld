@@ -1,6 +1,6 @@
 # AccelWorld —— 加速世界世界钟
 
-[![Version](https://img.shields.io/badge/Version-0.6.0.6-blue.svg)](rs/config/static/base.json)
+[![Version](https://img.shields.io/badge/Version-0.6.0.7-blue.svg)](rs/config/static/base.json)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](rs/rust-toolchain.toml)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
@@ -104,7 +104,7 @@ rs/                              # cargo workspace 根（全部命令在此执�
 │   ├── base.json                # 应用参数 + version（版本单一来源）
 │   ├── ui.json                  # 字体/布局 tokens/颜色
 │   ├── holidays.json            # 法定节假日（逐年导出）
-│   └── world_cities.json        # 统一城市表（名称/坐标/IANA 时区）
+│   └── world_cities.json        # 世界时钟城市表（名称/坐标/IANA 时区；天气候选另用 rs/data/cities.json）
 ├── crates/
 │   ├── accel-core/              # 纯业务（零 GUI 依赖，CI 强制）
 │   │   └── src/                 # interface/types/time_dilation/chinese_calendar/weather/
@@ -156,7 +156,7 @@ A：不会。倍率、主题、城市、时区、闹钟等设置自动保存到 
 
 ### Q3：支持查看哪些城市的天气？
 
-A：覆盖国内外 50 个主要城市（`rs/config/static/world_cities.json`）。天气数据来自 Open-Meteo 免费 API，无需 API Key。
+A：覆盖国内外 17 个主要城市（`rs/data/cities.json`）。天气数据来自 Open-Meteo 免费 API，无需 API Key。世界时钟页可另选 50 城看走时（`rs/config/static/world_cities.json`）。
 
 ### Q4：如何让程序在后台运行？
 

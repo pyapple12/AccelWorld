@@ -101,12 +101,13 @@ impl crate::pages::Page for crate::pages::ClockPage {
                         state.rate = rate;
                         ui.add_space(16.0);
                         // 农历 chips 行：split 拆 lunar_info 三段
+                        //（FIX007.3：id 带 clock_ 页前缀——切页按前缀统一隐藏）
                         if let Some(info) = &state.time {
                             let (lunar, phase, god) = split_lunar_info(&info.lunar_info);
                             ui.horizontal(|ui| {
-                                chip::show(ui, scene, "lunar_main", "农历", &lunar, false);
-                                chip::show(ui, scene, "lunar_phase", "月相", &phase, false);
-                                chip::show(ui, scene, "lunar_god", "财神", &god, false);
+                                chip::show(ui, scene, "clock_lunar_main", "农历", &lunar, false);
+                                chip::show(ui, scene, "clock_lunar_phase", "月相", &phase, false);
+                                chip::show(ui, scene, "clock_lunar_god", "财神", &god, false);
                             });
                         }
                     });

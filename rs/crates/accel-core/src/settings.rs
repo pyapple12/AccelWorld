@@ -23,15 +23,9 @@ pub struct CountdownTarget {
 
 impl CountdownTarget {
     /// at 串解析（非法 None——装载期剔除依据）
+    /// FIX007.10：与自由文本解析同规则，委托 parse_date_text 单源（原逐行重复实现）
     pub fn parse_at(&self) -> Option<NaiveDateTime> {
-        NaiveDateTime::parse_from_str(&self.at, "%Y-%m-%d %H:%M:%S")
-            .ok()
-            .or_else(|| NaiveDateTime::parse_from_str(&self.at, "%Y-%m-%d %H:%M").ok())
-            .or_else(|| {
-                NaiveDate::parse_from_str(&self.at, "%Y-%m-%d")
-                    .ok()
-                    .and_then(|d| d.and_hms_opt(23, 59, 59))
-            })
+        parse_date_text(&self.at)
     }
 }
 
@@ -247,13 +241,29 @@ pub fn load(path: &Path) -> UserConfig {
     match file_io::read_json(path) {
         Some(v @ Value::Object(_)) => {
             BACKUP_DONE.store(false, Ordering::SeqCst);
-            UserConfig::from_json_value(&v)
+            let mut config = UserConfig::from_json_value(&v);
+            normalize_world_pins(&mut config.world_pins);
+            config
         }
         _ => {
             if path.exists() && !BACKUP_DONE.swap(true, Ordering::SeqCst) {
                 file_io::backup_corrupted(path);
             }
             UserConfig::default()
+        }
+    }
+}
+
+/// world_pins 域迁移（FIX007.2 双向兼容读）：城市名保持；旧存档 IANA 串映射为
+/// 城市名（FIX006.1 期 IANA 存储丢失同 tz 多城身份）；两域皆不收的值原样保留
+/// （显示侧回显、走时占位）——迁移幂等，下次落盘即固化
+fn normalize_world_pins(pins: &mut [String]) {
+    for pin in pins.iter_mut() {
+        if crate::data::world_cities::by_name(pin).is_some() {
+            continue;
+        }
+        if let Some(name) = crate::data::world_cities::name_of_tz(pin) {
+            *pin = name.to_string();
         }
     }
 }
@@ -302,14 +312,15 @@ mod tests {
 
     #[test]
     fn defaults_match_python_snapshot_shape() {
-        // 默认值锚点：rate 2.0 / theme auto / 北京 / Asia/Shanghai / 8 pins / 空 target
+        // 默认值锚点：rate 2.0 / theme auto / 北京 / last_timezone Asia/Shanghai /
+        // 8 pins（FIX007.2：常驻集权威域 = 城市名）/ 空 target
         let d = UserConfig::default();
         assert_eq!(d.time_dilation_rate, 2.0);
         assert_eq!(d.theme, "auto");
         assert_eq!(d.last_city, "北京");
         assert_eq!(d.last_timezone, "Asia/Shanghai");
         assert_eq!(d.world_pins.len(), 8);
-        assert_eq!(d.world_pins[0], "Asia/Shanghai");
+        assert_eq!(d.world_pins[0], "北京");
         assert_eq!(d.countdown_target, "");
         assert_eq!(d.window_geometry, None);
         assert!(d.alarms.is_empty());
@@ -359,13 +370,35 @@ mod tests {
 
     #[test]
     fn world_pins_element_filter() {
-        // world_pins 容器合法时仅剔除非串元素（FIX003.3 对等）
+        // world_pins 容器合法时仅剔除非串元素（FIX003.3 对等；from_json_value 层
+        // 不做域迁移——IANA→城市名的迁移在 load 层，下一测试覆盖）
         let v = serde_json::json!({"world_pins": [1, "Asia/Tokyo", null, 2.5]});
         let cfg = UserConfig::from_json_value(&v);
         assert_eq!(cfg.world_pins, vec!["Asia/Tokyo".to_string()]);
         // 容器整体错型 → 默认 8 pins
         let v2 = serde_json::json!({"world_pins": "notalist"});
         assert_eq!(UserConfig::from_json_value(&v2).world_pins.len(), 8);
+    }
+
+    #[test]
+    fn world_pins_legacy_iana_migrated_on_load() {
+        // FIX007.2 双向兼容读：旧存档 IANA 串装载期迁移为城市名（下次落盘固化）；
+        // 两域皆不收的值原样保留（显示回显/走时占位）
+        let path = temp_cfg("pinmigrate");
+        let legacy = serde_json::json!({
+            "world_pins": ["Asia/Shanghai", "Asia/Tokyo", "Mars/Olympus"]
+        });
+        std::fs::write(&path, legacy.to_string()).expect("写旧存档失败");
+        let cfg = load(&path);
+        assert_eq!(
+            cfg.world_pins,
+            vec![
+                "北京".to_string(),
+                "东京".to_string(),
+                "Mars/Olympus".to_string()
+            ],
+            "IANA 应迁移为城市名；未知值原样保留"
+        );
     }
 
     #[test]
@@ -384,7 +417,7 @@ mod tests {
             theme: "dark".into(),
             last_city: "上海".into(),
             last_timezone: "Europe/Paris".into(),
-            world_pins: vec!["Asia/Shanghai".into(), "America/New_York".into()],
+            world_pins: vec!["北京".into(), "纽约".into()],
             countdown_target: "春节".into(),
             window_geometry: Some("SGVsbG8=".into()),
             alarms: vec![serde_json::json!({"label": "起床", "time": "07:30"})],

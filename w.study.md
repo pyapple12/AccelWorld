@@ -32,7 +32,7 @@ rs/                              # cargo workspace 根
     base.json                    # 应用参数 + version（版本单一来源）
     ui.json                      # 字体/布局 tokens/颜色
     holidays.json                # 法定节假日（历年导出）
-    world_cities.json            # 统一城市表（名称/坐标/IANA 时区）
+    world_cities.json            # 世界时钟城市表（名称/坐标/IANA 时区；天气候选另用 rs/data/cities.json）
   crates/accel-core/             # 纯业务 crate（零 GUI 依赖，CI 机器强制）
     src/interface.rs             # AppInterface（七域契约）+ FrontendCommand/BackendEvent 总线 + spawn
     src/types.rs                 # 协议类型转出（TimeInfo/WeatherData/Alarm/DTO/ThemePref）

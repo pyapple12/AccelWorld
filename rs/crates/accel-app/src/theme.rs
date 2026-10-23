@@ -215,7 +215,8 @@ pub fn font_size(key: &str) -> f32 {
 }
 
 /// 键值 token 缓存（FIX006.10）：消除每帧 pointer 解析与键串分配
-fn cached<T: Clone + 'static>(
+/// FIX007.6 起 pub(crate)：window.rs page_margins 等几何派生同用此缓存模式
+pub(crate) fn cached<T: Clone + 'static>(
     cache: &'static OnceLock<Mutex<HashMap<String, T>>>,
     key: &str,
     load: impl FnOnce() -> T,
@@ -262,9 +263,12 @@ pub struct Ink {
 
 /// colors.{key} → Color32（#RRGGBB / #AARRGGBB 均收；缺键/非法回退灰度兜底）
 /// FIX006.10：结果缓存（token 编译期嵌入，运行期恒定）
+/// FIX007.8：缓存键纳入兜底灰——同 key 不同 fallback 不再互相固化首值
+/// （当前 23 处调用各 key 兜底唯一，属防御纵深；将来新增调用点不踩坑）
 pub fn color32_at(key: &str, fallback_gray: u8) -> Color32 {
     static C: OnceLock<Mutex<HashMap<String, Color32>>> = OnceLock::new();
-    cached(&C, key, || {
+    let cache_key = format!("{key}#{fallback_gray}");
+    cached(&C, &cache_key, || {
         let ptr = format!("/colors/{key}");
         Static::get()
             .ui
@@ -477,5 +481,14 @@ mod tests {
         assert!(ctx.style_of(egui::Theme::Dark).visuals.dark_mode);
         Theme::load("auto").apply(&ctx);
         let _ = ctx.theme(); // System 跟随：值随环境，合法性由 light/dark 两态覆盖
+    }
+
+    #[test]
+    fn color32_at_same_key_different_fallback_isolated() {
+        // FIX007.8 验收：缺键路径下同 key 不同兜底互不污染（缓存键含兜底灰）
+        let a = color32_at("no_such_color_key", 10);
+        let b = color32_at("no_such_color_key", 200);
+        assert_eq!(a, Color32::from_gray(10), "首值兜底正确");
+        assert_eq!(b, Color32::from_gray(200), "同 key 不同兜底不得固化首值");
     }
 }

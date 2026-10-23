@@ -37,13 +37,8 @@ fn show(title: &str, body: &str) -> bool {
     }
 }
 
-/// 非 Windows 编译期桩（FIX006.28）：无系统通知能力——仅记日志返 false
-/// （调用方不分支，行为无损：通知属增强体验）
-#[cfg(not(windows))]
-fn show(title: &str, body: &str) -> bool {
-    tracing::info!("非 Windows 平台无系统通知（降级跳过）: {title} / {body}");
-    false
-}
+// 非 Windows 降级桩统一在 platform/mod.rs 内联（FIX007.4：本文件仅
+// #[cfg(windows)] 装载，文件内 cfg(not(windows)) 桩永不编译属死代码，已删）
 
 // ===== src/platform/notify.rs 说明区 =====
 // 输入：闹钟（label/time）/保存失败两调用点文案

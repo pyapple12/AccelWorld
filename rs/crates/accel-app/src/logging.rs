@@ -15,11 +15,13 @@ static PANIC_LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
 
 /// 初始化日志（main 启动首步调用一次）：文件每日滚动 + 控制台双路
 /// 级别/目录读 base.json token（log_level/logs_dir）
+/// FIX007.15：目录基准 = exe 同目录（与配置同源 util::paths::exe_dir——
+/// 原 CWD 相对随启动方式漂移，双基准分叉）
 pub fn init() {
     let base = Static::get();
     let level_text = base.base_str("log_level");
     let level = parse_level(level_text);
-    let logs_dir = PathBuf::from(base.base_str("logs_dir"));
+    let logs_dir = accel_core::util::paths::exe_dir().join(base.base_str("logs_dir"));
     let _ = std::fs::create_dir_all(&logs_dir);
 
     // 每日滚动文件（logs/accel-YYYY-MM-DD.log，对齐 Python 每日独立文件约定）
@@ -65,10 +67,13 @@ pub fn install_panic_hook() {
     }));
 }
 
-/// crash 日志路径（测试注入用重定向钩子：默认 logs/crash-YYYY-MM-DD.log）
+/// crash 日志路径（测试注入用重定向钩子：默认 exe 同目录 logs/crash-YYYY-MM-DD.log；
+/// FIX007.15 基准统一）
 pub fn crash_log_path() -> PathBuf {
     PANIC_LOG_PATH.get().cloned().unwrap_or_else(|| {
-        PathBuf::from(Static::get().base_str("logs_dir")).join(crash_file_name())
+        accel_core::util::paths::exe_dir()
+            .join(Static::get().base_str("logs_dir"))
+            .join(crash_file_name())
     })
 }
 

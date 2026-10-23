@@ -376,14 +376,26 @@ fn default_true() -> bool {
     true
 }
 
-/// 生成闹钟 id（Python str(uuid.uuid4())[:8] 等价形态：8 位十六进制）
+/// 生成闹钟 id（8 位十六进制，uuid4[:8] 形态对齐）
+/// FIX007.1：原「pid^纳秒取高 32 位」实际只随纳秒 bit32..63 变化（粒度 2^32ns≈4.3s），
+/// 同刻连发必碰撞；改为「计数高位 + 椒盐低位」，同进程计数互异即 id 互异
 fn gen_id() -> String {
+    static COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let counter = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let mix = (std::process::id() as u128) ^ nanos.rotate_left(64);
-    format!("{mix:08x}")[..8].to_string()
+    gen_id_from(std::process::id(), nanos, counter)
+}
+
+/// id 拼装纯函数（可测核心）：高 4 位 = 计数低 16 位（同进程递增必异），低 4 位 =
+/// pid^纳秒低位椒盐（跨进程/跨时刻区分）；仅「计数回绕 65536 次且椒盐同值」双重
+/// 巧合才碰撞——纳秒钟连续走动下不可达
+fn gen_id_from(pid: u32, nanos: u128, counter: u32) -> String {
+    let count16 = counter & 0xFFFF;
+    let seed16 = (pid ^ nanos as u32) & 0xFFFF;
+    format!("{count16:04x}{seed16:04x}")
 }
 
 /// 创建时刻（Python datetime.now().isoformat() 形态对等：微秒为 0 省略小数段）
@@ -582,13 +594,16 @@ pub fn quick_target(minutes: i64, now: chrono::DateTime<Local>) -> AlarmDraft {
 // 设计理由：字段名/默认值与 Python to_dict 逐字一致（持久化兼容）；created_at
 //   特殊拒绝路径（键在非字符串）优先于类型过滤（FIX003.8 防复活）；时间解析
 //   实测对齐 fromisoformat（两位小时严格位宽、"9:30" 拒绝、无冒号补 :00 后仍
-//   须合法）；gen_id 8 位十六进制对齐 uuid4[:8] 形态；now_iso 微秒为 0 省略段
+//   须合法）；gen_id 8 位十六进制对齐 uuid4[:8] 形态（FIX007.1：计数高位+椒盐低位，
+//   原 pid×纳秒 xor 取高 32 位存在 4.3s 粒度碰撞，实证探头 .temp/genid_probe_v2.rs）；
+//   now_iso 微秒为 0 省略段
 //   对齐 isoformat；Clock trait 注入使调度与触发全链可测（无真睡眠）
 // 异常处理：lenient 装载全路径 None 跳过 + warning；管理器操作布尔返回；
 //   parse_alarm_hhmm/parse_created_at 全 Option 无 panic
 // 已知偏移（登记 z.plan）：①x.progress 任务文本「"9:30" 补 :00」与 Python 实测
-//   不符（"9:30" 即拒绝——单 digit 小时非法），以 Python 为准；②gen_id 用
-//   pid×纳秒混合 xor 代替 uuid4（同 8 位形态，无 uuid 依赖）；③**A005 #1 修复**：
+//   不符（"9:30" 即拒绝——单 digit 小时非法），以 Python 为准；②gen_id 以
+//   「自增计数+pid/纳秒椒盐」代替 uuid4（同 8 位形态，无 uuid 依赖；同进程
+//   AtomicU32 计数互异保证 id 互异）；③**A005 #1 修复**：
 //   装载期过期判据由「创建日 < 今日」改为「计划触发时刻已过」（is_expired_at +
 //   scheduled_at 纯函数）——原判据会误禁"昨日建、次日触发"的待触发条目（Python
 //   侧同源缺陷，`.archived/` 不回移）
@@ -990,5 +1005,37 @@ mod tests {
         let a1 = Alarm::from_draft(q1).expect("合法草稿应落库");
         assert!(a1.is_one_time());
         assert!(!a1.created_at.is_empty());
+    }
+
+    #[test]
+    fn gen_id_burst_same_instant_unique() {
+        // FIX007.1 反向验收：同刻同 pid 连续 1000 个 id 互不相同
+        // （原公式取纳秒 bit32..63，粒度 2^32ns≈4.3s，同刻连发必全同）
+        const NANOS: u128 = 1_760_000_000_000_000_000;
+        let ids: std::collections::HashSet<String> =
+            (0..1000).map(|c| gen_id_from(1234, NANOS, c)).collect();
+        assert_eq!(ids.len(), 1000, "同刻 1000 个 id 必须互异");
+    }
+
+    #[test]
+    fn gen_id_differs_across_pid_same_instant() {
+        // FIX007.1 反向验收：不同 pid 同刻互异（椒盐位含 pid——原公式 pid 落高位被截丢）
+        const NANOS: u128 = 1_760_000_000_000_000_000;
+        assert_ne!(
+            gen_id_from(1234, NANOS, 0),
+            gen_id_from(987_654, NANOS, 0),
+            "不同 pid 同刻必须互异"
+        );
+    }
+
+    #[test]
+    fn gen_id_real_entry_keeps_eight_hex_shape() {
+        // 真实入口形态保持：8 位十六进制（uuid4[:8] 形态对齐不回归）
+        let id = gen_id();
+        assert_eq!(id.len(), 8);
+        assert!(
+            id.chars().all(|c| c.is_ascii_hexdigit()),
+            "应为十六进制: {id}"
+        );
     }
 }

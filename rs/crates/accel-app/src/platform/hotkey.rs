@@ -93,22 +93,8 @@ impl HotkeyHandles {
     }
 }
 
-/// 非 Windows 编译期桩（FIX006.28）：无全局热键能力——构造即 Err，
-/// window 侧按「热键降级」路径运行（无热键 + 无托盘时关闭按钮直退）
-#[cfg(not(windows))]
-pub struct HotkeyHandles;
-
-#[cfg(not(windows))]
-impl HotkeyHandles {
-    /// 非 Windows 无全局热键注册能力（上抛由调用方降级——与 Windows 侧失败同形）
-    pub fn new() -> Result<Self, String> {
-        Err("非 Windows 平台不支持全局热键".to_string())
-    }
-
-    pub fn poll(&self) -> Vec<HotkeyKind> {
-        Vec::new()
-    }
-}
+// 非 Windows 降级桩统一在 platform/mod.rs 内联（FIX007.4：本文件仅
+// #[cfg(windows)] 装载，文件内 cfg(not(windows)) 桩永不编译属死代码，已删）
 
 // ===== src/platform/hotkey.rs 说明区 =====
 // 输入：base.json /shortcuts/{save,quit,theme} token + GlobalHotKeyEvent 全局通道

@@ -32,10 +32,10 @@ fn fps_probe(secs: u64) {
     let counter = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
     let result = accel_app::window::run_with_counter(counter.clone(), Some(secs));
     let n = counter.load(std::sync::atomic::Ordering::SeqCst);
-    let tick = accel_core::static_config::Static::get().base_i64("clock_tick_ms") as u64;
+    let tick = accel_core::static_config::Static::get().base_i64("clock_tick_ms");
     let line = format!(
         "REPAINT_COUNT={n} in {secs}s（预期 ≈{}±{}）",
-        1000 * secs / tick,
+        expected_frames(secs, tick),
         secs.max(2)
     );
     println!("{line}");
@@ -43,6 +43,26 @@ fn fps_probe(secs: u64) {
     if let Err(e) = result {
         tracing::error!("探针异常退出: {e}");
         std::process::exit(1);
+    }
+}
+
+/// 探针预期帧数（FIX007.14 可测核心）：token 除零钳制——tick=0/负值按 1ms 计
+/// 不 panic（当前 token=100 不可达；防御配置表损坏级输入）
+fn expected_frames(secs: u64, tick_ms: i64) -> u64 {
+    1000 * secs / tick_ms.max(1) as u64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::expected_frames;
+
+    #[test]
+    fn expected_frames_clamps_zero_tick() {
+        // FIX007.14 验收：tick token=0/负值钳制按 1ms 计不 panic；常规值口径不变
+        assert_eq!(expected_frames(5, 100), 50, "常规 tick 口径不变");
+        assert_eq!(expected_frames(5, 0), 5_000, "tick=0 钳制按 1ms 计");
+        assert_eq!(expected_frames(5, -3), 5_000, "负值同钳制");
+        assert_eq!(expected_frames(0, 100), 0, "零秒零帧");
     }
 }
 

@@ -78,14 +78,6 @@ impl Static {
     // 需要时用 `base`/`ui` 字段经 pointer 直取，勿再长出双轨访问器）
     // ===== ui 域类型化访问器 =====
 
-    /// ui 域取 f64
-    pub fn ui_f64(&self, key: &str) -> f64 {
-        match self.ui.get(key).and_then(Value::as_f64) {
-            Some(v) => v,
-            None => panic!("ui.json 缺键或非数值: {key}"),
-        }
-    }
-
     /// ui 域取字符串（字体族名等）
     pub fn ui_str(&self, key: &str) -> &str {
         match self.ui.get(key).and_then(Value::as_str) {
@@ -94,8 +86,9 @@ impl Static {
         }
     }
 
-    // ui 域嵌套 i64（A005 #15：ui_i64 顶层版与 ui_nested_str 生产零调用已删除；
-    // 需要两级串 token 时用 `ui` 字段 pointer 直取）
+    // ui 域其余访问器（A005 #15 + FIX007.10：顶层 ui_i64/ui_nested_str/ui_f64 与
+    // 嵌套 ui_nested_f64 生产零调用已删除；需两级/浮点 token 时用 `ui` 字段
+    // pointer 直取）
 
     /// ui 域嵌套对象取 i64
     pub fn ui_nested_i64(&self, group: &str, key: &str) -> i64 {
@@ -109,24 +102,12 @@ impl Static {
             None => panic!("ui.json 缺嵌套键或非整数: {group}.{key}"),
         }
     }
-
-    /// ui 域嵌套对象取 f64
-    pub fn ui_nested_f64(&self, group: &str, key: &str) -> f64 {
-        match self
-            .ui
-            .get(group)
-            .and_then(|g| g.get(key))
-            .and_then(Value::as_f64)
-        {
-            Some(v) => v,
-            None => panic!("ui.json 缺嵌套键或非数值: {group}.{key}"),
-        }
-    }
 }
 
 // ===== src/static_config.rs 说明区 =====
 // 输入：rs/config/static/{base,ui}.json（与 Python config/static/ 原文件 sha256 一致零改写）
-// 输出：Static 单例 + base/ui 两域类型化访问器（f64/i64/str/str_list/bool + ui 嵌套取值）
+// 输出：Static 单例 + base 域全型访问器（f64/i64/str/str_list/bool）+ ui 域
+//   str/ui_nested_i64（FIX007.10：ui 域零调用 f64 族访问器已删，余走 pointer 直取）
 // 逻辑步骤：include_str 编译期嵌入 → OnceLock get_or_init 首用解析 → 访问器按键取值
 // 设计理由：token 零硬编码原则的 Rust 承接——业务参数不进代码；访问器 panic 带键名
 //   对应 Python RuntimeError/KeyError 快速失败语义（启动期暴露而非运行期静默）；
@@ -174,11 +155,11 @@ mod tests {
 
     #[test]
     fn base_str_list_token() {
-        // default_world_pins：8 个 IANA 标识，首尾锚定
+        // default_world_pins：8 个城市名（FIX007.2 域统一），首尾锚定
         let pins = Static::get().base_str_list("default_world_pins");
         assert_eq!(pins.len(), 8);
-        assert_eq!(pins[0], "Asia/Shanghai");
-        assert_eq!(pins[7], "Asia/Seoul");
+        assert_eq!(pins[0], "北京");
+        assert_eq!(pins[7], "首尔");
     }
 
     #[test]

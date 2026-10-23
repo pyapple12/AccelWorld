@@ -124,24 +124,8 @@ fn tray_icon() -> Result<tray_icon::Icon, String> {
     tray_icon::Icon::from_rgba(img.into_raw(), w, h).map_err(|e| format!("{e}"))
 }
 
-/// 非 Windows 编译期桩（FIX006.28）：平台能力不可用——构造即 Err，
-/// window 侧按「托盘降级」路径运行（行为无损：无托盘即关闭按钮直退）
-#[cfg(not(windows))]
-pub struct TrayHandles;
-
-#[cfg(not(windows))]
-impl TrayHandles {
-    /// 非 Windows 无系统托盘（上抛由调用方降级——与 Windows 侧失败同形）
-    pub fn new() -> Result<Self, String> {
-        Err("非 Windows 平台不支持系统托盘".to_string())
-    }
-
-    pub fn set_status(&self, _rate: f64, _tooltip: &str) {}
-
-    pub fn poll(&self) -> Vec<TrayCommand> {
-        Vec::new()
-    }
-}
+// 非 Windows 降级桩统一在 platform/mod.rs 内联（FIX007.4：本文件仅
+// #[cfg(windows)] 装载，文件内 cfg(not(windows)) 桩永不编译属死代码，已删）
 
 // ===== src/platform/tray.rs 说明区 =====
 // 输入：muda MenuEvent/TrayIconEvent 全局通道 + window 每秒状态推送

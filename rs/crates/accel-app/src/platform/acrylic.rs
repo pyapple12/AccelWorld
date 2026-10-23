@@ -2,6 +2,8 @@
 //! DwmSetWindowAttribute(38=SYSTEMBACKDROP_TYPE, 3=TRANSIENTWINDOW)；失败降级实底
 
 // DWM 常量（Windows SDK dwmapi 头文件；属性 38 = SYSTEMBACKDROP_TYPE）
+// FIX007.4：cfg 化——仅 Windows 消费，非 Windows 构建不再产生 dead_code 告警
+#[cfg(windows)]
 const DWMSBT_TRANSIENTWINDOW: u32 = 3; // Acrylic（2=Mica、4=Mica Alt 均不采用）
 
 /// 开启 Win11 Acrylic 背板；不支持/失败静默降级并返 false（调用方无须提示）

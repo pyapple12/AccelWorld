@@ -2,10 +2,12 @@
 //! PL011.07/.08 落地：file_io 原子写/白名单/转存 + retry 重试契约
 
 pub mod file_io;
+pub mod paths;
 pub mod retry;
 
 // ===== src/util/mod.rs 说明区 =====
-// 对位：file_io.rs ← utils/file_utils.py；retry.rs ← utils/retry.py
+// 对位：file_io.rs ← utils/file_utils.py；retry.rs ← utils/retry.py；paths.rs 为
+//   Rust 新增（FIX007.15：运行期文件基准统一——日志/配置同源，Python 无此层）
 // utils/logger.py 不迁移：Rust 侧由 tracing 承接（app 侧初始化订阅）
 //   core 只发 tracing 事件不配订阅，与 Python「业务模块只 getLogger」同理
 // utils/dataclass_utils.py 不迁移：serde derive 即其 Rust 对等物

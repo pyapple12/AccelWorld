@@ -593,40 +593,75 @@ mod config_parity {
 
     #[test]
     fn manifest_counts_match_tables() {
-        // FIX006.26：夹具清单计数断言（原实现仅逐数组遍历，counts 漂移不被捕获）
+        // FIX006.26 + FIX007.12：夹具清单计数 10 键全量 assert_eq!——原 7 键仅断言 >0，
+        // 数值漂移不被捕获；现逐一与真实数据面（夹具数组长度/表规模）绑定
         let m: Value = serde_json::from_str(MANIFEST).expect("manifest.json 解析失败");
         let counts = m["counts"].as_object().expect("counts 应为对象");
-        for key in [
-            "config_dirty_cases",
-            "festival_years",
-            "festival_days",
-            "n_cities",
-            "n_tz",
-            "n_codes",
-            "n_days",
-            "n_probe",
-            "time_vectors",
-            "n_samples",
-        ] {
-            let v = counts.get(key).and_then(Value::as_i64);
-            assert!(v.is_some_and(|v| v > 0), "counts.{key} 应为正整数: {v:?}");
+        // 各夹具数组长度（结构可证：计数 = 数组实测长度）
+        let festival: Value =
+            serde_json::from_str(include_str!("../../../fixtures/festival_derive.json"))
+                .expect("festival_derive.json 解析失败");
+        let lunar: Value =
+            serde_json::from_str(include_str!("../../../fixtures/lunar_samples.json"))
+                .expect("lunar_samples.json 解析失败");
+        let vectors: Value =
+            serde_json::from_str(include_str!("../../../fixtures/time_vectors.json"))
+                .expect("time_vectors.json 解析失败");
+        let weather: Value =
+            serde_json::from_str(include_str!("../../../fixtures/weather_samples.json"))
+                .expect("weather_samples.json 解析失败");
+        // festival_days = 各年份条目数总和（跨年派生夹具为「年份 → 日期 → 名称」两层的）
+        let festival_days: i64 = festival
+            .as_object()
+            .expect("festival_derive 应为年份对象")
+            .values()
+            .map(|y| y.as_object().expect("年份下应为日期对象").len() as i64)
+            .sum();
+        let binds: [(&str, Option<i64>); 10] = [
+            (
+                "config_dirty_cases",
+                fixture()["dirty_fields"].as_array().map(|a| a.len() as i64),
+            ),
+            (
+                "festival_years",
+                festival.as_object().map(|o| o.len() as i64),
+            ),
+            ("festival_days", Some(festival_days)),
+            (
+                "n_cities",
+                Some(accel_core::data::cities::all().len() as i64),
+            ),
+            (
+                "n_tz",
+                Some(accel_core::data::timezones::all().len() as i64),
+            ),
+            (
+                "n_codes",
+                Some(accel_core::data::weather_codes::all().len() as i64),
+            ),
+            ("n_days", lunar["days"].as_array().map(|a| a.len() as i64)),
+            (
+                "n_probe",
+                lunar["shichen_probe"].as_array().map(|a| a.len() as i64),
+            ),
+            (
+                "time_vectors",
+                vectors["vectors"].as_array().map(|a| a.len() as i64),
+            ),
+            (
+                "n_samples",
+                weather["samples"].as_array().map(|a| a.len() as i64),
+            ),
+        ];
+        for (key, real) in binds {
+            let real = real.unwrap_or_else(|| panic!("counts.{key} 的真实数据面应可测"));
+            assert!(real > 0, "counts.{key} 实测应为正整数: {real}");
+            assert_eq!(
+                counts.get(key).and_then(Value::as_i64),
+                Some(real),
+                "counts.{key} 应与真实数据面一致（漂移须同步 manifest）"
+            );
         }
-        // 与真实数据面交叉核对（计数口径可证：n_cities == 天气城市表规模）
-        assert_eq!(
-            counts["n_cities"].as_i64(),
-            Some(accel_core::data::cities::all().len() as i64),
-            "n_cities 应与 data::cities 表规模一致"
-        );
-        assert_eq!(
-            counts["n_tz"].as_i64(),
-            Some(accel_core::data::timezones::all().len() as i64),
-            "n_tz 应与 data::timezones 表规模一致"
-        );
-        assert_eq!(
-            counts["n_codes"].as_i64(),
-            Some(accel_core::data::weather_codes::all().len() as i64),
-            "n_codes 应与 data::weather_codes 表规模一致"
-        );
     }
 
     #[test]

@@ -41,8 +41,10 @@ path = "src/bin/render_probe.rs"
 serde_json = { workspace = true }
 
 # ===== crates/accel-app/Cargo.toml 说明区 =====
-# version = "0.6.0"：对齐产品版本段 0.6.0.0（semver 三段上限）
-# PL011 占位：仅依赖 core（验证依赖方向单向），显示版本经 build.rs 从
-#   rs/config/static/base.json 注入（PL013 落位）
-# PL013 起接入：eframe(wgpu)/egui/pollster/image/windows/
-#   tray-icon/global-hotkey/rodio/chrono-tz——全部走 workspace.dependencies
+# version = "0.6.0"：对齐产品版本段 0.6.0（semver 三段上限）；显示版本经 build.rs
+#   从 rs/config/static/base.json 注入（版本单一来源，本文件不随四段位 bump）
+# 依赖（全部走 workspace.dependencies）：accel-core（单向分层，CI 关卡 4 强制）+
+#   eframe(wgpu)/egui/pollster/image/chrono/tokio/tracing 三件/wgpu/egui-wgpu/
+#   chrono-tz/raw-window-handle + Windows 档 windows/tray-icon/global-hotkey/
+#   tauri-winrt-notification；serde_json 为 build.rs 版本注入专用
+#   （FIX007.11 订正：原「PL011 占位」表述过时，rodio 属 accel-core 不在本 crate）

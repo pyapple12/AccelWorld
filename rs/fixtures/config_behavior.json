@@ -11,14 +11,14 @@
       "time_dilation_rate": 2.0,
       "window_geometry": null,
       "world_pins": [
-        "Asia/Shanghai",
-        "Asia/Tokyo",
-        "Australia/Sydney",
-        "Europe/London",
-        "Europe/Paris",
-        "America/New_York",
-        "America/Los_Angeles",
-        "Asia/Seoul"
+        "北京",
+        "东京",
+        "悉尼",
+        "伦敦",
+        "巴黎",
+        "纽约",
+        "洛杉矶",
+        "首尔"
       ]
     },
     "in_file": "{ this is not json !!!"
@@ -32,14 +32,14 @@
     "time_dilation_rate": 2.0,
     "window_geometry": null,
     "world_pins": [
-      "Asia/Shanghai",
-      "Asia/Tokyo",
-      "Australia/Sydney",
-      "Europe/London",
-      "Europe/Paris",
-      "America/New_York",
-      "America/Los_Angeles",
-      "Asia/Seoul"
+      "北京",
+      "东京",
+      "悉尼",
+      "伦敦",
+      "巴黎",
+      "纽约",
+      "洛杉矶",
+      "首尔"
     ]
   },
   "dirty_fields": [
@@ -134,14 +134,14 @@
       "bad_value": "notalist",
       "bak_created": false,
       "expect_field_value": [
-        "Asia/Shanghai",
-        "Asia/Tokyo",
-        "Australia/Sydney",
-        "Europe/London",
-        "Europe/Paris",
-        "America/New_York",
-        "America/Los_Angeles",
-        "Asia/Seoul"
+        "北京",
+        "东京",
+        "悉尼",
+        "伦敦",
+        "巴黎",
+        "纽约",
+        "洛杉矶",
+        "首尔"
       ],
       "field": "world_pins"
     },
@@ -149,14 +149,14 @@
       "bad_value": null,
       "bak_created": false,
       "expect_field_value": [
-        "Asia/Shanghai",
-        "Asia/Tokyo",
-        "Australia/Sydney",
-        "Europe/London",
-        "Europe/Paris",
-        "America/New_York",
-        "America/Los_Angeles",
-        "Asia/Seoul"
+        "北京",
+        "东京",
+        "悉尼",
+        "伦敦",
+        "巴黎",
+        "纽约",
+        "洛杉矶",
+        "首尔"
       ],
       "field": "world_pins"
     },

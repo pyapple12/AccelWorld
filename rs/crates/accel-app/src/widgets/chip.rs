@@ -61,7 +61,9 @@ pub fn show(
 // 逻辑步骤：chip_size（layout.chip_size token）定矩形 → 场景面注册（elevation 5）→
 //   选中金描边 + 两行文字（字号 chip_label/chip_value token）
 // 设计理由：chip 是"小玻璃卡"而非独立类型（场景面统一渲染光学，矢量只画文字层）；
-//   id 由调用方给业务语义前缀（lunar_x/festival_x/city_x），场景幂等注册防重排泄漏
+//   id 由调用方给业务语义前缀且**必须带页前缀**（FIX007.3：clock_lunar_*／
+//   countdown_festival_*——切页按前缀统一隐藏，不带前缀的 chip 会残留为游离玻璃矩形），
+//   场景幂等注册防重排泄漏
 // FIX006.5：尺寸/圆角/字号全部走 token（原 CHIP_SIZE 常量与 12/16 字面量已收编）
 // 异常处理：无 panic 面
 // 关联依赖：glass::surface/theme（layout/scale/accent）；消费方：pages/clock（农历 chips）、

@@ -64,7 +64,8 @@ mod tests {
 // 输入：rs/data/cities.json（编译期嵌入，17 城与 Python CITIES 插入序一致）
 // 输出：all()/get()/names() 强类型检索（天气坐标查询与城市下拉共用）
 // 逻辑步骤：OnceLock 惰性解析 → 线性查找（17 城零开销）
-// 设计理由：城市表单源（weather 域与 PL014 城市管理不双轨）；插入序保持即
-//   下拉展示序 parity；测试含首尾锚定 + 坐标检索 + None 三分支
+// 设计理由：天气域专用坐标表（FIX006.23/FIX007.11：世界时钟城市候选另用
+//   world_cities.json 50 城表——两表职责分离，无「单源不双轨」约束）；插入序
+//   保持即下拉展示序 parity；测试含首尾锚定 + 坐标检索 + None 三分支
 // 异常处理：JSON 解析失败 expect 快速失败（嵌入产物损坏级）
-// 关联配置：rs/data/cities.json；消费方：weather 传输层/interface 城市域
+// 关联配置：rs/data/cities.json；消费方：weather 传输层/interface 天气城市域
