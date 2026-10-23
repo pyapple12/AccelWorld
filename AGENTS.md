@@ -8,7 +8,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - **统一入口四关卡**：`pwsh rs/ci.ps1`（fmt --check → clippy `-D warnings` → `cargo test --workspace` → core 依赖树零 egui/eframe）；`.github/workflows/rs-ci.yml` 复用同一命令集
 - 全量测试：`cargo test --workspace`（core 单测 + 夹具 parity 集成 + app 单测）
 - GUI 冒烟（真窗出血，会弹窗）：`cargo run -p accel-app`；UI 截图探针（逐页 PNG 后自动退出）：`ACCELWORLD_UI_SHOT=<目录> cargo run -p accel-app`
-- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.1.1`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
+- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.1.2`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
 - **版本体系**：四段式纯数字 `X.Y.Z.P`（无 `ver ` 前缀）；`feat`/`fix`/`refactor`/`perf` 提交前 bump patch 位；历史存量 `ver 0.4x` 三段式仅存于历史文档与提交记录，不回溯改写
 
 ## 环境陷阱
@@ -98,7 +98,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 
 ## Commit 提交规范
 
-- **标题行**：`<type>: V<版本>，<摘要>`——版本号与 `rs/config/static/base.json` 的 `version` 一致（四段式全写，如 `V0.6.1.1`）；摘要一句话概括核心
+- **标题行**：`<type>: V<版本>，<摘要>`——版本号与 `rs/config/static/base.json` 的 `version` 一致（四段式全写，如 `V0.6.1.2`）；摘要一句话概括核心
 - **版本递增**：`feat`/`fix`/`refactor`/`perf` 提交前先 bump version（patch 位 +1）；`docs`/`test`/`style`/`chore` 不强制
 - **type 全集**（conventional 风格）：`feat` 新功能 / `fix` 修复 / `refactor` 重构（行为不变）/ `perf` 性能 / `docs` 文档 / `test` 测试 / `style` 格式 / `build` 构建依赖 / `ci` CI / `chore` 杂项 / `revert` 回滚
 - **正文**（改动大时可选）：`- ` 列表，按主题分组、分组下子条目缩进，每个功能块一行自然中文描述，每行 ≤ 100 字符
@@ -117,3 +117,4 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - pwsh 会话带 `-NoProfile` 不加载 `$PROFILE`，输出中文前必须先设置编码：`[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;`
 - 未经用户明确要求，不得擅自执行 `git add`、`git commit` 或任何其他 Git 写操作
 - 视觉设计不得向测试环境妥协：offscreen/无头探针仅作功能与结构参考，桌面端一律按原设计实现
+- **UI 行为变更固定连带清单**（A009 #3 定案）：凡界面行为/能力变更（主题、导航、热键、页面能力等），除代码与测试外必须同步检查：README「特性 + 使用说明 + 项目结构 + 常见问题」四节、`w.study.md` 3.7 界面装配节、`m.milestone.md`「后续版本」规划节、`rs/config/static/*.json` 死键——历史教训：FIX008 仅深色定案漏扫 README 五处与 w.study 三处（A009 #3/#4）

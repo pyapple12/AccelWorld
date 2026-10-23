@@ -1,6 +1,6 @@
 # AccelWorld —— 加速世界世界钟
 
-[![Version](https://img.shields.io/badge/Version-0.6.1.1-blue.svg)](rs/config/static/base.json)
+[![Version](https://img.shields.io/badge/Version-0.6.1.2-blue.svg)](rs/config/static/base.json)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](rs/rust-toolchain.toml)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
@@ -28,16 +28,15 @@
 
 - **时间膨胀计算**：根据可配置的加速倍率（1.0x - 20.0x）计算自定义时间流速
 - **实时时钟**：加速时间大字英雄区（等宽数字位不抖动）+ 标准时间对照 + 日进度细条
-- **实心桌面 UI**：侧栏导航 + 深浅两套实心主题 + 矢量图标（零字体依赖）+ 单强调色纪律
+- **实心桌面 UI**：侧栏导航 + 深色实心主题 + 矢量图标（零字体依赖）+ 单强调色纪律
 - **侧栏导航**：时钟 / 倒计时 / 世界时钟 / 天气 / 闹钟 五页 + 设置浮窗
 - **农历信息**：天干地支年、生肖、时辰、月相、节气、公历节日、拜财神方向
 - **世界时钟**：城市矩阵走时 + 昼夜指示，支持增删城市与基准时区切换
 - **倒计时功能**：多目标列表，法定/传统节日自动派生
 - **天气显示**：Open-Meteo 免费 API，当前 / 逐小时（24 点）/ 七日预报，单城市可换（城市选择器，选择即持久化）
 - **闹钟功能**：多闹钟、预设/自定义铃声、一键快捷添加、系统通知提醒
-- **三态主题**：跟随系统 / 浅色 / 深色，设置浮窗选择或全局热键 Ctrl+T 循环
-- **系统集成**：系统托盘菜单树（显示/隐藏/退出，关闭按钮隐藏驻留）+ 全局热键（Ctrl+S 保存 / Ctrl+Q 退出 / Ctrl+T 主题）
-- **配置持久化**：倍率、主题、城市、时区、倒计时目标、闹钟等自动保存
+- **系统集成**：系统托盘菜单树（显示/隐藏/退出，关闭按钮隐藏驻留）+ 全局热键（Ctrl+S 保存 / Ctrl+Q 退出）
+- **配置持久化**：倍率、城市、时区、倒计时目标、闹钟、窗口几何等自动保存
 
 ## 快速开始
 
@@ -75,20 +74,19 @@ $env:ACCELWORLD_UI_SHOT=".temp/ui_shots"; cargo run -p accel-app
 
 ### 界面操作
 
-- **导航**：左侧边栏切换 时钟 / 倒计时 / 世界时钟 / 天气 / 闹钟；底部「设置」打开设置浮窗
+- **导航**：左侧边栏切换 时钟 / 倒计时 / 世界时钟 / 天气 / 闹钟；底部「设置」打开设置浮窗（版本信息）
 - **调节倍率**：时钟页拖动滑杆（拖动即生效，松手落盘），支持 0.1x 步进
-- **切换主题**：设置浮窗选择 跟随系统/浅色/深色，或热键 Ctrl+T 三态循环；跟随系统时随 Windows 深浅色实时切换
 - **世界时钟**：点击城市磁贴切换基准时区，加号添加城市、悬停减号移除（至少保留一个）
 - **倒计时**：加号新增目标（名称 + 日期时间），减号移除；默认目标为下一个春节
 - **天气**：城市选择器切换查看城市（选择即持久化），刷新按钮强制拉取
 - **闹钟**：快捷按钮（15/30/60/240 分钟）或自定义添加（时间/标签/重复星期），行卡开关与删除
 - **托盘**：关闭按钮隐藏到托盘后台驻留；右键弹出菜单（显示窗口 / 隐藏到托盘 / 退出），双击托盘图标还原
-- **全局热键**：Ctrl+S 保存 / Ctrl+Q 退出 / Ctrl+T 主题循环（窗口失焦亦生效）
+- **全局热键**：Ctrl+S 保存 / Ctrl+Q 退出（窗口失焦亦生效）
 
 ### 配置与日志
 
-- 用户配置：`rs/config/user_config.json`（倍率/主题/城市/时区/倒计时/闹钟/窗口几何）
-- 运行日志：`rs/logs/`（按日独立文件 + 崩溃栈）
+- 用户配置：exe 同目录 `config/user_config.json`（倍率/城市/时区/倒计时/闹钟/窗口几何；`cargo run` 下落 `rs/target/debug/config/`）
+- 运行日志：exe 同目录 `logs/`（按日独立文件 + 崩溃栈；`cargo run` 下落 `rs/target/debug/logs/`）
 
 ## 项目结构
 
@@ -109,9 +107,9 @@ rs/                              # cargo workspace 根（全部命令在此执�
 │   │   └── src/                 # interface/types/time_dilation/chinese_calendar/weather/
 │   │                            #   alarm/settings/static_config/audio/data/util
 │   └── accel-app/               # egui 前端
-│       └── src/                 # window/bus/theme/logging/main.rs
+│       └── src/                 # window/bus/theme/logging/lib/main.rs
 │           ├── pages/           # 五页（clock/countdown/world/weather/alarm）+ 设置浮窗
-│           ├── widgets/         # 自绘控件（digits/icons/icon_button/switch/chip/slider）
+│           ├── widgets/         # 自绘控件（digits/icons/icon_button/chip/slider）
 │           ├── tools/           # 展示运算纯函数
 │           └── platform/        # 系统集成（tray/notify/hotkey）
 ├── assets/                      # 托盘图标等内嵌资源
@@ -149,7 +147,7 @@ A：默认值为 2.0x，可在 1.0x 到 20.0x 之间调节。例如 2.0x 表示�
 
 ### Q2：关闭程序后设置会丢失吗？
 
-A：不会。倍率、主题、城市、时区、闹钟等设置自动保存到 `rs/config/user_config.json`，下次启动自动恢复。
+A：不会。倍率、城市、时区、闹钟等设置自动保存到 exe 同目录 `config/user_config.json`（`cargo run` 下在 `rs/target/debug/config/`），下次启动自动恢复。
 
 ### Q3：支持查看哪些城市的天气？
 

@@ -128,7 +128,7 @@
 
 ---
 
-## 审计观察项豁免定案清单（2026-09-10 随工作流体系接入初始化；2026-09-13 A001-A004 四轮观察项归拢定案；2026-10-18 补录 A005 七条；2026-10-18 再补录 A006 十八条＝15 永久 + 3 条件；2026-10-18 再补录 A007 九条＝8 永久 + 1 条件；2026-10-23 补录 A008 十四条＝14 永久，同轮清理指向已删文件的陈旧条目）
+## 审计观察项豁免定案清单（2026-09-10 随工作流体系接入初始化；2026-09-13 A001-A004 四轮观察项归拢定案；2026-10-18 补录 A005 七条；2026-10-18 再补录 A006 十八条＝15 永久 + 3 条件；2026-10-18 再补录 A007 九条＝8 永久 + 1 条件；2026-10-23 补录 A008 十四条＝14 永久，同轮清理指向已删文件的陈旧条目；2026-10-24 补录 A009 一条＝1 永久）
 
 > 豁免唯一权威源：已定案项审计时不再重复报告。新定案条目由归档环节（`.agents/skills/audit-report`）经用户确认后追加。
 > 分级规则：①**永久豁免**——设计定案/用户保证/容错体系覆盖，后续轮次不再报告不再讨论；②**条件豁免**——当前条件下不可达或可接受，**触发条件变化时重新评估**（每项标注触发条件）。
@@ -137,6 +137,7 @@
 > 归拢说明（2026-10-18，A006 / Rust 侧第 2 轮）：参考级观察项 22 条经用户复核——**4 条提升为 P3** 并入 FIX006（夹具计数断言 / clock 除零理论缺口 / 非 Windows 构建告警与桩缺对等导出 / lunar_compare 冗余列），余 **18 条**定案（下表 2026-10-18 A006 行：15 永久 + 3 条件）；A005 与本轮均已闭环的 Python 时代条目保留原样不复核。
 > 归拢说明（2026-10-18，A007 / Rust 侧第 3 轮）：参考级观察项 11 条经用户复核——**2 条提升为 P3** 并入 FIX007（日志与配置路径基准不一致 / weather_code 非标量宽松容错），余 **9 条**定案（下表 2026-10-18 A007 行：8 永久 + 1 条件＝file_io 符号链接 TOCTOU）；「任何非 ASCII 上下文」类历史条目与已闭环项不复核。
 > 归拢说明（2026-10-23，A008 / Rust 侧第 4 轮）：参考级观察项 18 条经用户复核——**2 条提升为 P3** 并入 FIX008（bus.rs Tick 回退字面量改读 token／Cargo.toml 版本注释同步），**2 条由归档动作即时消解**（z.plan 补 UIR 衔接纪要／本清单清理指向已删文件的陈旧条目：nav.rs/glass 族/render_probe/acrylic/ring 及 A005-A006 重叠行），余 **14 条**定案（下表 2026-10-23 行：全部永久）；UIR 重塑后部分旧行号漂移，同源条目按性质适用、行号以现行代码为准。
+> 归拢说明（2026-10-24，A009 / Rust 侧第 5 轮）：参考级观察项 13 条经用户复核**全部维持观察级**（回落理由成立：无累计误差/既有定案/毫秒竞窗/静态常量可达性等）；另将「ThemePref 三态契约悬空＝仅存档定案的协议位保留」登记入永久豁免表（下表 2026-10-24 行），防止后续轮次误报。
 
 ### ① 永久豁免（不再讨论）
 
@@ -205,6 +206,7 @@
 | accel-core/src/types.rs:114                                                                                    | Rust：UiPreferences.countdown_target app 侧零消费                                                  | settings.rs:62 已登记 legacy 读兼容                                 | 2026-10-23 |
 | rs/crates/accel-app/src/bin/                                                                                   | Rust：空目录本地残留                                                                               | git 不跟踪空目录，clone 者不可见，工作区卫生                        | 2026-10-23 |
 | y.problems.md:55、x.progress/milestone 历史注记                                                                | 玻璃/render_probe 历史表述                                                                         | 历史执行记录当时真实，历史豁免                                      | 2026-10-23 |
+| types.rs:153、interface.rs:21、settings.rs theme 字段、base.json default_theme                                 | Rust：ThemePref 三态契约悬空（app 仅深色零消费）——「仅存档定案」的协议位保留，SetTheme 命令位不动  | FIX008.2 完成注记明示的有意保留；退役须连带 parity 域，另立产品决策 | 2026-10-24 |
 
 ### ② 条件豁免（触发条件变化时重新评估）
 
@@ -1085,6 +1087,77 @@ Acrylic 技术要点：
 - **UIR 删除面完整**：glass/acrylic/wgpu/render_probe/nav/ring 在代码层零残留（残留仅注释层，见 #6）；core 侧零 UIR 污染。
 - **CI 同源有效**：ci.ps1 与 rs-ci.yml 四关卡逐字一致且全部可跑；AGENTS「运行与验证」命令除速查节一处残留外均有效。
 - **UIR 新基建单测锚定**：等宽数字位/矢量图标/按日缓存/几何解析均有就近测试。
+
+---
+
+## 附录 A009：全量代码审计报告（第 9 轮，Rust 侧第 5 轮，2026-10-24）
+
+> 范围：`rs/` 双 crate 49 个源文件 + 4 份静态配置 + Cargo 清单×3 + CI + fixtures + 根文档九件；`.archived/`、`rs/target/`、`.temp/` 排除。
+> 方式：只读审计。主会话亲做 A008 回归复核（grep 19/19 + git show fd04683 双口径）并对全部 P2 逐一亲核确证（platform 桩枚举/from_draft 透传/README 五处均代码层实证）；core 业务／app 呈现／工程与文档三路并行全文通读后主会话合并去重（同根因合并：文档清扫漏网族、死键族、ThemePref 悬空族）。本轮为 FIX008（V0.6.1.1）之后的体检轮，重点为 FIX008 新增代码与其文档同步盲区。
+> 修复实证补录（2026-10-24，FIX009 执行期）：#6「需验证」项落地为确定性结论——**winit 对 with_inner_size 创建期不施加 with_min_inner_size**（tiny-geo 真窗探针：旧 100×100 存档修复前原样创建 125px 窄窗），恢复侧新增 clamped_restore_geometry 钳制后 650×525（520×420 逻辑点 @1.25 DPI）；该行为已记入 window.rs 代码注释与单测。
+> 状态：✅ 修复完成（2026-10-24，FIX009 全 20 条 + 收尾落地——四关卡 ALL_GREEN + 测试 187 通过（app 58 + bin 1 + core 108 + parity 20）+ 真窗 fps 探针 60/6s + 截图六帧 + 旧小存档钳制真窗实证（winit 创建期不施加 min_inner_size——恢复侧 clamped_restore_geometry 钳制，tiny-geo 探针前后 125x125→650x525）；反向验收 `.temp/verify_fix009_accept.md`）
+
+### 零、上轮修复复核清单（FIX008，提交 fd04683）
+
+**19 条 P 级修复全部在位，零行为回退**（主会话 grep 19/19 + 三路 agent git show 补盲区；FIX008 新增 tick 并发逻辑专项逐行审未发现确定性缺陷）：
+
+| 上轮条目 | 现状 | 证据 |
+| --- | --- | --- |
+| Tick 绝对截止时间 / 仅深色定案 / 几何解析防御 / 闹钟恒回推 / 图标随码 / 死代码 / 最小窗口 / 容器错型 / 锁统一 / exe_dir / DWM 留痕 / valid_hhmm / 倒计时日志 / RAII / 平线取中 / 补 /// / 托盘镜像 / bus token | ✅ 全部在位 | interface.rs:420-433（tick_sleep+reset）；theme.rs 无 light_visuals/Theme、ui.json 无 _light/_dark；parse+canonical+单测；四分支无条件回推；icon_for_code+16 变体；switch.rs 已删等 rg 零命中；window_min_*+三页 clamp；BadType；三处 expect；file_io:19；WARNED 去抖；valid_hhmm；info 日志；SandboxDir×2；flat ratio；///×2；last_rate_text；bus token+测试 |
+| UIR 残留清扫（#6） | ⚠️ 清扫面漏网（非行为回退） | 漏网处见下表 #1/#4/#20——FIX008 #2/#6/#15 任务文本未覆盖 platform/mod.rs 桩、window.rs 测试目录、README 特性/使用说明节、w.study 3.7 正文、m.milestone 规划节 |
+
+### 一、P0–P3 修复清单（P0/P1 无；共 20 条 = P2×3 + P3×17）
+
+> 性质：遗留 = 历轮已列未修；新增 = 本轮新发现（含 FIX008 清扫面漏网）。
+
+| # | 级别 | 文件:行号 | 类型 | 描述 | 建议 | 性质 | 影响面 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | P2 | accel-app/src/platform/mod.rs:47-51（对照 window.rs:588-593） | 5/6/1 | **非 Windows 热键桩 HotkeyKind 仍含 Theme 变体**：桩枚举三变体而 hotkey_action 仅 match Save/Quit 两臂 → 非 Windows 目标编译 E0004 non-exhaustive（确定性）；桩头注「同接口零分叉」与 hotkey.rs 说明区前提失实 | 桩删 Theme 对齐两键；订正两处表述 | 新增（FIX008 漏网） | 跨模块/构建 |
+| 2 | P2 | accel-core/src/alarm.rs:150-168（对照 :217） | 2/13/6 | **from_draft 不规范化 repeat_days**：注释自称「规范化」实未做（对照 from_json_value 有 normalize_repeat_days）——总线 AddAlarm 带 `[9]` 落盘成功后 `contains(weekday 0-6)` 永假，闹钟每周静默不响且持久保留（总线是协议边界，手编/上游缺陷即触发） | from_draft 内联 normalize（拆 normalize_i64_days 共用）；订正注释 | 新增（PL012 既有形态首轮发现） | 闹钟服务 |
+| 3 | P2 | README.md:31,38,39,80,86 | 6 | **README 三态主题/Ctrl+T 失实组（5 处）**：「深浅两套实心主题」「三态主题…Ctrl+T 循环」「全局热键（…/Ctrl+T 主题）」「切换主题：设置浮窗选择 跟随系统/浅色/深色…实时切换」「Ctrl+T 主题循环」——与仅深色定案确定性矛盾，照文档操作 Ctrl+T 无效 | 五处改仅深色口径；将「README 特性/使用说明/项目结构三节 + w.study 3.7 + m.milestone 规划节」列为 UI 行为变更固定连带清单 | 新增（fd04683 文档同步盲区） | 文档 |
+| 4 | P3 | 多处（合并） | 6 | **文档清扫漏网族**：w.study.md:130-132（深浅两套/含 switch/钉色随主题，:4 自称现役口径）；README.md:90-91,152（配置/日志路径旧基准——FIX007.15 后为 exe 同目录）、:114（含 switch）、:112（src 列表缺 lib.rs）；m.milestone.md:285（「后续版本」节仍列浅色校准，与定案矛盾）；x.progress.md:5（状态行滞后一轮）；icons.rs:6,403（Dock 字样）；window.rs:631（Acrylic 口径）；window.rs:869（Monospace 槽位序号失实）；bus.rs:48（SetTheme 乐观更新注释失实）+ :124（ConfigSaved(_ok) 命名噪音） | 并入一次清扫 | 新增 | 文档 |
+| 5 | P3 | accel-core/src/interface.rs:506-539 | 13/11 | 闹钟四分支 `let _ = save_config_now()` 吞落盘失败且不回推 ConfigSaved(false)——同文件其余 12 个写命令均回推；落盘失败时 UI 看似成功、重启丢失 | ok && saved 一并回推 ConfigSaved | 新增 | 闹钟服务/接口层 |
+| 6 | P3 | accel-core/src/interface.rs:650 | 2 | 几何存档无上限（1e38 有限值入档直达 with_inner_size）；存档值 < window_min_* 时 winit 是否创建即钳制**需真机验证**——若不钳，旧存档首帧仍可塌负宽 | core 补上限域或恢复侧 clamp；真机验证并存行为 | 新增（A008 #3 延伸） | 配置体系/GUI |
+| 7 | P3 | accel-core/src/interface.rs:597-601（对照 :584-594） | 8/13 | tick 分支 evt_tx.send 失败 break 不置 sd_tx、不 abort 在飞任务（与 Quit 收尾不对称）→「事件通道先关」路径下闹钟调度永续轮询；产品内同生命周期影响小 | break 前复用同一收尾块 | 新增（FIX008 前同形态） | 接口层 |
+| 8 | P3 | accel-core/src/interface.rs:338 ↔ settings.rs:45 | 4 | 倒计时落盘时间格式内联与 format_date_text 单源逐字符同逻辑（FIX007.10 已收敛 parse 侧） | 改调 format_date_text | 新增 | 跨模块 |
+| 9 | P3 | accel-core/src/interface.rs:159,182,229,238,250 ＋ weather.rs:261,264-277 | 5 | 零调用契约 API 组：get_weather_refresh_interval_ms/get_timezone_options/get_alarm/get_max_alarms/get_world_cities 仅自测试消费；format_weather_info+WEATHER_FAIL_TEXT 仅 parity 消费（A005 #12 只读直取后的悬空面，fetch_weather 先例已删） | 删除或登记「契约形态保留」说明 | 新增 | 接口层 |
+| 10 | P3 | accel-core/src/weather.rs:417-424 | 3 | URL `forecast_days=7`/`forecast_hours=24` 字面量业务参数，base.json weather_* 域缺席（该进配置未进） | token 化 | 新增 | 天气服务/配置体系 |
+| 11 | P3 | accel-core/src/static_config.rs:109 | 6 | 说明区仍列「bool」访问器（A005 #15 已删），与正文自相矛盾 | 删该词 | 新增 | 文档（源码注释） |
+| 12 | P3 | accel-core/src/alarm.rs:418 | 6 | AlarmManager.alarms 内部列表 pub 裸暴露（crate 外可直写绕过上限/去重） | pub(crate) 或补 list() 读取器 | 新增 | 闹钟服务 |
+| 13 | P3 | rs/crates/accel-app/Cargo.toml:16（说明区 :40） | 12 | pollster 声明依赖全 crate 零源引用（UIR 拆 wgpu 残留） | 删依赖行+说明区同步 | 新增 | 配置体系 |
+| 14 | P3 | rs/config/static/ui.json:17 + layout.chip_size | 12 | scale.tiny 死键（font_size 消费面 12 键实测，tiny 零命中——历轮死键承诺面仅 colors 域与 base.json 顶层）；chip_size w=116 槽半死（chip 宽自适应只取 h） | 删 tiny；chip_size 改单值或登记 | 新增 | 配置体系 |
+| 15 | P3 | accel-app/src/theme.rs:84 + ui.json colors.info | 5 | Ink.info 字段装载后全 crate 零读取（原消费方「降水概率」展示随 UIR 移除；注释仍写降水概率） | 删字段+键，或接线天气要素行 | 新增 | GUI/配置体系 |
+| 16 | P3 | accel-app/src/pages/world.rs:21 | 3 | 昼夜判定 `(6..18)` 业务阈值字面量未走配置 | token 化或注释登记「纯展示启发式」 | 新增（UIR 平移） | GUI/配置体系 |
+| 17 | P3 | accel-app/src/widgets/icons.rs:223-231 | 1 | Storm 闪电末端 0.88r 加半线宽后 16px 图标底部留边约 0.24px，低于「四周 ≥1px」纪律（四新图标唯一越线）——需验证可感性 | 闪电收尾至 ≤0.80r | 新增 | GUI 面板 |
+| 18 | P3 | accel-app/src/pages/alarm.rs:114-120 | 1 | 红字提示为 ScrollArea 内条件行插入：首敲非法字符列表一次性下移 ≈18px、修回回跳（功能正确，非持续抖动）——需真机走查 | 若可感改恒占位（Visibility::Invisible） | 新增 | GUI 面板 |
+| 19 | P3 | accel-app/src/pages/weather.rs:211-225 | 1 | 距条 `(bar_w*hi).max(min+4.0)`：bar_w=0（钳 0 后）轨道不可见仍画 4px 孤立金点（极窄容器可达） | bar_w≤0 跳过绘制 | 新增 | GUI 面板 |
+| 20 | P3 | accel-app/src/window.rs:996-1027 | 10 | 测试临时目录 accel_startup_{pid} 无清理（FIX008.15 RAII 化漏网；对照 logging.rs 样板） | 补 remove 或 RAII guard | 新增（FIX008 漏网） | 测试 |
+
+### 二、参考级观察项（13 条经用户复核全部维持观察级；另「ThemePref 三态契约悬空＝仅存档定案协议位保留」1 条登记入永久豁免表 2026-10-24 行）
+
+| 位置 | 描述 | 回落理由 |
+| --- | --- | --- |
+| interface.rs:427-432,602-605 | FIX008 tick 语义细节两则（倍率变化 reset 取消一个已到期未观察 tick；reset 在 send().await 后随背压后移） | 时间值恒由墙钟重算无累计误差；有命令爆发期验收单测 |
+| interface.rs:129-135 | set_rate 每发重建 TimeDilation（拖动期丢 lunar 秒级缓存） | FIX001.23 轻量路径既有定案 |
+| interface.rs:383-405 | 一次性闹钟触发与 UI 删除竞窗（两段锁间删除仍发 AlarmTriggered 一次） | 毫秒窗、需恰在该窗操作 |
+| interface.rs:477-503 | 天气任务 panic（非 abort）不自摘，条目滞留在飞表 | fetch 链路无已知 panic 点；force 可解 |
+| settings.rs:156-177 | countdown_targets 装载不按 name 去重（手编同名共存） | add 路径有去重；手编域 |
+| chinese_calendar.rs:137-146 | lunar_ymd_to_solar 运行期 expect（倒计时页渲染路径） | 输入为静态常量规则表 |
+| weather.rs:348 | weather_cache_ttl 负值 as u64 回绕成巨 TTL | token 编译期嵌入可信产物 |
+| util/file_io.rs:14-22 | current_exe 失败回退 "." 使 CWD 入写白名单 | FIX008 #11 同源化收益副作用，注释已登记 |
+| icons.rs:236-245 | Bell 顶弦不对称小尖（UIR 引入） | 用户真机走查未提出即定稿 |
+| window.rs:28-30、pages/mod.rs:24 | AppHandle pub 字段/Pages.current 可收私有 | crate 内零外部读者，历史结构 |
+| world.rs:30 | 每帧 to_vec() 克隆 pins | ≤几十串、10fps 可忽略 |
+| icons.rs:54-86 | cloud_line 底边重复描线 | 视觉无差，UIR 同源豁免延续 |
+| m.milestone.md:287 | 「fps 探针 55/6s」为历史运行快照现树不可复核 | 当时记录真实，主会话四关卡佐证 |
+
+### 三、亮点
+
+- **A008 十九条 19/19 在位零回退**：三路 agent git show 补盲区仅发现清扫面漏网（文档/桩/测试目录），无一项行为回退；FIX008 新增 tick 并发逻辑专项逐行审无确定性缺陷。
+- **配置对账全绿**：base.json 28 键零死键（window_min_* 消费闭环、shortcuts.theme 删除有负断言测试锚定）；ui.json 缺键即 panic 策略下无「缺键走兜底」隐患；夹具 sha256 6/6 + counts 10/10 实测相符。
+- **m.milestone 0.6.1.1 五节数字断言逐条实证成立**（8 死键恰 8、520×420、四枚图标、185 测试三组交叉核算一致、截图六帧、反向验收文件在位）。
+- **CI/AGENTS 命令集全部有效**：四关卡与 rs-ci.yml 同源逐字一致，版本单源链路（base.json→build.rs→注入→parity 单测）完好。
+- **本轮无 P0/P1**：产品路径无新增 unwrap/expect，总线/退出序列/平台降级纪律完好；两条确定性缺陷（#1 编译面、#2 闹钟域）边界清晰、修复成本低。
 
 ---
 

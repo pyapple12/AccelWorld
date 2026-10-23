@@ -1,5 +1,5 @@
 {
-  "version": "0.6.1.1",
+  "version": "0.6.1.2",
   "rate_min": 1.0,
   "rate_max": 20.0,
   "default_rate": 2.0,
@@ -36,6 +36,8 @@
   "weather_timeout_s": 10,
   "weather_retries": 3,
   "weather_retry_delay": 1.0,
+  "weather_forecast_days": 7,
+  "weather_forecast_hours": 24,
   "log_level": "INFO",
   "user_config": "config/user_config.json",
   "logs_dir": "logs"

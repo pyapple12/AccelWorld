@@ -80,8 +80,6 @@ pub struct Ink {
     pub card: Color32,
     pub knob: Color32,
     pub danger: Color32,
-    /// 信息色（降水概率等辅助数据）
-    pub info: Color32,
 }
 
 /// 装载语义色（colors.* 逐键；整组一次装载后缓存）
@@ -95,7 +93,6 @@ pub fn ink() -> Ink {
         card: color32_at("text_card", 213),
         knob: color32_at("knob", 242),
         danger: color32_at("danger", 228),
-        info: color32_at("info", 127),
     })
 }
 
@@ -149,26 +146,8 @@ pub fn layout_i64(key: &str) -> i64 {
     cached(&C, key, || Static::get().ui_nested_i64("layout", key))
 }
 
-/// 双值 layout token（如 chip_size [w,h]；缺键回退入参；结果缓存）
-pub fn layout_vec2(key: &str, fallback: [f32; 2]) -> [f32; 2] {
-    static C: OnceLock<Mutex<HashMap<String, [f32; 2]>>> = OnceLock::new();
-    cached(&C, key, || {
-        Static::get()
-            .ui
-            .pointer(&format!("/layout/{key}"))
-            .and_then(|v| v.as_array())
-            .map(|a| {
-                let mut out = fallback;
-                for (i, slot) in out.iter_mut().enumerate() {
-                    if let Some(v) = a.get(i).and_then(|x| x.as_f64()) {
-                        *slot = v as f32;
-                    }
-                }
-                out
-            })
-            .unwrap_or(fallback)
-    })
-}
+// A009 #14：layout_vec2（chip_size 双值槽）已删——chip 宽自适应后仅消费高度，
+// token 改单值 layout.chip_height（零半死槽位）
 
 /// 圆角（ui.json radius.*；结果缓存）
 pub fn radius_px(key: &str) -> f32 {

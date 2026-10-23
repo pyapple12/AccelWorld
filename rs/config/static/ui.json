@@ -13,8 +13,7 @@
     "label": 15,
     "body": 14,
     "meta": 12,
-    "chip_label": 12,
-    "tiny": 11
+    "chip_label": 12
   },
   "radius": {
     "lg": 18,
@@ -24,12 +23,11 @@
   "layout": {
     "sidebar_width": 148,
     "slider_track": 24,
-    "chip_size": [116, 56]
+    "chip_height": 56
   },
   "colors": {
     "primary": "#E4B36A",
     "danger": "#E4756A",
-    "info": "#7FA3D1",
     "text_strong": "#E8EAF0",
     "text_muted": "#9AA1B2",
     "text_soft": "#A9B0C0",

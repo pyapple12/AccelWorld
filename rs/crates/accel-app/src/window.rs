@@ -23,6 +23,21 @@ fn default_window_rect() -> (f32, f32, f32, f32) {
     )
 }
 
+/// 启动几何恢复钳制（纯函数，A009 #6）：存档几何优先，宽高不足最小尺寸时钳到
+/// 下限——实证 winit 对 with_inner_size 创建期**不**施加 with_min_inner_size
+//（旧 100×100 存档原样创建窄窗，.temp tiny-geo 探针 125px 实证）；坐标原样保留
+fn clamped_restore_geometry(
+    saved: Option<(f32, f32, f32, f32)>,
+    default: (f32, f32, f32, f32),
+    min: (f32, f32),
+) -> (f32, f32, f32, f32) {
+    let (min_w, min_h) = min;
+    match saved {
+        Some((x, y, w, h)) => (x, y, w.max(min_w), h.max(min_h)),
+        None => default,
+    }
+}
+
 /// 应用句柄（eframe::App 实现）
 pub struct AppHandle {
     pub bus: Bus,
@@ -628,7 +643,7 @@ fn capture_window_png(hwnd: isize, path: &std::path::Path) -> bool {
         let hdc_mem = CreateCompatibleDC(Some(hdc_win));
         let hbmp = CreateCompatibleBitmap(hdc_win, w, h);
         let old = SelectObject(hdc_mem, hbmp.into());
-        // PW_RENDERFULLCONTENT = 0x2：采 DWM 合成后内容（Acrylic/玻璃管线必需）
+        // PW_RENDERFULLCONTENT = 0x2：采 DWM 合成后内容（UI 截图探针专用路径）
         let printed = PrintWindow(hwnd, hdc_mem, PRINT_WINDOW_FLAGS(0x2));
         let mut bmi = BITMAPINFO::default();
         bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
@@ -742,12 +757,19 @@ pub fn run_with_counter(
     let runtime = Arc::new(build_runtime());
     let iface = Arc::new(AppInterface::new());
 
-    // 窗口几何恢复（UIR.7）：用户存档 "x,y,w,h" 优先，缺档/非法回退 token 基准
+    // 窗口几何恢复（UIR.7）：用户存档 "x,y,w,h" 优先，缺档/非法回退 token 基准；
+    // A009 #6：恢复侧自行钳到最小尺寸下限（winit 创建期不施加 min_inner_size 实证）
     let base = accel_core::static_config::Static::get();
-    let (x, y, w, h) = iface
-        .get_window_geometry()
-        .and_then(|ref g| accel_core::interface::parse_window_geometry(g))
-        .unwrap_or_else(default_window_rect);
+    let (x, y, w, h) = clamped_restore_geometry(
+        iface
+            .get_window_geometry()
+            .and_then(|ref g| accel_core::interface::parse_window_geometry(g)),
+        default_window_rect(),
+        (
+            base.base_f64("window_min_width") as f32,
+            base.base_f64("window_min_height") as f32,
+        ),
+    );
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size(Vec2::new(w, h))
@@ -866,7 +888,8 @@ pub fn install_fonts(ctx: &Context) {
             .or_default()
             .insert(0, "cjk".into());
         // 数字族内的 CJK 回退（UIR：等宽数字串含「天/周」等汉字——Bahnschrift
-        // 无 CJK 字形，缺失时数字族渲染 tofu；中文族挂 Monospace 槽位 1 兜底）
+        // 无 CJK 字形，缺失时数字族渲染 tofu；中文族向 Monospace 族尾部追加
+        // cjk 兜底（内置等宽 Hack 之后，缺字形时才回落））
         fonts
             .families
             .entry(egui::FontFamily::Monospace)
@@ -993,7 +1016,15 @@ mod tests {
     fn startup_snapshot_pulled() {
         // A005 #2 回归：持久化的闹钟/常驻城市/倒计时目标/基准时区在装配期即入快照
         //（原实现为空起手 + 只等 ConfigSaved 重拉 → 启动后列表全空）
+        // A009 #20：临时目录 RAII（drop 即清——断言失败不残留 %TEMP%）
+        struct RemoveOnDrop(std::path::PathBuf);
+        impl Drop for RemoveOnDrop {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
         let dir = std::env::temp_dir().join(format!("accel_startup_{}", std::process::id()));
+        let _cleanup = RemoveOnDrop(dir.clone());
         std::fs::create_dir_all(&dir).expect("临时目录创建失败");
         let path = dir.join("user_config.json");
         let cfg = accel_core::settings::UserConfig {
@@ -1023,6 +1054,34 @@ mod tests {
             state.base_timezone.as_deref(),
             Some("Europe/Paris"),
             "基准时区应入启动快照"
+        );
+    }
+
+    #[test]
+    fn restore_geometry_clamped_to_min() {
+        // A009 #6 验收：旧小存档钳到最小尺寸；正常存档/缺档不受影响；坐标原样保留
+        assert_eq!(
+            clamped_restore_geometry(
+                Some((50.0, 50.0, 100.0, 80.0)),
+                (100.0, 100.0, 900.0, 500.0),
+                (520.0, 420.0)
+            ),
+            (50.0, 50.0, 520.0, 420.0),
+            "旧小存档钳到 min"
+        );
+        assert_eq!(
+            clamped_restore_geometry(
+                Some((-8.0, -8.0, 1100.0, 700.0)),
+                (100.0, 100.0, 900.0, 500.0),
+                (520.0, 420.0)
+            ),
+            (-8.0, -8.0, 1100.0, 700.0),
+            "正常存档（含负多屏坐标）原样"
+        );
+        assert_eq!(
+            clamped_restore_geometry(None, (100.0, 100.0, 900.0, 500.0), (520.0, 420.0)),
+            (100.0, 100.0, 900.0, 500.0),
+            "缺档回退 token 基准"
         );
     }
 

@@ -4,9 +4,10 @@
 
 use egui::{Sense, Vec2};
 
-/// chip 高度（layout.chip_size token 的 h；宽度自适应）
+/// chip 高度（layout.chip_height token——A009 #14 单值化，原 chip_size 双值槽的
+/// w 槽随 chip 宽自适应退化为半死位）
 pub fn chip_height() -> f32 {
-    crate::theme::layout_vec2("chip_size", [116.0, 56.0])[1]
+    crate::theme::layout_i64("chip_height") as f32
 }
 
 /// 自适应宽度（纯函数可测）：双行文案取宽者 + 内边距 20，钳 [64, 240]

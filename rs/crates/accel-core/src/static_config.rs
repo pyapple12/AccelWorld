@@ -106,7 +106,8 @@ impl Static {
 
 // ===== src/static_config.rs 说明区 =====
 // 输入：rs/config/static/{base,ui}.json（与 Python config/static/ 原文件 sha256 一致零改写）
-// 输出：Static 单例 + base 域全型访问器（f64/i64/str/str_list/bool）+ ui 域
+// 输出：Static 单例 + base 域全型访问器（f64/i64/str/str_list——A009 #11：bool
+//   访问器已随 A005 #15 删除，此处清单订正）+ ui 域
 //   str/ui_nested_i64（FIX007.10：ui 域零调用 f64 族访问器已删，余走 pointer 直取）
 // 逻辑步骤：include_str 编译期嵌入 → OnceLock get_or_init 首用解析 → 访问器按键取值
 // 设计理由：token 零硬编码原则的 Rust 承接——业务参数不进代码；访问器 panic 带键名

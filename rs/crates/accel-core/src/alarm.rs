@@ -149,7 +149,9 @@ pub struct AlarmDraft {
 
 impl Alarm {
     /// 草稿落库（Python 构造路径对等）：生成 id/created_at + 规范化 + 时间校验
-    /// 时间非法返回 None（Python 构造抛 ValueError 由调用方跳过的对等形态）
+    /// 时间非法返回 None（Python 构造抛 ValueError 由调用方跳过的对等形态）；
+    /// repeat_days 经 i64 域规范化（A009 #2：与装载路径 normalize_repeat_days
+    /// 同防御——总线是协议边界，越界/重复日不落盘，防「每周静默不响」）
     pub fn from_draft(draft: AlarmDraft) -> Option<Alarm> {
         if parse_alarm_hhmm(&draft.time).is_none() {
             tracing::warn!("闹钟时间格式非法，拒绝创建: {:?}", draft.time);
@@ -160,7 +162,7 @@ impl Alarm {
             time: draft.time,
             sound_type: draft.sound_type,
             sound_value: draft.sound_value,
-            repeat_days: draft.repeat_days,
+            repeat_days: normalize_i64_days(&draft.repeat_days),
             enabled: draft.enabled,
             id: gen_id(),
             created_at: now_iso(),
@@ -341,36 +343,42 @@ fn parse_created_at(text: &str) -> Option<NaiveDateTime> {
         .map(|d| d.naive_local())
 }
 
-/// repeat_days 规范化（Python __post_init__ 对等）：
-/// 布尔剔除（int(True)=1 穿透防御）/ 非整数浮点剔除 / 字符串强转失败剔除 /
-/// 越界 [0,6] 剔除 / 去重保序
-fn normalize_repeat_days(days: &[Value]) -> Vec<i64> {
+/// i64 日域规范化（A009 #2 单源）：越界 [0,6] 剔除 / 去重保序——from_draft 直入
+/// 路径与 normalize_repeat_days（Value 层宽容转换后）共用同一防御
+fn normalize_i64_days(days: &[i64]) -> Vec<i64> {
     let mut normalized: Vec<i64> = Vec::new();
-    for day in days {
-        let day_int = match day {
-            Value::Bool(_) => continue,
-            Value::Number(n) => {
-                if let Some(i) = n.as_i64() {
-                    i
-                } else {
-                    let f = n.as_f64().expect("数值变体必可取 f64");
-                    if f.fract() != 0.0 || f.abs() > 9_007_199_254_740_992.0 {
-                        continue;
-                    }
-                    f as i64
-                }
-            }
-            Value::String(s) => match s.parse::<i64>() {
-                Ok(i) => i,
-                Err(_) => continue,
-            },
-            _ => continue,
-        };
+    for &day_int in days {
         if (0..=6).contains(&day_int) && !normalized.contains(&day_int) {
             normalized.push(day_int);
         }
     }
     normalized
+}
+
+/// repeat_days 规范化（Python __post_init__ 对等）：
+/// 布尔剔除（int(True)=1 穿透防御）/ 非整数浮点剔除 / 字符串强转失败剔除 /
+/// 越界 [0,6] 剔除 / 去重保序（i64 域规范化委托 normalize_i64_days 单源）
+fn normalize_repeat_days(days: &[Value]) -> Vec<i64> {
+    let parsed: Vec<i64> = days
+        .iter()
+        .filter_map(|day| match day {
+            Value::Bool(_) => None,
+            Value::Number(n) => match n.as_i64() {
+                Some(i) => Some(i),
+                None => {
+                    let f = n.as_f64().expect("数值变体必可取 f64");
+                    if f.fract() != 0.0 || f.abs() > 9_007_199_254_740_992.0 {
+                        None
+                    } else {
+                        Some(f as i64)
+                    }
+                }
+            },
+            Value::String(s) => s.parse::<i64>().ok(),
+            _ => None,
+        })
+        .collect();
+    normalize_i64_days(&parsed)
 }
 
 /// serde 默认值：enabled 字段缺省为启用（Python dataclass default 对等）
@@ -415,7 +423,9 @@ fn now_iso() -> String {
 /// 闹钟管理器（Python AlarmManager 镜像）：上限 token / 同时间同标签去重 /
 /// 同分钟触发去重（仅内存，FIX001.21 P3#15 豁免延续）
 pub struct AlarmManager {
-    pub alarms: Vec<Alarm>,
+    /// 内部列表（A009 #12：pub(crate)——crate 外经 add/remove 等方法操作，
+    /// 不绕过上限与去重防御）
+    pub(crate) alarms: Vec<Alarm>,
     max_alarms: usize,
     /// alarm_id → "YYYY-MM-DD HH:MM"（含日期维度，跨天不误判，S8.1）
     last_triggered: HashMap<String, String>,
@@ -630,6 +640,32 @@ mod tests {
             "enabled": true, "id": id, "created_at": created,
             "sound_type": "preset", "sound_value": "classic",
         })
+    }
+
+    #[test]
+    fn from_draft_normalizes_repeat_days() {
+        // A009 #2 验收：总线草稿路径与装载路径同防御——越界/负值剔除、重复去重保序
+        let draft = AlarmDraft {
+            label: "norm".into(),
+            time: "07:30".into(),
+            sound_type: "preset".into(),
+            sound_value: "classic".into(),
+            repeat_days: vec![9, 2, 2, -1],
+            enabled: true,
+        };
+        let alarm = Alarm::from_draft(draft).expect("合法草稿应创建");
+        assert_eq!(alarm.repeat_days, vec![2], "越界剔除 + 去重保序");
+        // 合法值原样保留
+        let draft = AlarmDraft {
+            label: "norm2".into(),
+            time: "08:00".into(),
+            sound_type: "preset".into(),
+            sound_value: "classic".into(),
+            repeat_days: vec![1, 3, 5],
+            enabled: true,
+        };
+        let alarm = Alarm::from_draft(draft).expect("合法草稿应创建");
+        assert_eq!(alarm.repeat_days, vec![1, 3, 5]);
     }
 
     #[test]

@@ -207,27 +207,30 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                             .font(egui::FontId::monospace(crate::theme::font_size("body")))
                             .color(ink.muted),
                     );
-                    // 距条（相对周域；accent 填充 + 全域弱轨）；A008 #8：极窄窗负宽钳 0
+                    // 距条（相对周域；accent 填充 + 全域弱轨）；A008 #8：极窄窗负宽钳 0；
+                    // A009 #19：零宽跳过绘制（轨道不可见时不再画 4px 孤立金点）
                     let bar_w = (ui.available_width() - 110.0).max(0.0);
-                    let track = egui::Rect::from_min_size(
-                        egui::pos2(ui.cursor().left(), ui.cursor().center().y - 3.0),
-                        egui::vec2(bar_w, 6.0),
-                    );
-                    ui.painter().rect_filled(
-                        track,
-                        egui::epaint::CornerRadius::same(3),
-                        crate::theme::color32_at("ring_track", 70),
-                    );
-                    let lo = (d.t_min - week_min) / span;
-                    let hi = (d.t_max - week_min) / span;
-                    let mut fill = track;
-                    fill.min.x = track.left() + (bar_w * lo as f32);
-                    fill.max.x = track.left() + (bar_w * hi as f32).max(fill.min.x + 4.0);
-                    ui.painter().rect_filled(
-                        fill,
-                        egui::epaint::CornerRadius::same(3),
-                        crate::theme::accent_color(),
-                    );
+                    if bar_w > 0.0 {
+                        let track = egui::Rect::from_min_size(
+                            egui::pos2(ui.cursor().left(), ui.cursor().center().y - 3.0),
+                            egui::vec2(bar_w, 6.0),
+                        );
+                        ui.painter().rect_filled(
+                            track,
+                            egui::epaint::CornerRadius::same(3),
+                            crate::theme::color32_at("ring_track", 70),
+                        );
+                        let lo = (d.t_min - week_min) / span;
+                        let hi = (d.t_max - week_min) / span;
+                        let mut fill = track;
+                        fill.min.x = track.left() + (bar_w * lo as f32);
+                        fill.max.x = track.left() + (bar_w * hi as f32).max(fill.min.x + 4.0);
+                        ui.painter().rect_filled(
+                            fill,
+                            egui::epaint::CornerRadius::same(3),
+                            crate::theme::accent_color(),
+                        );
+                    }
                     ui.allocate_space(egui::vec2(bar_w + 10.0, 1.0));
                     ui.label(
                         egui::RichText::new(format!("{:.0}°/{:.0}°", d.t_min, d.t_max))

@@ -155,10 +155,8 @@ impl AppInterface {
         names
     }
 
-    /// 自动刷新周期 = 缓存 TTL × 1000（单源派生，E15）
-    pub fn get_weather_refresh_interval_ms() -> i64 {
-        Static::get().base_i64("weather_cache_ttl") * 1000
-    }
+    // A009 #9：get_weather_refresh_interval_ms 已删（app 零调用，缓存 TTL 单源
+    // weather_cache_ttl token 由 WeatherClient::new 直读）
 
     /// 切换天气城市（A005 #4 单城模型的城市选择）：城市须在天气城市表内，持久化 last_city
     /// 输入：城市名；输出：是否落盘成功（未知城市拒 false；同名视为已达成 true）
@@ -179,6 +177,8 @@ impl AppInterface {
     // ===== 时区域 =====
 
     /// 时区选项表（显示名, IANA 标识）
+    /// A009 #9 登记：生产零调用——保留为 Python 七域契约形态（timezones 表与
+    /// 夹具 n_tz 计数锚定；退役须连带夹具重生成，另立决策）
     pub fn get_timezone_options() -> Vec<(&'static str, &'static str)> {
         timezones::all()
             .iter()
@@ -225,19 +225,8 @@ impl AppInterface {
         self.alarms.lock().expect("闹钟锁中毒").alarms.clone()
     }
 
-    /// 按 ID 查找
-    pub fn get_alarm(&self, alarm_id: &str) -> Option<Alarm> {
-        self.alarms
-            .lock()
-            .expect("闹钟锁中毒")
-            .get_alarm(alarm_id)
-            .cloned()
-    }
-
-    /// 闹钟数量上限
-    pub fn get_max_alarms() -> usize {
-        Static::get().base_i64("max_alarms") as usize
-    }
+    // A009 #9：get_alarm / get_max_alarms 已删（app 经 AlarmsChanged 全量回推重建，
+    // 无单条直查面；上限由 AlarmManager 内部读 token）
 
     /// 触发检查（测试/调度共用入口；Python check_alarms 转发）
     pub fn check_alarms(&self, now: chrono::DateTime<Local>) -> Vec<Alarm> {
@@ -246,10 +235,7 @@ impl AppInterface {
 
     // ===== 城市域（PL012.10：城市表检索 + 常驻城市持久化）=====
 
-    /// 世界时钟城市表全量名（添加面板候选；世界时钟专用表，天气候选另用 data::cities）
-    pub fn get_world_cities() -> Vec<&'static str> {
-        world_cities::all_names()
-    }
+    // A009 #9：get_world_cities 已删（app 直取 data::world_cities——A005 #12 只读直取定案）
 
     /// 添加常驻城市（入参与落盘同为城市名——FIX007.2 域统一：原 IANA 存储丢失
     /// 同 tz 多城身份（加入大阪显示东京/加入上海被已常驻的北京吞掉）；城市名即
@@ -335,7 +321,8 @@ impl AppInterface {
             .countdown_targets
             .push(crate::settings::CountdownTarget {
                 name: name.to_string(),
-                at: at.format("%Y-%m-%d %H:%M:%S").to_string(),
+                // A009 #8：存储串格式单源 settings::format_date_text（原内联 format 漂移风险）
+                at: crate::settings::format_date_text(at.naive_local()),
             });
         settings::save(&self.config_path, &config)
     }
@@ -510,33 +497,30 @@ impl AppInterface {
                                 let ok = Alarm::from_draft(draft)
                                     .map(|alarm| self.alarms.lock().expect("闹钟锁中毒").add_alarm(alarm))
                                     .unwrap_or(false);
-                                if ok {
-                                    let _ = self.save_config_now();
-                                }
+                                let saved = if ok { self.save_config_now() } else { false };
                                 let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
+                                // A009 #5：落盘结果回推 ConfigSaved（失败不静默——与其余写命令同契约）
+                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok && saved)).await;
                             }
                             Some(FrontendCommand::RemoveAlarm(id)) => {
                                 let removed =
                                     self.alarms.lock().expect("闹钟锁中毒").remove_alarm(&id);
-                                if removed {
-                                    let _ = self.save_config_now();
-                                }
+                                let saved = if removed { self.save_config_now() } else { false };
                                 // A008 #4：不存在 id 同样回推现值，UI 不静默
                                 let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
+                                let _ = evt_tx.send(BackendEvent::ConfigSaved(removed && saved)).await;
                             }
                             Some(FrontendCommand::ReplaceAlarm(alarm)) => {
                                 let ok = self.alarms.lock().expect("闹钟锁中毒").replace_alarm(alarm);
-                                if ok {
-                                    let _ = self.save_config_now();
-                                }
+                                let saved = if ok { self.save_config_now() } else { false };
                                 let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
+                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok && saved)).await;
                             }
                             Some(FrontendCommand::ToggleAlarm(id)) => {
                                 let ok = self.alarms.lock().expect("闹钟锁中毒").toggle_alarm(&id);
-                                if ok {
-                                    let _ = self.save_config_now();
-                                }
+                                let saved = if ok { self.save_config_now() } else { false };
                                 let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
+                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok && saved)).await;
                             }
                             Some(FrontendCommand::SetWeatherCity(city)) => {
                                 let ok = self.set_weather_city(&city);
@@ -597,6 +581,14 @@ impl AppInterface {
                     _ = tick_sleep.as_mut() => {
                         let info = self.get_time_info();
                         if evt_tx.send(BackendEvent::Tick(info)).await.is_err() {
+                            // A009 #7：与 Quit 分支同款收尾（abort 在飞 + 关停调度）——
+                            // 事件通道先关时不留悬空的调度/在飞任务
+                            let mut inflight = self
+                                .weather_inflight
+                                .lock()
+                                .expect("天气在飞表锁中毒");
+                            inflight_abort_all(&mut inflight);
+                            let _ = sd_tx.send(true);
                             break;
                         }
                         // 周期到点后重排下一轮（截止时间绝对，与命令到达节奏解耦——A008 #1）
@@ -647,7 +639,10 @@ pub fn parse_window_geometry(text: &str) -> Option<(f32, f32, f32, f32)> {
         .collect::<Option<Vec<_>>>()?;
     let (x, y, w, h) = (nums[0], nums[1], nums[2], nums[3]);
     let finite = x.is_finite() && y.is_finite() && w.is_finite() && h.is_finite();
-    if !finite || w <= 0.0 || h <= 0.0 {
+    // A009 #6：上限域钳制——天文数字有限值（如 1e38）不落盘不入窗口创建
+    //（屏幕坐标/尺寸合理域 1e4 逻辑点，远超任何显示器组合）
+    let bounded = x.abs() <= 10_000.0 && y.abs() <= 10_000.0 && w <= 10_000.0 && h <= 10_000.0;
+    if !finite || !bounded || w <= 0.0 || h <= 0.0 {
         return None;
     }
     Some((x, y, w, h))
@@ -687,7 +682,10 @@ fn inflight_abort_all(map: &mut WeatherInflight) {
 //   与 tick 分支（绝对截止时间，倍率变化比较后 reset 重排）并发
 // 设计理由：对齐 Python AppInterface 七域契约方法名（get_time_info/get_rate/
 //   set_rate/apply_rate/get_city_names/get_ui_preferences/...；fetch_weather
-//   拉取式残留已删——A008 #7，总线 RefreshWeather 为唯一天气入口），
+//   拉取式残留已删——A008 #7，总线 RefreshWeather 为唯一天气入口；A009 #9 再删
+//   get_weather_refresh_interval_ms/get_alarm/get_max_alarms/get_world_cities
+//   四转发——app 只读直取/全量回推重建；get_timezone_options 登记保留：timezones
+//   表与夹具 n_tz 计数锚，退役须连带夹具另立决策），
 //   Python 拉取式 + Rust 推送式并存：同步查询供 UI 直拉（Python 习惯对等物），
 //   总线供帧循环 drain（z.plan 修订一信号接口）；tick 用绝对截止时间而非
 //   每轮重建 sleep（A008 #1：命令快于 tick 周期时 sleep 重建会被饿死，
@@ -745,7 +743,7 @@ mod tests {
 
     #[test]
     fn three_domain_sync_queries() {
-        // 三域拉取走通：时钟快照形态/倍率域/天气派生周期
+        // 三域拉取走通：时钟快照形态/倍率域
         let sandbox = SandboxDir::new("sync");
         let path = sandbox.path();
         let itf = iface(&path);
@@ -754,7 +752,6 @@ mod tests {
         assert_eq!(info.day_hours, 48, "默认倍率 2.0 → 48 时日长");
         assert_eq!(itf.get_rate(), 2.0);
         assert_eq!(AppInterface::get_rate_bounds(), (1.0, 20.0));
-        assert_eq!(AppInterface::get_weather_refresh_interval_ms(), 1_800_000);
         // 版本经 base.json 单源转出（四段式形态；值本体不在代码内）
         let version = AppInterface::get_version();
         assert_eq!(
@@ -806,9 +803,6 @@ mod tests {
         assert_eq!(prefs.theme, "auto", "非法主题应归一化回退默认");
         assert_eq!(prefs.last_city, "上海");
         assert_eq!(itf.get_world_pins().len(), 8);
-        let tz = AppInterface::get_timezone_options();
-        assert_eq!(tz.len(), 8);
-        assert_eq!(tz[0], ("北京 (UTC+8)", "Asia/Shanghai"));
     }
 
     #[test]
@@ -891,6 +885,8 @@ mod tests {
             },
             Duration::from_secs(5),
             Duration::from_secs(3600),
+            7,
+            24,
         );
         let itf = Arc::new(iface(&path).with_weather(client));
         let (cmd_tx, mut evt_rx) = AppInterface::spawn(itf);
@@ -1008,11 +1004,21 @@ mod tests {
         assert_eq!(fired_once, 1, "一次性闹钟应恰触发一次");
         assert!(disabled_push, "一次性触发后应回推禁用列表");
         assert!(
-            !itf.get_alarm("once1").expect("在表").enabled,
+            !itf.alarms
+                .lock()
+                .expect("闹钟锁中毒")
+                .get_alarm("once1")
+                .expect("在表")
+                .enabled,
             "一次性应已禁用"
         );
         assert!(
-            itf.get_alarm("rep1").expect("在表").enabled,
+            itf.alarms
+                .lock()
+                .expect("闹钟锁中毒")
+                .get_alarm("rep1")
+                .expect("在表")
+                .enabled,
             "重复闹钟保持启用"
         );
 
@@ -1061,6 +1067,16 @@ mod tests {
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].time, "07:30");
         assert_eq!(itf.get_alarms().len(), 1, "同步反查一致");
+        // A009 #5：落盘结果回推 ConfigSaved(true)
+        let mut saved_ok = false;
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            if matches!(evt_rx.recv().await, Some(BackendEvent::ConfigSaved(true))) {
+                saved_ok = true;
+                break;
+            }
+        }
+        assert!(saved_ok, "成功添加应回推 ConfigSaved(true)");
         // 落盘复载
         let config = settings::load(&path);
         assert_eq!(config.alarms.len(), 1);
@@ -1262,11 +1278,16 @@ mod tests {
 
     #[test]
     fn world_cities_domain_query() {
-        // .10 验收：世界时钟城市表经 interface 检索（50 城 + 锚点；FIX007.11 表述校正）
-        let names = AppInterface::get_world_cities();
+        // .10 验收：世界时钟城市表经 data 直取（A009 #9：interface 转发已删——
+        // A005 #12 只读直取定案；50 城 + 锚点 + 上限 token 锚点）
+        let names = crate::data::world_cities::all_names();
         assert_eq!(names.len(), 50, "世界时钟城市表 50 城（PL012.09 落位实测）");
         assert!(names.contains(&"纽约"));
-        assert_eq!(AppInterface::get_max_alarms(), 10);
+        assert_eq!(
+            Static::get().base_i64("max_alarms"),
+            10,
+            "闹钟上限 token 锚点"
+        );
     }
 
     #[test]
@@ -1303,6 +1324,18 @@ mod tests {
             parse_window_geometry("1e39,1e39,1e39,1e39"),
             None,
             "科学计数溢出 f32（→inf）拒"
+        );
+        // A009 #6：上限域钳制——天文有限值不落盘不入窗口创建
+        assert_eq!(parse_window_geometry("1e38,10,900,500"), None, "坐标超域拒");
+        assert_eq!(
+            parse_window_geometry("100,100,20000,500"),
+            None,
+            "宽度超域拒"
+        );
+        assert_eq!(
+            parse_window_geometry("-20000,100,900,500"),
+            None,
+            "坐标负向超域拒"
         );
     }
 
@@ -1351,6 +1384,16 @@ mod tests {
         }
         assert!(pushed_empty, "失败添加也应回推（空）列表");
         assert!(itf.get_alarms().is_empty(), "非法草稿不得入表");
+        // A009 #5：失败同样回推 ConfigSaved(false)（拒绝不落盘不静默）
+        let mut rejected_saved = false;
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            if matches!(evt_rx.recv().await, Some(BackendEvent::ConfigSaved(false))) {
+                rejected_saved = true;
+                break;
+            }
+        }
+        assert!(rejected_saved, "失败添加应回推 ConfigSaved(false)");
         // 不存在 id 移除同样回推
         cmd_tx
             .send(FrontendCommand::RemoveAlarm("ghost".into()))

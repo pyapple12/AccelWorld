@@ -263,6 +263,15 @@
 5. 文档一致性：城市表职责表述七处清扫（README/w.study/说明区族）、drain 返回值口径删除、Cargo.toml 依赖说明订正、AGENTS 配置与日志表述随新基准同步三条 ✅
 6. 审计闭环：A007 报告归档 + 观察项 2 条提升为修复项、9 条定案豁免；四关卡 ALL_GREEN + 测试 186 通过（较修复前 173 增 13）+ 真窗探针 + 离屏渲染探针全绿；反向验收 17 项逐条三重口径（.temp/verify_fix007_accept.md） ✅
 
+## 版本 0.6.1.2 的 MileStone（A009 审计修复：闹钟重复日静默失效与旧存档窄窗启动等 20 条，2026-10-24 发布）
+
+1. 正确性与防御三项：总线闹钟草稿 repeat_days 与装载路径同防御（normalize_i64_days 单源——越界/重复日持久化致闹钟每周静默不响根治）；窗口几何存档补 1e4 上限域，**实证 winit 对 with_inner_size 创建期不施加 with_min_inner_size**（tiny-geo 真窗探针：旧 100×100 存档原样创建 125px 窄窗）→ 新增 clamped_restore_geometry 恢复侧钳制（修复后 650×525 @1.25 DPI）；非 Windows 热键桩删 Theme 残留变体（原匹配不穷尽即编译失败） ✅
+2. 契约与可观测性四项：闹钟四命令落盘失败回推 ConfigSaved（与其余写命令契约对齐）；tick 分支事件通道先关时复用 Quit 收尾（abort 在飞 + 关停调度）；倒计时落盘格式复用 format_date_text 单源；零调用契约 API 裁决（删四转发，get_timezone_options/format_weather_info 双登记保留——timezones 夹具锚/parity 契约） ✅
+3. 配置卫生五项：weather_forecast_days/hours token 化（原 URL 字面量）；scale.tiny 死键删 + chip_size→chip_height 单值（layout_vec2 随删）；Ink.info 字段与 colors.info 键删；pollster 死依赖删（含 workspace 根定义）；AlarmManager.alarms 收敛 pub(crate) ✅
+4. 前端细节四项：温度距条零宽跳过绘制（孤点根除）；雷暴图标闪电收至 0.80r（留边纪律）；闹钟非法时间提示恒占位（跳版根除）；世界页昼夜 6-18 阈值注释登记 ✅
+5. 文档与流程收口：README 三态主题/Ctrl+T 失实五处改仅深色口径、配置/日志路径改 exe 基准、项目结构清单订正；w.study 3.7 三处随定案订正；m.milestone 规划节浅色条作废注记；**「UI 行为变更固定连带清单」（README 四节 + w.study 3.7 + m.milestone 规划节 + ui.json 死键）落入 AGENTS「操作注意」节**；ThemePref 三态契约「仅存档」登记永久豁免 ✅
+6. 审计闭环：A009 报告归档（含 winit 实证补录）；四关卡 ALL_GREEN + 测试 187 通过（app 58 + bin 1 + core 108 + parity 20，较 FIX008 后 185 净增 2）+ 真窗 fps 探针 60/6s + 截图六帧 + tiny-geo 前后对比实证；反向验收 .temp/verify_fix009_accept.md ✅
+
 ## 版本 0.6.1.1 的 MileStone（A008 审计修复：界面推倒重塑后首轮全量体检 19 条，2026-10-24 发布）
 
 1. 正确性两项：拖动倍率滑杆走秒冻结根治（后台 tick 由「每轮重建 sleep」改绝对截止时间——命令快于 tick 周期时 Tick 被饿死，含命令爆发期单测锁死）；浅色主题失效经用户定案**仅深色**收口（浅色 visuals/三态偏好/设置浮窗主题段/Ctrl+T 热键/色板 8 死键整体退役，ThemePref 配置域保留存档） ✅
@@ -282,6 +291,6 @@
 ## 后续版本的 MileStone（暂不定版本号）
 
 1. 已知问题排查（y.problems#9-#11，均 P3、不阻塞功能）：winit 退出与定位偏移、GPU 黑窗竞态（#12 Bahnschrift 已随 UIR 根治）
-2. UI 雕刻延续（UIR 基础上按需迭代）：观感细节打磨（用户真机走查反馈驱动）、浅色主题色板实测校准
+2. UI 雕刻延续（UIR 基础上按需迭代）：观感细节打磨（用户真机走查反馈驱动）；浅色主题已随 0.6.1.1 仅深色定案作废，如需恢复另立产品决策
 3. 中大型项候选（需 OpenSpec 提案流程）：多语言界面、自定义城市、发布打包评估
 4. 长期愿景：数据统计可视化、云端配置同步等随大版本规划评估

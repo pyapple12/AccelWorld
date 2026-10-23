@@ -1,8 +1,8 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告 + Rust 重构总纲）
-> 当前版本：0.6.1.1（FIX008 审计修复完成：拖动走秒冻结/浅色主题定案仅深色/天气图标随码等 19 条；PL015 已收口，不做人工测试与定版仪式）
-> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页（+ 设置浮窗）功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；FIX007 已随 c914b74 提交、UIR 已随 a60cc09 提交，当前阶段为 A008 审计修复（FIX008）
+> 当前版本：0.6.1.2（FIX009 审计修复完成：闹钟重复日静默失效根治/旧存档窄窗启动钳制（winit min 尺寸实证）/README 口径收口等 20 条；PL015 已收口，不做人工测试与定版仪式）
+> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页（+ 设置浮窗）功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；FIX007/UIR/FIX008 均已提交推送（c914b74/a60cc09/fd04683），当前阶段为 A009 审计修复（FIX009）
 > 更新（2026-10-17）：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow——UIR 定案 wgpu 废弃）；Python 版全量归档 `.archived/`（git 忽略），本文件自 PL011 起记录 RS 任务
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
 
@@ -545,3 +545,32 @@ ACCELWORLD_UI_SHOT=<目录> cargo run -p accel-app
 - [x] FIX008.18 [P3] 托盘倍率菜单 set_text 镜像跳过 —— platform/tray.rs:88 镜像上次倍率文本，未变化跳过（对齐 tooltip 同款）；验证：真窗托盘观察 + 倍率变化仍即时更新（2026-10-24 完成：last_rate_text 镜像）
 - [x] FIX008.19 [P3] bus.rs Tick 回退改读 token【★提升项】 —— bus.rs:142 `unwrap_or(100)` 改读 `Static::get().base_i64("clock_tick_ms")`；验证：rg 双源零命中 + 既有单测全绿（2026-10-24 完成：repaint_fallback_reads_token 绿）
 - [x] FIX008.20 收尾 —— 四关卡全绿（pwsh rs/ci.ps1：fmt/clippy -D warnings/test/依赖树零 egui）+ `cargo test --workspace` 结果行全量显示 + 真窗探针 exit 0 + 截图自检 + 文档同步（z.plan A008 状态行翻转、m.milestone 条目）+ commit 草案（禁轮次字样，标题只写改了什么）；验证：四关卡 ALL_GREEN（2026-10-24 完成：ALL_GREEN + 185 测试 + fps 探针 55/6s + 截图六帧；m.milestone 条目随提交环节版本定案补记）
+
+### FIX009: 第 9 轮审计修复 [audit#A009]
+
+> 范围：A009 二十条（P2×3 / P3×17）。修复完成后按规范 bump 版本（fix 类型 patch 位 +1）。**UI 行为变更固定连带清单**（#3 定案）：README 特性/使用说明/项目结构三节 + w.study 3.7 + m.milestone「后续版本」规划节。
+> - **完成（2026-10-24）**：20 条 + 收尾全落地。**#6 真机实证抓到真问题**——winit 对 with_inner_size 创建期**不施加** with_min_inner_size（旧 100×100 存档原样创建 125px 窄窗，tiny-geo 探针实证），新增 clamped_restore_geometry 恢复侧钳制（修复后 650×525 = 520×420 逻辑点 @1.25 DPI）；#9 裁决：删四转发（get_weather_refresh_interval_ms/get_alarm/get_max_alarms/get_world_cities），get_timezone_options 保留登记（timezones 表+n_tz 夹具锚）、format_weather_info 保留登记（parity 契约）；#10 base.json 新增 weather_forecast_days/hours 两键（WeatherClient 字段化注入）；#14 chip_size→chip_height 单值（layout_vec2 删）；#3 固定连带清单落 AGENTS「操作注意」节。
+> - **验证**：`pwsh rs/ci.ps1` 四关卡 ALL_GREEN；**测试 187 通过**（app 58 + bin 1 + core 108 + parity 20，较 FIX008 后 185 净增 2：from_draft 规范化/restore 钳制）；真窗 fps 探针 60/6s + 截图六帧全 ok（.temp/ui_shots_fix009/）+ 旧小存档钳制前后对比 125x125→650x525
+> - **反向验收**：`.temp/verify_fix009_accept.md`（20 项三重口径；人工走查 2 项 + 非 Win 交叉编译受限 1 项如实标注）
+
+- [x] FIX009.1 [P2] 非 Windows 热键桩 Theme 残留 —— accel-app/src/platform/mod.rs:47-51 桩枚举删 `Theme` 变体对齐 Windows 侧两键；同步订正桩头注「同接口零分叉」与 hotkey.rs:104 说明区前提表述；验证：非 Windows 目标 `cargo check -p accel-app` 无 E0004（2026-10-24 完成：桩/真实枚举同形 + rg 锚定；交叉编译受限环境如实标注）
+- [x] FIX009.2 [P2] from_draft 不规范化 repeat_days —— accel-core/src/alarm.rs:150-168：从 normalize_repeat_days 拆出 `normalize_i64_days(&[i64]) -> Vec<i64>` 供 from_draft 内联调用（from_json_value 路径不变），订正注释「规范化」与实现一致；验证：单测——AddAlarm 带 `[9,2,2,-1]` 草稿落盘为 `[2]`、越界闹钟不再静默不响；既有装载路径测试全绿（2026-10-24 完成：from_draft_normalizes_repeat_days 绿）
+- [x] FIX009.3 [P2] README 三态主题/Ctrl+T 失实组 —— README.md:31（深浅两套→单一深色实心主题）、:38（三态主题条整行改写或删）、:39/:86（热键删 Ctrl+T 主题）、:80（切换主题段改仅深色口径）；并将「README 三节 + w.study 3.7 + m.milestone 规划节」写入 AGENTS 或本文件作为 UI 行为变更固定连带清单；验证：rg `三态|Ctrl\+T|浅色` README.md 零命中（2026-10-24 完成：五处改写 + 清单落 AGENTS「操作注意」节）
+- [x] FIX009.4 [P3] 文档清扫漏网族（一次收口） —— w.study.md:130-132（深浅两套/switch/钉色随主题）；README.md:90-91,152（配置/日志路径改 exe 同目录基准）、:114（删 switch）、:112（补 lib.rs）；m.milestone.md:285（删「浅色主题色板实测校准」或注明已随仅深色定案作废）；x.progress.md:5（状态行改「FIX008 已随 fd04683 提交」）；icons.rs:6,403（Dock→侧栏）；window.rs:631（删 Acrylic/玻璃管线口径）；window.rs:869（Monospace 槽位序号订正）；bus.rs:48（SetTheme 注释改「ThemePref 仅存档」）+ :124（`ConfigSaved(_ok)` 改名去下划线）；验证：rg 关键词零命中 + 四关卡（2026-10-24 完成：全清单落地）
+- [x] FIX009.5 [P3] 闹钟落盘失败回推 ConfigSaved —— accel-core/src/interface.rs:506-539 四分支改 `let saved = self.save_config_now();` 且失败不吞（`if ok { ... } let _ = evt_tx.send(ConfigSaved(ok && saved))` 或按契约恒回推现值+ConfigSaved）；验证：单测——配置路径只读（SandboxDir 只读挂载或权限注入）时 AddAlarm 仍收到 ConfigSaved(false)（2026-10-24 完成：四分支 saved 回推；crud 测试增 true 断言/rejection 测试增 false 断言双绿）
+- [x] FIX009.6 [P3] 几何存档无上限 —— accel-core/src/interface.rs:650 parse_window_geometry 补上限域钳制（如 |x|,|y|≤1e4、w,h≤1e4，超界回退 None）；恢复侧与 window_min_* 关系真机验证：构造 `10,10,100,100` 旧存档启动，确认窗口创建即 ≥520×420（winit 行为记录进 y.problems 或代码注释）；验证：单测超界用例 → None + 真窗旧小存档启动不塌负宽（2026-10-24 完成：parse 三条超域用例；**真机实证 winit 不施加 min**→恢复侧 clamped_restore_geometry 钳制 + 三例单测 + tiny-geo 前后 125x125→650x525 实证）
+- [x] FIX009.7 [P3] tick 分支退出收尾对称 —— accel-core/src/interface.rs:597-601：evt_tx.send 失败 break 前复用 Quit 收尾块（abort 在飞天气任务 + 置 sd_tx）；验证：单测——先 drop evt_rx 再 Quit，闹钟调度任务终止（watch 已变）且在飞表清空（2026-10-24 完成：内联同款收尾；watch 私有黑盒不可观察，以与 Quit 同构 + 既有 Quit 测试背书，注记如实）
+- [x] FIX009.8 [P3] 倒计时落盘格式复用单源 —— accel-core/src/interface.rs:338 改调 `settings::format_date_text(at.naive_local())`；验证：rg `%Y-%m-%d %H:%M:%S` 仅 settings.rs 一处 + 既有倒计时落盘测试全绿（2026-10-24 完成）
+- [x] FIX009.9 [P3] 零调用契约 API 裁决 —— accel-core/src/interface.rs:159,182,229,238,250 与 weather.rs:261,264-277：逐个删除（get_alarm 若测试依赖改测试直入 manager），或对照 world_cities.json 先例在说明区登记「Python 七域契约形态保留」；验证：rg 零调用零命中（或登记在位）+ 全量测试绿（2026-10-24 完成：删四转发+测试直查；get_timezone_options/format_weather_info 双登记；说明区同步）
+- [x] FIX009.10 [P3] 天气采样参数 token 化 —— accel-core/src/weather.rs:417-424 `forecast_days=7`/`forecast_hours=24` 改读 base.json 新键 `weather_forecast_days`/`weather_forecast_hours`（custom() 构造注入）；验证：单测 URL 构造含 token 值 + parity 天气样本全绿（2026-10-24 完成：struct 字段化 + 4 调用点补参；parity 61 样本绿）
+- [x] FIX009.11 [P3] static_config 说明区 bool 订正 —— accel-core/src/static_config.rs:109 删「/bool」字样；验证：rg 说明区与访问器清单一致（2026-10-24 完成）
+- [x] FIX009.12 [P3] AlarmManager.alarms 收敛 —— accel-core/src/alarm.rs:418 `pub alarms` 改 `pub(crate)`（interface/测试同 crate 可达，crate 外不可直写）；验证：cargo check 全绿 + clippy 零警告（2026-10-24 完成）
+- [x] FIX009.13 [P3] pollster 死依赖删除 —— rs/crates/accel-app/Cargo.toml:16 删 pollster 行 + 说明区 :40 同步；验证：cargo tree 无 pollster + 全量构建绿（2026-10-24 完成：app 依赖行 + workspace 根定义 + 说明区三处删）
+- [x] FIX009.14 [P3] ui.json scale.tiny 死键与 chip_size 半死槽 —— 删 ui.json `"tiny": 11`；`chip_size` 处置（删 w 槽改单值 h=56，或登记 chip 宽自适应只取 h 的注释）；验证：token 对账零死键 + 截图探针六帧无回归（2026-10-24 完成：tiny 删 + chip_height 单值 + layout_vec2 删 + chip.rs 改读）
+- [x] FIX009.15 [P3] Ink.info 悬空裁决 —— accel-app/src/theme.rs:84 删 `info` 字段 + ui.json 删 `colors.info`，或将 info 接线天气要素行（降水概率展示回归）；验证：rg `Ink.info|colors.info` 零悬空 + 全量构建绿（2026-10-24 完成：字段+键双删）
+- [x] FIX009.16 [P3] 昼夜阈值配置化或登记 —— accel-app/src/pages/world.rs:21 `(6..18)` 改读 base.json 新键（day_hour_start/end）或注释登记「纯展示启发式」；验证：rg 阈值在位形态 + 世界页昼夜图标正常（2026-10-24 完成：注释登记路线）
+- [x] FIX009.17 [P3] Storm 图标底部留边 —— accel-app/src/widgets/icons.rs:223-231 闪电末端 0.88r 收至 ≤0.80r；验证：单测几何锚点（末端 y ≤ center+0.80r）+ 截图探针 40px hero 无贴边（2026-10-24 完成：0.80r + 注释锚定；截图帧 03 无回归）
+- [x] FIX009.18 [P3] alarm 红字跳版处置 —— accel-app/src/pages/alarm.rs:114-120：真机走查若可感则改恒占位（红字行常驻、未非法时 `Visibility::Invisible`）；验证：真窗输入非法→列表首行不动（人工走查项）（2026-10-24 完成：直接恒占位——allocate_exact_size 固定高 + 条件绘制，跳版根除；观感终审真机）
+- [x] FIX009.19 [P3] weather 距条零宽孤点 —— accel-app/src/pages/weather.rs:211-225 `bar_w <= 0.0` 时跳过轨道与填充绘制；验证：单测或真窗极窄容器（≤min 宽前窗口已钳制，属防御）无孤立金点（2026-10-24 完成：if bar_w > 0.0 跳过，占位保留）
+- [x] FIX009.20 [P3] window.rs 测试目录 RAII —— accel-app/src/window.rs:996-1027 补 remove_dir_all 或 RAII guard（对照 logging.rs:163-179 样板）；验证：测试后 %TEMP% 无 accel_startup_* 残留（2026-10-24 完成：RemoveOnDrop guard）
+- [x] FIX009.21 收尾 —— 四关卡全绿（pwsh rs/ci.ps1）+ `cargo test --workspace` 结果行全量显示 + 真窗探针 exit 0 + 截图自检 + 反向验收 .temp/verify_fix009_accept.md + 文档同步（z.plan A009 状态行翻转、m.milestone 条目）+ commit 草案（禁轮次字样，标题只写改了什么）；验证：四关卡 ALL_GREEN（2026-10-24 完成：ALL_GREEN + 187 测试 + fps 60/6s + 截图六帧 + tiny-geo 钳制实证；m.milestone 条目随提交环节版本定案补记）

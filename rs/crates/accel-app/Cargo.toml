@@ -13,7 +13,6 @@ accel-core = { path = "../accel-core" }
 serde_json = { workspace = true }
 eframe = { workspace = true }
 egui = { workspace = true }
-pollster = { workspace = true }
 image = { workspace = true }
 chrono = { workspace = true }
 tokio = { workspace = true }
@@ -37,8 +36,9 @@ serde_json = { workspace = true }
 # version = "0.6.0"：对齐产品版本段 0.6.1（semver 三段上限）；显示版本经 build.rs
 #   从 rs/config/static/base.json 注入（版本单一来源，本文件不随四段位 bump）
 # 依赖（全部走 workspace.dependencies）：accel-core（单向分层，CI 关卡 4 强制）+
-#   eframe(glow)/egui/pollster/image/chrono/tokio/tracing 三件/chrono-tz/
+#   eframe(glow)/egui/image/chrono/tokio/tracing 三件/chrono-tz/
 #   raw-window-handle + Windows 档 windows/tray-icon/global-hotkey/
 #   tauri-winrt-notification；serde_json 为 build.rs 版本注入专用
 #   （FIX007.11 订正：原「PL011 占位」表述过时，rodio 属 accel-core 不在本 crate；
-#   A008 #6 订正：wgpu/egui-wgpu 已随 UIR 拆除，渲染器为 eframe glow）
+#   A008 #6 订正：wgpu/egui-wgpu 已随 UIR 拆除，渲染器为 eframe glow；
+#   A009 #13：pollster 零源引用已删——UIR 拆 wgpu 后的残留）

@@ -110,12 +110,20 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                     state.alarm_draft_time.clear();
                 }
             });
-            // 非法时间红字提示（已输入才显——对照 countdown 页内联校验同语言）
+            // 非法时间红字提示（A009 #18：恒占位防跳版——高度固定预留，文字条件
+            // 绘制；条件插入行会使下方列表一次性下移 ≈18px 再回跳）
+            let hint_h = crate::theme::font_size("meta") * 1.6;
+            let (hint_rect, _) = ui.allocate_exact_size(
+                egui::vec2(ui.available_width(), hint_h),
+                egui::Sense::hover(),
+            );
             if !state.alarm_draft_time.is_empty() && !valid_hhmm(&state.alarm_draft_time) {
-                ui.label(
-                    egui::RichText::new("时间格式应为 HH:MM（如 07:30）")
-                        .size(crate::theme::font_size("meta"))
-                        .color(ink.danger),
+                ui.painter().text(
+                    egui::pos2(hint_rect.left(), hint_rect.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    "时间格式应为 HH:MM（如 07:30）",
+                    egui::FontId::proportional(crate::theme::font_size("meta")),
+                    ink.danger,
                 );
             }
             ui.add_space(10.0);

@@ -45,7 +45,7 @@ pub struct UiState {
     pub weather_errors: HashMap<String, String>,
     /// 闹钟列表快照（AlarmsChanged 全量回推）
     pub alarms: Vec<accel_core::alarm::Alarm>,
-    /// 会话偏好（启动时拉取；SetTheme 回推前本地即改——乐观更新）
+    /// 会话偏好（启动时拉取；ThemePref 仅存档——A008 #2 定案仅深色，app 侧零消费）
     pub prefs: UiPreferences,
     /// 设置浮窗开合（.10）
     pub settings_open: bool,
@@ -121,8 +121,8 @@ impl UiState {
                 tracing::info!("闹钟触发: {}（{}）", alarm.label, alarm.time);
             }
             BackendEvent::AlarmsChanged(list) => self.alarms = list,
-            BackendEvent::ConfigSaved(_ok) => {
-                self.save_ack = _ok;
+            BackendEvent::ConfigSaved(ok) => {
+                self.save_ack = ok;
             }
             BackendEvent::RateChanged(rate) => self.rate = rate,
             // A005 #19：拒绝事件只记日志——rate 由 drain 侧回拉权威值修正（乐观更新回退）

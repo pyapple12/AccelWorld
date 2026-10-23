@@ -18,6 +18,8 @@ pub fn now_in_tz(utc: DateTime<chrono::Utc>, tz: &str) -> Option<(String, bool)>
             local.minute(),
             local.second()
         ),
+        // 昼夜启发式（A009 #16 登记：纯展示用固定阈 6-18 时——非业务参数，
+        // 无调参场景；走时数值本身恒按真实时区计算，与本标记无关）
         (6..18).contains(&hour),
     ))
 }

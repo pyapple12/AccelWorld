@@ -3,7 +3,7 @@
 
 use egui::{Color32, Painter, Pos2, Stroke, Vec2};
 
-/// 图标集（Dock 五页 + 通用操作 + 昼夜指示）
+/// 图标集（侧栏五页 + 通用操作 + 昼夜/天气现象指示）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Icon {
     /// 时钟（表盘 + 指针）
@@ -225,7 +225,8 @@ pub fn draw(painter: &Painter, center: Pos2, size: f32, icon: Icon, color: Color
                     egui::pos2(center.x + r * 0.12, center.y + r * 0.16),
                     egui::pos2(center.x - r * 0.14, center.y + r * 0.50),
                     egui::pos2(center.x + r * 0.08, center.y + r * 0.50),
-                    egui::pos2(center.x - r * 0.16, center.y + r * 0.88),
+                    // A009 #17：末端收至 0.80r——加半线宽后仍满足「四周 ≥1px」留边纪律
+                    egui::pos2(center.x - r * 0.14, center.y + r * 0.80),
                 ],
                 st,
             ));
@@ -400,7 +401,7 @@ pub fn draw(painter: &Painter, center: Pos2, size: f32, icon: Icon, color: Color
 // 逻辑步骤：stroke 宽随 size 缩放（size×0.09，下限 1.2）→ 各图标以
 //   circle/line/arc 采样折线组合（arc_points 24 段内半径弦差可忽略）
 // 设计理由：UIR 重塑定案——原 ⚙＋－☀☾ 文本字符图标跨设备字体回落不一致，
-//   且与玻璃质感割裂；矢量绘制零字体依赖、随主题语义色、随 Dock 缩放；
+//   且与玻璃质感割裂；矢量绘制零字体依赖、随侧栏缩放；
 //   月牙用厚弧（stroke=0.42r）而非双圆布尔（epaint 无减法，路径解算过重）
 // 异常处理：无 panic 面（纯几何）；size 过小时线宽下限 1.2 保可辨识
 // 关联依赖：egui Painter/Shape；消费方：window.rs 侧栏/widgets::icon_button/各页

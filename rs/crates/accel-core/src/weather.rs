@@ -261,6 +261,8 @@ fn scalar_code_key(v: &Value) -> i64 {
 pub const WEATHER_FAIL_TEXT: &str = "天气信息获取失败";
 
 /// 展示文本拼装（Python format_weather_info 对等，格式逐字符对齐）
+/// A009 #9 登记：生产零调用——parity 契约消费（夹具快照的 Python 文本格式对齐锁），
+/// 非死代码
 pub fn format_weather_info(weather: Option<&WeatherData>, city_name: &str) -> String {
     let Some(w) = weather else {
         return WEATHER_FAIL_TEXT.to_string();
@@ -326,6 +328,9 @@ pub struct WeatherClient {
     cache: Mutex<HashMap<String, (Instant, WeatherData)>>,
     ttl: Duration,
     retry_spec: RetrySpec,
+    /// 采样参数（A009 #10 token 化：原 URL 字面量 forecast_days=7/forecast_hours=24）
+    forecast_days: i64,
+    forecast_hours: i64,
 }
 
 impl Default for WeatherClient {
@@ -336,8 +341,9 @@ impl Default for WeatherClient {
 }
 
 impl WeatherClient {
-    /// 生产构造：base 固定官方接口，TTL/超时/重试参数全部取 base.json token
-    /// （FIX007.9：TTL 单源于 token——原 DEFAULT_CACHE_TTL 字面量双源已删）
+    /// 生产构造：base 固定官方接口，TTL/超时/重试/采样参数全部取 base.json token
+    /// （FIX007.9：TTL 单源于 token——原 DEFAULT_CACHE_TTL 字面量双源已删；
+    /// A009 #10：采样参数同 token 化）
     pub fn new() -> Self {
         let base = Static::get();
         let timeout = Duration::from_secs_f64(base.base_f64("weather_timeout_s"));
@@ -351,12 +357,21 @@ impl WeatherClient {
             retry_spec,
             timeout,
             ttl,
+            base.base_i64("weather_forecast_days"),
+            base.base_i64("weather_forecast_hours"),
         )
     }
 
-    /// 测试构造：注入 base/重试规格/超时/缓存 TTL（httpmock 桩服务用）
+    /// 测试构造：注入 base/重试规格/超时/缓存 TTL/采样参数（httpmock 桩服务用）
     /// FIX007.9：TTL 改由调用方注入（原 DEFAULT_CACHE_TTL 与 token 同值双源漂移风险）
-    pub fn custom(base: String, retry_spec: RetrySpec, timeout: Duration, ttl: Duration) -> Self {
+    pub fn custom(
+        base: String,
+        retry_spec: RetrySpec,
+        timeout: Duration,
+        ttl: Duration,
+        forecast_days: i64,
+        forecast_hours: i64,
+    ) -> Self {
         let client = reqwest::Client::builder()
             .timeout(timeout)
             .redirect(reqwest::redirect::Policy::none())
@@ -368,6 +383,8 @@ impl WeatherClient {
             cache: Mutex::new(HashMap::new()),
             ttl,
             retry_spec,
+            forecast_days,
+            forecast_hours,
         }
     }
 
@@ -417,10 +434,12 @@ impl WeatherClient {
         let url = format!(
             "{}/v1/forecast?latitude={lat}&longitude={lon}&current={}&timezone=auto\
              &hourly=temperature_2m,precipitation_probability\
-             &daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&forecast_days=7\
-             &forecast_hours=24",
+             &daily=temperature_2m_max,temperature_2m_min,sunrise,sunset\
+             &forecast_days={}&forecast_hours={}",
             self.base,
             REQUIRED_FIELDS.join(","),
+            self.forecast_days,
+            self.forecast_hours,
         );
         retry(self.retry_spec, || self.fetch_once(&url)).await
     }
@@ -463,7 +482,8 @@ impl WeatherClient {
 //   优先；②serde_json 缩进/NaN 文本层差异（见 settings 说明区）；③SSRF 防线由
 //   运行期校验改为构造期固定（防线等价性登记）；④整值浮点码（0.0）自判命中
 //   整键（serde as_i64 对浮点底数恒 None）
-// 关联配置：weather_cache_ttl/weather_timeout_s/weather_retries/weather_retry_delay
+// 关联配置：weather_cache_ttl/weather_timeout_s/weather_retries/weather_retry_delay/
+//   weather_forecast_days/weather_forecast_hours（A009 #10 采样参数 token 化）
 //   （base.json）；城市表 data::cities；重试 util::retry；消费方：interface（.13）
 #[cfg(test)]
 mod tests {
@@ -607,6 +627,8 @@ mod tests {
             },
             Duration::from_secs(5),
             Duration::from_secs(3600),
+            7,
+            24,
         )
     }
 
@@ -664,6 +686,8 @@ mod tests {
             },
             Duration::from_secs(5),
             Duration::from_secs(3600),
+            7,
+            24,
         );
         let err = client
             .fetch_by_city("北京", false)

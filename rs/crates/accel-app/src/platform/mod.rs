@@ -41,11 +41,12 @@ pub mod tray {
 #[cfg(not(windows))]
 pub mod hotkey {
     // 非 Windows 降级桩：构造恒失败，动作流恒空
+    // （A009 #1：变体与 Windows 侧 hotkey.rs 严格同形——Save/Quit 两键；
+    //   Theme 已随仅深色定案退役，桩多一变体即令 hotkey_action 匹配不穷尽）
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum HotkeyKind {
         Save,
         Quit,
-        Theme,
     }
 
     pub struct HotkeyHandles;

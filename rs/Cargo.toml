@@ -25,7 +25,6 @@ httpmock = "0.8.3"
 # PL013 GUI 栈（app 侧；wayland/x11 为 eframe default-features 组件，Linux CI 兼容）
 eframe = { version = "0.37.0", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 egui = "0.37.0"
-pollster = "1.0.1"
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 # Gdi/Xps/WindowsAndMessaging：UI 截图探针（UIR.2 PrintWindow 在 Storage::Xps +
 #   GetClientRect/GetDIBits）——开发期视觉自检

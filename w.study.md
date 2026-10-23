@@ -127,9 +127,9 @@ pub async fn fetch(&self, city: &str, force: bool) -> Result<WeatherData, Weathe
 ### 3.7 界面装配 — 实心主题 + 自绘控件（UIR 重塑后现役）
 
 - `window.rs`：`AppHandle`（logic：drain/探针/退出序列 + ui：侧栏 Panel → CentralPanel 当前页 → 设置浮窗）
-- `theme.rs`：ui.json `colors.*` 实心色板（深浅两套）→ egui Visuals + 语义色/字号/几何访问器（cached 键缓存）
-- `widgets/`：digits（等宽数字位——数字串逐字符槽宽绘制，根治 Bahnschrift 非等宽抖动）/ icons（矢量图标零字体依赖）/ icon_button / switch / chip / slider
-- 高 DPI 纪律：面/文本坐标一律逻辑点；标题栏底色经 DWMWA_CAPTION_COLOR 钉制随主题
+- `theme.rs`：ui.json `colors.*` 深色实心单板（仅深色定案——A008 #2，浅色体系已删）→ egui Visuals + 语义色/字号/几何访问器（cached 键缓存）
+- `widgets/`：digits（等宽数字位——数字串逐字符槽宽绘制，根治 Bahnschrift 非等宽抖动）/ icons（矢量图标零字体依赖）/ icon_button / chip / slider
+- 高 DPI 纪律：面/文本坐标一律逻辑点；标题栏底色经 DWMWA_CAPTION_COLOR 恒钉侧栏深色（仅深色定案）
 - 走查门：`ACCELWORLD_UI_SHOT` 截图探针（真窗逐页 PrintWindow PNG）+ 用户桌面终审
 - 历史：玻璃渲染（WGSL 管线 + GlassScene + Acrylic）已整体废弃删除——半透明面对比度不可控（UIR 定案，留档见 git 历史）
 
