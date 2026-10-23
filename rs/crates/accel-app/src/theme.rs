@@ -70,7 +70,7 @@ pub fn on_accent_color() -> Color32 {
 }
 
 /// 语义色等级（UIR 实心主题：strong=主文本 muted=次级 soft=辅助 dim=弱化
-/// card=卡面文本 knob=滑钮 danger=危险 info=信息）
+/// card=卡面文本 knob=滑钮 danger=危险）
 #[derive(Debug, Clone, Copy)]
 pub struct Ink {
     pub strong: Color32,

@@ -161,6 +161,9 @@ impl UserConfig {
                         let name = item.get("name").and_then(Value::as_str).unwrap_or("");
                         let at = item.get("at").and_then(Value::as_str).unwrap_or("");
                         if name.is_empty() {
+                            // FIX010.8：空名（含非对象条目取不到 name）剔除留痕——
+                            // 对齐闹钟装载口径，脏数据不再静默丢弃
+                            tracing::warn!("倒计时目标名称为空（或条目非对象），剔除");
                             continue;
                         }
                         match parse_date_text(at) {

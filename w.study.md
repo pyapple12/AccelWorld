@@ -13,13 +13,13 @@ cargo workspace 双 crate 桌面应用：基于加速倍率的时间膨胀时钟
 [输入]   用户设定加速倍率（rate_min 1.0 - rate_max 20.0，来自 config/static/base.json）
 [引擎]   accel-core::time_dilation 按倍率换算：加速时钟 1 秒 = 现实 1/rate 秒
 [展示]   accel-app（egui + eframe/glow）：侧栏导航五页 + 设置浮窗 + 实心主题（单强调色）
-[周边]   农历干支节气 / 世界时钟 / 倒计时 / 天气（Open-Meteo）/ 闹钟 / 三态主题 / 托盘 / 全局热键
-[持久化] 用户配置 rs/config/user_config.json（倍率/主题/城市/时区/倒计时/窗口几何/闹钟）
+[周边]   农历干支节气 / 世界时钟 / 倒计时 / 天气（Open-Meteo）/ 闹钟 / 托盘 / 全局热键
+[持久化] 用户配置 config/user_config.json（exe 同目录，FIX007.15 基准；倍率/主题/城市/时区/倒计时/窗口几何/闹钟）
 ```
 
 - **时间膨胀**：`TimeDilation { rate, day_hours }`，标准一天总秒数 × rate = 加速一天总秒数，整数运算拆分时分秒；`now` 全参数化（无内部时钟，测试可注入）
 - **中华元素**：lunar-rust 农历/干支/生肖/节气 + holidays.json 法定节假日 + 财神方位本地表
-- **天气**：Open-Meteo 免费 API，50 城市统一表驱动，WMO 天气代码映射，TTL 缓存 + 重试
+- **天气**：Open-Meteo 免费 API，17 城市统一表驱动，WMO 天气代码映射，TTL 缓存 + 重试
 - **闹钟**：多闹钟（上限 max_alarms）、预设/自定义铃声、系统通知、去重键触发 + `Clock` 抽象（VirtualClock 可拨钟测试）
 - **系统集成**：tray-icon 托盘菜单树、global-hotkey 全局热键、WinRT toast 通知（失败一律降级不崩）
 
@@ -50,10 +50,10 @@ rs/                              # cargo workspace 根
     src/main.rs / lib.rs         # 入口 + 编译期版本（compiled_version）
     src/window.rs                # 主窗装配器（AppHandle：drain→侧栏→页→平台→节奏 + 截图/几何探针）
     src/bus.rs                   # 信号总线（UiState 快照 + drain/apply + 命令出口）
-    src/theme.rs                 # 设计系统（ui.json colors 实心色板 → Visuals 深浅两套）
+    src/theme.rs                 # 设计系统（ui.json colors 实心色板 → Visuals 深色单板，仅深色定案）
     src/logging.rs               # tracing 每日滚动 + panic hook 崩溃栈
     src/pages/                   # 五页（clock/countdown/world/weather/alarm）+ 设置浮窗
-    src/widgets/                 # 自绘控件（digits/icons/icon_button/switch/chip/slider）
+    src/widgets/                 # 自绘控件（digits/icons/icon_button/chip/slider）
     src/tools/                   # 展示运算纯函数（clock/countdown/alarm_text）
     src/platform/                # 系统集成（tray/notify/hotkey，非 Windows 桩化）
   assets/                        # 托盘图标等内嵌资源

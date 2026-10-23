@@ -430,13 +430,14 @@ impl AppInterface {
                                 }
                             }
                             Some(FrontendCommand::ApplyRate(rate)) => {
+                                // FIX010.1：越界拒绝只发 RateRejected（拒绝事实由专事件
+                                // 承载）；ConfigSaved(false) 收敛为纯 IO 失败信号
                                 if self.set_rate(rate) {
                                     let saved = self.save_config_now();
                                     let _ = evt_tx.send(BackendEvent::RateChanged(rate)).await;
                                     let _ = evt_tx.send(BackendEvent::ConfigSaved(saved)).await;
                                 } else {
                                     let _ = evt_tx.send(BackendEvent::RateRejected(rate)).await;
-                                    let _ = evt_tx.send(BackendEvent::ConfigSaved(false)).await;
                                 }
                             }
                             Some(FrontendCommand::RefreshWeather { city, force }) => {
@@ -497,34 +498,53 @@ impl AppInterface {
                                 let ok = Alarm::from_draft(draft)
                                     .map(|alarm| self.alarms.lock().expect("闹钟锁中毒").add_alarm(alarm))
                                     .unwrap_or(false);
-                                let saved = if ok { self.save_config_now() } else { false };
                                 let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
-                                // A009 #5：落盘结果回推 ConfigSaved（失败不静默——与其余写命令同契约）
-                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok && saved)).await;
+                                // FIX010.1：仅真写入才回推 ConfigSaved——拒绝事实已由
+                                // AlarmsChanged 现值承载，ConfigSaved(false) 收敛为纯 IO
+                                // 失败信号（拒绝不再误触发「保存失败」toast，A010 #1）
+                                if ok {
+                                    let saved = self.save_config_now();
+                                    let _ = evt_tx.send(BackendEvent::ConfigSaved(saved)).await;
+                                }
                             }
                             Some(FrontendCommand::RemoveAlarm(id)) => {
                                 let removed =
                                     self.alarms.lock().expect("闹钟锁中毒").remove_alarm(&id);
-                                let saved = if removed { self.save_config_now() } else { false };
-                                // A008 #4：不存在 id 同样回推现值，UI 不静默
+                                // A008 #4：不存在 id 同样回推现值，UI 不静默；
+                                // FIX010.1：拒绝不发 ConfigSaved（同 AddAlarm 口径）
                                 let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
-                                let _ = evt_tx.send(BackendEvent::ConfigSaved(removed && saved)).await;
+                                if removed {
+                                    let saved = self.save_config_now();
+                                    let _ = evt_tx.send(BackendEvent::ConfigSaved(saved)).await;
+                                }
                             }
                             Some(FrontendCommand::ReplaceAlarm(alarm)) => {
                                 let ok = self.alarms.lock().expect("闹钟锁中毒").replace_alarm(alarm);
-                                let saved = if ok { self.save_config_now() } else { false };
                                 let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
-                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok && saved)).await;
+                                // FIX010.1：拒绝不发 ConfigSaved（同 AddAlarm 口径）
+                                if ok {
+                                    let saved = self.save_config_now();
+                                    let _ = evt_tx.send(BackendEvent::ConfigSaved(saved)).await;
+                                }
                             }
                             Some(FrontendCommand::ToggleAlarm(id)) => {
                                 let ok = self.alarms.lock().expect("闹钟锁中毒").toggle_alarm(&id);
-                                let saved = if ok { self.save_config_now() } else { false };
                                 let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
-                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok && saved)).await;
+                                // FIX010.1：拒绝不发 ConfigSaved（同 AddAlarm 口径）
+                                if ok {
+                                    let saved = self.save_config_now();
+                                    let _ = evt_tx.send(BackendEvent::ConfigSaved(saved)).await;
+                                }
                             }
                             Some(FrontendCommand::SetWeatherCity(city)) => {
-                                let ok = self.set_weather_city(&city);
-                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                                // FIX010.1：未知城市拒绝不发 ConfigSaved（对照 RateRejected
+                                // 口径）；此处 ok=false 只剩 IO 失败一种语义，仍回推不静默
+                                if cities::get(&city).is_some() {
+                                    let ok = self.set_weather_city(&city);
+                                    let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                                } else {
+                                    tracing::warn!("未知天气城市，拒绝设置: {city}");
+                                }
                             }
                             Some(FrontendCommand::AddWorldCity(name)) => {
                                 let ok = self.add_world_city(&name);
@@ -1384,16 +1404,19 @@ mod tests {
         }
         assert!(pushed_empty, "失败添加也应回推（空）列表");
         assert!(itf.get_alarms().is_empty(), "非法草稿不得入表");
-        // A009 #5：失败同样回推 ConfigSaved(false)（拒绝不落盘不静默）
-        let mut rejected_saved = false;
-        let deadline = std::time::Instant::now() + Duration::from_secs(2);
-        while std::time::Instant::now() < deadline {
-            if matches!(evt_rx.recv().await, Some(BackendEvent::ConfigSaved(false))) {
-                rejected_saved = true;
-                break;
+        // FIX010.1：拒绝路径不再回推 ConfigSaved（拒绝事实由现值列表承载，
+        // false 收敛为纯 IO 失败信号——「配置保存失败」toast 误触发根治）
+        let drain_deadline =
+            tokio::time::Instant::from_std(std::time::Instant::now() + Duration::from_millis(300));
+        loop {
+            match tokio::time::timeout_at(drain_deadline, evt_rx.recv()).await {
+                Ok(Some(BackendEvent::ConfigSaved(_))) => {
+                    panic!("拒绝路径不得回推 ConfigSaved");
+                }
+                Ok(Some(_)) => continue,
+                _ => break,
             }
         }
-        assert!(rejected_saved, "失败添加应回推 ConfigSaved(false)");
         // 不存在 id 移除同样回推
         cmd_tx
             .send(FrontendCommand::RemoveAlarm("ghost".into()))
@@ -1408,6 +1431,46 @@ mod tests {
             }
         }
         assert!(pushed_again, "不存在 id 移除也应回推现值");
+    }
+
+    #[tokio::test]
+    async fn io_failure_still_pushes_config_saved_false() {
+        // FIX010.1 验收：拒绝/IO 分流后，真 IO 失败（配置路径为目录，写入必败）
+        // 仍回推 ConfigSaved(false)——false 语义纯化后信号不丢
+        let sandbox = SandboxDir::new("iofail");
+        let blocked = sandbox.path().parent().expect("沙箱根").join("blocked");
+        std::fs::create_dir_all(&blocked).expect("占位目录创建失败");
+        let itf = Arc::new(AppInterface::with_config_path(blocked));
+        let (cmd_tx, mut evt_rx) = AppInterface::spawn(Arc::clone(&itf));
+        cmd_tx
+            .send(FrontendCommand::AddAlarm(AlarmDraft {
+                label: "落盘败".into(),
+                time: "07:30".into(),
+                sound_type: "preset".into(),
+                sound_value: "classic".into(),
+                repeat_days: vec![],
+                enabled: true,
+            }))
+            .await
+            .expect("发送失败");
+        let mut pushed = false;
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            if let Some(BackendEvent::AlarmsChanged(list)) = evt_rx.recv().await {
+                pushed = list.len() == 1;
+                break;
+            }
+        }
+        assert!(pushed, "合法草稿应入表并回推单元素列表");
+        let mut io_failed = false;
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            if matches!(evt_rx.recv().await, Some(BackendEvent::ConfigSaved(false))) {
+                io_failed = true;
+                break;
+            }
+        }
+        assert!(io_failed, "真 IO 失败仍应回推 ConfigSaved(false)");
     }
 
     #[tokio::test]

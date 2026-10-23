@@ -50,7 +50,7 @@ impl Pages {
     /// 当前页绘制（UIR 实心装配：单一 CentralPanel + 统一内边距——页板玻璃面
     /// 注册已随 glass 模块删除）
     pub fn ui(&mut self, ui: &mut egui::Ui, state: &mut UiState, bus: &Bus) {
-        // UiState.current_page 单源：Pages.current 镜像自导航点击（bus.apply 侧）
+        // UiState.current_page 单源：Pages.current 镜像自 state.current_page（侧栏点击直改）
         self.current = state.current_page;
 
         egui::CentralPanel::default()

@@ -263,6 +263,13 @@
 5. 文档一致性：城市表职责表述七处清扫（README/w.study/说明区族）、drain 返回值口径删除、Cargo.toml 依赖说明订正、AGENTS 配置与日志表述随新基准同步三条 ✅
 6. 审计闭环：A007 报告归档 + 观察项 2 条提升为修复项、9 条定案豁免；四关卡 ALL_GREEN + 测试 186 通过（较修复前 173 增 13）+ 真窗探针 + 离屏渲染探针全绿；反向验收 17 项逐条三重口径（.temp/verify_fix007_accept.md） ✅
 
+## 版本 0.6.1.3 的 MileStone（A010 审计修复：闹钟拒绝/IO 失败分流根治假 toast 等 11 条，2026-10-24 发布）
+
+1. 事件语义收敛（P2 唯一跨层项）：闹钟四命令拒绝路径不再回推 ConfigSaved（拒绝事实由 AlarmsChanged 现值承载，仅真落盘才回推）；ApplyRate 越界与 SetWeatherCity 未知城市的同款错位一并收口（拒绝只发专事件）；ConfigSaved(false) 语义纯化为真 IO 失败信号——「配置保存失败」toast 不再被拒绝误触发 ✅
+2. 防御与依赖卫生：replace_alarm 补时间校验 + 重复日规范化入参防线（A009 #2 同形态经 ReplaceAlarm 复发预防）；chrono-tz 移 dev-dependencies（生产声明面零依赖；lunar_rust 传递 0.8.6 登记不可移除）；countdown_targets 空名/非对象剔除补 warn 留痕 ✅
+3. 文档与工程收口：残余注释组六处清扫（info 色/chip_size/get_max_alarms 契约/audio 消费方/sha256 口径/Pages 镜像方向）；w.study 收口残余五处（三态主题/配置路径 exe 基准/17 城/深色单板/switch）；AGENTS 连带清单放宽（主题/控件/路径相关表述 1/2/3.7 节）；截图探针命令 pwsh 化两处；.gitignore 去重；slider 死形参删 ✅
+4. 审计闭环：A010 报告归档（12 条观察项经复核全部维持观察级）；四关卡 ALL_GREEN + 测试 189 通过（app 58 + bin 1 + core 110 + parity 20，较 FIX009 后 187 净增 2）+ 真窗截图探针六帧（标题栏 0.6.1.3 实证）；反向验收 .temp/verify_fix010_accept.md ✅
+
 ## 版本 0.6.1.2 的 MileStone（A009 审计修复：闹钟重复日静默失效与旧存档窄窗启动等 20 条，2026-10-24 发布）
 
 1. 正确性与防御三项：总线闹钟草稿 repeat_days 与装载路径同防御（normalize_i64_days 单源——越界/重复日持久化致闹钟每周静默不响根治）；窗口几何存档补 1e4 上限域，**实证 winit 对 with_inner_size 创建期不施加 with_min_inner_size**（tiny-geo 真窗探针：旧 100×100 存档原样创建 125px 窄窗）→ 新增 clamped_restore_geometry 恢复侧钳制（修复后 650×525 @1.25 DPI）；非 Windows 热键桩删 Theme 残留变体（原匹配不穷尽即编译失败） ✅

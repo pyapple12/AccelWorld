@@ -109,7 +109,7 @@ pub fn play_file(path: &std::path::Path) -> bool {
 // 已知偏移：①蜂鸣静默段用 44.1kHz Zero 源填充（winsound 为硬静默）——听觉等价；
 //   ②rodio 0.23 API（Player/Mixer）与 plan 预想 OutputStream/Sink 已变——按实测
 //   版本适配，登记 z.plan
-// 关联依赖：rodio 0.23；消费方：interface 闹钟触发编排（PL012.07/.10）
+// 关联依赖：rodio 0.23；消费方：app bus（AlarmTriggered 副作用 PlaySound → 平台播放）
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -324,6 +324,8 @@ impl Bus {
                         alarm.sound_value.clone(),
                     ));
                 }
+                // FIX010.1：ConfigSaved(false) 已收敛为纯 IO 失败信号（core 侧拒绝
+                // 路径不再回推 false）——此处「保存失败」toast 只对真落盘失败触发
                 BackendEvent::ConfigSaved(false) => {
                     self.side_effect(SideEffect::NotifySaveFailed);
                 }

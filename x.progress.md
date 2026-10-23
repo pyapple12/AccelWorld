@@ -1,8 +1,8 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告 + Rust 重构总纲）
-> 当前版本：0.6.1.2（FIX009 审计修复完成：闹钟重复日静默失效根治/旧存档窄窗启动钳制（winit min 尺寸实证）/README 口径收口等 20 条；PL015 已收口，不做人工测试与定版仪式）
-> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页（+ 设置浮窗）功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；FIX007/UIR/FIX008 均已提交推送（c914b74/a60cc09/fd04683），当前阶段为 A009 审计修复（FIX009）
+> 当前版本：0.6.1.3（FIX010 审计修复完成：假 toast 根治（拒绝/IO 失败分流）/replace_alarm 入参防线/依赖与文档卫生等 11 条；PL015 已收口，不做人工测试与定版仪式）
+> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页（+ 设置浮窗）功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；FIX007/UIR/FIX008/FIX009 均已提交推送（c914b74/a60cc09/fd04683/4a48890），FIX010 已完成待提交
 > 更新（2026-10-17）：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow——UIR 定案 wgpu 废弃）；Python 版全量归档 `.archived/`（git 忽略），本文件自 PL011 起记录 RS 任务
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
 
@@ -43,7 +43,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p accel-app
 
 # UI 截图探针（真窗逐页出 PNG 后自动退出；UIR.2）
-ACCELWORLD_UI_SHOT=<目录> cargo run -p accel-app
+$env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 ```
 
 > Python 时代的验证命令（import 冒烟 / pytest / 无头初始化）随 Python 版一并归档 `.archived/`，仅供夹具再生日照，见 `.archived/` 只读参考。
@@ -566,7 +566,7 @@ ACCELWORLD_UI_SHOT=<目录> cargo run -p accel-app
 - [x] FIX009.11 [P3] static_config 说明区 bool 订正 —— accel-core/src/static_config.rs:109 删「/bool」字样；验证：rg 说明区与访问器清单一致（2026-10-24 完成）
 - [x] FIX009.12 [P3] AlarmManager.alarms 收敛 —— accel-core/src/alarm.rs:418 `pub alarms` 改 `pub(crate)`（interface/测试同 crate 可达，crate 外不可直写）；验证：cargo check 全绿 + clippy 零警告（2026-10-24 完成）
 - [x] FIX009.13 [P3] pollster 死依赖删除 —— rs/crates/accel-app/Cargo.toml:16 删 pollster 行 + 说明区 :40 同步；验证：cargo tree 无 pollster + 全量构建绿（2026-10-24 完成：app 依赖行 + workspace 根定义 + 说明区三处删）
-- [x] FIX009.14 [P3] ui.json scale.tiny 死键与 chip_size 半死槽 —— 删 ui.json `"tiny": 11`；`chip_size` 处置（删 w 槽改单值 h=56，或登记 chip 宽自适应只取 h 的注释）；验证：token 对账零死键 + 截图探针六帧无回归（2026-10-24 完成：tiny 删 + chip_height 单值 + layout_vec2 删 + chip.rs 改读）
+- [x] FIX009.14 [P3] ui.json scale.tiny 死键与 chip_size 半死槽 —— 删 ui.json `"tiny": 11`；`chip_size` 处置（删 w 槽改单值 h=56，或登记 chip 宽自适应只取 h 的注释）；验证：token 对账零死键 + 截图探针六帧无回归（2026-10-24 完成：tiny 删 + chip_height 单值 + layout_vec2 删 + chip.rs 改读；实况口径：代码/键面 chip_size 零命中，历史注记与测试注释随 FIX010.2 清理）
 - [x] FIX009.15 [P3] Ink.info 悬空裁决 —— accel-app/src/theme.rs:84 删 `info` 字段 + ui.json 删 `colors.info`，或将 info 接线天气要素行（降水概率展示回归）；验证：rg `Ink.info|colors.info` 零悬空 + 全量构建绿（2026-10-24 完成：字段+键双删）
 - [x] FIX009.16 [P3] 昼夜阈值配置化或登记 —— accel-app/src/pages/world.rs:21 `(6..18)` 改读 base.json 新键（day_hour_start/end）或注释登记「纯展示启发式」；验证：rg 阈值在位形态 + 世界页昼夜图标正常（2026-10-24 完成：注释登记路线）
 - [x] FIX009.17 [P3] Storm 图标底部留边 —— accel-app/src/widgets/icons.rs:223-231 闪电末端 0.88r 收至 ≤0.80r；验证：单测几何锚点（末端 y ≤ center+0.80r）+ 截图探针 40px hero 无贴边（2026-10-24 完成：0.80r + 注释锚定；截图帧 03 无回归）
@@ -574,3 +574,19 @@ ACCELWORLD_UI_SHOT=<目录> cargo run -p accel-app
 - [x] FIX009.19 [P3] weather 距条零宽孤点 —— accel-app/src/pages/weather.rs:211-225 `bar_w <= 0.0` 时跳过轨道与填充绘制；验证：单测或真窗极窄容器（≤min 宽前窗口已钳制，属防御）无孤立金点（2026-10-24 完成：if bar_w > 0.0 跳过，占位保留）
 - [x] FIX009.20 [P3] window.rs 测试目录 RAII —— accel-app/src/window.rs:996-1027 补 remove_dir_all 或 RAII guard（对照 logging.rs:163-179 样板）；验证：测试后 %TEMP% 无 accel_startup_* 残留（2026-10-24 完成：RemoveOnDrop guard）
 - [x] FIX009.21 收尾 —— 四关卡全绿（pwsh rs/ci.ps1）+ `cargo test --workspace` 结果行全量显示 + 真窗探针 exit 0 + 截图自检 + 反向验收 .temp/verify_fix009_accept.md + 文档同步（z.plan A009 状态行翻转、m.milestone 条目）+ commit 草案（禁轮次字样，标题只写改了什么）；验证：四关卡 ALL_GREEN（2026-10-24 完成：ALL_GREEN + 187 测试 + fps 60/6s + 截图六帧 + tiny-geo 钳制实证；m.milestone 条目随提交环节版本定案补记）
+
+### FIX010: 第 10 轮审计修复 [audit#A010]
+
+> 范围：A010 十条（P2×1 / P3×9）。修复完成后按规范 bump 版本（fix 类型 patch 位 +1）。
+
+- [x] FIX010.1 [P2] 闹钟拒绝/IO 失败分流（假 toast 根治） —— accel-core/src/interface.rs:493-524 四分支改「拒绝不发 ConfigSaved」（`let saved = if ok { self.save_config_now() } else { true }; if ok { send ConfigSaved(saved) }`——拒绝事实已由 AlarmsChanged 现值承载，仅真落盘才回推；注意 saved 仅在 ok 时有意义）；ApplyRate 越界/SetWeatherCity 未知城市的同款错位同口径收口（拒绝不发 ConfigSaved(false)——对照 A005 #19 RateRejected 已有专事件）；accel-app/src/bus.rs:327-329 NotifySaveFailed 语义随之收敛为真 IO 失败；bus_alarm_rejection 测试断言同步调整（拒绝后不再收到 ConfigSaved）；验证：单测——重复添加仅收 AlarmsChanged 无 ConfigSaved；落盘失败（只读路径）仍收 ConfigSaved(false)；真窗重复添加不再弹「写入磁盘」toast（2026-10-24 完成：六分支收口 + bus 注释收敛 + bus_alarm_rejection 断言翻转 + 新增 io_failure_still_pushes_config_saved_false 绿）
+- [x] FIX010.2 [P3] A009/FIX009 清扫残余注释组（6 处一次收口） —— theme.rs:72-73 删「info=信息」；chip.rs:96 测试注释改「layout.chip_height token」；alarm.rs:444-447 max_alarms() 删（或改「单测锚定探针」注释并去已删契约引用）；audio.rs:112 消费方改「app bus（AlarmTriggered 副作用）」；static_config.rs:108 改「结构承自 Python 原文件（PL011 时点 sha256 一致，此后独立演进）」；pages/mod.rs:53 改「Pages.current 镜像自 state.current_page（侧栏点击直改）」；验证：rg 逐点零命中 + 四关卡（2026-10-24 完成：六处全改，rg 六 pattern 零命中）
+- [x] FIX010.3 [P3] w.study 收口残余 + AGENTS 连带清单放宽 —— w.study.md:16 删「三态主题」、:53 改「深色单板（仅深色定案）」、:56 删「switch/」、:17 配置路径改 exe 基准、:22 改「17 城市」；AGENTS.md:120 连带清单条目「w.study.md 3.7 节」放宽为「w.study.md 主题/控件/路径相关表述（1/2/3.7 节）」；验证：rg `三态|深浅两套|switch|rs/config/user_config|50 城市` w.study.md 零命中（2026-10-24 完成：五处收口 + AGENTS 清单放宽为「主题/控件/路径相关表述（1/2/3.7 节）」）
+- [x] FIX010.4 [P3] 截图探针命令语法 pwsh 化 —— AGENTS.md:10 与 x.progress.md:46 的 `ACCELWORLD_UI_SHOT=<目录> cargo run` 改 `$env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app`；验证：复制命令到 pwsh 直接可执行（2026-10-24 完成：AGENTS/x.progress 两处改 `$env:` 形态，与 README 既有写法对齐）
+- [x] FIX010.5 [P3] x.progress 注记与状态行订正 —— :569 FIX009.14 完成注记「rg chip_size 零命中」改实况口径（「代码/键面零命中，历史注记与测试注释随 FIX010.2 清理」）；:5 行尾改「FIX009 已随 4a48890 提交，当前阶段为 A010 审计修复（FIX010）」；验证：与现树对照逐句属实（2026-10-24 完成：FIX009.14 注记补实况口径；状态行改「FIX009 已随 4a48890 提交，当前阶段为 A010 审计修复」）
+- [x] FIX010.6 [P3] chrono-tz 移 dev-dependencies —— rs/crates/accel-core/Cargo.toml:15 从 [dependencies] 移入 [dev-dependencies]（生产零使用，仅 cfg(test)）；验证：cargo tree -p accel-core 无 chrono-tz（主依赖树）+ cargo test 全绿（测试仍解析）（2026-10-24 完成：声明面 0.10.4 退出主树 `-e=no-dev` 零命中；残留 0.8.6 为 lunar_rust 传递依赖，非本 crate 声明、不可移除）
+- [x] FIX010.7 [P3] replace_alarm 防御补齐 —— accel-core/src/alarm.rs:483-497 补 parse_alarm_hhmm 校验 + normalize_i64_days 规范化（ReplaceAlarm 接线前防线，杜绝 A009 #2 同形态复发）；验证：单测——replace 带非法时间/越界日 → 拒绝/规范化（2026-10-24 完成：入参防线 + 新测 replace_alarm_rejects_bad_time_and_normalizes_days 绿）
+- [x] FIX010.8 [P3] countdown_targets 装载补日志 —— accel-core/src/settings.rs:160-165 非对象/空名跳过分支补 tracing::warn（对齐闹钟装载口径）；验证：单测脏配置触发 warn（或 rg 在位 + 既有 dirty 测试绿）（2026-10-24 完成：warn 在位 + 既有 dirty 装载测试绿）
+- [x] FIX010.9 [P3] slider.rs 死形参清理 —— accel-app/src/widgets/slider.rs draw() 删 rect 形参与 `let _ = rect;`（调用方 :77-83 同步）；验证：cargo check 零警告 + 四关卡（2026-10-24 完成：rect 形参与 `let _ = rect` 双删，调用方同步）
+- [x] FIX010.10 [P3] .gitignore 去重 —— 删 `.vscode/` 重复条目之一；验证：rg -c "\.vscode" .gitignore == 1（2026-10-24 完成：删 Environment 节错位条目，保留 IDE 节）
+- [x] FIX010.11 收尾 —— 四关卡全绿（pwsh rs/ci.ps1）+ `cargo test --workspace` 结果行全量显示 + 真窗探针 exit 0 + 截图自检 + 反向验收 .temp/verify_fix010_accept.md + 文档同步（z.plan A010 状态行翻转、m.milestone 条目）+ commit 草案（禁轮次字样，标题只写改了什么）；验证：四关卡 ALL_GREEN（2026-10-24 完成：ALL_GREEN + 测试 189 + 探针六帧 exit 0 + 版本 bump 0.6.1.3 + 文档三件同步）

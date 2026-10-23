@@ -128,7 +128,7 @@
 
 ---
 
-## 审计观察项豁免定案清单（2026-09-10 随工作流体系接入初始化；2026-09-13 A001-A004 四轮观察项归拢定案；2026-10-18 补录 A005 七条；2026-10-18 再补录 A006 十八条＝15 永久 + 3 条件；2026-10-18 再补录 A007 九条＝8 永久 + 1 条件；2026-10-23 补录 A008 十四条＝14 永久，同轮清理指向已删文件的陈旧条目；2026-10-24 补录 A009 一条＝1 永久）
+## 审计观察项豁免定案清单（2026-09-10 随工作流体系接入初始化；2026-09-13 A001-A004 四轮观察项归拢定案；2026-10-18 补录 A005 七条；2026-10-18 再补录 A006 十八条＝15 永久 + 3 条件；2026-10-18 再补录 A007 九条＝8 永久 + 1 条件；2026-10-23 补录 A008 十四条＝14 永久，同轮清理指向已删文件的陈旧条目；2026-10-24 补录 A009 一条＝1 永久；A010 轮观察项 12 条经复核全部维持观察级、无新增豁免）
 
 > 豁免唯一权威源：已定案项审计时不再重复报告。新定案条目由归档环节（`.agents/skills/audit-report`）经用户确认后追加。
 > 分级规则：①**永久豁免**——设计定案/用户保证/容错体系覆盖，后续轮次不再报告不再讨论；②**条件豁免**——当前条件下不可达或可接受，**触发条件变化时重新评估**（每项标注触发条件）。
@@ -138,6 +138,7 @@
 > 归拢说明（2026-10-18，A007 / Rust 侧第 3 轮）：参考级观察项 11 条经用户复核——**2 条提升为 P3** 并入 FIX007（日志与配置路径基准不一致 / weather_code 非标量宽松容错），余 **9 条**定案（下表 2026-10-18 A007 行：8 永久 + 1 条件＝file_io 符号链接 TOCTOU）；「任何非 ASCII 上下文」类历史条目与已闭环项不复核。
 > 归拢说明（2026-10-23，A008 / Rust 侧第 4 轮）：参考级观察项 18 条经用户复核——**2 条提升为 P3** 并入 FIX008（bus.rs Tick 回退字面量改读 token／Cargo.toml 版本注释同步），**2 条由归档动作即时消解**（z.plan 补 UIR 衔接纪要／本清单清理指向已删文件的陈旧条目：nav.rs/glass 族/render_probe/acrylic/ring 及 A005-A006 重叠行），余 **14 条**定案（下表 2026-10-23 行：全部永久）；UIR 重塑后部分旧行号漂移，同源条目按性质适用、行号以现行代码为准。
 > 归拢说明（2026-10-24，A009 / Rust 侧第 5 轮）：参考级观察项 13 条经用户复核**全部维持观察级**（回落理由成立：无累计误差/既有定案/毫秒竞窗/静态常量可达性等）；另将「ThemePref 三态契约悬空＝仅存档定案的协议位保留」登记入永久豁免表（下表 2026-10-24 行），防止后续轮次误报。
+> 归拢说明（2026-10-24，A010 / Rust 侧第 6 轮）：参考级观察项 12 条经用户复核**全部维持观察级**（回落理由成立：防御域常量/静态表 μs 级查表/两条件叠加才可达/token 可信等）；无提升、无新增豁免。ReplaceAlarm 零生产者已立 P3（FIX010 #7）不重复计；AGENTS 连带清单条目放宽已并入 FIX010 #3 随修复落地。
 
 ### ① 永久豁免（不再讨论）
 
@@ -1158,6 +1159,66 @@ Acrylic 技术要点：
 - **m.milestone 0.6.1.1 五节数字断言逐条实证成立**（8 死键恰 8、520×420、四枚图标、185 测试三组交叉核算一致、截图六帧、反向验收文件在位）。
 - **CI/AGENTS 命令集全部有效**：四关卡与 rs-ci.yml 同源逐字一致，版本单源链路（base.json→build.rs→注入→parity 单测）完好。
 - **本轮无 P0/P1**：产品路径无新增 unwrap/expect，总线/退出序列/平台降级纪律完好；两条确定性缺陷（#1 编译面、#2 闹钟域）边界清晰、修复成本低。
+
+---
+
+## 附录 A010：全量代码审计报告（第 10 轮，Rust 侧第 6 轮，2026-10-24）
+
+> 范围：`rs/` 双 crate 49 个源文件 + 4 份静态配置 + Cargo 清单×3 + CI + fixtures + 根文档九件；`.archived/`、`rs/target/`、`.temp/` 排除。
+> 方式：只读审计。主会话亲做 FIX009 回归复核（grep 20/20 + git show 4a48890 双口径）并亲核唯一 P2 的完整触发链（interface 回推 → bus drain → WinRT toast 文案）；core 业务／app 呈现／工程与文档三路并行全文通读后主会话合并去重（A009/FIX009 清扫残余注释族、w.study 收口残余族各并一条）。本轮为 FIX009（V0.6.1.2）之后的体检轮，重点为 FIX009 新增代码与其注释同步盲区。
+> 修复实证补录（2026-10-24，FIX010 执行期口径）：#1 的拒绝/IO 失败分流落地时，ApplyRate 越界与 SetWeatherCity 未知城市的同款错位（遗留同根因）一并收口。
+> 状态：✅ 已修复（FIX010 完成，V0.6.1.3——11 条全落地，任务清单见 x.progress.md）
+
+### 零、上轮修复复核清单（FIX009，提交 4a48890）
+
+**20 条 P 级修复全部在位，零行为回退**（主会话 grep 20/20 + 三路 agent git show 补盲区；FIX009 新增代码专项——normalize 双路径防御等价性、clamped_restore_geometry 咬合、恒占位/距条跳绘/Storm 收边——三审无功能缺陷）：
+
+| 上轮条目 | 现状 | 证据 |
+| --- | --- | --- |
+| 桩 Theme 删 / normalize_i64_days / README 三态组 + AGENTS 连带清单 / 文档漏网族 / ConfigSaved 回推 / 几何上限 + clamped_restore_geometry / tick 收尾 / format_date_text / 四转发删+双登记 / forecast token / bool 订正 / pub(crate) / pollster / tiny+chip_height / Ink.info / 昼夜登记 / Storm 0.80 / 恒占位 / 零宽跳过 / RAII | ✅ 全部在位 | platform/mod.rs 桩两变体；alarm.rs:165,348,381；README rg 零命中 + AGENTS:120；interface.rs 四分支 saved 回推；上限 1e4 + window.rs 纯函数+单测；base.json:39-40 → weather.rs 字段化；ui.json chip_height 单值；其余逐条 rg 在位 |
+| ——（注释层漏网，非行为回退） | ⚠️ 漏改面 | FIX009 #14/#15 只删字段/键本体、相邻注释未随 → 本轮 #2（theme.rs:72/chip.rs:96 等 6 处）；完成注记「rg chip_size 零命中」验证语句不实 → #5 |
+
+### 一、P0–P3 修复清单（P0/P1 无；共 10 条 = P2×1 + P3×9）
+
+> 性质：遗留 = 历轮已列未修；新增 = 本轮新发现（含 FIX009 连带/残留）。
+
+| # | 级别 | 文件:行号 | 类型 | 描述 | 建议 | 性质 | 影响面 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | P2 | accel-core/src/interface.rs:493-524 ＋ accel-app/src/bus.rs:327-329,190 ＋ platform/notify.rs:19-21 | 13/11 | **闹钟拒绝路径触发「配置保存失败：设置未能写入磁盘」假 toast（FIX009 #5 跨层连带）**：core 四分支把「操作被拒」（同时间同标签重复/超上限/不存在 id）也回推 ConfigSaved(false)，app drain 对 ConfigSaved(false) 无差别弹 WinRT toast「设置未能写入磁盘」——拒绝场景磁盘从未被写，对用户陈述假事实。确定性复现：闹钟页相同「时间+标签」添加两次 → 第二次弹盘失败 toast。同根因遗留：ApplyRate 越界/SetWeatherCity 未知城市拒绝同款错位 | 拒绝与 IO 失败分流：core 拒绝路径不回推 ConfigSaved（仅落盘失败回推；拒绝事实已由 AlarmsChanged 现值承载）——四分支改 if ok { saved=save; send ConfigSaved(saved) }；ApplyRate/SetWeatherCity 同口径收口；同步调整 bus_alarm_rejection 测试断言 | 新增（FIX009 #5 连带；同根因拒绝错位为遗留） | 闹钟服务/托盘与音频/GUI |
+| 2 | P3 | 多处（合并） | 6 | **A009/FIX009 清扫残余注释组（6 处）**：theme.rs:72-73（Ink 注释仍列「info=信息」）；chip.rs:96（测试注释仍写 layout.chip_size）；alarm.rs:444-447（max_alarms() 文档仍引已删 get_max_alarms 契约且生产零调用成孤儿访问器）；audio.rs:112（消费方写 interface，实为 app bus AlarmTriggered 副作用）；static_config.rs:108（「sha256 一致零改写」本轮配置变更后失效）；pages/mod.rs:53（「镜像自 bus.apply 侧」指向不存在通路） | 逐处订正；max_alarms() 删或改「单测锚定探针」注释 | 新增（FIX009 残留） | 文档（源码注释） |
+| 3 | P3 | w.study.md:16,53,56,17,22 ＋ AGENTS.md:120 | 6 | **w.study 仅深色/结构收口残余（5 处）**：:16 仍列「三态主题」；:53 「Visuals 深浅两套」；:56 widgets 仍含 switch；:17 配置路径旧基准（rs/config）；:22 「天气 50 城市」实为 17 城。**连带清单自身盲区实证**：三处散布在 w.study 第 1/2 节而 AGENTS:120 只锁 3.7 节——清单条目放宽为「w.study 主题/控件/路径相关表述（1/2/3.7 节）」 | 五处订正 + AGENTS 清单条目放宽表述 | 新增（#3 同族漏网）+遗留（:17/:22） | 文档 |
+| 4 | P3 | AGENTS.md:10 ＋ x.progress.md:46 | 6 | `ACCELWORLD_UI_SHOT=<目录> cargo run` POSIX env 前缀语法在 AGENTS 强制的 pwsh 会话不可执行（README $env: 形态正确） | 两处改 $env: 形态 | 遗留 | 文档 |
+| 5 | P3 | x.progress.md:569 ＋ :5 | 6 | FIX009.14 完成注记「rg chip_size 零命中」与现树不符（验证语句失实）；:5 行尾「当前阶段为 A009」提交后未翻转 | 注记订正 + 状态行翻转 | 新增 | 文档 |
+| 6 | P3 | rs/crates/accel-core/Cargo.toml:15 | 12 | chrono-tz 列为正式依赖但 core 生产零使用（仅 cfg(test)） | 移入 [dev-dependencies] | 遗留 | 配置体系 |
+| 7 | P3 | accel-core/src/alarm.rs:483-497 | 2 | replace_alarm 不校验 time、不规范化 repeat_days（当前 ReplaceAlarm 零生产者不可达；接线即复刻 A009 #2 静默不响形态） | 接线前补 parse_alarm_hhmm + normalize_i64_days | 遗留 | 闹钟服务 |
+| 8 | P3 | accel-core/src/settings.rs:160-165 | 10 | countdown_targets 装载对非对象/空名条目静默 continue 无日志（对照闹钟装载 warn 口径不一） | 补 tracing::warn | 遗留 | 配置体系 |
+| 9 | P3 | accel-app/src/widgets/slider.rs:87,128 | 5 | draw() 的 rect 形参零使用 + 尾部 let _ 压警告（私有函数） | 删形参与占位行 | 遗留 | GUI 面板 |
+| 10 | P3 | .gitignore（两块） | 12 | .vscode/ 条目重复两条 | 删一条 | 遗留 | 配置体系 |
+
+### 二、参考级观察项（12 条经用户复核全部维持观察级；无新增豁免）
+
+| 位置 | 描述 | 回落理由 |
+| --- | --- | --- |
+| interface.rs:644 | 1e4 上限为单次使用常量未进 token | 解析器防御域非业务参数，注释已含理由 |
+| interface.rs:568-578 vs 586-592 | Quit 与 tick 失败收尾块 ~8 行重复可提取 helper | A009 #7 最小内联改动；语义当前一致 |
+| types.rs:143 | FrontendCommand::ReplaceAlarm 全 workspace 零生产者 | 协议「演进须登记」定案；接线时触发 #7 |
+| weather.rs:360-361 | forecast_days/hours 无域校验（负值→API 400） | token 编译期嵌入可信，与 ttl 负值豁免同类 |
+| settings.rs:33、chinese_calendar.rs:118 | parse_date_text/holidays pub 可收窄 | 单源依赖文档化/数据面导出，收益低 |
+| world.rs:30,52-56 | 每帧每城 tz 字符串查表 + Utc::now()（8 城×10Hz） | chrono-tz FromStr 静态表 μs 级；与已豁免「每帧 to_vec」同族 |
+| clock.rs:59-78 | 加速小时破百 + 贴最小窗宽时 hero+徽标可能超宽被裁 | 两条件叠加；仅展示右缘裁切；需验证，视觉终审在用户 |
+| countdown.rs:79-81 | validate_add 不 trim，纯空格名双层放行 | 与 core 校验同构；空格名合法性属产品口径未定案 |
+| weather.rs:226-227 | bar_w∈(0,4px) 时金条可溢出弱轨 4px | min 窗 520 下实际域 ≥150px 不可达，纯防御 |
+| main.rs:8-9、logging.rs:34 | 探针/RUST_LOG 环境变量面 | 探针/诊断通道设计使然 |
+| m.milestone.md:272 | 连带清单第四项「ui.json 死键」vs AGENTS「static *.json」口径差一档 | 语义等价，表述级 |
+| z.plan.md:1157 | 「base.json 28 键」本轮 +2 后实为 30 键 | A009 附录为审计时点快照，历史真实 |
+
+### 三、亮点
+
+- **FIX009 二十条 20/20 在位零行为回退**：normalize 双路径防御等价性逐分支验证通过；clamped_restore_geometry 与 core parse 咬合验证通过；恒占位/距条跳绘/Storm 收边三审无功能缺陷。
+- **token 对账双绿**：ui.json 35 键、base.json 30 键（含新增 weather_forecast_* 两键闭环）全消费零死键；夹具 sha256 6/6、counts 抽测全对。
+- **m.milestone 0.6.1.2 六节断言逐条实证成立**（含 650×525 = 520×420×1.25 数学吻合、187 测试静态计数三处口径一致、反向验收文件在位）。
+- **README 复扫零残留零新增失实**；AGENTS 热键两键/技术栈 glow 表述准确；4a48890 提交范围与正文逐条相符。
+- **本轮无 P0/P1**；唯一 P2 是 FIX009 #5 的跨层语义连带（修复引出的新可见性问题）——印证「审计→修复→再审计」循环对跨层改动语义的把关价值。
 
 ---
 

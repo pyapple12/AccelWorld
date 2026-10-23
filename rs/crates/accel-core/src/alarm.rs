@@ -441,7 +441,7 @@ impl AlarmManager {
         }
     }
 
-    /// 上限（get_max_alarms 契约）
+    /// 上限探针（单测锚定 new() 的 token 装载；生产上限由 AlarmManager 内部持有）
     pub fn max_alarms(&self) -> usize {
         self.max_alarms
     }
@@ -480,7 +480,15 @@ impl AlarmManager {
     }
 
     /// 编辑替换：保留原 ID 原位替换；去重检查排除自身（FIX003.7）
+    /// FIX010.7：入参防线——时间非法拒绝 + 重复日规范化（A009 #2 同形态复发预防，
+    /// ReplaceAlarm 接线前兜底，与 from_draft 同一防御口径）
     pub fn replace_alarm(&mut self, alarm: Alarm) -> bool {
+        if parse_alarm_hhmm(&alarm.time).is_none() {
+            tracing::warn!("替换闹钟时间非法，拒绝: {:?}", alarm.time);
+            return false;
+        }
+        let mut alarm = alarm;
+        alarm.repeat_days = normalize_i64_days(&alarm.repeat_days);
         if self
             .alarms
             .iter()
@@ -941,6 +949,34 @@ mod tests {
         assert!(m.remove_alarm(&other.id));
         assert!(!m.remove_alarm(&other.id));
         assert_eq!(m.alarms.len(), 1);
+    }
+
+    #[test]
+    fn replace_alarm_rejects_bad_time_and_normalizes_days() {
+        // FIX010.7 验收：ReplaceAlarm 接线前防线——非法时间拒绝原条目不动；
+        // 越界/重复日在入表前规范化（A009 #2 同形态复发预防）
+        let mut m = AlarmManager::new();
+        let base = Alarm::from_json_value(&alarm_json(
+            "r1",
+            "x",
+            "08:00",
+            serde_json::json!([]),
+            "2026-05-01T07:00:00",
+        ))
+        .unwrap();
+        assert!(m.add_alarm(base));
+        let mut bad = m.get_alarm("r1").unwrap().clone();
+        bad.time = "9:30".into();
+        assert!(!m.replace_alarm(bad), "非法时间应拒绝");
+        assert_eq!(m.get_alarm("r1").unwrap().time, "08:00", "原条目不动");
+        let mut dirty = m.get_alarm("r1").unwrap().clone();
+        dirty.repeat_days = vec![9, 2, 2, -1];
+        assert!(m.replace_alarm(dirty), "日域可规范化应放行");
+        assert_eq!(
+            m.get_alarm("r1").unwrap().repeat_days,
+            vec![2],
+            "越界剔除 + 去重保序"
+        );
     }
 
     #[test]

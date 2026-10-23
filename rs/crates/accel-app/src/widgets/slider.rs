@@ -76,7 +76,6 @@ pub fn show(
 
     draw(
         ui.painter(),
-        rect,
         track,
         track_h,
         rate_to_ratio(*rate, min, max) as f32,
@@ -84,7 +83,7 @@ pub fn show(
 }
 
 /// 三层几何绘制：底轨胶囊 → 填充（零进度整圆）→ 旋钮
-fn draw(painter: &egui::Painter, rect: Rect, track: Rect, track_h: f32, ratio: f32) {
+fn draw(painter: &egui::Painter, track: Rect, track_h: f32, ratio: f32) {
     // A005 #9：语义色 token
     let ink = crate::theme::ink();
     let cap_r = track_h / 2.0;
@@ -125,7 +124,6 @@ fn draw(painter: &egui::Painter, rect: Rect, track: Rect, track_h: f32, ratio: f
         cap_r + 3.0,
         egui::Stroke::new(1.2, ink.dim),
     );
-    let _ = rect;
 }
 
 // ===== src/widgets/slider.rs 说明区 =====

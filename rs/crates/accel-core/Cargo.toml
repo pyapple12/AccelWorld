@@ -12,7 +12,6 @@ serde_json = { workspace = true }
 tokio = { workspace = true }
 reqwest = { workspace = true }
 chrono = { workspace = true }
-chrono-tz = { workspace = true }
 lunar_rust = { workspace = true }
 rodio = { workspace = true }
 thiserror = { workspace = true }
@@ -20,9 +19,12 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 httpmock = { workspace = true }
+# chrono-tz 仅 cfg(test)（world_cities 表 IANA 解析校验），不进主依赖树（FIX010.6）
+chrono-tz = { workspace = true }
 
 # ===== crates/accel-core/Cargo.toml 说明区 =====
 # version = "0.6.0"：对齐产品版本段 0.6.1（semver 三段上限）；显示版本单一来源
 #   在 config/static/base.json，经 app 侧 build.rs 注入，core 自身不感知版本
 # 依赖全部经 workspace.dependencies 继承，本文件禁止直写版本号（版本单源）
 # httpmock 仅 dev：本地桩服务支撑 weather 传输层五路径单测，不进正式产物
+# chrono-tz 仅 dev（FIX010.6）：world_cities 表 IANA 单测解析校验用，生产零使用

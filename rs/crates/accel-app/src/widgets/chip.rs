@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn chip_height_token() {
-        // 高度取 layout.chip_size token 的 h（UIR 定值 56）
+        // 高度取 layout.chip_height token（UIR 定值 56）
         assert_eq!(chip_height(), 56.0);
     }
 }

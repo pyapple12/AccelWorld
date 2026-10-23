@@ -105,7 +105,8 @@ impl Static {
 }
 
 // ===== src/static_config.rs 说明区 =====
-// 输入：rs/config/static/{base,ui}.json（与 Python config/static/ 原文件 sha256 一致零改写）
+// 输入：rs/config/static/{base,ui}.json（结构承自 Python 原文件——PL011 时点
+//   sha256 一致，此后独立演进）
 // 输出：Static 单例 + base 域全型访问器（f64/i64/str/str_list——A009 #11：bool
 //   访问器已随 A005 #15 删除，此处清单订正）+ ui 域
 //   str/ui_nested_i64（FIX007.10：ui 域零调用 f64 族访问器已删，余走 pointer 直取）
