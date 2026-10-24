@@ -119,6 +119,12 @@ pub fn next_target<'a>(
         .copied()
 }
 
+/// 目标卡列数（纯函数，UIR3 断点）：宽 >380 双列（卡 ≥180 可容名称+剩余并排），
+/// 否则单列——「结构撑到破为止」，破在卡内元素重叠处而非设备预设
+pub fn grid_cols(avail_w: f32) -> usize {
+    if avail_w > 380.0 { 2 } else { 1 }
+}
+
 impl crate::pages::Page for crate::pages::CountdownPage {
     fn ui(&mut self, ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
         let ink = crate::theme::ink();
@@ -181,18 +187,23 @@ impl crate::pages::Page for crate::pages::CountdownPage {
             }
         }
 
-        // 目标卡双列网格（矢量圆角卡：名称/日期/剩余 + 减号；派生目标不落盘不在列表）；
+        // 目标卡网格（矢量圆角卡：名称/日期/剩余 + 减号；派生目标不落盘不在列表）；
         // 内容包 ScrollArea（目标多时不出窗）；卡内边距/网格间距全走 token
+        // UIR3：列数随可用宽断点（better-layout「结构撑到破为止」——340px 内容区
+        // 双列卡宽 164 连「名称+剩余」都放不下，破即降列）
         let card_h = 84.0_f32;
         let gap = crate::theme::spacing("md");
         let pad = crate::theme::layout_i64("card_pad") as f32;
-        // A008 #8：极窄窗负宽钳 0（clamp 下限 0，上限 340 恒大于下限不 panic）
-        let card_w = ((ui.available_width() - gap) / 2.0).clamp(0.0, 340.0);
+        let avail = ui.available_width();
+        let cols = grid_cols(avail);
+        let card_w = ((avail - gap * (cols - 1) as f32) / cols as f32)
+            .clamp(0.0, 340.0)
+            .max(0.0);
         let radius = crate::theme::radius_px("md") as u8;
         egui::ScrollArea::vertical().show(ui, |ui| {
             if !targets.is_empty() {
                 egui::Grid::new("countdown_grid")
-                    .num_columns(2)
+                    .num_columns(cols)
                     .spacing([gap, gap])
                     .show(ui, |ui| {
                         for (idx, (name, at)) in targets.iter().enumerate() {
@@ -250,6 +261,7 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                             } else {
                                 ink.meta
                             };
+                            let del_resp = del_resp.on_hover_cursor(egui::CursorIcon::PointingHand);
                             crate::widgets::icons::draw(
                                 ui.painter(),
                                 egui::pos2(rect.right() - 18.0, rect.top() + 18.0),
@@ -262,8 +274,8 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                                     (*name).to_string(),
                                 ));
                             }
-                            // 双列满行换行（原逐卡 end_row 退化为单列——与世界页同修）
-                            if (idx + 1) % 2 == 0 || idx + 1 == targets.len() {
+                            // 满行换行（列数随断点——单列时每卡即满行）
+                            if (idx + 1) % cols == 0 || idx + 1 == targets.len() {
                                 ui.end_row();
                             }
                         }
@@ -416,6 +428,14 @@ mod tests {
         let input = at(2027, 2, 6, 8);
         let local = local_from_naive(input).expect("常规时刻应可解析");
         assert_eq!(local.naive_local(), input, "不得改写用户所填时刻");
+    }
+
+    #[test]
+    fn grid_cols_breaks_at_card_overflow() {
+        // UIR3 验收：宽窗双列；340px 最小窗内容区（双列卡 164 放不下名称+剩余）降单列
+        assert_eq!(grid_cols(600.0), 2);
+        assert_eq!(grid_cols(380.0), 1, "380 恰破不进双列");
+        assert_eq!(grid_cols(340.0), 1);
     }
 
     #[test]

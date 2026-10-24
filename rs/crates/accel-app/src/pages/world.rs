@@ -24,6 +24,18 @@ pub fn now_in_tz(utc: DateTime<chrono::Utc>, tz: &str) -> Option<(String, bool)>
     ))
 }
 
+/// 磁贴列数（纯函数，UIR3 断点）：>480 三列（磁贴 ≥150 走时与删除钮不叠）；
+/// >300 两列；否则单列——断点取在元素碰撞处而非设备预设
+pub fn tile_cols(avail_w: f32) -> usize {
+    if avail_w > 480.0 {
+        3
+    } else if avail_w > 300.0 {
+        2
+    } else {
+        1
+    }
+}
+
 impl crate::pages::Page for crate::pages::WorldPage {
     fn ui(&mut self, ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
         let ink = crate::theme::ink();
@@ -32,12 +44,13 @@ impl crate::pages::Page for crate::pages::WorldPage {
         let pins: Vec<String> = state.world_pins_view().to_vec();
         let base_tz = state.base_timezone.clone();
 
-        // 三列磁贴网格（矢量圆角卡：名称 + 金点基准标 + 昼夜图标 + 等宽走时）；
+        // 磁贴网格（矢量圆角卡：名称 + 金点基准标 + 昼夜图标 + 等宽走时）；
         // 内容包 ScrollArea（城市多时不出窗）；间距/内边距全走 token
+        // UIR3：列数随可用宽断点（340px 内容区三列磁贴 105px 走时会压到删除钮——
+        // better-layout「结构撑到破为止」）
         let gap = crate::theme::spacing("md");
         let pad = crate::theme::layout_i64("card_pad") as f32;
-        let cols = 3usize;
-        // A008 #8：极窄窗负宽钳 0（clamp 下限 0，上限 260 恒大于下限不 panic）
+        let cols = tile_cols(ui.available_width());
         let tile_w =
             ((ui.available_width() - gap * (cols - 1) as f32) / cols as f32).clamp(0.0, 260.0);
         let tile_h = 86.0_f32;
@@ -55,6 +68,7 @@ impl crate::pages::Page for crate::pages::WorldPage {
                         let (walk, is_day) = tz_str
                             .and_then(|tz| now_in_tz(utc_now, tz))
                             .unwrap_or_else(|| ("--:--:--".to_string(), true));
+                        let hit = hit.on_hover_cursor(egui::CursorIcon::PointingHand);
 
                         // 磁贴底：卡面色；基准 = 金描边（选中态一眼可辨）
                         ui.painter().rect_filled(
@@ -122,6 +136,7 @@ impl crate::pages::Page for crate::pages::WorldPage {
                                 egui::Sense::click(),
                             );
                             del_hover = del_resp.hovered();
+                            let del_resp = del_resp.on_hover_cursor(egui::CursorIcon::PointingHand);
                             crate::widgets::icons::draw(
                                 ui.painter(),
                                 egui::pos2(rect.right() - 22.0, rect.bottom() - 22.0),
@@ -209,6 +224,16 @@ mod tests {
                 .unwrap_or_else(|| panic!("走时应可解析: {name} → {tz}"));
             assert_eq!(text.len(), 8, "走时应为 HH:MM:SS: {name} → {text}");
         }
+    }
+
+    #[test]
+    fn tile_cols_breaks_before_walk_overlaps_delete() {
+        // UIR3 验收：宽窗三列；480 恰破降两列（340 最小窗内容区磁贴 155 不叠）；
+        // 300 恰破降单列
+        assert_eq!(tile_cols(700.0), 3);
+        assert_eq!(tile_cols(480.0), 2);
+        assert_eq!(tile_cols(340.0), 2);
+        assert_eq!(tile_cols(300.0), 1);
     }
 
     #[test]

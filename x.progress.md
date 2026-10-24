@@ -1,8 +1,8 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告 + Rust 重构总纲）
-> 当前版本：0.6.1.5（UIR2 子夜星图二轮精修完成：非文本对比度实测修正（tick_idle 新键/发丝提浓/弱文本对齐）/组距纪律/加号行窄窗溢出修复/按压态/标签截断回路；PL015 已收口，不做人工测试与定版仪式）
-> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页（+ 设置浮窗）功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；FIX007–FIX010 与 UIR2 一轮（52daaf6）均已提交推送，当前阶段为 UIR2 二轮精修（待提交）
+> 当前版本：0.6.1.7（UIR4 开创性重构完成：侧栏废除——双环星轨仪主仪恒驻 + 底部仪器坞 + 右侧抽屉页；时间膨胀画成两个转速不同的同心环；PL015 已收口，不做人工测试与定版仪式）
+> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；FIX007–FIX010 与 UIR2/3 轮（52daaf6/cc58746 及三轮）均已提交推送，当前阶段为 UIR4 开创性重构（待提交）
 > 更新（2026-10-17）：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow——UIR 定案 wgpu 废弃）；Python 版全量归档 `.archived/`（git 忽略），本文件自 PL011 起记录 RS 任务
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
 
@@ -610,3 +610,19 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] UIR2.9.4 倒计时加号行窄窗溢出修复 —— 固定 150+200 输入宽在最小窗（内容区 ~340px）溢出→随可用宽按 0.42/0.58 比例分宽（钳 [80,150]/[120,200]）；验证：最小窗 520 下 120+174+按钮≈可用宽不溢出
 - [x] UIR2.9.5 控件按压态 + 闹钟标签溢出治理 —— 侧栏导航/设置行、闹钟快捷 chips 补按压态（靛底即时反馈——better-ui 高频交互纪律）；闹钟行标签窄窗溢出压垃圾桶→按剩余宽截断加省略号（truncate_chars 按 char 切中文安全）+ 悬停行卡 tooltip 全名回路；验证：truncate_chars_keeps_cjk_boundary 绿
 - [x] UIR2.9.6 验证收尾 —— 四关卡 ALL_GREEN + 测试 194（app 63+bin 1+core 110+parity 20，+2）+ 截图探针六帧 exit 0 + 像素复采（侧栏/内容区精确命中）+ bump 0.6.1.5 + 文档记录；验证：pwsh rs/ci.ps1 ALL_GREEN
+
+### UIR3: 子夜星图三轮精修 [design#UIR2]（2026-10-24，better-layout「结构撑到破为止」+ 交互可供性 + 签名贯穿）
+
+- [x] UIR3.1 窄窗结构断点 —— 倒计时目标卡 grid_cols(avail)（>380 双列否则单列——340px 内容区双列卡 164 连名称+剩余都放不下）；世界磁贴 tile_cols(avail)（>480 三列/>300 两列/否则单列——三列 105px 走时压删除钮）；断点取元素碰撞处而非设备预设；验证：grid_cols_breaks_at_card_overflow / tile_cols_breaks_before_walk_overlaps_delete 两测绿
+- [x] UIR3.2 时钟 hero 窄窗自适应 —— 72px×8 字符 + 徽标组合宽 ~400px 超最小窗内容区 340 → hero_fit_scale(combined, avail) 按比例收号（下限 0.55），不换行不裁切保留主次；验证：hero_fit_scale_fits_without_shrinking_below_floor 绿
+- [x] UIR3.3 可供性指针 —— 全部自绘点击目标补 PointingHand 指针对（侧栏导航/设置行/世界磁贴/闹钟开关/三处删除钮/快捷 chips/icon_button 集中处——on_hover_cursor 按值消费需 let 重绑定）；验证：cargo check + 手势路径走查
+- [x] UIR3.4 签名元素贯穿 —— 天气逐时曲线 3h 标注点由通用圆点改 2×6 金刻度（星轨刻度语言在第二页面回响）；验证：截图帧 03_weather 渲染 ok
+- [x] UIR3.5 验证收尾 —— 四关卡 ALL_GREEN + 测试 197（app 66+bin 1+core 110+parity 20，+3）+ 截图探针六帧 exit 0 + bump 0.6.1.6 + 文档记录；验证：pwsh rs/ci.ps1 ALL_GREEN
+
+### UIR4: 开创性重构——星盘主仪 + 仪器坞 + 抽屉页 [design#UIR2]（2026-10-24，用户批「只是修修补补，要更开创性」）
+
+- [x] UIR4.1 星盘几何纯函数 —— day_fraction（HH:MM:SS→一日比例）/day_angle（比例→表盘角）/polar（正上 0° 顺时针极坐标）/dial_diameter（直径自适应，抽屉缩让）+ 四组单测；验证：day_fraction_cardinals/day_angle_and_polar_roundtrip/dial_diameter_fits_and_clamps 绿
+- [x] UIR4.2 双环星轨仪 —— 时钟页重写：外环现实一日 96 刻度（整点刻长/已过金弧/白游标悬环外/00·06·12·18 基数标签）+ 内环加速一日 48 刻度（金游标贴环内）+ 中心等宽 hero+×徽标+标准时+日期；时间膨胀=两环金弧速差直观化；验证：编译 + 帧渲染 ok
+- [x] UIR4.3 结构重排 —— 侧栏导航废除；pages/mod.rs：非 Clock 页 Panel::right 抽屉（卡面+发丝，46% 宽钳 280..420）+ CentralPanel 星盘恒驻；window.rs：Panel::bottom 仪器坞（五仪图标 + 右端齿轮，icon_button 复用）+ 设置浮窗重锚 RIGHT_BOTTOM（坞上方）；验证：全部既有页级单测绿（页内部零改动）
+- [x] UIR4.4 token 换代 —— ui.json sidebar_width→dock_height 56（零死键）；验证：rg sidebar_width 零命中
+- [x] UIR4.5 验证收尾 —— 四关卡 ALL_GREEN + 测试 198 + 截图六帧 exit 0 + 像素实证（窗底 #0F1420/抽屉 #141A29/主仪区精确命中；坞带白为已知 PrintWindow 底部伪影——内容区恰停坞顶边界+浮窗锚位双重佐证坞占位）+ bump 0.6.1.7 + 文档连带（AGENTS 头部与结构行/README 特性与导航/w.study 1·2·3.7/m.milestone）；验证：pwsh rs/ci.ps1 ALL_GREEN

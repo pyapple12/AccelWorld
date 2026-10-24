@@ -161,9 +161,14 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                     let Some(&(x, y)) = pts.get(i) else { continue };
                     let px = rect.left() + x;
                     let py = rect.top() + 8.0 + y;
-                    ui.painter().circle_filled(
-                        egui::pos2(px, py),
-                        2.0,
+                    // UIR3：3h 标注点改金刻度（2×6 竖签——星轨刻度语言在曲线上的回响，
+                    // 替代通用圆点）
+                    ui.painter().rect_filled(
+                        egui::Rect::from_min_size(
+                            egui::pos2(px - 1.0, py - 3.0),
+                            egui::vec2(2.0, 6.0),
+                        ),
+                        egui::epaint::CornerRadius::same(1),
                         crate::theme::accent_color(),
                     );
                     ui.painter().text(

@@ -1,5 +1,5 @@
-//! 页面模块总装（ui/panels/ 的 Rust 对等物）
-//! PL014.11 装配：Pages 容器 + 五页实体（各页 impl Page 在各页文件，本文件只做容器与装配）
+//! 页面模块总装（UIR4：星盘主仪恒驻 home + 非时钟页右侧仪器抽屉）
+//! Pages 容器 + 五页实体（各页 impl Page 在各页文件，本文件只做容器与装配）
 
 use crate::bus::{Bus, PageId, UiState};
 
@@ -12,9 +12,8 @@ pub mod weather;
 pub mod world;
 
 /// 页面 trait（z.plan PL014·A 定案：各页自持临时输入态，持久态在后端）
-/// ui 挂根 Ui（CentralPanel 0.37 形态）；ctx 经 ui.ctx() 另取
+/// ui 挂根 Ui；ctx 经 ui.ctx() 另取
 /// FIX006.2：命令出口传 `&Bus`（页面经 bus.send 走 CmdQueue 待发队列，满载不丢命令）
-/// UIR：scene 参数删除（玻璃面系统整体废弃）
 pub trait Page {
     fn ui(&mut self, ui: &mut egui::Ui, state: &mut UiState, bus: &Bus);
 }
@@ -47,12 +46,35 @@ impl Pages {
         }
     }
 
-    /// 当前页绘制（UIR 实心装配：单一 CentralPanel + 统一内边距——页板玻璃面
-    /// 注册已随 glass 模块删除）
+    /// 总装配（UIR4 模型）：非 Clock 页先占右侧仪器抽屉（卡面 + 发丝左缘），
+    /// 星盘主仪恒驻中央 CentralPanel——抽屉开合只缩让、不遮挡、不消失
     pub fn ui(&mut self, ui: &mut egui::Ui, state: &mut UiState, bus: &Bus) {
-        // UiState.current_page 单源：Pages.current 镜像自 state.current_page（侧栏点击直改）
+        // UiState.current_page 单源：Pages.current 镜像自 state.current_page（仪器坞点击直改）
         self.current = state.current_page;
 
+        if self.current != PageId::Clock {
+            let drawer_w = (ui.available_width() * 0.46).clamp(280.0, 420.0);
+            egui::Panel::right("page_drawer")
+                .exact_size(drawer_w)
+                .frame(
+                    egui::Frame::new()
+                        .fill(crate::theme::card_bg())
+                        .stroke(egui::Stroke::new(1.0, crate::theme::border_color()))
+                        .inner_margin(egui::Margin::same(16)),
+                )
+                .show(ui, |inner| {
+                    let page: &mut dyn Page = match self.current {
+                        PageId::Clock => &mut self.clock,
+                        PageId::Countdown => &mut self.countdown,
+                        PageId::World => &mut self.world,
+                        PageId::Weather => &mut self.weather,
+                        PageId::Alarm => &mut self.alarm,
+                    };
+                    page.ui(inner, state, bus);
+                });
+        }
+
+        // 星盘主仪（时钟页恒驻 home——仪器在住，抽屉在查）
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
@@ -60,14 +82,7 @@ impl Pages {
                     .inner_margin(egui::Margin::same(20)),
             )
             .show(ui, |inner| {
-                let page: &mut dyn Page = match self.current {
-                    PageId::Clock => &mut self.clock,
-                    PageId::Countdown => &mut self.countdown,
-                    PageId::World => &mut self.world,
-                    PageId::Weather => &mut self.weather,
-                    PageId::Alarm => &mut self.alarm,
-                };
-                page.ui(inner, state, bus);
+                self.clock.ui(inner, state, bus);
             });
         // 设置浮窗绘制在 window.rs::paint_settings_pop
     }
@@ -90,35 +105,32 @@ pub fn quick_alarm_minutes() -> &'static [i64] {
 
 // ===== 五页实体 =====
 
-/// 时钟页（impl 在 pages/clock.rs）
+/// 时钟页（impl 在 pages/clock.rs——星盘主仪）
 #[derive(Default)]
 pub struct ClockPage;
 
-/// 倒计时页（impl 在 pages/countdown.rs）
+/// 倒计时页（impl 在 pages/countdown.rs——抽屉页）
 #[derive(Default)]
 pub struct CountdownPage;
 
-/// 世界时钟页（impl 在 pages/world.rs）
+/// 世界时钟页（impl 在 pages/world.rs——抽屉页）
 #[derive(Default)]
 pub struct WorldPage;
 
-/// 天气页（impl 在 pages/weather.rs）
+/// 天气页（impl 在 pages/weather.rs——抽屉页）
 #[derive(Default)]
 pub struct WeatherPage;
 
-/// 闹钟页（impl 在 pages/alarm.rs）
+/// 闹钟页（impl 在 pages/alarm.rs——抽屉页）
 #[derive(Default)]
 pub struct AlarmPage;
 
-// 页面枚举循环工具（A005 #15：next_page 生产零调用已删除——UIR 后导航点击切换
-// 内联在 window.rs 侧栏）
-
 // ===== src/pages/mod.rs 说明区 =====
-// 输入：UiState（current_page/settings_open 等）+ 各页自持临时输入态；输出：当前页装配
-// 逻辑步骤：current 镜像 state.current_page → 统一 CentralPanel（实心 window_bg 底
-//   + 20 内边距）→ 分发 page.ui
-// 设计理由：容器只管装配与分发（各页 impl 分散在 pages/*.rs，禁大文件后拆）；
-//   页面 trait 传 `&Bus`（FIX006.2：命令出口经 CmdQueue 待发队列，满载不丢）；
-//   UIR：scene 参数删除（玻璃面系统整体废弃——实心主题无面注册）
+// 输入：UiState（current_page/settings_open 等）+ 各页自持临时输入态；输出：装配
+// 逻辑步骤：current 镜像 → 非 Clock 页 Panel::right 抽屉（exact_size 宽 46% 钳
+//   [280,420]，卡面 + 发丝描边）→ CentralPanel 星盘主仪恒驻
+// 设计理由（UIR4）：时钟是「住在里面」的仪表——主仪永不下场，抽屉页是「查阅」
+//   用的临时面板，开合只缩让主仪（dial_diameter 随宽自适应）；抽屉卡面与窗底
+//   分层（文本层在卡面 5.93..14.16 全部实测达标）
 // 异常处理：无 panic 面（页 id 固定五档，match 穷尽）
 // 关联依赖：crate::bus（Bus/PageId/UiState）；消费方：window.rs

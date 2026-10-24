@@ -105,157 +105,57 @@ impl eframe::App for AppHandle {
             apply_caption_color(hwnd, crate::theme::sidebar_bg());
         }
 
-        // 侧栏导航（左；选中=靛底+金图标+左缘星轨指标记；底部设置行）
-        egui::Panel::left("nav_sidebar")
-            .exact_size(crate::theme::layout_i64("sidebar_width") as f32)
+        // 底部仪器坞（UIR4：侧栏废除——导航为图标仪器排，星盘主仪恒驻中央）
+        egui::Panel::bottom("instrument_dock")
+            .exact_size(crate::theme::layout_i64("dock_height") as f32)
             .frame(
                 egui::Frame::new()
                     .fill(crate::theme::sidebar_bg())
-                    .inner_margin(egui::Margin::same(10)),
+                    .inner_margin(egui::Margin::same(8)),
             )
             .show(ui, |ui| {
-                ui.add_space(crate::theme::spacing("sm"));
-                // 应用名（侧栏顶部标识——雄黄金标点 + 米白主文）
-                ui.label(
-                    egui::RichText::new("加速世界")
-                        .size(crate::theme::font_size("body_lg"))
-                        .color(crate::theme::ink().strong),
+                // 坞顶发丝（与内容区分层的唯一线——结构即信息）
+                let top = ui.cursor().left_top();
+                let w = ui.available_width();
+                ui.painter().rect_filled(
+                    egui::Rect::from_min_size(top, egui::vec2(w, 1.0)),
+                    egui::epaint::CornerRadius::same(0),
+                    crate::theme::border_color(),
                 );
-                ui.add_space(crate::theme::spacing("md"));
-                let radius = crate::theme::radius_px("sm") as u8;
-                for page in PAGE_ORDER {
-                    let selected = self.state.current_page == page;
-                    let (rect, resp) = ui.allocate_exact_size(
-                        egui::vec2(ui.available_width(), 36.0),
-                        egui::Sense::click(),
-                    );
-                    // 三态：选中靛底 / 悬停微亮 / 按压靛底（即时反馈）
-                    let pressed = resp.is_pointer_button_down_on();
-                    let fill = if selected || pressed {
-                        crate::theme::color32_at("selection", 46)
-                    } else if resp.hovered() {
-                        crate::theme::hover_bg()
-                    } else {
-                        egui::Color32::TRANSPARENT
-                    };
-                    if fill != egui::Color32::TRANSPARENT {
-                        ui.painter().rect_filled(
-                            rect,
-                            egui::epaint::CornerRadius::same(radius),
-                            fill,
+                ui.add_space(crate::theme::spacing("xs") + 1.0);
+                ui.horizontal_centered(|ui| {
+                    ui.add_space(crate::theme::spacing("lg"));
+                    // 五仪导航（时钟=回 home；选中金底深图标）
+                    for page in PAGE_ORDER {
+                        let selected = self.state.current_page == page;
+                        let btn = crate::widgets::icon_button::show(
+                            ui,
+                            sidebar_icon(page),
+                            20.0,
+                            selected,
                         );
+                        if btn.on_hover_text(sidebar_label(page)).clicked() {
+                            self.state.current_page = page;
+                        }
+                        ui.add_space(crate::theme::spacing("xs"));
                     }
-                    if selected {
-                        // 星轨指标记（左缘 3px 金条——仪器索引刻度语义）
-                        ui.painter().rect_filled(
-                            egui::Rect::from_min_size(
-                                egui::pos2(rect.left(), rect.center().y - 10.0),
-                                egui::vec2(3.0, 20.0),
-                            ),
-                            egui::epaint::CornerRadius::same(2),
-                            crate::theme::accent_color(),
+                    // 右端：设置齿轮
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_space(crate::theme::spacing("lg"));
+                        let gear = crate::widgets::icon_button::show(
+                            ui,
+                            crate::widgets::icons::Icon::Gear,
+                            20.0,
+                            self.state.settings_open,
                         );
-                    }
-                    // 图标 + 文字（选中金图标，常态暖白）
-                    crate::widgets::icons::draw(
-                        ui.painter(),
-                        egui::pos2(rect.left() + 22.0, rect.center().y),
-                        16.0,
-                        sidebar_icon(page),
-                        if selected {
-                            crate::theme::accent_color()
-                        } else {
-                            crate::theme::ink().body
-                        },
-                    );
-                    ui.painter().text(
-                        egui::pos2(rect.left() + 42.0, rect.center().y),
-                        egui::Align2::LEFT_CENTER,
-                        sidebar_label(page),
-                        egui::FontId::proportional(crate::theme::font_size("body")),
-                        if selected {
-                            crate::theme::ink().strong
-                        } else {
-                            crate::theme::ink().body
-                        },
-                    );
-                    if resp.clicked() {
-                        self.state.current_page = page;
-                    }
-                }
-                // 底部设置行（发丝分隔 + 齿轮）
-                ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                    ui.add_space(crate::theme::spacing("sm"));
-                    let sep_rect = egui::Rect::from_min_size(
-                        ui.cursor().left_top(),
-                        egui::vec2(ui.available_width(), 1.0),
-                    );
-                    ui.painter().rect_filled(
-                        sep_rect,
-                        egui::epaint::CornerRadius::same(0),
-                        crate::theme::border_color(),
-                    );
-                    ui.allocate_space(egui::vec2(0.0, 1.0));
-                    ui.add_space(crate::theme::spacing("xs"));
-                    let (rect, resp) = ui.allocate_exact_size(
-                        egui::vec2(ui.available_width(), 36.0),
-                        egui::Sense::click(),
-                    );
-                    // 三态同导航项：打开靛底 / 悬停微亮 / 按压靛底
-                    let pressed = resp.is_pointer_button_down_on();
-                    let fill = if self.state.settings_open || pressed {
-                        crate::theme::color32_at("selection", 46)
-                    } else if resp.hovered() {
-                        crate::theme::hover_bg()
-                    } else {
-                        egui::Color32::TRANSPARENT
-                    };
-                    if fill != egui::Color32::TRANSPARENT {
-                        ui.painter().rect_filled(
-                            rect,
-                            egui::epaint::CornerRadius::same(radius),
-                            fill,
-                        );
-                    }
-                    if self.state.settings_open {
-                        ui.painter().rect_filled(
-                            egui::Rect::from_min_size(
-                                egui::pos2(rect.left(), rect.center().y - 10.0),
-                                egui::vec2(3.0, 20.0),
-                            ),
-                            egui::epaint::CornerRadius::same(2),
-                            crate::theme::accent_color(),
-                        );
-                    }
-                    crate::widgets::icons::draw(
-                        ui.painter(),
-                        egui::pos2(rect.left() + 22.0, rect.center().y),
-                        16.0,
-                        crate::widgets::icons::Icon::Gear,
-                        if self.state.settings_open {
-                            crate::theme::accent_color()
-                        } else {
-                            crate::theme::ink().body
-                        },
-                    );
-                    ui.painter().text(
-                        egui::pos2(rect.left() + 42.0, rect.center().y),
-                        egui::Align2::LEFT_CENTER,
-                        "设置",
-                        egui::FontId::proportional(crate::theme::font_size("body")),
-                        if self.state.settings_open {
-                            crate::theme::ink().strong
-                        } else {
-                            crate::theme::ink().body
-                        },
-                    );
-                    if resp.clicked() {
-                        self.state.settings_open = !self.state.settings_open;
-                    }
+                        if gear.on_hover_text("设置").clicked() {
+                            self.state.settings_open = !self.state.settings_open;
+                        }
+                    });
                 });
             });
 
-        // 当前页内容（实心 CentralPanel 由容器装配）
+        // 页面总装（星盘主仪恒驻 + 非时钟页右侧仪器抽屉）
         self.pages.ui(ui, &mut self.state, &self.bus);
 
         // 设置浮窗
@@ -519,10 +419,11 @@ impl AppHandle {
             .title_bar(false)
             .frame(frame)
             .anchor(
-                egui::Align2::LEFT_BOTTOM,
+                // UIR4：侧栏废除后重锚右下（坞上方——齿轮就在坞右端）
+                egui::Align2::RIGHT_BOTTOM,
                 [
-                    crate::theme::layout_i64("sidebar_width") as f32 + 16.0,
                     -24.0,
+                    -(crate::theme::layout_i64("dock_height") as f32 + 12.0),
                 ],
             )
             .show(ctx, |ui| {

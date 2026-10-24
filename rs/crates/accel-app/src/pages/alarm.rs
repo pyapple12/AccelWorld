@@ -94,6 +94,7 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                             ink.body
                         },
                     );
+                    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
                     if resp.clicked() {
                         let draft = quick_target(minutes, Local::now());
                         bus.send(FrontendCommand::AddAlarm(draft));
@@ -207,6 +208,7 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                     knob_r,
                     ink.knob,
                 );
+                let sw_resp = sw_resp.on_hover_cursor(egui::CursorIcon::PointingHand);
                 if sw_resp.clicked() {
                     bus.send(FrontendCommand::ToggleAlarm(alarm.id.clone()));
                 }
@@ -278,6 +280,7 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                         ink.meta
                     },
                 );
+                let del_resp = del_resp.on_hover_cursor(egui::CursorIcon::PointingHand);
                 if del_resp.clicked() {
                     bus.send(FrontendCommand::RemoveAlarm(alarm.id.clone()));
                 }

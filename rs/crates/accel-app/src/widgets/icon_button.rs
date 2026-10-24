@@ -38,7 +38,8 @@ pub fn show(ui: &mut egui::Ui, icon: Icon, size: f32, selected: bool) -> Respons
         ink.body
     };
     draw(ui.painter(), center, size, icon, icon_color);
-    resp
+    // UIR3：可供性——图标按钮统一指针对（集中处，三个消费页一次接线）
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 // ===== src/widgets/icon_button.rs 说明区 =====

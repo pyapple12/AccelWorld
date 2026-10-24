@@ -25,7 +25,7 @@
     "xxl": 32
   },
   "layout": {
-    "sidebar_width": 148,
+    "dock_height": 56,
     "slider_track": 24,
     "chip_height": 32,
     "card_pad": 16
