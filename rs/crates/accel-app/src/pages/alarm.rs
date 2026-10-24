@@ -27,6 +27,20 @@ pub fn valid_hhmm(text: &str) -> bool {
         && text[3..5].parse::<u8>().is_ok_and(|m| m <= 59)
 }
 
+/// 按 char 数截断加省略号（纯函数可测）：len 不足以容纳省略号时逐步退让；
+/// 按字符切保证中文边界安全（不动字节中段）
+pub fn truncate_chars(text: &str, keep: usize) -> String {
+    let total = text.chars().count();
+    if total <= keep {
+        return text.to_string();
+    }
+    if keep <= 1 {
+        return "…".to_string();
+    }
+    let cut: String = text.chars().take(keep - 1).collect();
+    format!("{cut}…")
+}
+
 impl crate::pages::Page for crate::pages::AlarmPage {
     fn ui(&mut self, ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
         let ink = crate::theme::ink();
@@ -56,8 +70,12 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                         egui::vec2(galley_w + 24.0, 30.0),
                         egui::Sense::click(),
                     );
-                    let fill = if resp.hovered() {
+                    // 三态：hover 金底 / 按压靛底（即时反馈——better-ui 高频交互纪律）
+                    let pressed = resp.is_pointer_button_down_on();
+                    let fill = if resp.hovered() && !pressed {
                         crate::theme::accent_color()
+                    } else if pressed {
+                        crate::theme::color32_at("selection", 42)
                     } else {
                         crate::theme::card_bg()
                     };
@@ -68,8 +86,10 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                         egui::Align2::CENTER_CENTER,
                         text,
                         egui::FontId::proportional(crate::theme::font_size("body")),
-                        if resp.hovered() {
+                        if resp.hovered() && !pressed {
                             crate::theme::on_accent_color()
+                        } else if pressed {
+                            ink.strong
                         } else {
                             ink.body
                         },
@@ -139,7 +159,7 @@ impl crate::pages::Page for crate::pages::AlarmPage {
             let radius = crate::theme::radius_px("md") as u8;
             for alarm in &state.alarms {
                 let row_h = 56.0_f32;
-                let (rect, _) = ui.allocate_exact_size(
+                let (rect, row_resp) = ui.allocate_exact_size(
                     egui::vec2(ui.available_width(), row_h),
                     egui::Sense::hover(),
                 );
@@ -199,18 +219,45 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                     &time_font,
                     if alarm.enabled { ink.strong } else { ink.meta },
                 );
-                // 标签 + 重复文案
+                // 标签 + 重复文案（UIR2 二轮：窄窗溢出治理——按剩余宽截断加省略号，
+                // 悬停行卡 tooltip 给全名回路——better-layout 截断须有回取通路）
+                let full_label = format!(
+                    "{}  {}",
+                    alarm.label,
+                    format_repeat_display(&alarm.repeat_days)
+                );
+                let label_font = egui::FontId::proportional(crate::theme::font_size("body"));
+                let label_avail = (rect.right() - 44.0 - (rect.left() + 178.0)).max(0.0);
+                let mut shown = full_label.clone();
+                {
+                    let mut chars = full_label.chars().count();
+                    while chars > 1 {
+                        let w = ui
+                            .painter()
+                            .layout_no_wrap(
+                                truncate_chars(&full_label, chars),
+                                label_font.clone(),
+                                ink.muted,
+                            )
+                            .rect
+                            .width();
+                        if w <= label_avail {
+                            shown = truncate_chars(&full_label, chars);
+                            break;
+                        }
+                        chars -= 1;
+                    }
+                }
                 ui.painter().text(
                     egui::pos2(rect.left() + 178.0, rect.center().y),
                     egui::Align2::LEFT_CENTER,
-                    format!(
-                        "{}  {}",
-                        alarm.label,
-                        format_repeat_display(&alarm.repeat_days)
-                    ),
-                    egui::FontId::proportional(crate::theme::font_size("body")),
+                    &shown,
+                    label_font,
                     if alarm.enabled { ink.muted } else { ink.meta },
                 );
+                if shown != full_label {
+                    row_resp.on_hover_text(&full_label);
+                }
                 // 垃圾桶（常显元信息色、悬停朱砂；RemoveAlarm——UIR2 可达性优先）
                 let del_resp = ui.interact(
                     egui::Rect::from_center_size(
@@ -255,13 +302,21 @@ impl crate::pages::Page for crate::pages::AlarmPage {
 //   消费方：pages::Pages
 #[cfg(test)]
 mod tests {
-    use super::{quick_label, valid_hhmm};
+    use super::{quick_label, truncate_chars, valid_hhmm};
 
     #[test]
     fn quick_label_format() {
         // 快捷 chips 文案锚点
         assert_eq!(quick_label(15), "15 分钟后");
         assert_eq!(quick_label(240), "240 分钟后");
+    }
+
+    #[test]
+    fn truncate_chars_keeps_cjk_boundary() {
+        // UIR2 二轮验收：不越界原样；截断加省略号；极小 keep 只剩省略号
+        assert_eq!(truncate_chars("早起", 5), "早起");
+        assert_eq!(truncate_chars("早起上班", 3), "早起…");
+        assert_eq!(truncate_chars("早起上班", 1), "…");
     }
 
     #[test]

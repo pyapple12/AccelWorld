@@ -277,7 +277,8 @@ impl crate::pages::Page for crate::pages::CountdownPage {
             accel_core::chinese_calendar::year_chips(d)
         });
         if !chips.is_empty() {
-            ui.add_space(crate::theme::spacing("sm"));
+            // 组距纪律（better-layout）：卡网格组内距 md(12)，组间 ≥2× → xl(24)
+            ui.add_space(crate::theme::spacing("xl"));
             ui.horizontal_wrapped(|ui| {
                 ui.label(
                     egui::RichText::new("近期节日")
@@ -291,12 +292,14 @@ impl crate::pages::Page for crate::pages::CountdownPage {
             });
         }
 
-        ui.add_space(crate::theme::spacing("sm"));
+        ui.add_space(crate::theme::spacing("lg"));
         // 加号行：名称 + 日期时间文本（解析单一来源 tools::countdown::parse_target_text）
         // 校验（空名/同名/<24h 拒）→ 确认经 local_from_naive（DST 歧义取较早一侧）
+        // UIR2 二轮：宽度随可用宽自适应（原固定 150+200 在最小窗内容区 340px 溢出）
         ui.horizontal(|ui| {
-            let name_w = 150.0_f32;
-            let at_w = 200.0_f32;
+            let row_w = ui.available_width();
+            let name_w = ((row_w - 46.0) * 0.42).clamp(80.0, 150.0);
+            let at_w = ((row_w - 46.0) * 0.58).clamp(120.0, 200.0);
             egui::TextEdit::singleline(&mut state.countdown_draft_name)
                 .hint_text("目标名称")
                 .desired_width(name_w)

@@ -25,6 +25,12 @@ pub fn tick_height(idx: usize) -> f32 {
     if idx.is_multiple_of(2) { 10.0 } else { 6.0 }
 }
 
+/// 刻度数量（纯函数，星轨刻度）：宽度自适应——约每 9px 一道，钳 [24, 48] 且取偶
+/// （高矮交替的节奏在两端对齐；窄窗不挤成实心块）
+pub fn tick_count(scale_w: f32) -> usize {
+    (((scale_w / 9.0) as usize).clamp(24, 48) / 2) * 2
+}
+
 impl crate::pages::Page for crate::pages::ClockPage {
     fn ui(&mut self, ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
         let ink = crate::theme::ink();
@@ -84,10 +90,10 @@ impl crate::pages::Page for crate::pages::ClockPage {
             );
             ui.allocate_space(egui::vec2(0.0, crate::theme::font_size("hero") * 1.5));
 
-            // 星轨刻度日进度（签名元素：48 道刻度的仪器标尺——已过段金色、
-            // 未至段弱轨色；整点刻高、半点刻矮，读数如星图刻度环展开）
-            let ticks = 48usize;
+            // 星轨刻度日进度（签名元素：仪器标尺——已过段金色、未至段闲刻度色
+            // ≥3:1；整点刻高、半点刻矮；刻度数随宽度自适应 24..48，窄窗不挤成实心）
             let scale_w = (ui.available_width() * 0.62).min(440.0);
+            let ticks = tick_count(scale_w);
             let scale_left = center_x - scale_w / 2.0;
             let scale_y = ui.cursor().top() + 6.0;
             let progress = day_progress(info.expanded_hours_per_day, info.remaining_hours);
@@ -100,7 +106,7 @@ impl crate::pages::Page for crate::pages::ClockPage {
                 let c = if passed {
                     crate::theme::accent_color()
                 } else {
-                    crate::theme::track_color()
+                    crate::theme::tick_idle_color()
                 };
                 ui.painter().rect_filled(
                     egui::Rect::from_min_size(
@@ -195,5 +201,16 @@ mod tests {
         assert_eq!(tick_height(0), 10.0);
         assert_eq!(tick_height(1), 6.0);
         assert_eq!(tick_height(48), 10.0);
+    }
+
+    #[test]
+    fn tick_count_adapts_and_stays_even() {
+        // UIR2 二轮验收：宽标尺 48 道；窄窗自适应收敛且恒为偶数（高矮交替两端对齐）
+        assert_eq!(tick_count(440.0), 48);
+        assert_eq!(tick_count(210.0), 24);
+        for w in [50.0, 100.0, 210.0, 330.0, 440.0, 600.0] {
+            let n = tick_count(w);
+            assert!((24..=48).contains(&n) && n.is_multiple_of(2), "w={w} n={n}");
+        }
     }
 }

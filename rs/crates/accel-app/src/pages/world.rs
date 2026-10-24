@@ -150,7 +150,8 @@ impl crate::pages::Page for crate::pages::WorldPage {
                 });
         });
 
-        ui.add_space(crate::theme::spacing("sm"));
+        // 组距纪律（better-layout）：磁贴网格组内距 md(12)，组间 ≥2× → xl(24)
+        ui.add_space(crate::theme::spacing("xl"));
         // 加号行：候选下拉（world_cities 全表 − 已常驻名）
         ui.horizontal(|ui| {
             ui.label(

@@ -1,8 +1,8 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告 + Rust 重构总纲）
-> 当前版本：0.6.1.4（UIR2 子夜星图视觉重塑完成：六域审计驱动（dim 2.85:1 失效/soft·muted 重叠/字阶无梯度）→ 黛蓝星图底 × 雄黄金 × 星轨刻度签名元素 + spacing 域 + 对比度全矩阵实测；PL015 已收口，不做人工测试与定版仪式）
-> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页（+ 设置浮窗）功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；FIX007–FIX010 均已提交推送（c914b74/a60cc09/fd04683/4a48890/caac633），当前阶段为 UIR2 视觉重塑（用户定案全盘推倒重来）
+> 当前版本：0.6.1.5（UIR2 子夜星图二轮精修完成：非文本对比度实测修正（tick_idle 新键/发丝提浓/弱文本对齐）/组距纪律/加号行窄窗溢出修复/按压态/标签截断回路；PL015 已收口，不做人工测试与定版仪式）
+> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页（+ 设置浮窗）功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；FIX007–FIX010 与 UIR2 一轮（52daaf6）均已提交推送，当前阶段为 UIR2 二轮精修（待提交）
 > 更新（2026-10-17）：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow——UIR 定案 wgpu 废弃）；Python 版全量归档 `.archived/`（git 忽略），本文件自 PL011 起记录 RS 任务
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
 
@@ -601,3 +601,12 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] UIR2.6 四页重制 —— 倒计时（卡内边距 card_pad 统一/减号常显）/世界（磁贴走时 time_sm/减号常显）/天气（温度 display 40/曲线刻度 meta）/闹钟（快捷 chips 卡底/行卡发丝描边/垃圾桶常显）；全部行为与命令不变；验证：既有页级单测全绿
 - [x] UIR2.7 chip 单行化 —— 56px 双行 → 32px 单行安静徽标（label muted + value body 同行）；chip_width 钳 [56,240]；验证：chip 测试锚点更新绿
 - [x] UIR2.8 验证收尾 —— 四关卡 ALL_GREEN + 测试 192（app 61+bin 1+core 110+parity 20）+ 截图探针六帧 exit 0 + 像素采样实证（侧栏 #0B0F19/内容 #0F1420 精确命中）+ 版本 bump 0.6.1.4 + 文档同步（README/w.study 3.7/m.milestone/z.plan 附录）；验证：pwsh rs/ci.ps1 ALL_GREEN
+
+### UIR2.9: 子夜星图二轮精修 [design#UIR2]（2026-10-24，better-* 复检：实际渲染对精算 + 布局纪律）
+
+- [x] UIR2.9.1 非文本对比度补测与色值修正 —— 实测渲染对：文本对全绿（strong-on-card 14.16/selection 9.91/sidebar 11.79）；**track 未过刻度 1.69:1 失效**→新键 tick_idle #55648A（3.13:1）；border 1.33→#33406A（1.82，提浓一档仍属 hairline——登记为设计选择）；egui 默认 weak 占位 3.06→visuals.weak_text 对齐 muted（6.28）；验证：.temp/contrast_check.awk 矩阵全过
+- [x] UIR2.9.2 星轨刻度窄窗自适应 —— 刻度数 48 固定改 tick_count(scale_w)（约 9px/道，钳 [24,48] 取偶——窄窗不挤成实心块）；验证：新测 tick_count_adapts_and_stays_even 绿
+- [x] UIR2.9.3 组距纪律（better-layout 组间≥2×组内） —— 倒计时：网格→节日 chips sm→xl(24)、chips→加号行→lg；世界：网格→添加行 sm→xl；验证：token 引用复核
+- [x] UIR2.9.4 倒计时加号行窄窗溢出修复 —— 固定 150+200 输入宽在最小窗（内容区 ~340px）溢出→随可用宽按 0.42/0.58 比例分宽（钳 [80,150]/[120,200]）；验证：最小窗 520 下 120+174+按钮≈可用宽不溢出
+- [x] UIR2.9.5 控件按压态 + 闹钟标签溢出治理 —— 侧栏导航/设置行、闹钟快捷 chips 补按压态（靛底即时反馈——better-ui 高频交互纪律）；闹钟行标签窄窗溢出压垃圾桶→按剩余宽截断加省略号（truncate_chars 按 char 切中文安全）+ 悬停行卡 tooltip 全名回路；验证：truncate_chars_keeps_cjk_boundary 绿
+- [x] UIR2.9.6 验证收尾 —— 四关卡 ALL_GREEN + 测试 194（app 63+bin 1+core 110+parity 20，+2）+ 截图探针六帧 exit 0 + 像素复采（侧栏/内容区精确命中）+ bump 0.6.1.5 + 文档记录；验证：pwsh rs/ci.ps1 ALL_GREEN

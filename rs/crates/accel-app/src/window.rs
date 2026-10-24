@@ -129,7 +129,9 @@ impl eframe::App for AppHandle {
                         egui::vec2(ui.available_width(), 36.0),
                         egui::Sense::click(),
                     );
-                    let fill = if selected {
+                    // 三态：选中靛底 / 悬停微亮 / 按压靛底（即时反馈）
+                    let pressed = resp.is_pointer_button_down_on();
+                    let fill = if selected || pressed {
                         crate::theme::color32_at("selection", 46)
                     } else if resp.hovered() {
                         crate::theme::hover_bg()
@@ -199,7 +201,9 @@ impl eframe::App for AppHandle {
                         egui::vec2(ui.available_width(), 36.0),
                         egui::Sense::click(),
                     );
-                    let fill = if self.state.settings_open {
+                    // 三态同导航项：打开靛底 / 悬停微亮 / 按压靛底
+                    let pressed = resp.is_pointer_button_down_on();
+                    let fill = if self.state.settings_open || pressed {
                         crate::theme::color32_at("selection", 46)
                     } else if resp.hovered() {
                         crate::theme::hover_bg()

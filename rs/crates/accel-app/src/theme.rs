@@ -119,9 +119,14 @@ pub fn window_bg() -> Color32 {
     color32_at("window_bg", 15)
 }
 
-/// 弱轨底色（colors.track——日进度轨/距条轨/开关关态单源，原双键同值归一）
+/// 弱轨底色（colors.track——距条轨/开关关态单源，原双键同值归一）
 pub fn track_color() -> Color32 {
     color32_at("track", 48)
+}
+
+/// 星轨未过刻度色（colors.tick_idle——信息性图形件，对窗底 ≥3:1 实测 3.13）
+pub fn tick_idle_color() -> Color32 {
+    color32_at("tick_idle", 85)
 }
 
 /// 字号 token → 逻辑点（scale.{key}；结果缓存——编译期字面量键，运行期恒定）
@@ -178,6 +183,8 @@ fn dark_visuals() -> Visuals {
     v.extreme_bg_color = sidebar_bg();
     v.faint_bg_color = hover_bg();
     v.override_text_color = Some(ink().strong);
+    // 输入框占位等弱文本对齐 muted 层（egui dark 默认 3.06:1 不达标——UIR2 二轮实测）
+    v.weak_text_color = Some(ink().muted);
     v.selection.stroke.color = color32_at("selection", 42);
     v.widgets.noninteractive.bg_fill = card_bg();
     v.widgets.inactive.bg_fill = card_bg();
