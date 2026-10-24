@@ -263,6 +263,14 @@
 5. 文档一致性：城市表职责表述七处清扫（README/w.study/说明区族）、drain 返回值口径删除、Cargo.toml 依赖说明订正、AGENTS 配置与日志表述随新基准同步三条 ✅
 6. 审计闭环：A007 报告归档 + 观察项 2 条提升为修复项、9 条定案豁免；四关卡 ALL_GREEN + 测试 186 通过（较修复前 173 增 13）+ 真窗探针 + 离屏渲染探针全绿；反向验收 17 项逐条三重口径（.temp/verify_fix007_accept.md） ✅
 
+## 版本 0.6.1.4 的 MileStone（UIR2 子夜星图：视觉全盘重塑，2026-10-24 发布）
+
+1. 审计驱动：六域方法论审查（better-interface/-colors/-typography/-layout/-ui 组合 + frontend-design）实证两处硬伤——text_dim 卡面对比度 2.85:1 失效（正文级信息低于 AA）、text_soft 与 text_muted 仅差 1.28:1 同职重叠；另字阶 12 键含重复值无梯度、间距全魔法数、删除钮悬停才显形 ✅
+2. 新视觉语言「子夜星图」：黛蓝星图底 ramp（窗 #0F1420/侧栏 #0B0F19/卡 #141A29）× 暖米白五层文本（strong/body/muted/meta，全矩阵对比度 ≥4.5:1 经 .temp/contrast_check.awk 实测）× 雄黄金 #E8B544 单强调 × 朱砂 danger；签名元素星轨刻度（时钟页日进度 48 道刻度标尺替代通用光条） ✅
+3. token 体系重构：色键按角色命名（accent/track/hover_bg，ring/slider 双键归一）；字阶 12 键收敛 8 键（hero72…meta12 无重复值）；新增 spacing 域（xs4…xxl32）与 layout.card_pad——页面间距/卡内边距去魔法数 ✅
+4. 可达性与细节：删除钮（倒计时/世界/闹钟）常显元信息色、悬停转朱砂——破坏性操作不再悬停才显形；chip 单行化（56→32px 安静徽标）；闹钟行卡补发丝描边 ✅
+5. 验证：四关卡 ALL_GREEN + 测试 192（较 FIX010 后 189 净增 3）+ 截图探针六帧 + **像素采样实证**（侧栏 #0B0F19/内容 #0F1420 精确命中，System.Drawing 采 PNG 角部） ✅
+
 ## 版本 0.6.1.3 的 MileStone（A010 审计修复：闹钟拒绝/IO 失败分流根治假 toast 等 11 条，2026-10-24 发布）
 
 1. 事件语义收敛（P2 唯一跨层项）：闹钟四命令拒绝路径不再回推 ConfigSaved（拒绝事实由 AlarmsChanged 现值承载，仅真落盘才回推）；ApplyRate 越界与 SetWeatherCity 未知城市的同款错位一并收口（拒绝只发专事件）；ConfigSaved(false) 语义纯化为真 IO 失败信号——「配置保存失败」toast 不再被拒绝误触发 ✅

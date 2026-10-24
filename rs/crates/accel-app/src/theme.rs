@@ -1,6 +1,6 @@
-//! 主题设计系统（UIR 重塑：实心桌面主题，玻璃 token 体系已删）
-//! ui.json colors.* 深色单板 → egui Visuals 应用 + 语义色/字号/几何取值
-//! （A008 #2 定案仅深色：浅色体系与三态偏好切换已删，ThemePref 配置域仅存档）
+//! 主题设计系统（UIR2「子夜星图」：黛蓝星图底 × 暖米白字 × 雄黄金单强调）
+//! ui.json token → egui Visuals 应用 + 语义色/字号/间距/圆角取值（cached 键缓存）
+//! 对比度纪律：全部文本 token 对其渲染底 ≥4.5:1（.temp/contrast_check.awk 实测矩阵）
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -59,67 +59,83 @@ pub fn parse_hex(text: &str) -> Option<Color32> {
     Some(Color32::from_rgba_premultiplied(lut(r), lut(g), lut(b), a))
 }
 
-/// 强调色（colors.primary；选中态/当前值/主操作唯一用色）
+/// 强调色（colors.accent——雄黄金：选中态/当前值/主操作唯一用色）
 pub fn accent_color() -> Color32 {
-    color32_at("primary", 0xE4)
+    color32_at("accent", 0xE8)
 }
 
-/// 金底上的前景色（colors.on_accent——对比度锚定）
+/// 金底上的前景色（colors.on_accent——对比度锚定 9.13:1 实测）
 pub fn on_accent_color() -> Color32 {
-    color32_at("on_accent", 0x1A)
+    color32_at("on_accent", 0x22)
 }
 
-/// 语义色等级（UIR 实心主题：strong=主文本 muted=次级 soft=辅助 dim=弱化
-/// card=卡面文本 knob=滑钮 danger=危险）
+/// 语义色等级（UIR2 五层：strong=主文 body=正文/卡文 muted=次级
+/// meta=刻度/元信息 danger=朱砂 knob=滑钮亮白——soft/card/dim 三层已并）
 #[derive(Debug, Clone, Copy)]
 pub struct Ink {
     pub strong: Color32,
+    pub body: Color32,
     pub muted: Color32,
-    pub soft: Color32,
-    pub dim: Color32,
-    pub card: Color32,
-    pub knob: Color32,
+    pub meta: Color32,
     pub danger: Color32,
+    pub knob: Color32,
 }
 
 /// 装载语义色（colors.* 逐键；整组一次装载后缓存）
 pub fn ink() -> Ink {
     static CACHE: OnceLock<Ink> = OnceLock::new();
     *CACHE.get_or_init(|| Ink {
-        strong: color32_at("text_strong", 232),
+        strong: color32_at("text_strong", 236),
+        body: color32_at("text_body", 207),
         muted: color32_at("text_muted", 154),
-        soft: color32_at("text_soft", 169),
-        dim: color32_at("text_dim", 98),
-        card: color32_at("text_card", 213),
+        meta: color32_at("text_meta", 138),
+        danger: color32_at("danger", 238),
         knob: color32_at("knob", 242),
-        danger: color32_at("danger", 228),
     })
 }
 
 /// 卡面底色（colors.card_bg）
 pub fn card_bg() -> Color32 {
-    color32_at("card_bg", 31)
+    color32_at("card_bg", 20)
 }
 
-/// 卡面悬停底色（colors.faint_bg）
+/// 卡面悬停底色（colors.hover_bg）
 pub fn hover_bg() -> Color32 {
-    color32_at("faint_bg", 38)
+    color32_at("hover_bg", 26)
 }
 
-/// 描边色（colors.border）
+/// 描边色（colors.border——发丝线）
 pub fn border_color() -> Color32 {
-    color32_at("border", 44)
+    color32_at("border", 35)
 }
 
-/// 侧栏底色（colors.sidebar_bg）
+/// 侧栏底色（colors.sidebar_bg——比窗底更深一档）
 pub fn sidebar_bg() -> Color32 {
-    color32_at("sidebar_bg", 18)
+    color32_at("sidebar_bg", 11)
+}
+
+/// 窗底色（colors.window_bg）
+pub fn window_bg() -> Color32 {
+    color32_at("window_bg", 15)
+}
+
+/// 弱轨底色（colors.track——日进度轨/距条轨/开关关态单源，原双键同值归一）
+pub fn track_color() -> Color32 {
+    color32_at("track", 48)
 }
 
 /// 字号 token → 逻辑点（scale.{key}；结果缓存——编译期字面量键，运行期恒定）
 pub fn font_size(key: &str) -> f32 {
     static C: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();
     cached(&C, key, || Static::get().ui_nested_i64("scale", key) as f32)
+}
+
+/// 间距 token → 逻辑点（spacing.{key}——UIR2 新域：页面/卡内间距不再写魔法数）
+pub fn spacing(key: &str) -> f32 {
+    static C: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();
+    cached(&C, key, || {
+        Static::get().ui_nested_i64("spacing", key) as f32
+    })
 }
 
 /// 键值 token 缓存：消除每帧 pointer 解析与键串分配（UIR 沿用 FIX006.10 模式）
@@ -146,9 +162,6 @@ pub fn layout_i64(key: &str) -> i64 {
     cached(&C, key, || Static::get().ui_nested_i64("layout", key))
 }
 
-// A009 #14：layout_vec2（chip_size 双值槽）已删——chip 宽自适应后仅消费高度，
-// token 改单值 layout.chip_height（零半死槽位）
-
 /// 圆角（ui.json radius.*；结果缓存）
 pub fn radius_px(key: &str) -> f32 {
     static C: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();
@@ -157,21 +170,21 @@ pub fn radius_px(key: &str) -> f32 {
     })
 }
 
-/// 深色 Visuals（实心主题：暗底/亮字/低对比弱文本；控件填充走色板）
+/// 深色 Visuals（子夜星图：黛蓝底/暖米白字；控件填充走色板）
 fn dark_visuals() -> Visuals {
     let mut v = Visuals::dark();
-    v.panel_fill = color32_at("window_bg", 23);
-    v.window_fill = color32_at("card_bg", 31);
-    v.extreme_bg_color = color32_at("sidebar_bg", 18);
-    v.faint_bg_color = color32_at("faint_bg", 38);
-    v.override_text_color = Some(color32_at("text_strong", 232));
-    v.selection.stroke.color = color32_at("selection", 46);
-    v.widgets.noninteractive.bg_fill = color32_at("card_bg", 31);
-    v.widgets.inactive.bg_fill = color32_at("card_bg", 31);
-    v.widgets.hovered.bg_fill = color32_at("faint_bg", 38);
-    v.widgets.active.bg_fill = color32_at("selection", 46);
-    v.widgets.inactive.fg_stroke.color = color32_at("text_strong", 232);
-    v.widgets.hovered.fg_stroke.color = color32_at("text_strong", 232);
+    v.panel_fill = window_bg();
+    v.window_fill = card_bg();
+    v.extreme_bg_color = sidebar_bg();
+    v.faint_bg_color = hover_bg();
+    v.override_text_color = Some(ink().strong);
+    v.selection.stroke.color = color32_at("selection", 42);
+    v.widgets.noninteractive.bg_fill = card_bg();
+    v.widgets.inactive.bg_fill = card_bg();
+    v.widgets.hovered.bg_fill = hover_bg();
+    v.widgets.active.bg_fill = color32_at("selection", 42);
+    v.widgets.inactive.fg_stroke.color = ink().strong;
+    v.widgets.hovered.fg_stroke.color = ink().strong;
     v.window_corner_radius = corner(radius_px("lg") as u8);
     v.menu_corner_radius = corner(radius_px("md") as u8);
     widget_rounding(&mut v, corner(radius_px("sm") as u8));
@@ -191,30 +204,27 @@ fn corner(px: u8) -> egui::epaint::CornerRadius {
 }
 
 // ===== src/theme.rs 说明区 =====
-// 输入：ui.json colors/scale/layout/radius token；输出：Visuals 应用 + 语义色/
-//   字号/几何/色值取值（全部实心色，无透明无 GL）
-// 逻辑步骤：apply（A008 #2 定案仅深色：偏好钉深 + 双槽位同款深色 Visuals）→
-//   color32_at/ink/font_size/layout/radius 取值（cached 键缓存，运行期恒定）
-// 设计理由（UIR 重塑定案）：玻璃拟态整体废弃——半透明面在高 DPI/动态背景上
-//   对比度不可控（截图探针实证文字淹没）；实体色板 + 单强调色纪律（金=选中/
-//   当前值/主操作，余皆灰阶）是可用性优先的桌面语法；parse_hex 直接产预乘
-//   Color32（0.37 全预乘口径，替换旧 rgba f32 管线中间层）
+// 输入：ui.json colors/scale/spacing/radius/layout token；输出：Visuals 应用 +
+//   语义色/字号/间距/圆角/色值取值（全部实心色，无透明无 GL）
+// 逻辑步骤：apply（仅深色定案：偏好钉深 + 双槽位同款深色 Visuals）→
+//   color32_at/ink/font_size/spacing/layout/radius 取值（cached 键缓存）
+// 设计理由（UIR2 子夜星图）：旧板两处硬伤实测在案——text_dim 卡面 2.85:1
+//   失效（正文级信息低于 AA）、text_soft 与 text_muted 仅差 1.28:1 同职重叠；
+//   新板五层文本各距 ≥1.1:1 梯度且全矩阵 ≥4.5:1（.temp/contrast_check.awk）；
+//   色键按角色命名（accent/track/hover_bg），ramp 单源（ring/slider 双键归一）
 // 异常处理：token 缺键由 static_config panic（启动期暴露）；色值非法降级灰度
-// 关联配置：ui.json colors.*/scale.*/layout.*/radius.*；消费方：window/pages/widgets
+// 关联配置：ui.json colors.*/scale.*/spacing.*/radius.*/layout.*；消费方：window/pages/widgets
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn load_tokens_match_ui_json() {
-        // 色板锚点：主色金 + 深底（UIR 实心主题定值）
-        assert_eq!(
-            color32_at("primary", 0),
-            parse_hex("#E4B36A").expect("合法")
-        );
+        // 色板锚点：雄黄金 + 黛蓝星图底（UIR2 子夜星图定值）
+        assert_eq!(color32_at("accent", 0), parse_hex("#E8B544").expect("合法"));
         assert_eq!(
             color32_at("window_bg", 0),
-            parse_hex("#171A21").expect("合法")
+            parse_hex("#0F1420").expect("合法")
         );
         // 语义色整组
         let ink = ink();
@@ -225,18 +235,17 @@ mod tests {
     fn parse_hex_matrix() {
         // 6 位不透明 / 8 位带 alpha / 非法降级
         assert_eq!(
-            parse_hex("#E4B36A"),
-            Some(Color32::from_rgb(0xE4, 0xB3, 0x6A))
+            parse_hex("#E8B544"),
+            Some(Color32::from_rgb(0xE8, 0xB5, 0x44))
         );
-        assert!(parse_hex("#80E4B36A").is_some());
+        assert!(parse_hex("#80E8B544").is_some());
         assert_eq!(parse_hex("zzz"), None);
         assert_eq!(parse_hex("#12345"), None);
     }
 
     #[test]
     fn dark_only_apply() {
-        // A008 #2 验收：仅深色定案——apply 后 egui 主题钉深；
-        // 浅色体系（light_visuals/Theme 三态）已删，无分叉可回退
+        // 仅深色定案——apply 后 egui 主题钉深；浅色体系无分叉可回退
         let ctx = Context::default();
         apply(&ctx);
         assert_eq!(ctx.theme(), egui::Theme::Dark);
@@ -249,5 +258,31 @@ mod tests {
         let b = color32_at("no_such_color_key", 200);
         assert_eq!(a, Color32::from_gray(10));
         assert_eq!(b, Color32::from_gray(200), "同 key 不同兜底不得固化首值");
+    }
+
+    #[test]
+    fn text_ink_tiers_are_distinct() {
+        // UIR2 验收：五层文本色两两不同（旧板 soft/muted 重叠治理）
+        let ink = ink();
+        let tiers = [ink.strong, ink.body, ink.muted, ink.meta];
+        for i in 0..tiers.len() {
+            for j in (i + 1)..tiers.len() {
+                assert_ne!(tiers[i], tiers[j], "文本层级 {i}/{j} 不得同值");
+            }
+        }
+    }
+
+    #[test]
+    fn spacing_scale_monotonic() {
+        // UIR2 验收：间距阶严格递增（xs<sm<md<lg<xl<xxl）
+        let names = ["xs", "sm", "md", "lg", "xl", "xxl"];
+        for w in names.windows(2) {
+            assert!(
+                spacing(w[0]) < spacing(w[1]),
+                "间距阶 {} 应小于 {}",
+                w[0],
+                w[1]
+            );
+        }
     }
 }

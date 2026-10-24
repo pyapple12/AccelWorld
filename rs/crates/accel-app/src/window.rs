@@ -105,7 +105,7 @@ impl eframe::App for AppHandle {
             apply_caption_color(hwnd, crate::theme::sidebar_bg());
         }
 
-        // 侧栏导航（左；选中金条 + 图标+文字；底部设置行）
+        // 侧栏导航（左；选中=靛底+金图标+左缘星轨指标记；底部设置行）
         egui::Panel::left("nav_sidebar")
             .exact_size(crate::theme::layout_i64("sidebar_width") as f32)
             .frame(
@@ -114,19 +114,19 @@ impl eframe::App for AppHandle {
                     .inner_margin(egui::Margin::same(10)),
             )
             .show(ui, |ui| {
-                ui.add_space(8.0);
-                // 应用名（侧栏顶部标识）
+                ui.add_space(crate::theme::spacing("sm"));
+                // 应用名（侧栏顶部标识——雄黄金标点 + 米白主文）
                 ui.label(
                     egui::RichText::new("加速世界")
                         .size(crate::theme::font_size("body_lg"))
                         .color(crate::theme::ink().strong),
                 );
-                ui.add_space(10.0);
+                ui.add_space(crate::theme::spacing("md"));
                 let radius = crate::theme::radius_px("sm") as u8;
                 for page in PAGE_ORDER {
                     let selected = self.state.current_page == page;
                     let (rect, resp) = ui.allocate_exact_size(
-                        egui::vec2(ui.available_width(), 34.0),
+                        egui::vec2(ui.available_width(), 36.0),
                         egui::Sense::click(),
                     );
                     let fill = if selected {
@@ -144,17 +144,17 @@ impl eframe::App for AppHandle {
                         );
                     }
                     if selected {
-                        // 选中金条（左缘 3px）
+                        // 星轨指标记（左缘 3px 金条——仪器索引刻度语义）
                         ui.painter().rect_filled(
                             egui::Rect::from_min_size(
-                                egui::pos2(rect.left(), rect.center().y - 9.0),
-                                egui::vec2(3.0, 18.0),
+                                egui::pos2(rect.left(), rect.center().y - 10.0),
+                                egui::vec2(3.0, 20.0),
                             ),
                             egui::epaint::CornerRadius::same(2),
                             crate::theme::accent_color(),
                         );
                     }
-                    // 图标 + 文字
+                    // 图标 + 文字（选中金图标，常态暖白）
                     crate::widgets::icons::draw(
                         ui.painter(),
                         egui::pos2(rect.left() + 22.0, rect.center().y),
@@ -163,7 +163,7 @@ impl eframe::App for AppHandle {
                         if selected {
                             crate::theme::accent_color()
                         } else {
-                            crate::theme::ink().soft
+                            crate::theme::ink().body
                         },
                     );
                     ui.painter().text(
@@ -174,20 +174,29 @@ impl eframe::App for AppHandle {
                         if selected {
                             crate::theme::ink().strong
                         } else {
-                            crate::theme::ink().soft
+                            crate::theme::ink().body
                         },
                     );
                     if resp.clicked() {
                         self.state.current_page = page;
                     }
                 }
-                // 底部设置行（分隔 + 齿轮）
+                // 底部设置行（发丝分隔 + 齿轮）
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                    ui.add_space(10.0);
-                    ui.separator();
-                    ui.add_space(6.0);
+                    ui.add_space(crate::theme::spacing("sm"));
+                    let sep_rect = egui::Rect::from_min_size(
+                        ui.cursor().left_top(),
+                        egui::vec2(ui.available_width(), 1.0),
+                    );
+                    ui.painter().rect_filled(
+                        sep_rect,
+                        egui::epaint::CornerRadius::same(0),
+                        crate::theme::border_color(),
+                    );
+                    ui.allocate_space(egui::vec2(0.0, 1.0));
+                    ui.add_space(crate::theme::spacing("xs"));
                     let (rect, resp) = ui.allocate_exact_size(
-                        egui::vec2(ui.available_width(), 34.0),
+                        egui::vec2(ui.available_width(), 36.0),
                         egui::Sense::click(),
                     );
                     let fill = if self.state.settings_open {
@@ -204,6 +213,16 @@ impl eframe::App for AppHandle {
                             fill,
                         );
                     }
+                    if self.state.settings_open {
+                        ui.painter().rect_filled(
+                            egui::Rect::from_min_size(
+                                egui::pos2(rect.left(), rect.center().y - 10.0),
+                                egui::vec2(3.0, 20.0),
+                            ),
+                            egui::epaint::CornerRadius::same(2),
+                            crate::theme::accent_color(),
+                        );
+                    }
                     crate::widgets::icons::draw(
                         ui.painter(),
                         egui::pos2(rect.left() + 22.0, rect.center().y),
@@ -212,7 +231,7 @@ impl eframe::App for AppHandle {
                         if self.state.settings_open {
                             crate::theme::accent_color()
                         } else {
-                            crate::theme::ink().soft
+                            crate::theme::ink().body
                         },
                     );
                     ui.painter().text(
@@ -223,7 +242,7 @@ impl eframe::App for AppHandle {
                         if self.state.settings_open {
                             crate::theme::ink().strong
                         } else {
-                            crate::theme::ink().soft
+                            crate::theme::ink().body
                         },
                     );
                     if resp.clicked() {
@@ -488,7 +507,7 @@ impl AppHandle {
                 crate::theme::radius_px("lg") as u8,
             ))
             .stroke(egui::Stroke::new(1.0, crate::theme::border_color()))
-            .inner_margin(egui::Margin::same(14));
+            .inner_margin(egui::Margin::same(crate::theme::spacing("md") as i8));
         let settings_window = egui::Window::new("设置")
             .open(&mut keep_open)
             .collapsible(false)
@@ -516,7 +535,7 @@ impl AppHandle {
                 ui.label(
                     egui::RichText::new("深色主题（实心桌面）")
                         .size(crate::theme::font_size("meta"))
-                        .color(crate::theme::ink().dim),
+                        .color(crate::theme::ink().meta),
                 );
             });
         // 点窗外关闭：主键点击且交互点不在窗体 rect 内（.10 检验项）

@@ -2,46 +2,49 @@
   "font_family": "Microsoft YaHei",
   "font_family_digits": "Bahnschrift",
   "scale": {
-    "hero_time": 64,
-    "std_time": 34,
-    "slider_value": 28,
-    "alarm_time": 24,
-    "city_time": 20,
-    "heading": 18,
-    "chip_value": 16,
+    "hero": 72,
+    "display": 40,
+    "time_lg": 28,
+    "time_md": 22,
+    "time_sm": 18,
     "body_lg": 16,
-    "label": 15,
     "body": 14,
-    "meta": 12,
-    "chip_label": 12
+    "meta": 12
   },
   "radius": {
-    "lg": 18,
-    "md": 14,
+    "lg": 16,
+    "md": 12,
     "sm": 8
+  },
+  "spacing": {
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "xxl": 32
   },
   "layout": {
     "sidebar_width": 148,
     "slider_track": 24,
-    "chip_height": 56
+    "chip_height": 32,
+    "card_pad": 16
   },
   "colors": {
-    "primary": "#E4B36A",
-    "danger": "#E4756A",
-    "text_strong": "#E8EAF0",
-    "text_muted": "#9AA1B2",
-    "text_soft": "#A9B0C0",
-    "text_dim": "#626979",
-    "text_card": "#D5DAE5",
-    "knob": "#F2F4F8",
-    "faint_bg": "#262B38",
-    "card_bg": "#1F232E",
-    "sidebar_bg": "#12141B",
-    "window_bg": "#171A21",
-    "border": "#2C313E",
-    "ring_track": "#3A4050",
-    "slider_track": "#3A4050",
-    "on_accent": "#1A1608",
-    "selection": "#2E3442"
+    "window_bg": "#0F1420",
+    "sidebar_bg": "#0B0F19",
+    "card_bg": "#141A29",
+    "hover_bg": "#1A2135",
+    "border": "#232C44",
+    "selection": "#2A3552",
+    "track": "#303C5E",
+    "accent": "#E8B544",
+    "on_accent": "#221A05",
+    "danger": "#EE7265",
+    "text_strong": "#ECE8DB",
+    "text_body": "#CFCBBD",
+    "text_muted": "#9A978A",
+    "text_meta": "#8A8774",
+    "knob": "#F2EFE4"
   }
 }

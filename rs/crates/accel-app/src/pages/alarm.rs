@@ -36,7 +36,7 @@ impl crate::pages::Page for crate::pages::AlarmPage {
             // 快捷添加（分钟数读 base.json quick_alarm_minutes token；胶囊 chip 按钮）
             ui.label(
                 egui::RichText::new("快捷添加")
-                    .size(crate::theme::font_size("label"))
+                    .size(crate::theme::font_size("body"))
                     .color(ink.muted),
             );
             ui.horizontal(|ui| {
@@ -48,7 +48,7 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                         .layout_no_wrap(
                             text.clone(),
                             egui::FontId::proportional(crate::theme::font_size("body")),
-                            ink.card,
+                            ink.body,
                         )
                         .rect
                         .width();
@@ -59,7 +59,7 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                     let fill = if resp.hovered() {
                         crate::theme::accent_color()
                     } else {
-                        crate::theme::color32_at("faint_bg", 10)
+                        crate::theme::card_bg()
                     };
                     ui.painter()
                         .rect_filled(rect, egui::epaint::CornerRadius::same(radius), fill);
@@ -71,7 +71,7 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                         if resp.hovered() {
                             crate::theme::on_accent_color()
                         } else {
-                            ink.card
+                            ink.body
                         },
                     );
                     if resp.clicked() {
@@ -80,7 +80,7 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                     }
                 }
             });
-            ui.add_space(8.0);
+            ui.add_space(crate::theme::spacing("sm"));
 
             // 自定义添加行：标签 + HH:MM + 加号图标按钮
             // A008 #13：client 侧先校验 HH:MM——非法不发送不清草稿（原实现点击即发
@@ -126,14 +126,14 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                     ink.danger,
                 );
             }
-            ui.add_space(10.0);
+            ui.add_space(crate::theme::spacing("md"));
 
             // 列表行卡（AlarmsChanged 全量回推重建——UI 无状态）
             if state.alarms.is_empty() {
                 ui.label(
                     egui::RichText::new("暂无闹钟")
                         .size(crate::theme::font_size("body_lg"))
-                        .color(ink.soft),
+                        .color(ink.muted),
                 );
             }
             let radius = crate::theme::radius_px("md") as u8;
@@ -146,7 +146,13 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                 ui.painter().rect_filled(
                     rect,
                     egui::epaint::CornerRadius::same(radius),
-                    crate::theme::color32_at("faint_bg", 10),
+                    crate::theme::card_bg(),
+                );
+                ui.painter().rect_stroke(
+                    rect,
+                    egui::epaint::CornerRadius::same(radius),
+                    egui::Stroke::new(1.0, crate::theme::border_color()),
+                    egui::StrokeKind::Inside,
                 );
                 // 开关（自绘胶囊；点击翻转发 ToggleAlarm）
                 let sw_rect = egui::Rect::from_center_size(
@@ -169,7 +175,7 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                 let track_fill = if on {
                     crate::theme::accent_color()
                 } else {
-                    crate::theme::color32_at("slider_track", 60)
+                    crate::theme::track_color()
                 };
                 ui.painter().rect_filled(
                     sw_rect,
@@ -185,13 +191,13 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                     bus.send(FrontendCommand::ToggleAlarm(alarm.id.clone()));
                 }
                 // 时刻（等宽数字位；禁用行降档）
-                let time_font = digits::digit_font(crate::theme::font_size("alarm_time"));
+                let time_font = digits::digit_font(crate::theme::font_size("time_md"));
                 digits::draw_centered(
                     ui.painter(),
                     egui::pos2(rect.left() + 106.0, rect.center().y),
                     &alarm.time,
                     &time_font,
-                    if alarm.enabled { ink.strong } else { ink.dim },
+                    if alarm.enabled { ink.strong } else { ink.meta },
                 );
                 // 标签 + 重复文案
                 ui.painter().text(
@@ -203,9 +209,9 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                         format_repeat_display(&alarm.repeat_days)
                     ),
                     egui::FontId::proportional(crate::theme::font_size("body")),
-                    if alarm.enabled { ink.muted } else { ink.dim },
+                    if alarm.enabled { ink.muted } else { ink.meta },
                 );
-                // 垃圾桶（悬停显形；RemoveAlarm）
+                // 垃圾桶（常显元信息色、悬停朱砂；RemoveAlarm——UIR2 可达性优先）
                 let del_resp = ui.interact(
                     egui::Rect::from_center_size(
                         egui::pos2(rect.right() - 28.0, rect.center().y),
@@ -214,19 +220,21 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                     egui::Id::unique(("alarm_del", &alarm.id)),
                     egui::Sense::click(),
                 );
-                if del_resp.hovered() {
-                    crate::widgets::icons::draw(
-                        ui.painter(),
-                        egui::pos2(rect.right() - 28.0, rect.center().y),
-                        16.0,
-                        crate::widgets::icons::Icon::Trash,
-                        ink.danger,
-                    );
-                }
+                crate::widgets::icons::draw(
+                    ui.painter(),
+                    egui::pos2(rect.right() - 28.0, rect.center().y),
+                    16.0,
+                    crate::widgets::icons::Icon::Trash,
+                    if del_resp.hovered() {
+                        ink.danger
+                    } else {
+                        ink.meta
+                    },
+                );
                 if del_resp.clicked() {
                     bus.send(FrontendCommand::RemoveAlarm(alarm.id.clone()));
                 }
-                ui.add_space(6.0);
+                ui.add_space(crate::theme::spacing("xs"));
             }
         });
     }

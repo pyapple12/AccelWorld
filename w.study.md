@@ -124,14 +124,15 @@ pub async fn fetch(&self, city: &str, force: bool) -> Result<WeatherData, Weathe
 - `bus.rs`（app 侧）：每帧 `logic()` 首行 drain 全部事件 → `UiState::apply` 更新快照；命令经 `send` 统一出口
 - 硬保障：CI 关卡 4 校验 core 依赖树零 egui/eframe（单向分层从约定升级为机器强制）
 
-### 3.7 界面装配 — 实心主题 + 自绘控件（UIR 重塑后现役）
+### 3.7 界面装配 — 子夜星图实心主题 + 自绘控件（UIR2 现役）
 
 - `window.rs`：`AppHandle`（logic：drain/探针/退出序列 + ui：侧栏 Panel → CentralPanel 当前页 → 设置浮窗）
-- `theme.rs`：ui.json `colors.*` 深色实心单板（仅深色定案——A008 #2，浅色体系已删）→ egui Visuals + 语义色/字号/几何访问器（cached 键缓存）
-- `widgets/`：digits（等宽数字位——数字串逐字符槽宽绘制，根治 Bahnschrift 非等宽抖动）/ icons（矢量图标零字体依赖）/ icon_button / chip / slider
+- `theme.rs`：ui.json `colors.*` 深色实心单板（仅深色定案）→ egui Visuals + 语义色（strong/body/muted/meta 五层，对比度全矩阵 ≥4.5:1 实测）/字号/间距（spacing 域）/圆角访问器（cached 键缓存）
+- `widgets/`：digits（等宽数字位——数字串逐字符槽宽绘制，根治 Bahnschrift 非等宽抖动）/ icons（矢量图标零字体依赖）/ icon_button / chip（单行安静徽标）/ slider
+- 签名元素：星轨刻度（时钟页日进度 48 道刻度标尺——已过段金色/未至段弱轨，整点高半点矮）
 - 高 DPI 纪律：面/文本坐标一律逻辑点；标题栏底色经 DWMWA_CAPTION_COLOR 恒钉侧栏深色（仅深色定案）
 - 走查门：`ACCELWORLD_UI_SHOT` 截图探针（真窗逐页 PrintWindow PNG）+ 用户桌面终审
-- 历史：玻璃渲染（WGSL 管线 + GlassScene + Acrylic）已整体废弃删除——半透明面对比度不可控（UIR 定案，留档见 git 历史）
+- 历史：玻璃渲染（WGSL 管线 + GlassScene + Acrylic）已整体废弃删除——半透明面对比度不可控（UIR 定案，留档见 git 历史）；UIR 初代「Calm Instrument」灰石板金调随 UIR2 子夜星图重塑（2026-10-24）
 
 ### 3.8 日志 — 每日滚动 + 崩溃栈
 

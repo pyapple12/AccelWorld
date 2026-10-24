@@ -134,7 +134,7 @@ impl crate::pages::Page for crate::pages::CountdownPage {
         // FIX007.7：派生结果按日缓存（原每帧重算春节循环）
         let derived = cached_by_date(&DERIVED_CACHE, now.date(), derived_spring_festival);
 
-        // hero 大字（等宽数字位；派生春节目标以金色点缀）
+        // hero 大字（等宽数字位；派生春节目标以雄黄金点缀）
         let center_x = ui.max_rect().center().x;
         match hero_target(&targets, derived, now) {
             Some((name, at)) => {
@@ -150,15 +150,15 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                     egui::pos2(center_x, ui.cursor().top() + 14.0),
                     egui::Align2::CENTER_TOP,
                     name,
-                    egui::FontId::proportional(crate::theme::font_size("heading")),
+                    egui::FontId::proportional(crate::theme::font_size("time_sm")),
                     ink.muted,
                 );
-                let hero_font = digits::digit_font(crate::theme::font_size("hero_time") * 0.78);
+                let hero_font = digits::digit_font(crate::theme::font_size("hero") * 0.78);
                 digits::draw_centered(
                     ui.painter(),
                     egui::pos2(
                         center_x,
-                        ui.cursor().top() + 44.0 + crate::theme::font_size("hero_time") * 0.42,
+                        ui.cursor().top() + 44.0 + crate::theme::font_size("hero") * 0.42,
                     ),
                     &text,
                     &hero_font,
@@ -166,7 +166,7 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                 );
                 ui.allocate_space(egui::vec2(
                     0.0,
-                    crate::theme::font_size("hero_time") * 1.15 + 44.0,
+                    crate::theme::font_size("hero") * 1.15 + 44.0,
                 ));
             }
             None => {
@@ -175,16 +175,17 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                     egui::Align2::CENTER_TOP,
                     "暂无目标 · 下方添加（24 小时后）",
                     egui::FontId::proportional(crate::theme::font_size("body_lg")),
-                    ink.soft,
+                    ink.muted,
                 );
                 ui.allocate_space(egui::vec2(0.0, 44.0));
             }
         }
 
         // 目标卡双列网格（矢量圆角卡：名称/日期/剩余 + 减号；派生目标不落盘不在列表）；
-        // 内容包 ScrollArea（目标多时不出窗）
+        // 内容包 ScrollArea（目标多时不出窗）；卡内边距/网格间距全走 token
         let card_h = 84.0_f32;
-        let gap = 10.0_f32;
+        let gap = crate::theme::spacing("md");
+        let pad = crate::theme::layout_i64("card_pad") as f32;
         // A008 #8：极窄窗负宽钳 0（clamp 下限 0，上限 340 恒大于下限不 panic）
         let card_w = ((ui.available_width() - gap) / 2.0).clamp(0.0, 340.0);
         let radius = crate::theme::radius_px("md") as u8;
@@ -199,7 +200,7 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                                 egui::vec2(card_w, card_h),
                                 egui::Sense::hover(),
                             );
-                            // 卡底：卡面色 + 发丝描边（UIR 实心卡片语言）
+                            // 卡底：卡面色 + 发丝描边（子夜星图卡语言）
                             ui.painter().rect_filled(
                                 rect,
                                 egui::epaint::CornerRadius::same(radius),
@@ -212,22 +213,21 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                                 egui::StrokeKind::Inside,
                             );
                             ui.painter().text(
-                                egui::pos2(rect.left() + 14.0, rect.top() + 12.0),
+                                egui::pos2(rect.left() + pad, rect.top() + 12.0),
                                 egui::Align2::LEFT_TOP,
                                 *name,
                                 egui::FontId::proportional(crate::theme::font_size("body_lg")),
-                                ink.card,
+                                ink.body,
                             );
                             ui.painter().text(
-                                egui::pos2(rect.left() + 14.0, rect.bottom() - 12.0),
+                                egui::pos2(rect.left() + pad, rect.bottom() - 12.0),
                                 egui::Align2::LEFT_BOTTOM,
                                 at.format("%Y-%m-%d %H:%M").to_string(),
                                 egui::FontId::proportional(crate::theme::font_size("meta")),
-                                ink.dim,
+                                ink.meta,
                             );
                             let (text, ended) = format_remaining(*at, now);
-                            let rem_font =
-                                digits::digit_font(crate::theme::font_size("alarm_time"));
+                            let rem_font = digits::digit_font(crate::theme::font_size("time_md"));
                             digits::draw_centered(
                                 ui.painter(),
                                 egui::pos2(rect.right() - 92.0, rect.center().y),
@@ -235,7 +235,8 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                                 &rem_font,
                                 if ended { ink.danger } else { ink.muted },
                             );
-                            // 减号（悬停显形；RemoveCountdownTarget 命令）
+                            // 减号（常显元信息色、悬停朱砂——UIR2：可达性优先于安静，
+                            // 破坏性操作不再悬停才显形；RemoveCountdownTarget 命令）
                             let del_resp = ui.interact(
                                 egui::Rect::from_center_size(
                                     egui::pos2(rect.right() - 18.0, rect.top() + 18.0),
@@ -247,17 +248,15 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                             let del_color = if del_resp.hovered() {
                                 ink.danger
                             } else {
-                                ink.dim
+                                ink.meta
                             };
-                            if del_resp.hovered() {
-                                crate::widgets::icons::draw(
-                                    ui.painter(),
-                                    egui::pos2(rect.right() - 18.0, rect.top() + 18.0),
-                                    14.0,
-                                    crate::widgets::icons::Icon::Minus,
-                                    del_color,
-                                );
-                            }
+                            crate::widgets::icons::draw(
+                                ui.painter(),
+                                egui::pos2(rect.right() - 18.0, rect.top() + 18.0),
+                                14.0,
+                                crate::widgets::icons::Icon::Minus,
+                                del_color,
+                            );
                             if del_resp.clicked() {
                                 bus.send(FrontendCommand::RemoveCountdownTarget(
                                     (*name).to_string(),
@@ -278,11 +277,11 @@ impl crate::pages::Page for crate::pages::CountdownPage {
             accel_core::chinese_calendar::year_chips(d)
         });
         if !chips.is_empty() {
-            ui.add_space(10.0);
+            ui.add_space(crate::theme::spacing("sm"));
             ui.horizontal_wrapped(|ui| {
                 ui.label(
                     egui::RichText::new("近期节日")
-                        .size(crate::theme::font_size("label"))
+                        .size(crate::theme::font_size("body"))
                         .color(ink.muted),
                 );
                 for (_, fest) in chips.iter().take(6) {
@@ -292,7 +291,7 @@ impl crate::pages::Page for crate::pages::CountdownPage {
             });
         }
 
-        ui.add_space(10.0);
+        ui.add_space(crate::theme::spacing("sm"));
         // 加号行：名称 + 日期时间文本（解析单一来源 tools::countdown::parse_target_text）
         // 校验（空名/同名/<24h 拒）→ 确认经 local_from_naive（DST 歧义取较早一侧）
         ui.horizontal(|ui| {

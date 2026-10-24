@@ -33,8 +33,9 @@ impl crate::pages::Page for crate::pages::WorldPage {
         let base_tz = state.base_timezone.clone();
 
         // 三列磁贴网格（矢量圆角卡：名称 + 金点基准标 + 昼夜图标 + 等宽走时）；
-        // 内容包 ScrollArea（城市多时不出窗）
-        let gap = 10.0_f32;
+        // 内容包 ScrollArea（城市多时不出窗）；间距/内边距全走 token
+        let gap = crate::theme::spacing("md");
+        let pad = crate::theme::layout_i64("card_pad") as f32;
         let cols = 3usize;
         // A008 #8：极窄窗负宽钳 0（clamp 下限 0，上限 260 恒大于下限不 panic）
         let tile_w =
@@ -74,15 +75,15 @@ impl crate::pages::Page for crate::pages::WorldPage {
                         );
                         // 城市名 + 基准金点
                         ui.painter().text(
-                            egui::pos2(rect.left() + 16.0, rect.top() + 12.0),
+                            egui::pos2(rect.left() + pad, rect.top() + 12.0),
                             egui::Align2::LEFT_TOP,
                             name.as_str(),
                             egui::FontId::proportional(crate::theme::font_size("body_lg")),
-                            if is_base { ink.strong } else { ink.card },
+                            if is_base { ink.strong } else { ink.body },
                         );
                         if is_base {
                             ui.painter().circle_filled(
-                                egui::pos2(rect.left() + 8.0, rect.top() + 18.0),
+                                egui::pos2(rect.left() + pad - 8.0, rect.top() + 18.0),
                                 3.0,
                                 crate::theme::accent_color(),
                             );
@@ -97,19 +98,19 @@ impl crate::pages::Page for crate::pages::WorldPage {
                             } else {
                                 crate::widgets::icons::Icon::Moon
                             },
-                            ink.dim,
+                            ink.meta,
                         );
                         // 走时（等宽数字位；左下锚定）
-                        let walk_font = digits::digit_font(crate::theme::font_size("city_time"));
+                        let walk_font = digits::digit_font(crate::theme::font_size("time_sm"));
                         let walk_w = digits::text_width(ui.painter(), &walk, &walk_font);
                         digits::draw_centered(
                             ui.painter(),
-                            egui::pos2(rect.left() + 16.0 + walk_w / 2.0, rect.bottom() - 22.0),
+                            egui::pos2(rect.left() + pad + walk_w / 2.0, rect.bottom() - 22.0),
                             &walk,
                             &walk_font,
-                            if is_base { ink.strong } else { ink.muted },
+                            if is_base { ink.strong } else { ink.body },
                         );
-                        // 减号（悬停显形；城市数 ≤1 隐藏——常驻集不可清空）
+                        // 减号（常显元信息色、悬停朱砂；城市数 ≤1 隐藏——常驻集不可清空）
                         let mut del_hover = false;
                         if pins.len() > 1 {
                             let del_resp = ui.interact(
@@ -121,15 +122,13 @@ impl crate::pages::Page for crate::pages::WorldPage {
                                 egui::Sense::click(),
                             );
                             del_hover = del_resp.hovered();
-                            if del_hover {
-                                crate::widgets::icons::draw(
-                                    ui.painter(),
-                                    egui::pos2(rect.right() - 22.0, rect.bottom() - 22.0),
-                                    14.0,
-                                    crate::widgets::icons::Icon::Minus,
-                                    ink.danger,
-                                );
-                            }
+                            crate::widgets::icons::draw(
+                                ui.painter(),
+                                egui::pos2(rect.right() - 22.0, rect.bottom() - 22.0),
+                                14.0,
+                                crate::widgets::icons::Icon::Minus,
+                                if del_hover { ink.danger } else { ink.meta },
+                            );
                             if del_resp.clicked() {
                                 bus.send(FrontendCommand::RemoveWorldCity(name.clone()));
                             }
@@ -151,12 +150,12 @@ impl crate::pages::Page for crate::pages::WorldPage {
                 });
         });
 
-        ui.add_space(10.0);
+        ui.add_space(crate::theme::spacing("sm"));
         // 加号行：候选下拉（world_cities 全表 − 已常驻名）
         ui.horizontal(|ui| {
             ui.label(
                 egui::RichText::new("添加城市")
-                    .size(crate::theme::font_size("label"))
+                    .size(crate::theme::font_size("body"))
                     .color(ink.muted),
             );
             let candidates: Vec<&'static str> = accel_core::data::world_cities::all_names()

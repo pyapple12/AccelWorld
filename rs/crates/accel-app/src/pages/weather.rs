@@ -81,7 +81,7 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                 });
             }
         });
-        ui.add_space(6.0);
+        ui.add_space(crate::theme::spacing("xs"));
 
         if let Some(err) = state.weather_errors.get(&city) {
             ui.label(egui::RichText::new(format!("{city} 获取失败：{err}")).color(ink.danger));
@@ -94,7 +94,7 @@ impl crate::pages::Page for crate::pages::WeatherPage {
         // （码表 emoji 在 egui 内置字体缺字形渲染 tofu——A008 #5 起图标随
         //   weather_code 映射矢量集，雨/雪/雾/雷各具其形）
         let temp_text = format!("{:.1}°", w.temperature);
-        let temp_font = digits::digit_font(crate::theme::font_size("std_time") * 1.6);
+        let temp_font = digits::digit_font(crate::theme::font_size("display"));
         let icon_x = ui.max_rect().left() + 8.0;
         let hero_y = ui.cursor().top() + 30.0;
         crate::widgets::icons::draw(
@@ -118,22 +118,22 @@ impl crate::pages::Page for crate::pages::WeatherPage {
             egui::FontId::proportional(crate::theme::font_size("body_lg")),
             ink.muted,
         );
-        ui.allocate_space(egui::vec2(0.0, crate::theme::font_size("std_time") * 1.9));
+        ui.allocate_space(egui::vec2(0.0, crate::theme::font_size("display") * 1.7));
         ui.label(
             egui::RichText::new(format!(
                 "体感 {:.1}°C · 湿度 {:.0}% · 风力 {:.1}km/h",
                 w.apparent_temperature, w.humidity, w.wind_speed
             ))
             .size(crate::theme::font_size("body"))
-            .color(ink.soft),
+            .color(ink.muted),
         );
-        ui.add_space(10.0);
+        ui.add_space(crate::theme::spacing("sm"));
 
-        // 逐时温度曲线（24 点折线 + 3 小时刻度标注；降水概率微柱）
+        // 逐时温度曲线（24 点折线 + 3 小时刻度标注；基线发丝 + 刻度点）
         if !w.hourly.is_empty() {
             ui.label(
                 egui::RichText::new("逐小时")
-                    .size(crate::theme::font_size("label"))
+                    .size(crate::theme::font_size("body"))
                     .color(ink.muted),
             );
             let hours: Vec<&HourlyPoint> = w.hourly.iter().take(24).collect();
@@ -178,18 +178,18 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                         egui::Align2::CENTER_BOTTOM,
                         h.time.get(11..16).unwrap_or("--:--"),
                         meta_font.clone(),
-                        ink.dim,
+                        ink.meta,
                     );
                 }
             }
-            ui.add_space(8.0);
+            ui.add_space(crate::theme::spacing("sm"));
         }
 
         // 七日温度距条（min–max 相对全周域的水平距条）
         if !w.daily.is_empty() {
             ui.label(
                 egui::RichText::new("七日")
-                    .size(crate::theme::font_size("label"))
+                    .size(crate::theme::font_size("body"))
                     .color(ink.muted),
             );
             let days: Vec<&accel_core::types::DailyPoint> = w.daily.iter().take(7).collect();
@@ -218,7 +218,7 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                         ui.painter().rect_filled(
                             track,
                             egui::epaint::CornerRadius::same(3),
-                            crate::theme::color32_at("ring_track", 70),
+                            crate::theme::track_color(),
                         );
                         let lo = (d.t_min - week_min) / span;
                         let hi = (d.t_max - week_min) / span;

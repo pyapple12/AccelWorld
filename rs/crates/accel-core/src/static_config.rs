@@ -166,13 +166,16 @@ mod tests {
 
     #[test]
     fn ui_domain_tokens() {
-        // ui 域真实 token 抽样：字体族/字号/实心色板（UIR 后 colors 域为唯一色彩源）
+        // ui 域真实 token 抽样：字体族/字号/实心色板/间距阶（UIR2 子夜星图定值）
         let s = Static::get();
         assert_eq!(s.ui_str("font_family"), "Microsoft YaHei");
         assert_eq!(s.ui_str("font_family_digits"), "Bahnschrift");
-        assert_eq!(s.ui_nested_i64("scale", "hero_time"), 64);
+        assert_eq!(s.ui_nested_i64("scale", "hero"), 72);
+        assert_eq!(s.ui_nested_i64("spacing", "lg"), 16);
         let window_bg = s.ui.pointer("/colors/window_bg").and_then(|v| v.as_str());
-        assert_eq!(window_bg, Some("#171A21"));
+        assert_eq!(window_bg, Some("#0F1420"));
+        let accent = s.ui.pointer("/colors/accent").and_then(|v| v.as_str());
+        assert_eq!(accent, Some("#E8B544"));
     }
 
     #[test]

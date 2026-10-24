@@ -87,11 +87,11 @@ fn draw(painter: &egui::Painter, track: Rect, track_h: f32, ratio: f32) {
     // A005 #9：语义色 token
     let ink = crate::theme::ink();
     let cap_r = track_h / 2.0;
-    // 底轨（弱色胶囊）
+    // 底轨（弱轨色胶囊）
     painter.rect_filled(
         track,
         egui::epaint::CornerRadius::same(cap_r as u8),
-        crate::theme::color32_at("slider_track", 60),
+        crate::theme::track_color(),
     );
     // 填充（accent token）
     let knob_x = track.left() + ratio * track.width();
@@ -122,7 +122,7 @@ fn draw(painter: &egui::Painter, track: Rect, track_h: f32, ratio: f32) {
     painter.circle_stroke(
         egui::pos2(knob_x, fill_center_y),
         cap_r + 3.0,
-        egui::Stroke::new(1.2, ink.dim),
+        egui::Stroke::new(1.2, ink.meta),
     );
 }
 

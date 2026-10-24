@@ -1576,3 +1576,31 @@ F 节验证全过：**145 测试全绿**（app 40 + core 87 + parity 集成 18�
 **C. 版本单源**：app 侧 `build.rs` 读 `rs/config/static/base.json` 的 version → `env!("ACCELWORLD_VERSION")` 编译期注入（工作区相对路径防穿越读取）；lib.rs 暴露 compiled_version()，窗口标题/关于页/托盘 tooltip 统一经运行期 Static 读取，代码零版本字符串；单测锚定编译期 env 与运行期 base.json 两路 parity。
 **D. 文档迁移清单**：AGENTS.md 重写为 Rust 房规（镜像映射表/注释房规 ///+//!+说明区/零硬编码 token/CI 四关卡/渲染质量门）；README 重写（Rust 构建与运行）；w.study 重做项目分析（RS 版）；x.progress/y.problems/z.plan/m.milestone 原文件续写；t.hint.md 补 Rust 侧教训节。
 **E. 收口口径（用户定案 2026-10-17）**：不做人工走查、不做定版仪式；PL015 以四关卡全绿（fmt/clippy/test/依赖树）+ 自动化验收（版本单源 rg、托盘隐藏→恢复→退出真窗探针、离线渲染断言探针）收口。已知遗留登记 y.problems，视觉观感类微调归后续 UI 雕刻阶段。
+
+## 附录 UIR2：子夜星图视觉重塑方案（2026-10-24，用户定案全盘推倒重来）
+
+> 触发：用户「现在的UI太烂了，不符合设计，可以全盘推倒重来」+ 新装 better-* 设计技能族组合执行。
+> 方法：better-interface 六域编排（accessibility/writing 两域按 egui 无 DOM/中文界面边界记 Not reviewed）+ better-colors 对比度精算纪律 + better-typography 字阶纪律 + better-layout 间距纪律 + better-ui 打磨值 + frontend-design 反默认校准。
+
+### 审查结论（代码/token 层证据）
+
+| 严重度 | 域 | 发现 | 处置 |
+| --- | --- | --- | --- |
+| HIGH | colors | text_dim #626979 卡面 2.85:1 失效（日期/走时/刻度等正文级信息） | meta 层 #8A8774 重设（卡 4.79/窗 5.08） |
+| MEDIUM | colors | text_soft 与 text_muted 仅差 1.28:1 同职重叠；primary 键名非角色化 | 五层文本重构 + accent/track 角色命名 |
+| MEDIUM | typography | 字阶 12 键含重复值（16×2/12×2）、1px 级邻差无梯度 | 8 键收敛（72…12，无重复值） |
+| MEDIUM | layout | 卡内边距 14/16/10 三种魔法数；间距 6-20 散值无阶 | spacing 域 + card_pad token |
+| MEDIUM | ui | 删除钮（倒计时/世界/闹钟）悬停才显形——破坏性操作无可视线索 | 常显 meta 色、悬停朱砂 |
+| LOW | design | hero=大数字+小标签+强调徽标；近黑底+单暖强调=生成式默认聚类 | 方向重定（见下） |
+
+### 设计定案：「子夜星图」
+
+- 概念：App 的内容本质是中式历法天文（农历/节气/月相/世界走时）——取敦煌星图夜色为底、雄黄金为星，仪器刻度为结构语言。
+- 色板：黛蓝 ramp（窗 #0F1420/侧栏 #0B0F19/卡 #141A29/悬停 #1A2135/发丝 #232C44/选中 #2A3552/轨 #303C5E）+ 暖米白文本五层 + 雄黄金 #E8B544 + 朱砂 #EE7265；全矩阵 ≥4.5:1（.temp/contrast_check.awk 实测矩阵在案）。
+- 签名元素：星轨刻度（时钟页 48 道刻度日进度标尺——整点高/半点矮，已过金/未至轨）——boldness 集中一处，余皆克制。
+- 字阶：hero72/display40/time_lg28/time_md22/time_sm18/body_lg16/body14/meta12；间距阶 xs4…xxl32。
+- chip 56px 双行 → 32px 单行安静徽标；闹钟行卡补发丝描边。
+
+### 验证
+
+四关卡 ALL_GREEN；测试 192（app 61+bin 1+core 110+parity 20，净增 3：tiers_distinct/spacing_monotonic/tick_height_alternates）；截图探针六帧 exit 0；像素采样实证（System.Drawing 采 PNG：侧栏 #0B0F19/内容 #0F1420 精确命中，标题栏 DWM 钉色 #0B0F19 一致）。人工走查遗留：观感终审按房规留用户桌面走查（本会话模型无视觉通道，未做截图目检——像素采样为渲染实证替代手段）。

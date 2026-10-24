@@ -1,8 +1,8 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告 + Rust 重构总纲）
-> 当前版本：0.6.1.3（FIX010 审计修复完成：假 toast 根治（拒绝/IO 失败分流）/replace_alarm 入参防线/依赖与文档卫生等 11 条；PL015 已收口，不做人工测试与定版仪式）
-> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页（+ 设置浮窗）功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；FIX007/UIR/FIX008/FIX009 均已提交推送（c914b74/a60cc09/fd04683/4a48890），FIX010 已完成待提交
+> 当前版本：0.6.1.4（UIR2 子夜星图视觉重塑完成：六域审计驱动（dim 2.85:1 失效/soft·muted 重叠/字阶无梯度）→ 黛蓝星图底 × 雄黄金 × 星轨刻度签名元素 + spacing 域 + 对比度全矩阵实测；PL015 已收口，不做人工测试与定版仪式）
+> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页（+ 设置浮窗）功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；FIX007–FIX010 均已提交推送（c914b74/a60cc09/fd04683/4a48890/caac633），当前阶段为 UIR2 视觉重塑（用户定案全盘推倒重来）
 > 更新（2026-10-17）：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow——UIR 定案 wgpu 废弃）；Python 版全量归档 `.archived/`（git 忽略），本文件自 PL011 起记录 RS 任务
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
 
@@ -590,3 +590,14 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] FIX010.9 [P3] slider.rs 死形参清理 —— accel-app/src/widgets/slider.rs draw() 删 rect 形参与 `let _ = rect;`（调用方 :77-83 同步）；验证：cargo check 零警告 + 四关卡（2026-10-24 完成：rect 形参与 `let _ = rect` 双删，调用方同步）
 - [x] FIX010.10 [P3] .gitignore 去重 —— 删 `.vscode/` 重复条目之一；验证：rg -c "\.vscode" .gitignore == 1（2026-10-24 完成：删 Environment 节错位条目，保留 IDE 节）
 - [x] FIX010.11 收尾 —— 四关卡全绿（pwsh rs/ci.ps1）+ `cargo test --workspace` 结果行全量显示 + 真窗探针 exit 0 + 截图自检 + 反向验收 .temp/verify_fix010_accept.md + 文档同步（z.plan A010 状态行翻转、m.milestone 条目）+ commit 草案（禁轮次字样，标题只写改了什么）；验证：四关卡 ALL_GREEN（2026-10-24 完成：ALL_GREEN + 测试 189 + 探针六帧 exit 0 + 版本 bump 0.6.1.3 + 文档三件同步）
+
+### UIR2: 子夜星图视觉全盘重塑 [design#UIR2]（2026-10-24，用户定案「全盘推倒重来」+ better-* 技能族组合）
+
+- [x] UIR2.1 审计取证 —— 六域方法论（better-interface 编排 + colors/typography/layout/ui 四域 + frontend-design 定向）代码/token 层审查：text_dim 卡面 2.85:1 实测失效（正文级信息）、text_soft·muted 仅差 1.28:1 同职、字阶 12 键含重复值（16×2/12×2）无梯度、间距魔法数（6/8/10/12/20）、删除钮悬停才显形、hero=大数字+小标签+强调徽标属通用默认处理；验证：.temp/contrast_check.awk 实测矩阵在案
+- [x] UIR2.2 新视觉语言定案 —— 「子夜星图」：黛蓝星图底 ramp（#0F1420/#0B0F19/#141A29/#1A2135）× 暖米白五层文本 × 雄黄金 #E8B544 单强调 × 朱砂 #EE7265；签名元素=星轨刻度（仪器标尺语义承接「时间膨胀观测」主题）；验证：全矩阵对比度 ≥4.5:1（meta 卡面 4.79/窗底 5.08）
+- [x] UIR2.3 token 体系重构 —— ui.json 全量重写：色键角色命名（accent/track/hover_bg，ring·slider 双键归一）、字阶 12→8 键无重复值、新增 spacing 域（xs4…xxl32）与 layout.card_pad；theme.rs Ink 五层重构 + spacing() 访问器 + 测试锚点更新 + 两新测（tiers_distinct/spacing_monotonic）；验证：cargo test 绿
+- [x] UIR2.4 框架重制 —— 侧栏（36px 行高/发丝分隔/星轨指标记统一导航与设置行）+ 设置浮窗（间距 token 化）；行为零变更；验证：探针设置帧 ok
+- [x] UIR2.5 时钟页 —— 中文日期/标准时/hero 72px + ×徽标 + 星轨刻度日进度（48 道刻度：整点高/半点矮，已过金/未至弱轨 + 发丝基线）+ 滑杆 + 农历 chips；tick_height 纯函数可测；验证：tick_height_alternates 绿 + 帧渲染
+- [x] UIR2.6 四页重制 —— 倒计时（卡内边距 card_pad 统一/减号常显）/世界（磁贴走时 time_sm/减号常显）/天气（温度 display 40/曲线刻度 meta）/闹钟（快捷 chips 卡底/行卡发丝描边/垃圾桶常显）；全部行为与命令不变；验证：既有页级单测全绿
+- [x] UIR2.7 chip 单行化 —— 56px 双行 → 32px 单行安静徽标（label muted + value body 同行）；chip_width 钳 [56,240]；验证：chip 测试锚点更新绿
+- [x] UIR2.8 验证收尾 —— 四关卡 ALL_GREEN + 测试 192（app 61+bin 1+core 110+parity 20）+ 截图探针六帧 exit 0 + 像素采样实证（侧栏 #0B0F19/内容 #0F1420 精确命中）+ 版本 bump 0.6.1.4 + 文档同步（README/w.study 3.7/m.milestone/z.plan 附录）；验证：pwsh rs/ci.ps1 ALL_GREEN

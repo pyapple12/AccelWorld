@@ -35,7 +35,7 @@ pub fn show(ui: &mut egui::Ui, icon: Icon, size: f32, selected: bool) -> Respons
     } else if resp.hovered() {
         ink.strong
     } else {
-        ink.soft
+        ink.body
     };
     draw(ui.painter(), center, size, icon, icon_color);
     resp
