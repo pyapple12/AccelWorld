@@ -12,7 +12,7 @@ cargo workspace 双 crate 桌面应用：基于加速倍率的时间膨胀时钟
 ```
 [输入]   用户设定加速倍率（rate_min 1.0 - rate_max 20.0，来自 config/static/base.json）
 [引擎]   accel-core::time_dilation 按倍率换算：加速时钟 1 秒 = 现实 1/rate 秒
-[展示]   accel-app（egui + eframe/glow）：双环星轨仪主仪恒驻 + 底部仪器坞 + 抽屉页 + 设置浮窗（单强调色）
+[展示]   accel-app（egui + eframe/glow）：单环双针星盘主仪恒驻 + 底部仪器坞 + 抽屉页 + 设置浮窗（单强调色）
 [周边]   农历干支节气 / 世界时钟 / 倒计时 / 天气（Open-Meteo）/ 闹钟 / 托盘 / 全局热键
 [持久化] 用户配置 config/user_config.json（exe 同目录，FIX007.15 基准；倍率/主题/城市/时区/倒计时/窗口几何/闹钟）
 ```
@@ -128,7 +128,7 @@ pub async fn fetch(&self, city: &str, force: bool) -> Result<WeatherData, Weathe
 
 - `window.rs`：`AppHandle`（logic：drain/探针/退出序列 + ui：底部仪器坞 Panel → 页总装 → 设置浮窗）
 - `pages/mod.rs`：总装配——非时钟页 Panel::right 抽屉（卡面+发丝，46% 宽钳 280..420）+ CentralPanel 星盘主仪恒驻
-- `clock.rs`：双环星轨仪（外环现实一日 96 刻度/白游标/四正位基数；内环加速一日 48 刻度/金游标；中心等宽 hero+×徽标）——时间膨胀的双速直观化
+- `clock.rs`：单环双针表盘（24h 刻度环纯量尺 + 金长针=加速此刻 + 灰细针=现实此刻 + 轴毂；中心等宽 hero+×徽标）——两针速差即膨胀（钟表本源语法；UIR4.6 定案：含义唯一，刻度=尺/指针=数据，废除同义重复的填金弧与双环）
 - `theme.rs`：ui.json `colors.*` 深色实心单板（仅深色定案）→ egui Visuals + 语义色（strong/body/muted/meta 五层，对比度全矩阵 ≥4.5:1 实测）/字号/间距/圆角访问器
 - `widgets/`：digits（等宽数字位）/ icons（矢量图标零字体依赖）/ icon_button（含指针对）/ chip（单行安静徽标）/ slider
 - 高 DPI 纪律：面/文本坐标一律逻辑点；标题栏底色经 DWMWA_CAPTION_COLOR 恒钉深色（仅深色定案）

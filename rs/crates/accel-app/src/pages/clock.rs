@@ -1,5 +1,5 @@
-//! 时钟页（UIR4 星盘主仪）：双环星轨仪恒驻 home——外环现实一日 96 刻度、
-//! 内环加速一日 48 刻度，双金弧双游标把「时间膨胀」画成两个转速不同的同心环；
+//! 时钟页（UIR4 星盘主仪）：单环双针 24 小时表盘恒驻 home——金长针 = 加速此刻、
+//! 灰细针 = 现实此刻，同一刻度盘上两针速差即时间膨胀（钟表的本源语法）；
 //! 中心等宽 hero + ×倍率徽标 + 标准时/日期；下方倍率滑杆与农历 chips
 //! 纯函数 day_fraction/day_angle/polar/dial_diameter/hero_fit_scale/day_progress 可测
 
@@ -76,28 +76,25 @@ impl crate::pages::Page for crate::pages::ClockPage {
             let cx = ui.max_rect().center().x;
             let cy = ui.cursor().top() + dial_d / 2.0 + 4.0;
             let outer_r = dial_d / 2.0 - 24.0;
-            let inner_r = outer_r - 30.0;
 
-            // 外环：现实一日（96 刻度 = 15 分钟一格；整点刻长；已过段金色）
-            let real_frac = day_fraction(time_part(&info.standard_datetime));
+            // 刻度环：24 小时表盘（96 刻度 = 15 分钟一格；整点刻长刻亮）——
+            // 纯量尺不含数据（UIR4.6 定案：含义唯一原则——刻度=尺、指针=数据，
+            // 废除「已过段填金」（与指针同义重复）；双环亦废（形异义同））
             for i in 0..96 {
                 let a = i as f32 / 96.0;
-                let (x1, y1) = polar(cx, cy, outer_r, day_angle(a));
+                let ang = day_angle(a);
                 let hour_tick = i % 4 == 0;
                 let len = if hour_tick { 12.0 } else { 7.0 };
-                let (x2, y2) = polar(cx, cy, outer_r - len, day_angle(a));
+                let (x1, y1) = polar(cx, cy, outer_r, ang);
+                let (x2, y2) = polar(cx, cy, outer_r - len, ang);
                 ui.painter().line_segment(
                     [egui::pos2(x1, y1), egui::pos2(x2, y2)],
                     egui::Stroke::new(
                         if hour_tick { 2.0 } else { 1.2 },
-                        if a <= real_frac { accent } else { idle },
+                        if hour_tick { ink.muted } else { idle },
                     ),
                 );
             }
-            // 外环游标（现实此刻）——亮白点悬于环外
-            let (mx, my) = polar(cx, cy, outer_r + 5.0, day_angle(real_frac));
-            ui.painter()
-                .circle_filled(egui::pos2(mx, my), 3.0, ink.knob);
             // 基数标签（00/06/12/18 四正位）
             let cardinal = egui::FontId::proportional(crate::theme::font_size("meta"));
             for (ang, label) in [(0.0, "00"), (90.0, "06"), (180.0, "12"), (270.0, "18")] {
@@ -111,26 +108,29 @@ impl crate::pages::Page for crate::pages::ClockPage {
                 );
             }
 
-            // 内环：加速一日（48 刻度；整点刻长；已过段金色——膨胀可见：内环金弧
-            // 走得比外环快，两个「此刻」游标分居两环）
-            let acc_frac = day_progress(info.expanded_hours_per_day, info.remaining_hours);
-            for i in 0..48 {
-                let a = i as f32 / 48.0;
-                let (x1, y1) = polar(cx, cy, inner_r, day_angle(a));
-                let half_tick = i % 2 == 0;
-                let len = if half_tick { 10.0 } else { 6.0 };
-                let (x2, y2) = polar(cx, cy, inner_r - len, day_angle(a));
-                ui.painter().line_segment(
-                    [egui::pos2(x1, y1), egui::pos2(x2, y2)],
-                    egui::Stroke::new(
-                        if half_tick { 2.0 } else { 1.2 },
-                        if a <= acc_frac { accent } else { idle },
-                    ),
-                );
-            }
-            // 内环游标（加速此刻）——金点贴环内
-            let (ax, ay) = polar(cx, cy, inner_r - 5.0, day_angle(acc_frac));
-            ui.painter().circle_filled(egui::pos2(ax, ay), 3.0, accent);
+            // 双针（同一表盘两种时间——膨胀即两针速差与角差，钟表的本源语法）：
+            // 金色长针 = 加速此刻（快转，倍率高时肉眼可见甩开灰针）；
+            // 灰色细针 = 现实此刻（慢转基准）；轴心小毂承载双针
+            let acc_frac = day_fraction(&info.custom_time);
+            let real_frac = day_fraction(time_part(&info.standard_datetime));
+            let hand_r = outer_r - 26.0;
+            // 金针（加速）：长针 + 短配重尾
+            let (gx, gy) = polar(cx, cy, hand_r, day_angle(acc_frac));
+            let (tx, ty) = polar(cx, cy, -14.0, day_angle(acc_frac));
+            ui.painter().line_segment(
+                [egui::pos2(tx, ty), egui::pos2(gx, gy)],
+                egui::Stroke::new(3.0, accent),
+            );
+            // 灰针（现实）：细短针
+            let (rx, ry) = polar(cx, cy, hand_r * 0.62, day_angle(real_frac));
+            let (rtx, rty) = polar(cx, cy, -8.0, day_angle(real_frac));
+            ui.painter().line_segment(
+                [egui::pos2(rtx, rty), egui::pos2(rx, ry)],
+                egui::Stroke::new(1.8, ink.muted),
+            );
+            // 轴毂
+            ui.painter()
+                .circle_filled(egui::pos2(cx, cy), 4.0, ink.strong);
 
             // —— 中心读数（等宽 hero + ×倍率徽标；小号标准时与日期居下）——
             let hero_base = crate::theme::font_size("hero");
@@ -140,8 +140,8 @@ impl crate::pages::Page for crate::pages::ClockPage {
             let hero_w0 = digits::text_width(ui.painter(), &hero_text, &measure);
             let badge_w0 = digits::text_width(ui.painter(), &badge, &measure);
             let gap = crate::theme::spacing("md");
-            let inner_d = (inner_r - 10.0) * 2.0;
-            let scale = hero_fit_scale((hero_w0 + gap + badge_w0) * 1.0, inner_d * 0.92);
+            let text_r = hand_r - 34.0;
+            let scale = hero_fit_scale((hero_w0 + gap + badge_w0) * 1.0, text_r * 2.0 * 0.92);
             let hero_size = hero_base * scale;
             let hero_font = digits::digit_font(hero_size);
             let badge_font = digits::digit_font(crate::theme::font_size("time_md") * scale);
@@ -222,13 +222,14 @@ impl crate::pages::Page for crate::pages::ClockPage {
 
 // ===== src/pages/clock.rs 说明区 =====
 // 输入：UiState（Tick 快照：时间/倍率域）；输出：星盘主仪 + SetRate/ApplyRate
-// 逻辑步骤：直径自适应（dial_diameter）→ 外环现实一日 96 刻度（整点刻长、已过
-//   金色、白游标悬环外、四正位基数标签）→ 内环加速一日 48 刻度（金游标贴环内）
-//   → 中心等宽 hero+×徽标（hero_fit_scale 收号）+ 标准时 + 日期 → 滑杆 → 农历 chips
-// 设计理由（UIR4 开创性重构）：时间膨胀的本质是两条时间流以不同速率流逝——
-//   双环星轨仪把它直接画出来：外环走得慢、内环金弧跑得快，两个「此刻」游标
-//   的角差就是膨胀的直观读数；仪器语义承接敦煌星图母题（金=已过、闲蓝=未至），
-//   星盘恒驻 home（时钟是「住在里面」的仪表，其余页是「查阅」的抽屉）
+// 逻辑步骤：直径自适应（dial_diameter）→ 24 小时刻度环（96 刻度纯量尺，整点刻
+//   长刻亮、四正位基数标签）→ 双针（金长针=加速此刻带配重尾、灰细针=现实此刻、
+//   轴毂）→ 中心等宽 hero+×徽标（hero_fit_scale 收号）+ 标准时 + 日期 → 滑杆
+//   → 农历 chips
+// 设计理由（UIR4.6 用户反馈迭代）：双环被否「内外都一样，没有意义」——形异义同
+//   确属实；改钟表本源语法：单环双针，金针快转灰针慢转，速差与角差即膨胀读数
+//   （20x 时金针肉眼疯转甩开灰针）；含义唯一原则：刻度=尺、指针=数据，废除
+//   「已过段填金」（与指针同义重复）；星盘恒驻 home（住与查分离不变）
 // 异常处理：time 为 None（首 Tick 前）星盘整块跳过不崩；day_progress/day_fraction
 //   双钳制；polar 纯函数无 panic 面
 // 关联依赖：widgets（digits/slider/chip）/tools::clock；消费方：pages::Pages

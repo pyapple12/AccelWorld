@@ -1,6 +1,6 @@
 # AccelWorld 项目说明
 
-Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow 实心桌面 UI，中文界面为主）。2026-10-16 起由 Python（PyQt6 + Fluent Widgets）重构为 Rust，Python 版全量归档 `.archived/`（git 忽略，仅供 golden 夹具再生）。2026-10-23 UI 推倒重塑（UIR）：玻璃管线/Acrylic/透明窗口整体废弃；2026-10-24 UIR4 开创性重构：双环星轨仪主仪恒驻 + 底部仪器坞 + 抽屉页（侧栏导航废除）。2026-09-10 起接入 DeepTransHub 工作流体系（文档四件套 + Commit 提交规范 + `.agents/skills/` 项目级技能）。
+Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow 实心桌面 UI，中文界面为主）。2026-10-16 起由 Python（PyQt6 + Fluent Widgets）重构为 Rust，Python 版全量归档 `.archived/`（git 忽略，仅供 golden 夹具再生）。2026-10-23 UI 推倒重塑（UIR）：玻璃管线/Acrylic/透明窗口整体废弃；2026-10-24 UIR4 开创性重构：单环双针星盘主仪恒驻 + 底部仪器坞 + 抽屉页（侧栏导航废除）。2026-09-10 起接入 DeepTransHub 工作流体系（文档四件套 + Commit 提交规范 + `.agents/skills/` 项目级技能）。
 
 ## 运行与验证
 

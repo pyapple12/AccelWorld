@@ -626,3 +626,8 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] UIR4.3 结构重排 —— 侧栏导航废除；pages/mod.rs：非 Clock 页 Panel::right 抽屉（卡面+发丝，46% 宽钳 280..420）+ CentralPanel 星盘恒驻；window.rs：Panel::bottom 仪器坞（五仪图标 + 右端齿轮，icon_button 复用）+ 设置浮窗重锚 RIGHT_BOTTOM（坞上方）；验证：全部既有页级单测绿（页内部零改动）
 - [x] UIR4.4 token 换代 —— ui.json sidebar_width→dock_height 56（零死键）；验证：rg sidebar_width 零命中
 - [x] UIR4.5 验证收尾 —— 四关卡 ALL_GREEN + 测试 198 + 截图六帧 exit 0 + 像素实证（窗底 #0F1420/抽屉 #141A29/主仪区精确命中；坞带白为已知 PrintWindow 底部伪影——内容区恰停坞顶边界+浮窗锚位双重佐证坞占位）+ bump 0.6.1.7 + 文档连带（AGENTS 头部与结构行/README 特性与导航/w.study 1·2·3.7/m.milestone）；验证：pwsh rs/ci.ps1 ALL_GREEN
+
+### UIR4.6: 双环废改单环双针 [design#UIR2]（2026-10-24，用户走查否决：「双层没有任何意义，内外都是一样的」）
+
+- [x] UIR4.6.1 表盘语法重写 —— 双环（形异义同）废；单环双针：金长针=加速此刻（配重尾）、灰细针=现实此刻、轴毂；刻度环退纯量尺（整点刻长刻亮）；含义唯一原则（刻度=尺/指针=数据，废除同义重复的已过段填金）；验证：编译 + 帧渲染 + 既有几何单测绿
+- [x] UIR4.6.2 收尾 —— 四关卡 ALL_GREEN + 测试 198 + 截图六帧 + bump 0.6.1.8 + 文档连带（README/w.study/AGENTS 双环→单环双针 + m.milestone 0.6.1.8 条目）+ 重新拉起真窗走查；验证：pwsh rs/ci.ps1 ALL_GREEN
