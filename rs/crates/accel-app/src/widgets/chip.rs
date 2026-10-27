@@ -8,7 +8,7 @@ pub fn chip_height() -> f32 {
     crate::theme::layout_i64("chip_height") as f32
 }
 
-/// 自适应宽度（纯函数可测）：label + 分隔 + value 行宽 + 内边距 24，钳 [56, 240]
+/// 自适应宽度（纯函数可测）：label + 分隔 + value 行宽 + 内边距 26，钳 [56, 240]
 /// （上限 240——最长农历串"丙午年（马年）九月十四玄"实测不撑破，2026-10-23 单行复核）
 pub fn chip_width(label_w: f32, value_w: f32) -> f32 {
     (label_w + value_w + 26.0).clamp(56.0, 240.0)

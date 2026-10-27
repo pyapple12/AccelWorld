@@ -199,6 +199,16 @@ pub fn layout_i64(key: &str) -> i64 {
     cached(&C, key, || Static::get().ui_nested_i64("layout", key))
 }
 
+/// 抽屉全开宽度（FIX011.03：比例与钳界 layout token 单源——原 0.46/[280,420]
+/// 魔法数三处内联；纯函数可测）
+pub fn drawer_width(avail_w: f32) -> f32 {
+    let ratio = layout_i64("drawer_width_ratio_x100") as f32 / 100.0;
+    (avail_w * ratio).clamp(
+        layout_i64("drawer_width_min") as f32,
+        layout_i64("drawer_width_max") as f32,
+    )
+}
+
 /// 圆角（ui.json radius.*；结果缓存）
 pub fn radius_px(key: &str) -> f32 {
     static C: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();

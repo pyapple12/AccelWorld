@@ -511,6 +511,8 @@ mod tests {
             Icon::Sun,
             Icon::Moon,
             Icon::Refresh,
+            Icon::Check,
+            Icon::Wind,
         ] {
             draw(&painter, egui::pos2(50.0, 50.0), 20.0, icon, Color32::WHITE);
             draw(&painter, egui::pos2(0.0, 0.0), 4.0, icon, Color32::GRAY);

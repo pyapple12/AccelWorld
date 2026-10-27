@@ -17,9 +17,6 @@ use crate::time_dilation::TimeDilation;
 use crate::types::{BackendEvent, FrontendCommand, TimeInfo, UiPreferences};
 use crate::weather::{FetchErr, WeatherClient};
 
-// 主题偏好合法取值（PL002.02 三态）
-const THEME_CHOICES: [&str; 3] = ["auto", "light", "dark"];
-
 // 信号总线通道容量（命令/事件各一路，背压上限）
 const BUS_CAPACITY: usize = 64;
 
@@ -197,10 +194,10 @@ impl AppInterface {
     pub fn get_ui_preferences(&self) -> UiPreferences {
         let base = Static::get();
         let config = settings::load(&self.config_path);
-        let theme = if THEME_CHOICES.contains(&config.theme.as_str()) {
-            config.theme
-        } else {
-            base.base_str("default_theme").to_string()
+        // FIX011.14：合法域判定走 ThemePref::parse 单源（原 THEME_CHOICES 字面量表）
+        let theme = match crate::types::ThemePref::parse(&config.theme) {
+            Some(p) => p.as_str().to_string(),
+            None => base.base_str("default_theme").to_string(),
         };
         UiPreferences {
             theme,
@@ -270,12 +267,16 @@ impl AppInterface {
     }
 
     /// 设置基准时区（合法 IANA 且在世界时钟城市表内才收；roundtrip 持久化）
+    /// FIX011.13：同值幂等短路（「已存在 = true 不重复落盘」，对照 set_weather_city）
     pub fn set_base_timezone(&self, tz: &str) -> bool {
         if world_cities::all().iter().all(|c| c.tz != tz) {
             tracing::warn!("未知时区标识，拒绝设置: {tz}");
             return false;
         }
         let mut config = settings::load(&self.config_path);
+        if config.last_timezone == tz {
+            return true;
+        }
         config.last_timezone = tz.to_string();
         settings::save(&self.config_path, &config)
     }
@@ -495,7 +496,7 @@ impl AppInterface {
                                                 city: city_task.clone(),
                                                 reason: e.to_string(),
                                             },
-                                    };
+                                        };
                                         match &evt {
                                             BackendEvent::WeatherUpdated { city, .. } => {
                                                 tracing::info!("天气更新完成: {city}");
@@ -569,37 +570,73 @@ impl AppInterface {
                                 }
                             }
                             Some(FrontendCommand::AddWorldCity(name)) => {
-                                let ok = self.add_world_city(&name);
-                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                                // FIX011.01（A011 #1）：拒绝不发 ConfigSaved（同 AddAlarm
+                                // 口径）——前置校验后 false 只剩 IO 失败一种语义
+                                if world_cities::by_name(&name).is_some() {
+                                    let ok = self.add_world_city(&name);
+                                    let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                                } else {
+                                    tracing::warn!("未知城市，拒绝添加常驻: {name}");
+                                }
                             }
                             Some(FrontendCommand::RemoveWorldCity(name)) => {
-                                let ok = self.remove_world_city(&name);
-                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                                // FIX011.01：不存在拒绝不发（同上口径）
+                                if self.get_world_pins().iter().any(|p| p == &name) {
+                                    let ok = self.remove_world_city(&name);
+                                    let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                                } else {
+                                    tracing::warn!("常驻城市不存在，移除无变更: {name}");
+                                }
                             }
                             Some(FrontendCommand::SetBaseTimezone(tz)) => {
-                                let ok = self.set_base_timezone(&tz);
-                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                                // FIX011.01：未知时区拒绝不发（同上口径）
+                                if world_cities::all().iter().any(|c| c.tz == tz) {
+                                    let ok = self.set_base_timezone(&tz);
+                                    let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                                } else {
+                                    tracing::warn!("未知时区标识，拒绝设置: {tz}");
+                                }
                             }
                             Some(FrontendCommand::SetWindowGeometry { geometry }) => {
-                                let ok = self.set_window_geometry(&geometry);
-                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                                // FIX011.01：非法几何串拒绝不发（同上口径）
+                                if parse_window_geometry(&geometry).is_some() {
+                                    let ok = self.set_window_geometry(&geometry);
+                                    let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                                } else {
+                                    tracing::warn!("窗口几何串非法，拒绝存档: {geometry}");
+                                }
                             }
                             Some(FrontendCommand::AddCountdownTarget { name, at }) => {
-                                let ok = self.add_countdown_target(&name, &at);
-                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                                // FIX011.01：空名/同名拒绝不发（同上口径）
+                                if !name.is_empty()
+                                    && !self
+                                        .get_countdown_targets()
+                                        .iter()
+                                        .any(|t| t.name == name)
+                                {
+                                    let ok = self.add_countdown_target(&name, &at);
+                                    let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                                } else {
+                                    tracing::warn!("倒计时目标空名或同名，拒绝添加: {name}");
+                                }
                             }
                             Some(FrontendCommand::RemoveCountdownTarget(name)) => {
-                                let ok = self.remove_countdown_target(&name);
-                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                                // FIX011.01：不存在拒绝不发（同上口径）
+                                if self
+                                    .get_countdown_targets()
+                                    .iter()
+                                    .any(|t| t.name == name)
+                                {
+                                    let ok = self.remove_countdown_target(&name);
+                                    let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                                } else {
+                                    tracing::warn!("倒计时目标不存在，移除无变更: {name}");
+                                }
                             }
                             Some(FrontendCommand::SetTheme(pref)) => {
-                                let theme = match pref {
-                                    crate::types::ThemePref::Auto => "auto",
-                                    crate::types::ThemePref::Light => "light",
-                                    crate::types::ThemePref::Dark => "dark",
-                                };
+                                // FIX011.14：存储串 ThemePref::as_str 单源（原手写映射）
                                 let mut config = settings::load(&self.config_path);
-                                config.theme = theme.to_string();
+                                config.theme = pref.as_str().to_string();
                                 let ok = settings::save(&self.config_path, &config);
                                 let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
                             }
@@ -1493,6 +1530,62 @@ mod tests {
             }
         }
         assert!(io_failed, "真 IO 失败仍应回推 ConfigSaved(false)");
+    }
+
+    #[tokio::test]
+    async fn config_command_rejections_do_not_push_config_saved() {
+        // A011 #1（FIX011.01）验收：六个配置写命令的拒绝路径不得回推 ConfigSaved
+        // ——与闹钟域 FIX010.1 同口径（false 收敛为纯 IO 失败信号，拒绝不再误弹
+        // 「配置保存失败」toast）；success 侧保留回推（bus need_reload 依赖）
+        let sandbox = SandboxDir::new("cfgreject");
+        let itf = Arc::new(AppInterface::with_config_path(sandbox.path()));
+        let (cmd_tx, mut evt_rx) = AppInterface::spawn(Arc::clone(&itf));
+        let rejections = [
+            FrontendCommand::AddWorldCity("不存在城".into()),
+            FrontendCommand::RemoveWorldCity("幽灵城".into()),
+            FrontendCommand::SetBaseTimezone("Not/AZone".into()),
+            FrontendCommand::SetWindowGeometry {
+                geometry: "bad".into(),
+            },
+            FrontendCommand::AddCountdownTarget {
+                name: String::new(),
+                at: chrono::Local::now(),
+            },
+            FrontendCommand::RemoveCountdownTarget("无此目标".into()),
+        ];
+        for cmd in rejections {
+            cmd_tx.send(cmd).await.expect("发送失败");
+        }
+        let drain_deadline =
+            tokio::time::Instant::from_std(std::time::Instant::now() + Duration::from_millis(500));
+        loop {
+            match tokio::time::timeout_at(drain_deadline, evt_rx.recv()).await {
+                Ok(Some(BackendEvent::ConfigSaved(_))) => {
+                    panic!("配置命令拒绝路径不得回推 ConfigSaved");
+                }
+                Ok(Some(_)) => continue,
+                _ => break,
+            }
+        }
+        // success 侧保留：合法几何存档仍回推 ConfigSaved(true)
+        cmd_tx
+            .send(FrontendCommand::SetWindowGeometry {
+                geometry: "10,20,900,560".into(),
+            })
+            .await
+            .expect("发送失败");
+        let mut saved = false;
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            if matches!(evt_rx.recv().await, Some(BackendEvent::ConfigSaved(true))) {
+                saved = true;
+                break;
+            }
+        }
+        assert!(
+            saved,
+            "合法写命令仍应回推 ConfigSaved(true)（bus need_reload 依赖）"
+        );
     }
 
     #[tokio::test]

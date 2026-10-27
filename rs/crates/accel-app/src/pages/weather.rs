@@ -73,6 +73,11 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                             // PL016.03：在飞指示——发刷新即入集，收事件由 bus 出集
                             state.weather_loading.insert(name.clone());
                             state.prefs.last_city = name.clone();
+                            // FIX011.09：切城轻提示（Info 金边分支接线——toast 构造器首用）
+                            state.toasts.push(crate::bus::Toast::info(
+                                "天气城市",
+                                &format!("已切换至 {name}"),
+                            ));
                         }
                     }
                 });

@@ -128,12 +128,8 @@ pub fn grid_cols(avail_w: f32) -> usize {
 impl crate::pages::Page for crate::pages::CountdownPage {
     fn ui(&mut self, ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
         let ink = crate::theme::ink();
-        // PL016.04：武装超时解除（4s 未确认即放下）
-        if let Some((_, at)) = &state.armed_delete
-            && at.elapsed().as_secs() >= 4
-        {
-            state.armed_delete = None;
-        }
+        // PL016.04：武装超时解除（FIX011.03 单源方法 + token 时长）
+        state.armed_delete_tick();
         let now = chrono::Local::now().naive_local();
         // 目标快照（state.countdown_targets：启动快照 + ConfigSaved 重拉）
         let mut targets: Vec<(&str, NaiveDateTime)> = Vec::new();
@@ -343,18 +339,28 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                 .hint_text("YYYY-MM-DD[ HH:MM[:SS]]")
                 .desired_width(at_w)
                 .show(ui);
-            let (err_msg, parsed_at) = {
+            let (err_msg, local_at) = {
                 let name = state.countdown_draft_name.clone();
                 match crate::tools::countdown::parse_target_text(&state.countdown_draft_at) {
                     Some(at) => {
                         let names: Vec<String> =
                             targets.iter().map(|(n, _)| (*n).to_string()).collect();
                         match validate_add(&name, at, now, &names) {
-                            Ok(()) => (String::new(), Some(at)),
+                            Ok(()) => match local_from_naive(at) {
+                                Some(local) => (String::new(), Some(local)),
+                                // FIX011.16：DST 跳过的时刻不存在——红字同位反馈不静默
+                                None => {
+                                    ("该时刻在本地时区不存在（夏令时切换跳过）".to_string(), None)
+                                }
+                            },
                             Err(e) => (e.to_string(), None),
                         }
                     }
-                    None => (String::new(), None),
+                    // FIX011.16：解析失败不再静默 no-op——红字与 validate 失败同位反馈
+                    None => (
+                        "时刻无法解析——格式应为 YYYY-MM-DD HH:MM[:SS] 或 YYYY-MM-DD".to_string(),
+                        None,
+                    ),
                 }
             };
             let add_resp = crate::widgets::icon_button::show(
@@ -364,8 +370,7 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                 false,
             );
             if add_resp.on_hover_text("添加目标").clicked()
-                && let Some(at) = parsed_at
-                && let Some(local) = local_from_naive(at)
+                && let Some(local) = local_at
             {
                 bus.send(FrontendCommand::AddCountdownTarget {
                     name: state.countdown_draft_name.clone(),

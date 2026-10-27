@@ -82,6 +82,16 @@ impl UiState {
     pub fn world_pins_view(&self) -> &[String] {
         &self.world_pins
     }
+
+    /// 两步删除武装超时解除（FIX011.03 单源：三页原复制粘贴块收拢；
+    /// 时长 motion.armed_timeout_ms token——原 4s 字面量三处硬编码）
+    pub fn armed_delete_tick(&mut self) {
+        if let Some((_, at)) = &self.armed_delete
+            && at.elapsed().as_millis() as f32 >= crate::theme::motion_ms("armed_timeout_ms")
+        {
+            self.armed_delete = None;
+        }
+    }
 }
 
 impl Default for UiState {
@@ -205,6 +215,16 @@ impl Toast {
             body: body.to_string(),
             born: std::time::Instant::now(),
             kind: ToastKind::Error,
+        }
+    }
+
+    /// 信息 toast 构造（FIX011.09 接线 Info 金边分支——轻量即时反馈）
+    pub fn info(title: &str, body: &str) -> Toast {
+        Toast {
+            title: title.to_string(),
+            body: body.to_string(),
+            born: std::time::Instant::now(),
+            kind: ToastKind::Info,
         }
     }
 }
@@ -381,9 +401,10 @@ impl Bus {
                     ));
                     state.alarm_pulse_since = Some(std::time::Instant::now());
                 }
-                // FIX010.1：ConfigSaved(false) 已收敛为纯 IO 失败信号（core 侧拒绝
-                // 路径不再回推 false）——此处「保存失败」只对真落盘失败触发；
-                // PL016.07 分层：应用内 toast 即时反馈 + 系统通知驻留兜底
+                // FIX010.1 + FIX011.01：ConfigSaved(false) 已收敛为纯 IO 失败信号
+                // （core 侧全部命令的拒绝路径均不回推 false——A011 #1 补齐世界/
+                // 倒计时/几何六配置命令后全局成立）——此处「保存失败」只对真落盘
+                // 失败触发；PL016.07 分层：应用内 toast 即时反馈 + 系统通知驻留兜底
                 BackendEvent::ConfigSaved(false) => {
                     state.toasts.push(Toast::error(
                         "配置保存失败",

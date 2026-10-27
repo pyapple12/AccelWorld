@@ -1,7 +1,7 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告 + Rust 重构总纲）
-> 当前版本：0.6.2.0（PL016 UI 审核精修 + 整体复审补修完成：P0 金针修复 + 全部 15 条审核意见落实 + 复审三条补修——状态覆盖/两步确认/键盘焦点/三级动效/应用内 toast/egui_plot/MiSans 内嵌/探针两段式；PL015 已收口，不做人工测试与定版仪式）
+> 当前版本：0.6.2.1（FIX011 第 11 轮审计修复完成：六命令拒绝分流补齐/toast 步距与抽屉宽等参数进 token/滑杆点击落盘/注释失实族清扫/死键清理；PL016 已收口推送 0e2252f）
 > 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；FIX007–FIX010、UIR2-4 轮（至 7083456）均已提交推送，当前阶段为 PL016 审核精修（待提交）
 > 更新（2026-10-17）：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow——UIR 定案 wgpu 废弃）；Python 版全量归档 `.archived/`（git 忽略），本文件自 PL011 起记录 RS 任务
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
@@ -654,3 +654,26 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] PL016.16 [P1] 天气 hero 行相对布局 + 截断（整体复审 HIGH） —— 现象文字原锚 left+214 固定偏移，最小窗宽 520（抽屉钳 280、内容 248）下仅剩 18px 被推出右缘；新增纯函数 hero_anchors（宽抽屉逐像素保持 104/214 原节奏，窄时随温度右缘回退、长温度右移避让图标）+ ellipsize_to 超预算省略截断；验证：四单测（宽节奏保持/最小窗界内/长温度避让/截断回退）+ 四关卡 ALL_GREEN
 - [x] PL016.17 [P2] 截图探针两段式时序（整体复审 MEDIUM） —— 根因：PrintWindow 在 update 内读到的是上一帧 present，低帧率下切页后立即采必拍旧帧（复审实证 00≡01/02≡03 哈希对、04 实为天气/05 实为闹钟，countdown/world/settings 三页无有效截图；弹簧 dt 钳 [1/240,1/30] 致稀疏帧下动画按帧数爬行叠加）；修法：切页后 1.6s 结算窗（16ms 提频驱动新页 present + 弹簧走完）窗满才采；验证：探针复跑六帧哈希全异 + 视觉模型复核名实一致（含设置浮窗首次入镜）
 - [x] PL016.18 [P3] Wind 图标小尺寸辨识度（整体复审 LOW） —— 14px 下线距 1.68px 减线宽 1.26 仅 ~0.4px 间隙视觉读作「≈」；图标几何线距 0.24r→0.35r（对齐 Lucide 疏密）+ 调用点 14→18px；验证：探针复跑视觉复检「三条短线右端上卷，可辨识为风非 ≈」
+
+### FIX011: 第11轮审计修复 [audit#A011]
+
+- [x] FIX011.01 [P2] 六命令拒绝/IO 分流收口（A011 #1，A010 #1 漏改面） —— interface.rs:571-594 六分支（AddWorldCity/RemoveWorldCity/SetBaseTimezone/SetWindowGeometry/AddCountdownTarget/RemoveCountdownTarget）照 SetWeatherCity 先例改「分支前置校验 + 仅合法入参达落盘方法」（success 侧保留 ConfigSaved 回推——bus need_reload 依赖）；bus.rs:384 失实注释随修；TDD：新测试 config_command_rejections_do_not_push_config_saved 先 FAIL（拒绝回推实锤）后 PASS（含 success 侧仍回推断言）；验证：测试绿 + 现树全绿 + 四关卡（2026-10-28 完成）
+- [x] FIX011.02 [P2] toast 堆叠步距进 token（A011 #2） —— toast.rs 步距提 ui.json layout.toast_step=88（rg 80.0 内联清零）；长文案重叠根治走逐卡实测高度顺序堆叠（Area 换布局流）登记缓行——88 步距已覆盖单行卡 + 间距；验证：rg 清零 + 探针六帧 exit 0（2026-10-28 完成）
+- [x] FIX011.03 [P2] 交互/布局参数进 ui.json + 解除块单源（A011 #3） —— ①theme::drawer_width(avail) 纯函数收拢（layout.drawer_width_ratio_x100=46/min=280/max=——ui_nested_i64 整型存储先例，比例 x100）替代 pages/mod.rs 内联魔法数；②motion.armed_timeout_ms=4000；③armed 解除块收 UiState::armed_delete_tick() 三页调用；验证：token 对账双绿 + rg 硬编码清零 + 四关卡（2026-10-28 完成；真机两步删除手测留用户走查）
+- [x] FIX011.04 [P3] 滑杆纯点击选值落盘（A011 #4） —— slider.rs 落盘分支改 `drag_stopped() || clicked()`（egui 保证互斥各恰一次）；注释语义随之成立；验证：代码锚点 + 现树测试全绿 + 四关卡（点击→落盘全链路真机拖动走查留用户）（2026-10-28 完成）
+- [x] FIX011.05 [P3] 注释/说明区失实族订正（A011 #5，4+2 处合并） —— ①core weather.rs 说明区补 StaleServed 变体与磁盘缓存链路；②chinese_calendar.rs 说明区补 PL014.07 节日派生函数群（spring_festival_of_lunar_year/next_spring_festival/year_chips/lunar_ymd_to_solar/qingming 五函数 + 两年轮/除夕回退/horizon 逻辑）；③static_config.rs:2 模块头「零改写」订正为「PL011 时点 sha256 一致此后独立演进」；④chip.rs /// 24→26；顺手⑤file_io.rs「IO 失败清理」收窄为 rename 失败清理（write 直写不清理 .tmp 登记在案）⑥lib.rs:29 补 paths；验证：rg 失实词清零（2026-10-28 完成）
+- [x] FIX011.06 [P3] crate version 段对齐（A011 #6） —— 两 crate Cargo.toml version 0.6.0→0.6.2 + core/app 两处说明区「对齐 0.6.1」订正为「随产品 minor 段人工推进」；验证：rg 0.6.0 双 Cargo 清零 + cargo check（2026-10-28 完成）
+- [x] FIX011.07 [P3] ui.json 死键清理（A011 #7） —— 删 scale.time_lg 与 motion.drawer_ms；static_config 测试键表若锚定同步；spacing.xxl 保留（递增校验锚定）；验证：token 双向对账脚本零死键 + 四关卡（2026-10-28 完成：对账双绿）
+- [x] FIX011.08 [P3] toast Area Id 稳定化（A011 #8） —— toast.rs Id 改锚 `("accel_toast", i, toast.born)`（Instant 实现 Hash 直作键——单条生命周期内稳定，替代 elapsed().as_nanos() 每帧变化反模式）；验证：探针六帧 exit 0 + 现树测试全绿（2026-10-28 完成）
+- [x] FIX011.09 [P3] ToastKind::Info 处置（A011 #9） —— 取「接线」口径：bus 补 Toast::info 构造器 + 天气页切城成功轻提示「已切换至 {name}」首用（金边设计意图保留）；验证：rg Toast::info 生产调用在案 + 探针六帧 exit 0（2026-10-28 完成）
+- [x] FIX011.10 [P3] 闹钟开关动效接 reduce_motion（A011 #10） —— alarm.rs 开关 anim 照 chip 模式补 reduce 分支直取终态（同级行内动效纪律对齐）；验证：代码锚点 + 现树测试全绿 + 四关卡（开关无过渡对比留用户真机）（2026-10-28 完成）
+- [x] FIX011.11 [P3] install_fonts 数字族装载去重（A011 #11） —— window.rs 提取 install_digit_family + push_cjk_fallback 两 helper（MiSans/通用分支各一份的 ~20 行×2 收拢），MiSans 早退分支随之消除改统一收尾 set_fonts；验证：四关卡 ALL_GREEN（行为不变重构，MiSans 内嵌加载日志照旧）（2026-10-28 完成）
+- [x] FIX011.12 [P3] window_bg 绕封装收口（A011 #12） —— pages/mod.rs 改调 theme::window_bg()；验证：rg 'color32_at\("window_bg"' 零命中 + 四关卡（2026-10-28 完成）
+- [x] FIX011.13 [P3] set_base_timezone 同值幂等短路（A011 #13） —— interface.rs 补 `if config.last_timezone == tz { return true; }`（对照 set_weather_city 模式，FIX006.22 口径齐平）；验证：四关卡全绿（重复点击不再落盘——磁盘写观察属运维面，行为短路代码在案）（2026-10-28 完成）
+- [x] FIX011.14 [P3] 主题字面量单源（A011 #14） —— types.rs ThemePref 加 as_str()/parse() 互逆方法（注释锚定 serde rename 同步），interface THEME_CHOICES 删除、get_ui_preferences 走 parse、SetTheme 分支走 as_str；验证：四关卡 + parity 全绿（2026-10-28 完成）
+- [x] FIX011.15 [P3] 测试卫生两处（A011 #15） —— ①icon_button 恒真断言改 hit_side(size) 纯函数消费的几何断言（HIT_PAD 常量提模块级单源；clippy assertions_on_constants 拦截常量断言后改经函数调用不可折叠）；②icons.rs 冒烟数组补 Check/Wind（18 变体全测）；验证：断言可失败（HIT_PAD 归零即红）+ 全量测试绿（2026-10-28 完成）
+- [x] FIX011.16 [P3] 倒计时加号解析失败反馈（A011 #16） —— countdown.rs 加号块重构：解析失败/validate 失败/DST 不存在三分支统一 err_msg 红字提示位（「时刻无法解析——格式应为…」/「该时刻在本地时区不存在（夏令时切换跳过）」），local_from_naive 折入计算链；验证：代码锚点 + 现树测试全绿（非法输入红字手测留用户）（2026-10-28 完成）
+- [x] FIX011.17 [P3] 格式卫生两处（A011 #17） —— chinese_calendar.rs 两函数内层冗余 use LunarRefHelper 删除（模块头 :9 单源）；interface.rs 闭括号缩进对齐 40 列（与 let/match 同块）；验证：cargo fmt --check 过 + 四关卡（2026-10-28 完成）
+- [x] FIX011.18 [P3] series_strings 错误语义分档（A011 #18） —— weather.rs 元素非串改报 BadType(key)（对照 series_numbers 错型/缺失分档）+ :144 注释语病订正（本函数不产 Null 变体）；TDD：新测试 series_string_wrong_type_is_badtype 先 FAIL（SeriesMissing 实锤）后 PASS；验证：weather 域 24 测试全绿 + 四关卡（2026-10-28 完成）
+- [x] FIX011.19 [P3] 退出几何存档钳域（A011 #19） —— 需验证先行完成：egui 0.37 ViewportInfo.minimized: Option<bool> 字段实证（registry viewport_info.rs:69）；window.rs 退出存档前最小化守卫 `minimized != Some(true)` 跳过（Windows 最小化 OS 矩形 -32000 惯例不再入存档/不触发误弹链）；验证：字段实证 + 代码锚点 + 四关卡（最小化→退出全链路手测留用户）（2026-10-28 完成）
+- [x] FIX011.20 收尾 —— 四关卡 ALL_GREEN + cargo test --workspace 结果行全量 209（app 74+bin 1+core 114+parity 20，较 0.6.2.0 增 2）+ 截图探针六帧 exit 0 哈希全异 + token 对账双绿 + 反向验收（.temp/verify_fix011_accept.md）+ bump 0.6.2.1（五处同步）+ 文档连带（z.plan A011 状态翻转/本组整行翻转/m.milestone 条目）+ commit 草案；验证：pwsh rs/ci.ps1 ALL_GREEN（2026-10-28 完成）

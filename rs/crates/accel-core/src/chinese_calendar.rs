@@ -135,7 +135,6 @@ const LUNAR_FESTIVAL_RULES: [(i64, i64, &str); 8] = [
 
 /// 农历日期 → 公历（lunar-rust Lunar 构造转 Solar）
 fn lunar_ymd_to_solar(lunar_year: i64, lunar_month: i64, lunar_day: i64) -> NaiveDate {
-    use lunar_rust::lunar::LunarRefHelper;
     let solar = lunar_rust::lunar::from_ymd(lunar_year, lunar_month, lunar_day).get_solar();
     NaiveDate::from_ymd_opt(
         solar.get_year() as i32,
@@ -164,7 +163,6 @@ pub fn next_spring_festival(now: NaiveDate) -> NaiveDate {
 
 /// 清明公历日期（lunar-rust 节气表；锚定当年任一日的 lunar 实例取全表）
 fn qingming_of_gregorian_year(year: i32) -> Option<NaiveDate> {
-    use lunar_rust::lunar::LunarRefHelper;
     let lunar = lunar_rust::solar::from_ymd(year as i64, 6, 1).get_lunar();
     lunar.get_jie_qi_table().get("清明").and_then(|solar| {
         NaiveDate::from_ymd_opt(
@@ -295,9 +293,14 @@ pub fn get_lunar_info(now: DateTime<Local>) -> String {
 }
 
 // ===== src/chinese_calendar.rs 说明区 =====
-// 输入：公历年月日时（或 DateTime<Local>）；输出：LunarInfo / 农历展示串 / 中文日期串
+// 输入：公历年月日时（或 DateTime<Local>）；输出：LunarInfo / 农历展示串 / 中文日期串 /
+//   节日派生群（PL014.07：spring_festival_of_lunar_year 春节公历日 /
+//   next_spring_festival 未来最近春节 / year_chips 近期节日条 /
+//   lunar_ymd_to_solar 农历转公历 / qingming_of_gregorian_year 清明节气日）
 // 逻辑步骤：lunar-rust 直调六字段（干支/生肖/月/日/月相/节气）→ 时辰表/财神表/
-//   西式节日表本地匹配 → 节日三级兜底（T1 农历节日 → T2 holidays.json → T3 表）
+//   西式节日表本地匹配 → 节日三级兜底（T1 农历节日 → T2 holidays.json → T3 表）；
+//   节日派生：两年轮（当年+次年）扫春节/除夕锚点 + 清明节气表取值，horizon 365
+//   天过滤后按日升序出 chips（除夕回退 = 腊月最后一天，无「除夕」键年份走此路）
 // 设计理由：三分法出入清单（z.plan B'）实测定案——lunar-rust 与 lunar-python 同源，
 //   六字段 749 条比对全等直调；时辰/财神/西式节日三表纯移植；T2 数据文件化将
 //   chinese-calendar 依赖固化为静态数据（年末维护改为重跑导出脚本，y.problems#7

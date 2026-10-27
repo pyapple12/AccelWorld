@@ -44,12 +44,8 @@ pub fn truncate_chars(text: &str, keep: usize) -> String {
 impl crate::pages::Page for crate::pages::AlarmPage {
     fn ui(&mut self, ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
         let ink = crate::theme::ink();
-        // PL016.04：武装超时解除（4s 未确认即放下——不留常驻武装态）
-        if let Some((_, at)) = &state.armed_delete
-            && at.elapsed().as_secs() >= 4
-        {
-            state.armed_delete = None;
-        }
+        // PL016.04：武装超时解除（FIX011.03 单源方法 + token 时长）
+        state.armed_delete_tick();
 
         // 内容包 ScrollArea（闹钟多时不出窗）
         egui::ScrollArea::vertical().show(ui, |ui| {
@@ -194,9 +190,13 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                 );
                 // 开关行内定位绘制（widgets::switch 已随 A008 #7 删除——几何同构）
                 let on = alarm.enabled;
-                let anim =
+                // FIX011.10：减少动效直取终态（同级行内动效纪律对齐 chip/icon_button）
+                let anim = if crate::theme::reduce_motion(ui.ctx()) {
+                    if on { 1.0 } else { 0.0 }
+                } else {
                     ui.ctx()
-                        .animate_value_with_time(sw_resp.id, if on { 1.0 } else { 0.0 }, 0.1);
+                        .animate_value_with_time(sw_resp.id, if on { 1.0 } else { 0.0 }, 0.1)
+                };
                 let knob_r = sw_rect.height() / 2.0 - 2.0;
                 let knob_x =
                     sw_rect.left() + 2.0 + knob_r + anim * (sw_rect.width() - 4.0 - knob_r * 2.0);

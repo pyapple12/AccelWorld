@@ -140,7 +140,8 @@ pub fn backup_corrupted(path: &Path) -> Option<PathBuf> {
 // 输入：目标路径 + JSON 值/文本；输出：read Option / write Result / 转存 Option
 // 逻辑步骤：白名单 roots（env 注入根 + exe 目录 + temp）→ resolve 判定 → 原子写
 // 设计理由：对齐 Python file_utils 三契约——越界 ValueError 上抛（编程错误不吞）、
-//   IO 失败清理中间文件返错、转存白名单外跳过；中间文件带进程号防多进程互踩；
+//   rename 失败清理中间文件返错（A011 订正：write 直写失败不清理，.tmp 可能残留——
+//   小体量且带进程号，无功能影响）、转存白名单外跳过；中间文件带进程号防多进程互踩；
 //   Python _PROJECT_ROOT（__file__ 相对）在编译型语言无对等物，改为 exe 目录 +
 //   env 注入根（安装态/测试态两场景各取所需）
 // 异常处理：read 全容错（None）；write 区分 NotAllowed（上抛）与 Io（清理后上抛）；

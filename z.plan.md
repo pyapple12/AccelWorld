@@ -1222,6 +1222,102 @@ Acrylic 技术要点：
 
 ---
 
+## 附录 A011：全量代码审计报告（第 11 轮，Rust 侧第 7 轮，2026-10-28）
+
+> 范围：`rs/` 双 crate 52 个源文件 + 4 份静态配置 + Cargo 清单×3 + CI + 根文档；`.archived/`、`rs/target/`、`.temp/` 排除。
+> 方式：只读审计。主会话亲做 FIX010 回归复核（grep 10/10）+ 机检对账（token 双向/unwrap 盘点/说明区完整性）+ 亲读 interface/weather/bus/time_dilation/settings/toast/window 核心链；三路子代理并行全文通读（A core 基础 / B core 业务 / C app 全组）+ git show caac633 补盲区后主会话合并去重，关键条目亲验（slider 落盘路径/armed 行号/死键零消费复核）。
+> 本轮为 FIX010（V0.6.1.3）后历经 UIR2/3/4 + PL016 大改的体检轮，重点为 A010 后约 1900 行新增/重写代码。
+> 豁免：本轮无新增豁免定案（观察项 24 条经用户复核全部维持观察级）。
+> 状态：✅ 已修复（FIX011 完成，V0.6.2.1——20 条全落地，任务清单见 x.progress.md）
+
+### 零、上轮修复复核清单（FIX010，提交 caac633）
+
+**十条修复 grep 10/10 在位，行为零回退**；git show 对比补盲区发现一处**修复范围漏列**（→ P2-1）：
+
+| 上轮条目 | 现状 | 证据 |
+| --- | --- | --- |
+| #1 拒绝/IO 分流（闹钟四命令+ApplyRate+SetWeatherCity 六处） | ✅ 在位 | interface.rs:527-569 四分支 `if ok { save+push }` + 测试 ：1429/:1461 双口径 |
+| #2 注释清扫六处 | ✅ 在位（一处漏网→P3-5） | theme/chip/alarm/audio/static_config/pages/mod 逐处订正；static_config.rs:2 模块头漏网 |
+| #3 w.study 五处+AGENTS 清单放宽 | ✅ 在位 | rg「三态主题\|switch\|50 城市」零命中 |
+| #4 $env: 形态两处 | ✅ 在位 | AGENTS.md:10 / x.progress.md:46 |
+| #5 注记订正+状态行翻转 | ✅ 在位 | x.progress:5 已为「PL016 审核精修」 |
+| #6 chrono-tz 移 dev | ✅ 在位 | accel-core/Cargo.toml:20-23 dev 段+双注释 |
+| #7 replace_alarm 防线 | ✅ 在位 | alarm.rs:485-505 + 单测 :954-980 |
+| #8 countdown warn | ✅ 在位 | settings.rs:166/:174 |
+| #9 slider rect 形参删 | ✅ 在位 | slider.rs:130 四参全用 |
+| #10 .gitignore 去重 | ✅ 在位 | .vscode/ 单条 :15 |
+| ——（文档一致性专项） | ✅ 全绿 | 徽章==base.json==0.6.2.0；PL016.01-.18 连续；A001-A010 递增 |
+| ——（A010 #1 范围漏列） | ⚠️ 漏改面 | caac633 diff 仅触碰 6 分支；世界/倒计时/几何六命令拒绝路径未列未改 → P2-1 |
+
+### 一、P0–P3 修复清单（P0/P1 无；共 19 条 = P2×3 + P3×16）
+
+> 性质：遗留 = 历轮已列未修；新增 = 本轮新发现。
+
+| # | 级别 | 文件:行号 | 类型 | 描述 | 建议 | 性质 | 影响面 |
+|---|---|---|---|---|---|---|---|
+| 1 | P2 | accel-core/src/interface.rs:571-594 ＋ accel-app/src/bus.rs:384-393 | 13/11 | **拒绝/IO 分流只收口六处漏六命令**：AddWorldCity（未知城 :245）/RemoveWorldCity（不存在 :265）/SetBaseTimezone（未知 tz :274）/SetWindowGeometry（非法串 :293）/AddCountdownTarget（空/同名 :311）/RemoveCountdownTarget（不存在 :335）拒绝路径仍无条件回推 ConfigSaved(false) → bus.rs:387 无差别弹「配置保存失败」toast + WinRT 驻留——磁盘从未被写。四命令被页面级前置校验挡住（单动作不可达）；Remove 两命令存在竞态窗：磁贴须等 ConfigSaved 回拉才消失，快速双删第二发命中「不存在」即确定性误弹。bus.rs:384「core 侧拒绝路径不再回推 false」注释随之失实 | 六分支照 :527-530 模式改 `if ok { save+push }`（success 侧保留回推——bus need_reload 依赖 :405）；bus.rs:384 注释随修；补总线级拒绝不回推回归测试（现仅闹钟域有） | 遗留（A010 #1 同根因漏改面） | 配置体系/世界时钟/倒计时/托盘通知 |
+| 2 | P2 | accel-app/src/widgets/toast.rs:38,64 | 3+1 | **堆叠垂直步距 80.0 硬编码 < 换行卡高**：`margin + i*80.0`；错误 reason 含 reqwest Display 原文（core FetchErr 直接内嵌 URL 长串）可达 3-4 行，卡高 >80px 时多条同屏确定性重叠遮挡 | 步距进 ui.json layout 域；中期改逐卡实测高度顺序堆叠 | 新增 | GUI 面板 |
+| 3 | P2 | accel-app/src/pages/mod.rs:75 ＋ countdown.rs:48-52 ＋ world.rs:43-46 ＋ alarm.rs:48-51 | 3+4 | **交互/布局参数未进 ui.json 族（同根因合并）**：①抽屉宽 `available_width()*0.46` 钳 [280,420] 三个魔法数（layout 域有 dock_height 同类归宿）；②armed_delete 4s 超时常量三页三处硬编码且解除 if 块三处复制粘贴 | 参数进 ui.json（drawer_width_ratio/min/max + armed_timeout_ms）；解除逻辑收 UiState 单源方法 | 新增 | GUI 面板/配置体系 |
+| 4 | P3 | accel-app/src/widgets/slider.rs:60-69,107-109 | 1 | **纯点击选值永不 ApplyRate 落盘**：commit 只挂 drag_stopped 与键盘去抖；egui 0.37 中未过拖动阈值的 click 其 dragged 恒 None → drag_stopped 恒 false；点击分支只发 SetRate（实时生效），持久化悬置到退出 SaveNow 兜底（save_config_now 含 rate），崩溃/强杀丢偏好，与注释「松手→ApplyRate」语义不符 | click 释放帧补 on_commit（egui 保证 clicked 与 drag_stopped 互斥无双发） | 新增 | GUI 面板/配置体系 |
+| 5 | P3 | accel-core/src/weather.rs:575-577 说明区 ＋ chinese_calendar.rs:297-310 说明区 ＋ static_config.rs:2 ＋ accel-app/src/widgets/chip.rs:11 | 6 | **注释/说明区失实族（同根因合并 4 处）**：①weather 说明区未随 PL016.03 更新（缺 StaleServed 与磁盘缓存链路）；②chinese_calendar 说明区漏 PL014.07 节日派生函数群（违「说明区涵盖所有函数」房规）；③static_config 模块头仍写「与 Python 零改写一致」与 :108 自订正版矛盾；④chip.rs /// 写「内边距 24」实现为 +26.0 | 逐处订正 | 新增（历轮说明区同步盲区复发） | 文档（源码注释） |
+| 6 | P3 | accel-core/Cargo.toml:5,26 ＋ accel-app/Cargo.toml:4 | 12 | crate `version = "0.6.0"` 滞后产品段（现 0.6.2.0），core 说明区自述「对齐 0.6.1」已失实；无消费者（显示版本经 build.rs 注入），纯声明面漂移 | bump 0.6.2 + 订正注释，或注释改「随 minor 段人工推进」口径 | 新增 | 配置体系 |
+| 7 | P3 | rs/config/static/ui.json（scale.time_lg、motion.drawer_ms；spacing.xxl 仅 theme.rs:317 测试锚定） | 12 | **死键 2 枚**：time_lg 零消费零锚定；drawer_ms 被 drawer_bouncy_hz_x10/zeta_x100 取代后残留。xxl 有递增校验测试锚定建议留 | 删两死键（static_config 测试键表若有锚定同步） | 新增 | 配置体系 |
+| 8 | P3 | accel-app/src/widgets/toast.rs:57-61 | 5 | Area Id 含 `born.elapsed().as_nanos()` 每帧变化（依赖 egui Memory GC 兜底，无功能缺陷的反模式） | id 改锚 born 时刻单条生命周期稳定 | 新增 | GUI 面板 |
+| 9 | P3 | accel-app/src/bus.rs:194-198 ＋ widgets/toast.rs:53-56 | 5 | ToastKind::Info 零生产者（仅 Toast::error 构造器；Info 金边分支死路） | 删变体或补 Toast::info 待接线 | 新增 | GUI 面板 |
+| 10 | P3 | accel-app/src/pages/alarm.rs:197-199 | 3+13 | 开关滑块 animate_value_with_time(0.1s) 未接 reduce_motion——同级行内动效唯一遗漏（chip/icon_button hover 均直取终态） | 照 chip.rs:48-57 模式补分支 | 新增 | GUI 面板 |
+| 11 | P3 | accel-app/src/window.rs:839-919 | 4 | install_fonts MiSans 分支与通用分支 ~20 行数字族装载重复 | 提取 install_digit_family helper | 新增 | 主流程编排 |
+| 12 | P3 | accel-app/src/pages/mod.rs:100 | 11 | `color32_at("window_bg", 23)` 绕过 theme::window_bg() 封装且 fallback 灰度 23 与封装内 15 双源 | 改调封装 | 新增 | GUI 面板 |
+| 13 | P3 | accel-core/src/interface.rs:273-281 | 13 | set_base_timezone 缺「同值 = true 幂等短路」（set_weather_city/add_world_city 均有）——重复点击已选基准城每击一次全量 load+save+三快照重拉 | 补同值短路 | 新增 | 配置体系/世界时钟 |
+| 14 | P3 | accel-core/src/interface.rs:21,597-599 ＋ types.rs:118-124 | 4 | 主题字面量 "auto/light/dark" 三源平行（THEME_CHOICES/SetTheme 映射/serde rename） | ThemePref 加 as_str() 单源 | 新增 | 配置体系 |
+| 15 | P3 | accel-app/src/widgets/icon_button.rs:96-103 ＋ widgets/icons.rs:489-518 | 10 | 测试卫生族：①hit_area 恒真断言（assert_eq!(pad, 8.0) 对字面量自证永不失败）；②图标冒烟表缺 Check/Wind（18 变体只测 16，PL016.09 后加未补） | 改消费侧几何断言；补两图标入冒烟数组 | 新增 | 测试 |
+| 16 | P3 | accel-app/src/pages/countdown.rs:346-376 | 2 | 日期解析失败/DST 不存在时刻点加号静默 no-op（err_msg 仅覆盖 validate 失败） | 解析失败复用红字提示位 | 新增 | GUI 面板 |
+| 17 | P3 | accel-core/src/chinese_calendar.rs:138,167 ＋ interface.rs:498 | 6 | 格式卫生族：①两函数内层重复 use LunarRefHelper（模块头已同名导入）；②interface.rs:498 闭括号缩进错位 4 空格（rustfmt 幂等容忍非关卡违规，人工判读易误挂层级） | 删两处内层 use；对齐缩进 | 新增 | 农历日历/天气服务 |
+| 18 | P3 | accel-core/src/weather.rs:144-158 | 13/6 | series_strings 对「元素非字符串」也报 SeriesMissing（对照 series_numbers 同场景分 BadType）——错型/缺失不分档仅影响日志文案；:144 注释语病 | 元素错型改 BadType(key) 并订正注释 | 新增 | 天气服务 |
+| 19 | P3 | accel-app/src/window.rs:258-268（需验证） | 1/2 | 退出几何存档未钳域：Windows 最小化窗口 OS 矩形惯例 (-32000,-32000) 将被 parse_window_geometry :686 拒绝 → 走 #1 误弹链且几何未存档。eframe 最小化态 outer_rect 实际值需实测 | 发送前钳制/最小化跳过存档 | 新增（需验证） | 窗口几何/托盘退出 |
+
+> 运维事项（不占 P 级）：holidays.json 数据上界 2026，2027 放假安排公布（惯例 2026-11）后需重跑导出脚本并同步 manifest——weather.rs/chinese_calendar 说明区已有姿态登记，届时触发。
+
+### 二、参考级观察项（24 条经用户复核全部维持观察级；无新增豁免）
+
+| 位置 | 描述 | 回落理由 |
+| --- | --- | --- |
+| interface.rs:379-391 | 一次性闹钟自动禁用只改内存不落盘（崩溃重开可重响） | 需崩溃叠加，纯理论（需验证） |
+| util/file_io.rs:98-112 | write 失败不清理半截 .tmp 跨 pid 残留；说明区「IO 失败清理」表述过宽 | 小体量无功能影响；表述随 P3-5 族顺手 |
+| interface.rs:410-419 | 主循环每轮重读 tick 周期过 world 锁 | μs 级临界区不可测 |
+| parity.rs:668-684 | manifest sha256 仅格式自检不重算 | 本轮人工重算 6/6 相符+git 证实夹具零改动；补重算需引 sha2 |
+| world_cities/holidays.json | 无自动对账防线 | 人工核对定案；本轮 12 重叠城全等、三年结构完好 |
+| alarm.rs:597-607 | quick_target 极端 i64 入参 panic | 唯一调用面固定四档（需验证理论） |
+| audio.rs:58-63 | 静默段 44.1k 硬编码 | rodio 重采样行为未证实；蜂鸣间隔微差（需验证） |
+| alarm.rs:450-465 | add_alarm 不校验 time | 全部构造点收敛于两校验入口，无生产可达路径 |
+| alarm.rs:238-261 | created_at 非法僵尸条目（恒启用永不触发） | FIX001.8「保守不触发」定案延续，测试锚定 |
+| chinese_calendar 常量表 | LUNAR_FESTIVAL_RULES 等未外置 | Python 同表平移+夹具锁定，非业务调参 |
+| window.rs:113-115 | DWM 属性每帧无条件双写 | 注释自辩幂等廉价 |
+| bus.rs:44-49 等 | 每帧 Vec 分配族（get_city_names/to_vec） | A010 豁免同族延续（μs 级） |
+| countdown.rs:266 | 删除钮以目标名为 id：手改配置同名双卡第二卡失活 | 前置=绕过 UI 手改配置（需验证） |
+| window.rs:325-327,509 | UI_SHOT/EXIT_SAVE 常量 | 探针/退出协议基建参数，有注释依据 |
+| accel-app/Cargo.toml:9 | default-run 冗余 | 注释已自辩 |
+| theme.rs:184-187 | cached 锁中毒 expect | 快速失败纪律内 |
+| clock.rs:168-196 | hero 破百+贴最小窗宽超宽裁切 | A010 观察项延续（需验证，视觉终审在用户） |
+| weather.rs:303 | bar_w∈(0,4px) 金条溢出弱轨 4px | A010 观察项延续（最小窗不可达） |
+| countdown.rs:79-81 | validate_add 不 trim 纯空格名放行 | A010 观察项延续（产品口径未定案） |
+| interface.rs:182 | get_timezone_options 生产零调用 | A009 #9 登记保留（夹具 n_tz 锚） |
+| types.rs FrontendCommand::ReplaceAlarm | 全 workspace 零生产者 | 协议演进登记；接线时触发 FIX010.7 防线 |
+| tools/alarm_text.rs:26 | format_sound_button_name 零调用 | FIX006.14 就地登记保留 |
+| lib.rs:29 | util/ 映射注记未提 paths.rs | 粒度级，随 P3-5 族顺手 |
+| interface.rs:687 | parse_window_geometry 宽高无实用下限（0.4 可过） | 窗口创建有 min token 兜底，纯防御 |
+
+### 三、亮点
+
+- **A010 十条 10/10 在位零行为回退**，文档一致性专项全绿（徽章/编号/递增三口径）。
+- **分层契约零违规**：三路独立核实 app 侧零直调 core 写方法、17 命令变体穷尽接线、8 事件变体全消费。
+- **PL016 新链路双侧咬合实证**：StaleServed 先 Updated 后 Failed 契约与 bus「失败保留旧值」闭环对上；磁盘缓存城市名先经封闭集校验（路径注入面排除）；缓存 payload 字段演进走 `.ok()?` 静默无 panic 面。
+- **夹具 sha256 人工重算 6/6 与 manifest 逐字节相符**；12 重叠城坐标两表全等；icon_for_code 28 码段无缺口。
+- **DST/跨天闹钟行为正确**：去重键含日期维度，秋拨双过天然防重、春拨跳过分钟不响（与 Python 逐行对齐）；armed_delete 三页 key 带页面前缀无互踩。
+- **提频窗口全部收口**，无常驻 16ms 忙转路径；Spring dt 钳首帧/长隐藏两边界推演通过。
+- **本轮无 P0/P1**；唯一 P2 行为级（#1）是 A010 #1 修复的范围漏列而非新代码引入——印证「审计→修复→再审计」循环价值与「修复清单要按根因穷尽命令面」的教训。
+
+---
+
 ## 临时记录：后续候选事项（2026-09-12 随手记，未立项、未排期）
 
 > 性质：临时清单，只记方向不拆任务；正式立项时移入对应 PL 预记并细化到 x.progress.md

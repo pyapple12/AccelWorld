@@ -3,20 +3,19 @@
   "motion": {
     "hover_ms": 150,
     "press_ms": 60,
-    "drawer_ms": 350,
     "drawer_bouncy_hz_x10": 35,
     "drawer_bouncy_zeta_x100": 55,
     "alarm_pulse_ms": 600,
     "toast_ttl_ms": 4000,
     "toast_in_ms": 300,
-    "toast_out_ms": 150
+    "toast_out_ms": 150,
+    "armed_timeout_ms": 4000
   },
   "font_family": "MiSans",
   "font_family_digits": "Bahnschrift",
   "scale": {
     "hero": 72,
     "display": 40,
-    "time_lg": 28,
     "time_md": 22,
     "time_sm": 18,
     "body_lg": 16,
@@ -40,7 +39,11 @@
     "dock_height": 56,
     "slider_track": 24,
     "chip_height": 32,
-    "card_pad": 16
+    "card_pad": 16,
+    "toast_step": 88,
+    "drawer_width_ratio_x100": 46,
+    "drawer_width_min": 280,
+    "drawer_width_max": 420
   },
   "colors": {
     "window_bg": "#0F1420",

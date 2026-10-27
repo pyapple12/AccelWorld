@@ -115,12 +115,35 @@ pub struct UiPreferences {
 }
 
 /// 主题偏好枚举（SetTheme 命令负载；serde 小写形态与配置存储一致）
+/// FIX011.14：存储串单源 as_str/parse——原 interface THEME_CHOICES/SetTheme
+/// 映射/serde rename 三处字面量平行（serde 声明宏无法引用方法，靠本表锚定同步）
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemePref {
     Auto,
     Light,
     Dark,
+}
+
+impl ThemePref {
+    /// 存储串单源（与 serde rename_all = "lowercase" 同形——改动两处必须同步）
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ThemePref::Auto => "auto",
+            ThemePref::Light => "light",
+            ThemePref::Dark => "dark",
+        }
+    }
+
+    /// 存储串解析（as_str 逆映射；非法 None——装载归一化回退默认的依据）
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "auto" => Some(ThemePref::Auto),
+            "light" => Some(ThemePref::Light),
+            "dark" => Some(ThemePref::Dark),
+            _ => None,
+        }
+    }
 }
 
 // ===== 信号总线协议 v1（z.plan 修订二·C，全部变体一次定义）=====

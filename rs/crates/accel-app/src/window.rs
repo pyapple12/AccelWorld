@@ -256,7 +256,11 @@ impl AppHandle {
                 None => {
                     self.exit_save_started = Some(std::time::Instant::now());
                     // UIR.7：退出前存档窗口几何（外框矩形 "x,y,w,h"；无外框信息跳过）
-                    if let Some(rect) = ctx.input(|i| i.viewport().outer_rect) {
+                    // FIX011.19：最小化态跳过——Windows 最小化窗口 OS 矩形惯例
+                    // (-32000,-32000)，存档将被 parse_window_geometry 越域拒绝
+                    // （走「保存失败」误弹链且几何未被存档）
+                    let minimized = ctx.input(|i| i.viewport().minimized) == Some(true);
+                    if !minimized && let Some(rect) = ctx.input(|i| i.viewport().outer_rect) {
                         self.bus.send(FrontendCommand::SetWindowGeometry {
                             geometry: format!(
                                 "{:.0},{:.0},{:.0},{:.0}",
@@ -836,6 +840,7 @@ const MISANS_EMBEDDED: &[u8] = include_bytes!("../../../assets/fonts/MiSans-Regu
 
 /// 字体注入（PL013.03 + A005 #8 接线）：族名读 ui.json token
 /// `font_family`（中文，默认族）/ `font_family_digits`（数字等宽族）
+/// FIX011.11：数字族装载与 CJK 回退提取 helper——MiSans/通用分支原各复制一份
 pub fn install_fonts(ctx: &Context) {
     let mut fonts = egui::FontDefinitions::default();
     let s = accel_core::static_config::Static::get();
@@ -852,36 +857,12 @@ pub fn install_fonts(ctx: &Context) {
             .entry(egui::FontFamily::Proportional)
             .or_default()
             .insert(0, "cjk".into());
-        // 数字族内的 CJK 回退（UIR：等宽数字串含「天/周」等汉字——Bahnschrift
-        // 无 CJK 字形，缺失时数字族渲染 tofu；中文族向 Monospace 族尾部追加
-        // cjk 兜底（内置等宽 Hack 之后，缺字形时才回落））
-        fonts
-            .families
-            .entry(egui::FontFamily::Monospace)
-            .or_default()
-            .push("cjk".into());
+        push_cjk_fallback(&mut fonts);
         tracing::info!("中文族字体加载: MiSans（内嵌子集）");
-        // 数字族照旧走系统 Bahnschrift
-        if let Some((path, bytes)) =
-            load_font(digit_family, &["Bahnschrift.ttf", "bahnschrift.ttf"])
-        {
-            tracing::info!("数字族字体加载: {path}");
-            fonts
-                .font_data
-                .insert("digits".into(), egui::FontData::from_owned(bytes).into());
-            fonts
-                .families
-                .entry(egui::FontFamily::Monospace)
-                .or_default()
-                .insert(0, "digits".into());
-        } else {
-            tracing::warn!("{digit_family} 未找到，数字等宽回退内置等宽族");
-        }
-        ctx.set_fonts(fonts);
-        return;
-    }
     // 候选名 = 族名去空格派生 + 平台常见文件名兜底（族名与文件名未必同名）
-    if let Some((path, bytes)) = load_font(cjk_family, &["msyh.ttc", "msyh.ttf", "msyhbd.ttc"]) {
+    } else if let Some((path, bytes)) =
+        load_font(cjk_family, &["msyh.ttc", "msyh.ttf", "msyhbd.ttc"])
+    {
         tracing::info!("中文族字体加载: {path}");
         fonts
             .font_data
@@ -891,17 +872,16 @@ pub fn install_fonts(ctx: &Context) {
             .entry(egui::FontFamily::Proportional)
             .or_default()
             .insert(0, "cjk".into());
-        // 数字族内的 CJK 回退（UIR：等宽数字串含「天/周」等汉字——Bahnschrift
-        // 无 CJK 字形，缺失时数字族渲染 tofu；中文族向 Monospace 族尾部追加
-        // cjk 兜底（内置等宽 Hack 之后，缺字形时才回落））
-        fonts
-            .families
-            .entry(egui::FontFamily::Monospace)
-            .or_default()
-            .push("cjk".into());
+        push_cjk_fallback(&mut fonts);
     } else {
         tracing::warn!("{cjk_family} 未找到，中文回退 egui 内置字体（可能 tofu）");
     }
+    install_digit_family(&mut fonts, digit_family);
+    ctx.set_fonts(fonts);
+}
+
+/// 数字等宽族装载（FIX011.11 单源）：命中则插 Monospace 队首，未命中回退内置
+fn install_digit_family(fonts: &mut egui::FontDefinitions, digit_family: &str) {
     if let Some((path, bytes)) = load_font(digit_family, &["Bahnschrift.ttf", "bahnschrift.ttf"]) {
         tracing::info!("数字族字体加载: {path}");
         fonts
@@ -915,7 +895,17 @@ pub fn install_fonts(ctx: &Context) {
     } else {
         tracing::warn!("{digit_family} 未找到，数字等宽回退内置等宽族");
     }
-    ctx.set_fonts(fonts);
+}
+
+/// 数字族内 CJK 回退（UIR）：等宽数字串含「天/周」等汉字——Bahnschrift 无 CJK
+/// 字形缺失时渲染 tofu；向 Monospace 族尾部追加 cjk 兜底（内置等宽 Hack 之后，
+/// 缺字形时才回落）（FIX011.11 单源：两分支原各复制一份）
+fn push_cjk_fallback(fonts: &mut egui::FontDefinitions) {
+    fonts
+        .families
+        .entry(egui::FontFamily::Monospace)
+        .or_default()
+        .push("cjk".into());
 }
 
 /// 按族名装载字体文件（A005 #8）：族名去空格派生候选 + 调用方平台兜底名

@@ -26,6 +26,6 @@ pub mod weather;
 //   static_config.rs   ← config/static/static_config.py（PL011.05）
 //   data/              ← data/ 四静态表（cities/timezones/weather_codes/world_cities；
 //                        PL011.06 三表 + PL012.09 world_cities；天气与世界时钟两表职责分离）
-//   util/              ← utils/（retry/file_io；logger 由 app 侧 tracing 承接）
+//   util/              ← utils/（retry/file_io/paths；logger 由 app 侧 tracing 承接）
 // 依赖方向单向：interface → 业务模块 → data/util；禁止反向与横向 import
 // utils/logger 的 Rust 对等物为 tracing（app 侧初始化），core 只发日志不配日志

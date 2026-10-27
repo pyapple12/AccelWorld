@@ -6,11 +6,18 @@ use egui::{Color32, Response, Sense, Vec2};
 
 use super::icons::{Icon, draw};
 
+/// 命中域外扩常量（FIX011.15 单源：show 与测试共锚——原测试对字面量自证恒真）
+const HIT_PAD: f32 = 8.0;
+
+/// 命中域边长（纯函数单源：show 布局与测试共锚——图标边长 + 两侧外扩）
+fn hit_side(size: f32) -> f32 {
+    size + HIT_PAD * 2.0
+}
+
 /// 图标按钮：方形命中域 + 居中矢量图标；hover 微亮底、selected 主题金底
-/// size = 图标边长（命中域外扩 8px 触达余量）；返回 Response 由调用方接命令
+/// size = 图标边长（命中域外扩 HIT_PAD 触达余量）；返回 Response 由调用方接命令
 pub fn show(ui: &mut egui::Ui, icon: Icon, size: f32, selected: bool) -> Response {
-    let pad = 8.0;
-    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size + pad * 2.0), Sense::click());
+    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(hit_side(size)), Sense::click());
     let ink = crate::theme::ink();
     let reduce = crate::theme::reduce_motion(ui.ctx());
     let center = rect.center();
@@ -94,10 +101,17 @@ pub fn show(ui: &mut egui::Ui, icon: Icon, size: f32, selected: bool) -> Respons
 //   pages/countdown、pages/weather、pages/alarm
 #[cfg(test)]
 mod tests {
+    use super::hit_side;
+
     #[test]
     fn hit_area_exceeds_icon() {
-        // 命中外扩常量与绘制口径自洽（8px 触达余量编译期锚定）
-        let pad = 8.0;
-        assert_eq!(pad, 8.0);
+        // FIX011.15：命中域 = 图标 + 2×HIT_PAD（经 hit_side 纯函数消费——
+        // 可失败断言：HIT_PAD 归零/负值即红，原对字面量自证永不失败）
+        let size = 20.0;
+        let side = hit_side(size);
+        assert!(
+            side >= size * 1.5,
+            "命中域边长 {side} 应显著大于图标 {size}（触达余量不足）"
+        );
     }
 }

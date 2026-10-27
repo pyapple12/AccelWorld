@@ -104,8 +104,11 @@ pub fn show(
         ui.memory_mut(|m| m.data.remove::<f64>(commit_id));
         on_commit(*rate);
     }
-    if resp.drag_stopped() {
-        on_commit(*rate); // 松手落盘（ApplyRate 恰一次）
+    // FIX011.04：纯点击选值同刻落盘——egui 拖动阈值未过的 click 不产生
+    // drag_stopped，原实现点击只发 SetRate 永不 ApplyRate（持久化悬置到退出
+    // SaveNow 兜底）；clicked 与 drag_stopped 互斥，两分支各恰一次
+    if resp.drag_stopped() || resp.clicked() {
+        on_commit(*rate); // 松手/点击落盘（ApplyRate 恰一次）
     }
 
     draw(

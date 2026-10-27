@@ -141,7 +141,8 @@ enum SeriesKind {
     Daily,
 }
 
-/// 字符串系列提取（键缺失/非串元素 → SeriesMissing/对应 Null 变体由调用方语义定）
+/// 字符串系列提取（A011 #18：键缺失/容器错型 → SeriesMissing，元素非串 → BadType
+/// ——与 series_numbers 同款错型/缺失分档，本函数不产 Null 变体）
 fn series_strings(
     obj: &serde_json::Map<String, Value>,
     key: &'static str,
@@ -150,11 +151,7 @@ fn series_strings(
         None => Err(WeatherErr::SeriesMissing(key)),
         Some(Value::Array(arr)) => arr
             .iter()
-            .map(|v| {
-                v.as_str()
-                    .map(String::from)
-                    .ok_or(WeatherErr::SeriesMissing(key))
-            })
+            .map(|v| v.as_str().map(String::from).ok_or(WeatherErr::BadType(key)))
             .collect(),
         Some(_) => Err(WeatherErr::SeriesMissing(key)),
     }
@@ -573,8 +570,11 @@ impl WeatherClient {
 //   结构化 WeatherErr；判定顺序（根对象 → current → 字段缺失/null → 数值类型 →
 //   码表回退）与 Python 逐分支对齐，61 条夹具样本断言决策一致
 // 传输层（PL011.12）：WeatherClient 输入城市名/坐标 + force；输出 WeatherData 或
-//   FetchErr（UnknownCity/CoordsOutOfRange/Network/Parse）；缓存仅存成功、命中
-//   未过 TTL 直返、force 清键穿透、失败可立即重试——Python 缓存语义逐条对齐
+//   FetchErr（UnknownCity/CoordsOutOfRange/Network/Parse/StaleServed——A011 订正补记
+//   PL016.03 变体：拉取失败但磁盘缓存有历史时携旧值与年龄上抛，UI 保留旧值 + 角标）；
+//   内存缓存仅存成功、命中未过 TTL 直返、force 清键穿透、失败可立即重试；磁盘缓存
+//   （exe 旁 weather_cache/，30 天上限）成功落盘、失败尽力回退静默降级——
+//   Python 缓存语义逐条对齐
 // 设计理由：Python 把全部失败降级 None + 日志；Rust 以 Result 保留拒绝原因供
 //   传输层/UI 层决策。SSRF 防线结构性强化：base 构造期固定（生产 https 常量），
 //   URL 全由 base + 已过定义域校验的坐标派生，用户输入永不进入 host——Python 的
@@ -651,6 +651,22 @@ mod tests {
         assert_eq!(
             parse_open_meteo(&bool_hum),
             Err(WeatherErr::BadType("relative_humidity_2m"))
+        );
+    }
+
+    #[test]
+    fn series_string_wrong_type_is_badtype() {
+        // A011 #18（FIX011.18）：系列字符串元素非串与 current 域同拒绝纪律——
+        // BadType（错型）而非 SeriesMissing（缺失），错型/缺失分档
+        let raw = json!({"current": {
+            "temperature_2m": 1.0, "relative_humidity_2m": 2.0, "weather_code": 0,
+            "wind_speed_10m": 4.0, "apparent_temperature": 5.0 },
+            "hourly": {"time": [1, 2], "temperature_2m": [1.0, 2.0],
+                "precipitation_probability": [1, 2]}});
+        assert_eq!(
+            parse_open_meteo(&raw),
+            Err(WeatherErr::BadType("time")),
+            "字符串系列元素非串应报 BadType"
         );
     }
 

@@ -1,7 +1,7 @@
 # egui 前端 crate（Python ui/ 层的 Rust 等价物；UIR 后渲染器 eframe glow 实心装配）
 [package]
 name = "accel-app"
-version = "0.6.0"
+version = "0.6.2"
 edition = "2024"
 description = "AccelWorld egui 前端：窗口/实心桌面 UI 五页导航 + 设置浮窗/系统集成"
 # 单 bin（render_probe 已随 UIR 玻璃拆除删除）；default-run 保留为无害冗余
@@ -34,8 +34,9 @@ tauri-winrt-notification = { workspace = true }
 serde_json = { workspace = true }
 
 # ===== crates/accel-app/Cargo.toml 说明区 =====
-# version = "0.6.0"：对齐产品版本段 0.6.1（semver 三段上限）；显示版本经 build.rs
-#   从 rs/config/static/base.json 注入（版本单一来源，本文件不随四段位 bump）
+# version = "0.6.2"：随产品 minor 段人工推进（A011 订正——原 0.6.0 滞后失实）；
+#   显示版本经 build.rs 从 rs/config/static/base.json 注入（版本单一来源，
+#   本文件不随四段位 bump）
 # 依赖（全部走 workspace.dependencies）：accel-core（单向分层，CI 关卡 4 强制）+
 #   eframe(glow)/egui/image/chrono/tokio/tracing 三件/chrono-tz/
 #   raw-window-handle + Windows 档 windows/tray-icon/global-hotkey/

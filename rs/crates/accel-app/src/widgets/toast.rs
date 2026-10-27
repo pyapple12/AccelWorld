@@ -37,6 +37,8 @@ pub fn paint(ctx: &egui::Context, toasts: &mut Vec<Toast>) {
 
     let width = 260.0;
     let margin = 16.0;
+    // FIX011.02：堆叠步距 token 单源（原 80.0 内联魔法数；88 预留单行卡间距）
+    let step = crate::theme::layout_i64("toast_step") as f32;
     for (i, toast) in toasts.iter().enumerate() {
         let age = toast.born.elapsed().as_secs_f32();
         let remain = ttl.as_secs_f32() - age;
@@ -54,47 +56,45 @@ pub fn paint(ctx: &egui::Context, toasts: &mut Vec<Toast>) {
             ToastKind::Error => ink.danger,
             ToastKind::Info => crate::theme::accent_color(),
         };
-        egui::Area::new(egui::Id::unique((
-            "accel_toast",
-            i,
-            toast.born.elapsed().as_nanos() as u64,
-        )))
-        .anchor(
-            egui::Align2::RIGHT_TOP,
-            [-(margin + slide), margin + i as f32 * 80.0],
-        )
-        .show(ctx, |ui| {
-            egui::Frame::new()
-                .fill(crate::theme::card_bg())
-                .corner_radius(egui::epaint::CornerRadius::same(
-                    crate::theme::radius_px("md") as u8,
-                ))
-                .stroke(egui::Stroke::new(1.0, crate::theme::border_color()))
-                .inner_margin(egui::Margin::same(12))
-                .show(ui, |ui| {
-                    ui.set_max_width(width - 24.0);
-                    // 左缘色条（状态不只靠颜色：色条 + 标题 + 正文三层冗余）
-                    let inner = ui.max_rect();
-                    ui.painter().rect_filled(
-                        egui::Rect::from_min_size(
-                            egui::pos2(inner.left() - 12.0, inner.top() - 12.0),
-                            egui::vec2(3.0, inner.height() + 24.0),
-                        ),
-                        egui::epaint::CornerRadius::same(0),
-                        edge,
-                    );
-                    ui.label(
-                        egui::RichText::new(&toast.title)
-                            .size(crate::theme::font_size("body"))
-                            .color(ink.strong),
-                    );
-                    ui.label(
-                        egui::RichText::new(&toast.body)
-                            .size(crate::theme::font_size("meta"))
-                            .color(ink.muted),
-                    );
-                });
-        });
+        // FIX011.08：Id 锚出生时刻（单条生命周期内稳定——原 elapsed().as_nanos()
+        // 每帧变化，依赖 egui Memory GC 兜底的反模式；Instant 实现 Hash 可直作键）
+        egui::Area::new(egui::Id::unique(("accel_toast", i, toast.born)))
+            .anchor(
+                egui::Align2::RIGHT_TOP,
+                [-(margin + slide), margin + i as f32 * step],
+            )
+            .show(ctx, |ui| {
+                egui::Frame::new()
+                    .fill(crate::theme::card_bg())
+                    .corner_radius(egui::epaint::CornerRadius::same(
+                        crate::theme::radius_px("md") as u8,
+                    ))
+                    .stroke(egui::Stroke::new(1.0, crate::theme::border_color()))
+                    .inner_margin(egui::Margin::same(12))
+                    .show(ui, |ui| {
+                        ui.set_max_width(width - 24.0);
+                        // 左缘色条（状态不只靠颜色：色条 + 标题 + 正文三层冗余）
+                        let inner = ui.max_rect();
+                        ui.painter().rect_filled(
+                            egui::Rect::from_min_size(
+                                egui::pos2(inner.left() - 12.0, inner.top() - 12.0),
+                                egui::vec2(3.0, inner.height() + 24.0),
+                            ),
+                            egui::epaint::CornerRadius::same(0),
+                            edge,
+                        );
+                        ui.label(
+                            egui::RichText::new(&toast.title)
+                                .size(crate::theme::font_size("body"))
+                                .color(ink.strong),
+                        );
+                        ui.label(
+                            egui::RichText::new(&toast.body)
+                                .size(crate::theme::font_size("meta"))
+                                .color(ink.muted),
+                        );
+                    });
+            });
     }
 }
 

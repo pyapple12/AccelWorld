@@ -1,6 +1,7 @@
 //! 应用静态配置单例（config/static/static_config.py 的 Rust 对等物）
-//! include_str 编译期嵌入 rs/config/static/ 两 token 文件（与 Python 原文件零改写一致），
-//! OnceLock 惰性单例 + 类型化访问器 + 缺键/错型 panic 快速失败（Python KeyError 等价）
+//! include_str 编译期嵌入 rs/config/static/ 两 token 文件（PL011 时点 sha256 与
+//! Python 快照一致，此后独立演进——base.json 已含 Rust 时代新增键），OnceLock 惰性
+//! 单例 + 类型化访问器 + 缺键/错型 panic 快速失败（Python KeyError 等价）
 
 use std::sync::OnceLock;
 

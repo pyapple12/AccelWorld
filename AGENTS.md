@@ -8,7 +8,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - **统一入口四关卡**：`pwsh rs/ci.ps1`（fmt --check → clippy `-D warnings` → `cargo test --workspace` → core 依赖树零 egui/eframe）；`.github/workflows/rs-ci.yml` 复用同一命令集
 - 全量测试：`cargo test --workspace`（core 单测 + 夹具 parity 集成 + app 单测）
 - GUI 冒烟（真窗出血，会弹窗）：`cargo run -p accel-app`；UI 截图探针（逐页 PNG 后自动退出）：`$env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app`
-- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.2.0`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
+- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.2.1`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
 - **版本体系**：四段式纯数字 `X.Y.Z.P`（无 `ver ` 前缀）；`feat`/`fix`/`refactor`/`perf` 提交前 bump patch 位；历史存量 `ver 0.4x` 三段式仅存于历史文档与提交记录，不回溯改写
 
 ## 环境陷阱

@@ -39,12 +39,8 @@ pub fn tile_cols(avail_w: f32) -> usize {
 impl crate::pages::Page for crate::pages::WorldPage {
     fn ui(&mut self, ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
         let ink = crate::theme::ink();
-        // PL016.04：武装超时解除（4s 未确认即放下）
-        if let Some((_, at)) = &state.armed_delete
-            && at.elapsed().as_secs() >= 4
-        {
-            state.armed_delete = None;
-        }
+        // PL016.04：武装超时解除（FIX011.03 单源方法 + token 时长）
+        state.armed_delete_tick();
         let utc_now = chrono::Utc::now();
         // 常驻城市（FIX007.2：权威域 = 城市名；显示直用名，走时经 tz_of 映射）
         let pins: Vec<String> = state.world_pins_view().to_vec();

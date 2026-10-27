@@ -72,7 +72,8 @@ impl Pages {
         let spring_v = state.drawer_spring.value.min(1.06);
 
         if spring_v > 0.005 {
-            let full_w = (ui.available_width() * 0.46).clamp(280.0, 420.0);
+            // FIX011.03：宽度比例与钳界 token 单源（theme::drawer_width 纯函数）
+            let full_w = crate::theme::drawer_width(ui.available_width());
             egui::Panel::right("page_drawer")
                 .exact_size(full_w * spring_v)
                 .frame(
@@ -97,7 +98,7 @@ impl Pages {
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
-                    .fill(crate::theme::color32_at("window_bg", 23))
+                    .fill(crate::theme::window_bg())
                     .inner_margin(egui::Margin::same(20)),
             )
             .show(ui, |inner| {
