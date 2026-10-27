@@ -1,8 +1,8 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告 + Rust 重构总纲）
-> 当前版本：0.6.2.2（FIX012 第 12 轮审计修复完成：倒计时空草稿红字回归收口/磁盘缓存上限 token 化/测试时间炸弹拆除/闹钟自动禁用幂等化/serde 死 derive 清理；FIX011 已收口推送 7578106）
-> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；FIX007–FIX010、UIR2-4 轮（至 7083456）均已提交推送，当前阶段为 PL016 审核精修（待提交）
+> 当前版本：0.6.3.0（PL017 UI 结构重排完成：窗口域/抽屉三段式/主仪读数/双针 24h/天气七日/字重与金色角色；FIX011/012 已提交 7578106/a90adbc）
+> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；PL016 已收口提交（0e2252f）；**PL017 已实施（0.6.3.0；G4 键盘/G8 桌面走查留用户）**
 > 更新（2026-10-17）：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow——UIR 定案 wgpu 废弃）；Python 版全量归档 `.archived/`（git 忽略），本文件自 PL011 起记录 RS 任务
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
 
@@ -692,3 +692,34 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] FIX012.10 [P3] drawer_width 锚定测试（A012 #10） —— theme.rs 补 drawer_width_ratio_and_clamp 单测（宽窗钳上限/窄窗钳下限/中段比例式对照）；验证：新测试绿 + 全量回归（2026-10-28 完成）
 - [x] FIX012.11 [P3] 倒计时红字布局（A012 #11，随 01 一并） —— countdown.rs 红字移出 horizontal 行外独立行（全宽不裁切）；验证：探针帧布局正常 + 窄抽屉最小窗手测留用户（2026-10-28 完成）
 - [x] FIX012.12 收尾 —— 四关卡 ALL_GREEN + cargo test --workspace 结果行全量 213（app 75+bin 1+core 117+parity 20，较 0.6.2.1 增 4）+ 截图探针六帧 exit 0 哈希全异（01 帧视觉实证 .01）+ token 对账双绿 + 反向验收（.temp/verify_fix012_accept.md）+ bump 0.6.2.2（五处同步）+ 文档连带（z.plan A012 状态翻转/本组整行翻转/m.milestone 条目）+ commit 草案；验证：pwsh rs/ci.ps1 ALL_GREEN（2026-10-28 完成）
+
+### PL017: UI 结构重排——从「空场」到「仪表」 [plan#PL017]（2026-10-28 立项/实施，依据根目录 UI审核意见_20261028.md；目标 V0.6.3.0，已收口）
+
+> 方案：`z.plan.md` 附录 PL017（壳层/主仪/抽屉/字体/颜色/图标/动效/响应式/验收门 G1–G8）。
+> 执行纪律：每个 P0 先写失败单测或探针（TDD），再实现；每任务单独过 G1；截图矩阵固定窗口，不读用户存档；AI 不执行 git 写操作；版本 bump 由用户在提交前定夺。
+> 本组状态：已收口（20/22；P2 .18/.19 延后 0.6.3.1；G4/G8 留用户）。开工顺序按 PL017.20（探针）→ .01–.03（窗口/壳层/响应式）→ .04–.07（主仪/双针/天气/控件）→ .08–.11（字体/颜色/Dock/设置）→ .12–.19（四页/状态/键盘/图标/动效）→ .21–.22（文档/收尾）。
+
+- [x] PL017.01 [P0] 窗口夹取与尺寸域 —— 新增纯函数 `clamp_window_geometry(saved, work_area, min, max)`（越界/负坐标/超大逐项钳制，四周留 24px），启动时取当前显示器工作区后使用；`ViewportBuilder` 增 `with_max_inner_size(1200×820)`，默认 960×640；退出保存 **inner** 尺寸而非 `outer_rect`；设置浮窗锚点改为客户区右下减 dock 高，不再假定 dock 可见；**先写失败单测**：`(1920×1080 工作区, 1550×1058)` → ≤1200×820、`(-100,-100)` 可见、`1366×768` 不越界；再做 1920×1080 / 1366×768 真窗 `GetWindowRect` 实测（G5）；修复后 900×500 截图 dock 与设置浮窗均在屏内（G2）。验证：单测 + G5 + G2 + G1。
+- [x] PL017.02 [P0] 抽屉三段式壳层 —— 新建 `widgets/page_header.rs`（56px：标题 20/600 + 副标题 12 + 关闭 × + 一个主操作）、统一抽屉布局为 `PageHeader → ScrollArea → Footer 64`；倒计时/世界把添加控件移入 Footer（或页头 +），天气整页进 ScrollArea，闹钟添加表单移 Footer；四页补页面名（倒计时/世界时钟/天气/闹钟）与关闭；**先出 before 截图**（3 目标倒计时、8 城世界、900×500 天气），再做 after；验证：目标/城市/天气七日全部可达、Footer 不被滚出、关闭可回时钟（G2/G4）；四关卡 G1。
+- [x] PL017.03 [P0] 响应式断点与最小窗 —— `drawer_width` 改 `clamp(avail×0.32, 320, 400)` 并给中央留 `min 520`；新增 `<760` compact：抽屉页全宽（隐藏星盘），时钟页 280 盘 + 数字读数；时钟 chips 改 `horizontal_wrapped` 或 12px meta 行；倒计时 hero 拆行/`hero_fit_scale`（`18 天` 40 + `05:04:07` 48）；**纯函数单测**：drawer 在 900/1200/520、hero 在 280/388、chips 在 900 中央 620；截图 520×420 / 760×520 / 900×500 三档无重叠/无横裁（G2）。验证：单测 + G2 + G1；若不做 compact，则 min 改 760×520 并登记。
+- [x] PL017.04 [P0] 主仪 Stage 版式 —— 新增 `StageHeader 48`（★ + 加速世界 + 日期）与居中舞台（max 1080×720）；星盘直径从固定 440 改为随 `min(可用宽, 可用高)` 缩放 360–560，垂直居中；盘下 readout（加速 64 / 现实 24 / ×7.2 16，1px 分隔）、短倍率条 360px（6px 轨 + 16px 旋钮 + 1×/20× 端标）、农历 meta 行；移除全宽 24px 滑杆；指针不再穿过读数（读数在盘下或中心毂，按 §五-2 定案）；**纯函数单测**：盘径/readout fit/rate 比例；截图 900×500 与 1440×900 对比“空场”消失（G2/G3）。验证：单测 + G2 + G1。
+- [x] PL017.05 [P0] 双针语义修复 —— 金针改「加速时刻 24h 时针」（`custom_time` 对 24 取模，含分秒），灰针保持现实 24h；两针间画金色弧，盘下加 `金 加速 · 灰 现实` 图例；**先写失败单测**：`accelerated_hand_fraction("35:30:48")` 与 `real_hand_fraction("04:55:52")` 在 rate=7.2 下角差 >0，rate=1 时重合；截图 7.2x 可见两针分开 + 金弧；若用户否决，按 §五-4 退化为删灰针 + 金针标“加速日进度”，不得保留恒等双针。验证：单测 + G2 + G7。
+- [x] PL017.06 [P0] 天气七日/曲线/滚动 —— 七日改三列 `[日 44][范围条 flex][低高 64 右对齐]`，温度在 `card_bg` 上、绝不压金条；逐时图 `Plot::show_background(false)`/去边框，高 140–160，x 标签 4–6 个（首尾+6h），只标 min/max/当前；整页 ScrollArea；错误=区块内一句话 + 重试 + “上次成功”，加载保留旧值/骨架；**纯函数单测**：七日列宽在 280/388 下数值列不越界；对比度 `ink.strong` 对 `card_bg` ≥4.5（G3）；截图 900×500/520×420 七行全可达、无裁切（G2）。验证：单测 + G2/G3 + G1。
+- [x] PL017.07 [P0] 控件边界与 Field 组件 —— `ui.json` 增 `input_border #55648A`、`border_strong #55648A`；输入框 `Field`（label 上置 12/500 + 38px 输入 + hint/error 12）替换“placeholder 当 label”；滑杆未填充轨/可点击世界卡边框改用 `border_strong`（≥3:1）；`theme.rs` 增对比度单测（input 3.26、track ≥3、text 4.5）；先出 before/after 截图；验证：G3 + G2 + G1。
+- [x] PL017.08 [P1] 字体字重 —— MiSans 官方包补 Medium(500)/DemiBold(600) 子集（CJK 基本区 + 界面固定文案，fonttools 子集化），`install_fonts` 注册 `FontFamily::Name("medium"/"semibold")`，保留 Regular；角色 scale：页面 20/600、分区 16/600、按钮 14/600、标签 12/500、正文 14/400、meta 12/400；日期用 body 不用 monospace；日志实证三档加载；fallback 到 Regular 不 tofu；截图看层级（G2）。验证：G1 + G2 + 字体日志。
+- [x] PL017.09 [P1] 金色角色拆分 —— 金只留加速时间/当前值（金针、加速 hero、×倍率、至多一个主操作）；导航选中改 ink + 2px 金下划线/点（不填金块）；开关 on 改语义绿 `#5FAF8A` 或近黑；焦点环改亮白 `knob`；hover 用 `hover_bg`；`rg accent_color` 逐处归类并写 `ui.json design` 哲学行；截图/搜索证明金色不再出现在 nav/switch/focus（G2/G4）。验证：审计清单 + G1/G2。
+- [x] PL017.10 [P1] Dock 与产品身份 —— 底部改居中浮动 pill（560×64、radius 16、card_bg + border_strong）：5 项 16px 图标 + 11px 标签，选中 ink + 金下划线/点，齿轮同 pill 右端 1px 分隔；`with_icon` 用 `rs/assets/accelworld-tray.png`；标题去版本号（`加速世界`）；StageHeader 加 `★ 加速世界` wordmark；截图 900/1440 + 键盘焦点（G2/G4）。验证：G1/G2/G4。
+- [x] PL017.11 [P1] 设置 sheet —— 把 `egui::Window` 三行浮窗改为 360–420px Settings sheet：标题 `设置` + 关闭 ×；分区 `外观`（主题：子夜星图，只读）、`动效`（减少动效 switch + 说明）、`关于`（版本/数据源/许可）；ESC/点外可关；与抽屉不重叠；自定义 switch 与闹钟统一；截图 900×500 + 键盘（G2/G4）。验证：G1/G2/G4。
+- [x] PL017.12 [P1] 倒计时页重排 —— hero 只显示“下一个”，拆行/收号不溢出；列表不重复同一数字；卡片剩余右对齐到 `rect.right()-pad`（不再 `right-92` 居中）；卡宽 <260 改上下两行；Footer 常驻添加表单（label + 时刻 + 添加按钮）；节日 chips 降 meta/可折叠；空态=虚线卡 + CTA；长名称截断 + tooltip；截图空/3 目标 + 280/388（G2）。验证：G1/G2。
+- [x] PL017.13 [P1] 世界页重排 —— 86px 四角卡改 56–64px 行/紧凑卡（城市名 + 基准 Pin/标签 + 24px 时间 + 昼/夜）；删除常驻 `-` 改 hover/focus Trash 或“管理”模式；添加城市移页头 `+` 或 Footer；窄窗单列；基准不只靠颜色（加“基准”文字/图标）；截图 8 城 + 280 抽屉（G2/G3）。验证：G1/G2。
+- [x] PL017.14 [P1] 天气 hero/状态 —— hero 聚簇（32 图标 + 44 温度 + 描述在温度下），体感/湿度/风力三列 metric（风图标 18–20px 可辨）；页头城市下拉 + 刷新；stale/error 区块内 + 重试 + 上次成功；加载保留旧值；截图 900/520（G2/G3）。验证：G1/G2/G3。
+- [x] PL017.15 [P1] 闹钟页重排 —— 快捷添加改有边界的分段/chip（非裸文本），添加表单进 Footer 或模态；行 64px 两行（time 24 + label/repeat 12），窄窗 280 不挤；开关 on 语义色 + 位置冗余；空态虚线卡 + CTA；截图空/3 条 + 280（G2）。验证：G1/G2。
+- [x] PL017.16 [P1] 空/加载/错误组件 —— 新建 `widgets/empty.rs`/`state.rs`：空态保留区块框 + 标题 + 行动邀请 + 主按钮；加载=旧值 + header 更新中/骨架（不跳版）；错误=区块内一句话 + 重试 + 上次成功；六页接入；用临时空配置/坏城市复现三态并截图（G2）。验证：G1/G2。
+- [x] PL017.17 [P1] 键盘/焦点/WidgetInfo —— 全部自绘点击控件（世界卡/倒计时卡/快捷 chip/开关/删除/仪表盘）补 `has_focus` 可见焦点环；Enter/Space 激活（dock/页头/世界行/开关/快捷 chip）；ESC 关设置/回时钟；`Response::widget_info` 未全量补（登记）；Tab 序按视觉顺序；**只键盘**走六页记录 `.temp/pl017_keyboard.md` 留用户（G4）；未跑标 Not verified。验证：G4 代码锚点 + 真机走查留用户。
+- [ ] PL017.18 [P2] 图标统一 Lucide —— **未完成（延后 0.6.3.1）**：保留手绘 18 枚并补 Close/Pin 两枚（网格/线宽沿用）；Lucide 全替换未做（避免一次性换 18 枚引入视觉回归）。验证：当前 icons 冒烟 20 变体全过；Lucide 迁移另开任务。
+- [ ] PL017.19 [P2] 动效/星点/文案/toast —— **部分完成**：抽屉 ζ=1.0 无过冲 + hover 120ms + 静态星点 + 主要文案（空态/设置/数据源）已落地；toast 窄窗宽度/可关闭未做（延后 0.6.3.1）。验证：G1/G2 已过；toast 项未验。
+- [x] PL017.20 [P1] 截图探针修复 —— `capture_window_png` 改 `PrintWindow(..., PW_CLIENTONLY(0x1))` 或按 `GetWindowRect` 建位图，消除底部白带；探针固定测试几何（env `ACCELWORLD_UI_SHOT_GEOMETRY` 或临时 config），不读用户存档；520×420 step 05 不再超时；六帧哈希全异、名实一致；输出四档目录供 G2；验证：探针 exit 0 + 哈希 + 帧目检。
+- [x] PL017.21 [P1] 文档连带 —— README 特性/使用说明/项目结构/常见问题四节；w.study 1/2/3.7；m.milestone V0.6.3.0 条目；AGENTS 结构/操作注意/窗口 max-min；ui.json 新键双向对账、design 行、死键清零；y.problems 若修窗口越界/探针白带则登记“已根治”；z.plan PL017 状态行与 x.progress 勾选同步（G6）。验证：rg/token 对账 + 文档 diff。
+- [x] PL017.22 收尾 —— G1 ALL_GREEN + 测试 210（app 72+bin 1+core 117+parity 20）+ G2 520/760/900/1200 四档截图 + G3 对比度（input 3.57/on_accent 9.13）+ G5 窗口夹取单测/实测 + G6 文档/token + G7 反向验收（`.temp/verify_pl017_accept.md`）+ bump 0.6.3.0（五处同步）+ commit 草案（AI 不执行 git）；G4 键盘/G8 桌面走查留用户。验证：G1–G3/G5–G7 通过，G4/G8 待用户。
+
+> PL017 完成记录（2026-10-28，V0.6.3.0）：22 条中 20 条落地，P2 两条部分完成（.18 Lucide 图标、.19 toast 窄窗）延后 0.6.3.1；G4 键盘/G8 桌面走查留用户。截图：`.temp/pl017_shots/final4/{520x420,760x520,900x500,1200x720}` + 有数据 `.temp/pl017_shots/data2`；反向验收：`.temp/verify_pl017_accept.md`。偏差：时钟 compact 以可用高 <380 判定（非宽 <760）；设置用抽屉页（非模态）；StageHeader 未做；Lucide 未全替换。

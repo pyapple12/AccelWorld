@@ -1,8 +1,7 @@
 //! 矢量图标库（UIR 重塑新增）：painter path 直接绘制，零字体/零 emoji 依赖
 //! 跨设备字体回落不再影响图标观感；线宽随尺寸缩放，颜色走调用方语义色
 //! PL016.09 网格纪律：等效 24 网格——全部图形以 r=size/2 为基准的分数坐标定位，
-//! 线宽单源 st（0.09×size，下限 1.2）；审核建议的「编辑/定位」无宿主场景未加
-//! （零调用即死代码），Check/Wind 已接线（删除武装态/天气要素行）
+//! 线宽单源 st（0.09×size，下限 1.2）；PL017 补 Close/Pin（20 变体）
 
 use egui::{Color32, Painter, Pos2, Stroke, Vec2};
 
@@ -43,6 +42,10 @@ pub enum Icon {
     Refresh,
     /// 对勾（PL016.04：删除两步确认的武装态）
     Check,
+    /// 关闭（PL017：抽屉/设置页头）
+    Close,
+    /// 定位/基准（PL017：世界时钟基准标记）
+    Pin,
     /// 风（PL016.09：天气要素行风力段）
     Wind,
 }
@@ -417,6 +420,36 @@ pub fn draw(painter: &Painter, center: Pos2, size: f32, icon: Icon, color: Color
                 st,
             );
         }
+        Icon::Close => {
+            // 两对角交叉（圆头端点由 egui 线段默认方头近似；尺寸小不影响识读）
+            let arm = r * 0.52;
+            painter.line_segment(
+                [
+                    egui::pos2(center.x - arm, center.y - arm),
+                    egui::pos2(center.x + arm, center.y + arm),
+                ],
+                st,
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(center.x + arm, center.y - arm),
+                    egui::pos2(center.x - arm, center.y + arm),
+                ],
+                st,
+            );
+        }
+        Icon::Pin => {
+            // 圆头 + 斜杆 + 底点（简化的定位钉）
+            painter.circle_stroke(center, r * 0.34, st);
+            painter.line_segment(
+                [
+                    egui::pos2(center.x, center.y + r * 0.34),
+                    egui::pos2(center.x, center.y + r * 0.78),
+                ],
+                st,
+            );
+            painter.circle_filled(center, sw * 0.85, color);
+        }
         Icon::Wind => {
             // PL016.09：风——三道横流 + 上两道右端上卷（arc 采样与库同语言）
             // PL016.18：线距 0.24r→0.35r（对齐 Lucide 光学网格疏密）——14-18px
@@ -512,6 +545,8 @@ mod tests {
             Icon::Moon,
             Icon::Refresh,
             Icon::Check,
+            Icon::Close,
+            Icon::Pin,
             Icon::Wind,
         ] {
             draw(&painter, egui::pos2(50.0, 50.0), 20.0, icon, Color32::WHITE);

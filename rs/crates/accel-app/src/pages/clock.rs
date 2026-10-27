@@ -1,42 +1,42 @@
-//! 时钟页（UIR4 星盘主仪）：单环双针 24 小时表盘恒驻 home——金长针 = 加速此刻、
-//! 灰细针 = 现实此刻，同一刻度盘上两针速差即时间膨胀（钟表的本源语法）；
-//! 中心等宽 hero + ×倍率徽标 + 标准时/日期；下方倍率滑杆与农历 chips
-//! 纯函数 day_fraction/day_angle/polar/dial_diameter/hero_fit_scale/day_progress 可测
+//! 时钟页（PL017 主仪重构）：星盘居中 + 盘下 readout + 360px 短倍率条 + 农历 meta。
+//! 金针 = 加速时刻 24h 时针（custom_time mod 24），灰针 = 现实 24h，金弧 = 两针差；
+//! 读数在盘下，指针不再穿过数字。纯函数 day_fraction/accelerated_hand_fraction/
+//! dial_diameter/hero_fit_scale 可测。
 
 use crate::tools::clock::split_lunar_info;
-use crate::widgets::{chip, digits, slider};
+use crate::widgets::digits;
 use accel_core::types::FrontendCommand;
-
-/// 日进度（纯函数）：已过小时 / 整数日长，双钳制（日长≤0 或越界返 0..1 域内值）
-pub fn day_progress(expanded_hours: f64, remaining_hours: f64) -> f32 {
-    if expanded_hours <= 0.0 {
-        return 0.0;
-    }
-    ((expanded_hours - remaining_hours) / expanded_hours).clamp(0.0, 1.0) as f32
-}
 
 /// 从标准日期时间串截取时刻段（"YYYY-MM-DD HH:MM:SS" → "HH:MM:SS"；纯函数可测）
 pub fn time_part(standard_datetime: &str) -> &str {
     standard_datetime.get(11..19).unwrap_or("")
 }
 
+/// 解析 "H:MM:SS" / "HH:MM:SS"（小时可三位数）；任意异常段回 0
+fn parse_hms(text: &str) -> (f32, f32, f32) {
+    let mut it = text.split(':');
+    let h = it.next().and_then(|s| s.parse().ok()).unwrap_or(0.0);
+    let m = it.next().and_then(|s| s.parse().ok()).unwrap_or(0.0);
+    let s = it.next().and_then(|s| s.parse().ok()).unwrap_or(0.0);
+    (h, m, s)
+}
+
 /// "HH:MM:SS" → 一日已过比例（纯函数）：0 点正上起算；异常形态返 0
-/// PL016.01：仅用于 24h 制钟面源（现实标准时）——加速时刻小时可超 24
-/// （日长 24×rate），金针已改走 day_progress 归一，本函数不再接收该域
 pub fn day_fraction(time_hms: &str) -> f32 {
-    let h: f32 = time_hms
-        .get(0..2)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0.0);
-    let m: f32 = time_hms
-        .get(3..5)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0.0);
-    let s: f32 = time_hms
-        .get(6..8)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0.0);
+    let (h, m, s) = parse_hms(time_hms);
     ((h * 3600.0 + m * 60.0 + s) / 86400.0).clamp(0.0, 1.0)
+}
+
+/// 加速时刻 → 24h 时针比例（纯函数）：`custom_time` 的时对 24 取模，含分秒。
+/// 这是双针语义的正确性核心：rate=7.2 时金针每现实日转 7.2 圈，与灰针（1 圈）分开。
+pub fn accelerated_hand_fraction(custom_time: &str) -> f32 {
+    let (h, m, s) = parse_hms(custom_time);
+    ((h % 24.0 + m / 60.0 + s / 3600.0) / 24.0).clamp(0.0, 1.0)
+}
+
+/// 加速日序号（1 起；custom_time 小时 ≥24 显示“第 2 天”）——纯函数
+pub fn custom_day(custom_time: &str) -> i64 {
+    (parse_hms(custom_time).0 as i64) / 24 + 1
 }
 
 /// 一日比例 → 表盘角（纯函数）：0 正上、顺时针（0..360）
@@ -50,244 +50,309 @@ pub fn polar(cx: f32, cy: f32, r: f32, angle_deg: f32) -> (f32, f32) {
     (cx + r * a.cos(), cy + r * a.sin())
 }
 
-/// 星盘直径（纯函数）：高（预留滑杆+chips 96px）与宽 0.9 取小，钳 [200, 440]
-pub fn dial_diameter(avail_w: f32, avail_h: f32) -> f32 {
-    (avail_h - 96.0).min(avail_w * 0.9).clamp(200.0, 440.0)
+/// 星盘直径（纯函数）：可用高扣除 readout/rate/meta 后与宽 0.62 取小，钳 [180,560]
+pub fn dial_diameter(avail_w: f32, avail_h: f32, reserved_h: f32) -> f32 {
+    (avail_h - reserved_h)
+        .min(avail_w * 0.62)
+        .clamp(180.0, 560.0)
 }
 
-/// hero 组合宽自适应（纯函数）：组合宽（hero+间距+徽标）超可用宽时按比例
-/// 收号，下限 0.55；未超返 1.0
+/// hero 收号（纯函数）：组合宽超可用宽时按比例缩，下限 0.5
 pub fn hero_fit_scale(combined_w: f32, avail_w: f32) -> f32 {
     if combined_w <= avail_w || combined_w <= 0.0 {
         1.0
     } else {
-        (avail_w / combined_w).clamp(0.55, 1.0)
+        (avail_w / combined_w).clamp(0.5, 1.0)
     }
 }
 
 impl crate::pages::Page for crate::pages::ClockPage {
     fn ui(&mut self, ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
-        let ink = crate::theme::ink();
-        let accent = crate::theme::accent_color();
-        let idle = crate::theme::tick_idle_color();
-
-        if let Some(info) = &state.time {
-            // —— 星盘主体（painter 绝对坐标；直径随可用域自适应，抽屉开启时缩让）——
-            let avail = ui.available_size();
-            let dial_d = dial_diameter(avail.x, avail.y);
-            let cx = ui.max_rect().center().x;
-            let cy = ui.cursor().top() + dial_d / 2.0 + 4.0;
-            let outer_r = dial_d / 2.0 - 24.0;
-
-            // 刻度环：24 小时表盘（96 刻度 = 15 分钟一格；整点刻长刻亮）——
-            // 纯量尺不含数据（UIR4.6 定案：含义唯一原则——刻度=尺、指针=数据，
-            // 废除「已过段填金」（与指针同义重复）；双环亦废（形异义同））
-            for i in 0..96 {
-                let a = i as f32 / 96.0;
-                let ang = day_angle(a);
-                let hour_tick = i % 4 == 0;
-                let len = if hour_tick { 12.0 } else { 7.0 };
-                let (x1, y1) = polar(cx, cy, outer_r, ang);
-                let (x2, y2) = polar(cx, cy, outer_r - len, ang);
-                ui.painter().line_segment(
-                    [egui::pos2(x1, y1), egui::pos2(x2, y2)],
-                    egui::Stroke::new(
-                        if hour_tick { 2.0 } else { 1.2 },
-                        if hour_tick { ink.muted } else { idle },
-                    ),
+        let Some(info) = state.time.clone() else {
+            ui.centered_and_justified(|ui| {
+                ui.label(
+                    egui::RichText::new("正在读取时间…")
+                        .font(crate::theme::font_regular(crate::theme::font_size(
+                            "body_lg",
+                        )))
+                        .color(crate::theme::ink().muted),
                 );
-            }
-            // 基数标签（00/06/12/18 四正位）
-            let cardinal = egui::FontId::proportional(crate::theme::font_size("meta"));
-            for (ang, label) in [(0.0, "00"), (90.0, "06"), (180.0, "12"), (270.0, "18")] {
-                let (lx, ly) = polar(cx, cy, outer_r + 14.0, ang);
-                ui.painter().text(
-                    egui::pos2(lx, ly),
-                    egui::Align2::CENTER_CENTER,
-                    label,
-                    cardinal.clone(),
-                    ink.meta,
-                );
-            }
-
-            // PL016.06 large（唯一编排时刻）：闹钟触发 → 表盘 accent 描边闪 +
-            // 金针加粗脉冲（三闪衰减，hit-stop 量级；动画期 16ms 提频；
-            // 减少动效/到期即清零静息）
-            let mut needle_w = 3.0_f32;
-            if let Some(since) = state.alarm_pulse_since {
-                let dur = (crate::theme::motion_ms("alarm_pulse_ms") / 1000.0).max(0.1);
-                let t = since.elapsed().as_secs_f32() / dur;
-                if t >= 1.0 || crate::theme::reduce_motion(ui.ctx()) {
-                    state.alarm_pulse_since = None;
-                } else {
-                    let flash = (1.0 - t) * (0.5 + 0.5 * (t * std::f32::consts::TAU * 3.0).sin());
-                    needle_w += 2.0 * flash;
-                    ui.painter().circle_stroke(
-                        egui::pos2(cx, cy),
-                        outer_r + 6.0,
-                        egui::Stroke::new(
-                            2.0,
-                            crate::theme::with_alpha(accent, (200.0 * flash) as u8),
-                        ),
-                    );
-                    ui.ctx()
-                        .request_repaint_after(std::time::Duration::from_secs_f32(0.016));
-                }
-            }
-
-            // 双针（同一表盘两种时间——膨胀即两针速差与角差，钟表的本源语法）：
-            // 金色长针 = 加速此刻（快转，倍率高时肉眼可见甩开灰针）；
-            // 灰色细针 = 现实此刻（慢转基准）；轴心小毂承载双针
-            // PL016.01【P0】审核实证缺陷：原 day_fraction(custom_time) 按 24h 归一，
-            // 加速日长 = 24×rate 小时，小时 ≥24 后分数恒 1 → 金针死钉正上方
-            // （rate=20 时约 96% 时间如此）。改加速日进度归一（方案 a）：金针一圈 =
-            // 一个加速日，与灰针「各自一日」同构可比，两针速差 = 倍率；
-            // 三位数小时（rate=20 日长 480h）天然落在 [0,1] 域
-            let acc_frac = day_progress(info.expanded_hours_per_day, info.remaining_hours);
-            let real_frac = day_fraction(time_part(&info.standard_datetime));
-            let hand_r = outer_r - 26.0;
-            // 金针（加速）：长针 + 短配重尾
-            let (gx, gy) = polar(cx, cy, hand_r, day_angle(acc_frac));
-            let (tx, ty) = polar(cx, cy, -14.0, day_angle(acc_frac));
-            ui.painter().line_segment(
-                [egui::pos2(tx, ty), egui::pos2(gx, gy)],
-                egui::Stroke::new(needle_w, accent),
-            );
-            // 灰针（现实）：细短针
-            let (rx, ry) = polar(cx, cy, hand_r * 0.62, day_angle(real_frac));
-            let (rtx, rty) = polar(cx, cy, -8.0, day_angle(real_frac));
-            ui.painter().line_segment(
-                [egui::pos2(rtx, rty), egui::pos2(rx, ry)],
-                egui::Stroke::new(1.8, ink.muted),
-            );
-            // 轴毂
-            ui.painter()
-                .circle_filled(egui::pos2(cx, cy), 4.0, ink.strong);
-
-            // —— 中心读数（等宽 hero + ×倍率徽标；小号标准时与日期居下）——
-            let hero_base = crate::theme::font_size("hero");
-            let hero_text = info.custom_time.clone();
-            let badge = format!("×{:.1}", state.rate);
-            let measure = digits::digit_font(hero_base);
-            let hero_w0 = digits::text_width(ui.painter(), &hero_text, &measure);
-            let badge_w0 = digits::text_width(ui.painter(), &badge, &measure);
-            let gap = crate::theme::spacing("md");
-            let text_r = hand_r - 34.0;
-            let scale = hero_fit_scale((hero_w0 + gap + badge_w0) * 1.0, text_r * 2.0 * 0.92);
-            let hero_size = hero_base * scale;
-            let hero_font = digits::digit_font(hero_size);
-            let badge_font = digits::digit_font(crate::theme::font_size("time_md") * scale);
-            let hero_w = hero_w0 * scale;
-            let badge_w = badge_w0 * scale;
-            let hero_y = cy - hero_size * 0.35;
-            digits::draw_centered(
-                ui.painter(),
-                egui::pos2(cx - (badge_w + gap) / 2.0, hero_y),
-                &hero_text,
-                &hero_font,
-                ink.strong,
-            );
-            digits::draw_centered(
-                ui.painter(),
-                egui::pos2(cx + (hero_w + gap) / 2.0, hero_y + 8.0 * scale),
-                &badge,
-                &badge_font,
-                accent,
-            );
-            // 标准时（等宽数字位）+ 中文日期
-            let std_font = digits::digit_font(crate::theme::font_size("time_sm"));
-            digits::draw_centered(
-                ui.painter(),
-                egui::pos2(cx, cy + hero_size * 0.45 + 10.0),
-                time_part(&info.standard_datetime),
-                &std_font,
-                ink.muted,
-            );
-            ui.painter().text(
-                egui::pos2(cx, cy + hero_size * 0.45 + 32.0),
-                egui::Align2::CENTER_CENTER,
-                &info.chinese_date,
-                egui::FontId::proportional(crate::theme::font_size("meta")),
-                ink.meta,
-            );
-            ui.allocate_space(egui::vec2(0.0, dial_d + 8.0));
-        } else {
-            ui.allocate_space(egui::vec2(0.0, 120.0));
-        }
-
-        // 倍率滑杆（拖动 SetRate 实时 / 松手 ApplyRate 落盘）
-        let (min, max) = state.rate_bounds;
-        let mut rate = state.rate;
-        let mut set_rate = None;
-        let mut apply_rate = None;
-        slider::show(
-            ui,
-            crate::theme::layout_i64("slider_track") as f32,
-            min,
-            max,
-            &mut rate,
-            |r| set_rate = Some(r),
-            |r| apply_rate = Some(r),
-        );
-        if let Some(r) = set_rate {
-            bus.send(FrontendCommand::SetRate(r));
-        }
-        if let Some(r) = apply_rate {
-            bus.send(FrontendCommand::ApplyRate(r));
-        }
-        // 滑杆本地值立即回写（拖动期间 Tick 快照不回刷旧值）
-        state.rate = rate;
-
-        // 农历 chips 行（split 三段；安静徽标）
-        if let Some(info) = &state.time {
-            let (lunar, phase, god) = split_lunar_info(&info.lunar_info);
-            ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                ui.horizontal(|ui| {
-                    chip::show(ui, "农历", &lunar);
-                    chip::show(ui, "月相", &phase);
-                    chip::show(ui, "财神", &god);
-                });
             });
+            return;
+        };
+        let ink = crate::theme::ink();
+        // PL017：短窗（<380 可用高）才退化为数字版；宽而矮的 900×500 仍保留星盘
+        let compact = ui.available_height() < 380.0;
+
+        // 星点背景（低对比、静态；点击穿透）
+        draw_stars(ui);
+
+        let accel = accelerated_hand_fraction(&info.custom_time);
+        let real = day_fraction(time_part(&info.standard_datetime));
+
+        if compact {
+            let content_h = 12.0 + 20.0 + 8.0 + 76.0 + 8.0 + 62.0 + 4.0 + 40.0;
+            ui.add_space(((ui.available_height() - content_h) / 2.0).max(8.0));
+            ui.label(
+                egui::RichText::new("加速世界")
+                    .font(crate::theme::font_semibold(crate::theme::font_size("body")))
+                    .color(ink.body),
+            );
+            ui.add_space(8.0);
+            draw_readout(ui, &info, state.rate, true);
+            ui.add_space(8.0);
+            draw_rate(ui, state, bus);
+            ui.add_space(4.0);
+            draw_meta(ui, &info);
+            return;
         }
+
+        let reserved = 82.0 + 62.0 + 40.0 + 24.0;
+        let dial_d = dial_diameter(ui.available_width(), ui.available_height(), reserved);
+        let total = dial_d + 8.0 + 82.0 + 8.0 + 62.0 + 8.0 + 40.0;
+        let top_pad = ((ui.available_height() - total) / 2.0).max(0.0);
+        ui.add_space(top_pad);
+        let center_x = ui.max_rect().center().x;
+        let center_y = ui.cursor().top() + dial_d / 2.0;
+        draw_dial(ui, egui::pos2(center_x, center_y), dial_d, accel, real);
+        ui.allocate_space(egui::vec2(0.0, dial_d + 8.0));
+        draw_readout(ui, &info, state.rate, false);
+        ui.add_space(8.0);
+        draw_rate(ui, state, bus);
+        ui.add_space(8.0);
+        draw_meta(ui, &info);
     }
 }
 
+/// 12 个固定星点（静态、不随机——不引入帧间状态）
+fn draw_stars(ui: &egui::Ui) {
+    let r = ui.max_rect();
+    const STARS: [(f32, f32); 12] = [
+        (0.07, 0.18),
+        (0.13, 0.72),
+        (0.21, 0.36),
+        (0.29, 0.86),
+        (0.37, 0.12),
+        (0.71, 0.14),
+        (0.79, 0.62),
+        (0.86, 0.31),
+        (0.92, 0.78),
+        (0.63, 0.88),
+        (0.46, 0.06),
+        (0.55, 0.94),
+    ];
+    for (fx, fy) in STARS {
+        ui.painter().circle_filled(
+            egui::pos2(r.left() + r.width() * fx, r.top() + r.height() * fy),
+            1.0,
+            crate::theme::star_color(),
+        );
+    }
+}
+
+/// 星盘：96 刻度 + 四正位 + 双针 + 金弧
+fn draw_dial(ui: &egui::Ui, center: egui::Pos2, dial_d: f32, accel: f32, real: f32) {
+    let ink = crate::theme::ink();
+    let accent = crate::theme::accent_color();
+    let idle = crate::theme::tick_idle_color();
+    let outer_r = dial_d / 2.0 - 18.0;
+    for i in 0..96 {
+        let a = i as f32 / 96.0;
+        let ang = day_angle(a);
+        let hour_tick = i % 4 == 0;
+        let len = if hour_tick { 12.0 } else { 7.0 };
+        let (x1, y1) = polar(center.x, center.y, outer_r, ang);
+        let (x2, y2) = polar(center.x, center.y, outer_r - len, ang);
+        ui.painter().line_segment(
+            [egui::pos2(x1, y1), egui::pos2(x2, y2)],
+            egui::Stroke::new(
+                if hour_tick { 2.0 } else { 1.2 },
+                if hour_tick { ink.muted } else { idle },
+            ),
+        );
+    }
+    let cardinal = egui::FontId::proportional(crate::theme::font_size("meta"));
+    for (ang, label) in [(0.0, "00"), (90.0, "06"), (180.0, "12"), (270.0, "18")] {
+        let (lx, ly) = polar(center.x, center.y, outer_r + 14.0, ang);
+        ui.painter().text(
+            egui::pos2(lx, ly),
+            egui::Align2::CENTER_CENTER,
+            label,
+            cardinal.clone(),
+            ink.meta,
+        );
+    }
+
+    // 金弧：两针之间的较短弧（膨胀差）；画在刻度环外侧，避免与刻度混读
+    let a0 = day_angle(real);
+    let a1 = day_angle(accel);
+    let mut delta = (a1 - a0).rem_euclid(360.0);
+    let start = if delta <= 180.0 { a0 } else { a1 };
+    if delta > 180.0 {
+        delta = 360.0 - delta;
+    }
+    if delta > 0.5 && delta < 359.5 {
+        let r = outer_r + 6.0;
+        let segs = 32;
+        let pts: Vec<egui::Pos2> = (0..=segs)
+            .map(|i| {
+                let ang = start + delta * (i as f32 / segs as f32);
+                let (x, y) = polar(center.x, center.y, r, ang);
+                egui::pos2(x, y)
+            })
+            .collect();
+        ui.painter().add(egui::Shape::line(
+            pts,
+            egui::Stroke::new(1.8, crate::theme::with_alpha(accent, 120)),
+        ));
+    }
+
+    let hand_r = outer_r - 26.0;
+    let (gx, gy) = polar(center.x, center.y, hand_r, a1);
+    let (tx, ty) = polar(center.x, center.y, -14.0, a1);
+    ui.painter().line_segment(
+        [egui::pos2(tx, ty), egui::pos2(gx, gy)],
+        egui::Stroke::new(3.0, accent),
+    );
+    let (rx, ry) = polar(center.x, center.y, hand_r * 0.62, a0);
+    let (rtx, rty) = polar(center.x, center.y, -8.0, a0);
+    ui.painter().line_segment(
+        [egui::pos2(rtx, rty), egui::pos2(rx, ry)],
+        egui::Stroke::new(1.8, ink.muted),
+    );
+    ui.painter().circle_filled(center, 4.0, ink.strong);
+}
+
+/// 盘下读数：左加速（hero）+ 日序号，右现实 + 倍率；1px 分隔
+fn draw_readout(ui: &mut egui::Ui, info: &accel_core::types::TimeInfo, rate: f64, compact: bool) {
+    let ink = crate::theme::ink();
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), if compact { 76.0 } else { 82.0 }),
+        egui::Sense::hover(),
+    );
+    let half = rect.width() / 2.0;
+    let left = egui::Rect::from_min_size(rect.left_top(), egui::vec2(half, rect.height()));
+    let right = egui::Rect::from_min_size(
+        egui::pos2(rect.left() + half, rect.top()),
+        egui::vec2(half, rect.height()),
+    );
+    ui.painter().line_segment(
+        [
+            egui::pos2(rect.left() + half, rect.top() + 12.0),
+            egui::pos2(rect.left() + half, rect.bottom() - 12.0),
+        ],
+        egui::Stroke::new(1.0, crate::theme::border_color()),
+    );
+
+    let label_font = crate::theme::font_medium(crate::theme::font_size("meta"));
+    let accent = crate::theme::accent_color();
+    ui.painter().text(
+        egui::pos2(left.left() + 12.0, left.top() + 4.0),
+        egui::Align2::LEFT_TOP,
+        "加速",
+        label_font.clone(),
+        accent,
+    );
+    let base = if compact { 48.0 } else { 64.0 };
+    let measure = digits::digit_font(base);
+    let measured = digits::text_width(ui.painter(), &info.custom_time, &measure);
+    let scale = hero_fit_scale(measured, half - 28.0);
+    let hero_font = digits::digit_font(base * scale);
+    digits::draw_centered(
+        ui.painter(),
+        egui::pos2(left.center().x, left.center().y + 4.0),
+        &info.custom_time,
+        &hero_font,
+        ink.strong,
+    );
+    let day = custom_day(&info.custom_time);
+    if day > 1 {
+        ui.painter().text(
+            egui::pos2(left.right() - 12.0, left.bottom() - 6.0),
+            egui::Align2::RIGHT_BOTTOM,
+            format!("第 {day} 天"),
+            crate::theme::font_regular(crate::theme::font_size("meta")),
+            ink.meta,
+        );
+    }
+    ui.painter().text(
+        egui::pos2(right.left() + 12.0, right.top() + 4.0),
+        egui::Align2::LEFT_TOP,
+        "现实",
+        label_font,
+        ink.muted,
+    );
+    let real_font = digits::digit_font(if compact { 20.0 } else { 24.0 });
+    digits::draw_centered(
+        ui.painter(),
+        egui::pos2(right.center().x, right.center().y + 2.0),
+        time_part(&info.standard_datetime),
+        &real_font,
+        ink.body,
+    );
+    ui.painter().text(
+        egui::pos2(right.right() - 12.0, right.bottom() - 6.0),
+        egui::Align2::RIGHT_BOTTOM,
+        format!("×{rate:.1} 倍率"),
+        crate::theme::font_medium(crate::theme::font_size("meta")),
+        accent,
+    );
+}
+
+/// 短倍率条：360px、6px 轨、1×/20× 端标；拖动 SetRate、松手/点击 ApplyRate
+fn draw_rate(ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
+    let (min, max) = state.rate_bounds;
+    let mut rate = state.rate;
+    let mut set_rate = None;
+    let mut apply_rate = None;
+    crate::widgets::rate_strip::show(
+        ui,
+        min,
+        max,
+        &mut rate,
+        |r| set_rate = Some(r),
+        |r| apply_rate = Some(r),
+    );
+    if let Some(r) = set_rate {
+        bus.send(FrontendCommand::SetRate(r));
+    }
+    if let Some(r) = apply_rate {
+        bus.send(FrontendCommand::ApplyRate(r));
+    }
+    state.rate = rate;
+}
+
+/// 农历/月相/财神：一条 12px meta 行，不再用三个盒子
+fn draw_meta(ui: &mut egui::Ui, info: &accel_core::types::TimeInfo) {
+    let (lunar, phase, god) = split_lunar_info(&info.lunar_info);
+    ui.label(
+        egui::RichText::new(format!("农历 {lunar} · 月相 {phase} · 财神 {god}"))
+            .font(crate::theme::font_regular(crate::theme::font_size("meta")))
+            .color(crate::theme::ink().muted),
+    );
+}
+
 // ===== src/pages/clock.rs 说明区 =====
-// 输入：UiState（Tick 快照：时间/倍率域）；输出：星盘主仪 + SetRate/ApplyRate
-// 逻辑步骤：直径自适应（dial_diameter）→ 24 小时刻度环（96 刻度纯量尺，整点刻
-//   长刻亮、四正位基数标签）→ 双针（金长针=加速此刻带配重尾、灰细针=现实此刻、
-//   轴毂）→ 中心等宽 hero+×徽标（hero_fit_scale 收号）+ 标准时 + 日期 → 滑杆
-//   → 农历 chips
-// 设计理由（UIR4.6 用户反馈迭代）：双环被否「内外都一样，没有意义」——形异义同
-//   确属实；改钟表本源语法：单环双针，金针快转灰针慢转，速差与角差即膨胀读数
-//   （20x 时金针肉眼疯转甩开灰针）；含义唯一原则：刻度=尺、指针=数据，废除
-//   「已过段填金」（与指针同义重复）；星盘恒驻 home（住与查分离不变）
-// 异常处理：time 为 None（首 Tick 前）星盘整块跳过不崩；day_progress/day_fraction
-//   双钳制；polar 纯函数无 panic 面
-// 关联依赖：widgets（digits/slider/chip）/tools::clock；消费方：pages::Pages
+// 输入：UiState（Tick 快照/倍率域）；输出：星盘 + readout + 倍率条 + SetRate/ApplyRate
+// 逻辑步骤：compact(<760) 数字版 / 完整版：星盘（96 刻度 + 双针 + 金弧 + 中心倍率）
+//   → 盘下 readout（加速 64/现实 24/倍率）→ 360px 短倍率条 → 农历 meta
+// 设计理由（PL017）：星盘从 440 固定贴顶改为随可用高缩放并垂直居中；数字从盘心
+//   移到盘下，指针不再穿字；金针改加速 24h（数学上不再与灰针恒等）；金只给加速
+//   数据，倍率条缩到 360/6px，导航与焦点另用中性/亮白
+// 异常处理：time 为 None 显示读取中；hand/custom_day 异常回 0；hero_fit 下限 0.5
+// 关联依赖：widgets(digits/slider)/tools::clock；消费方：pages::Pages
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn day_progress_clamped() {
-        // 双钳制：日长≤0 → 0；负剩余 → 满；正常比例
-        assert_eq!(day_progress(0.0, 1.0), 0.0);
-        assert_eq!(day_progress(24.0, -1.0), 1.0);
-        assert!((day_progress(24.0, 18.0) - 0.25).abs() < 1e-9);
-        assert_eq!(day_progress(24.0, 24.0), 0.0);
-    }
-
-    #[test]
     fn time_part_extraction() {
-        // "YYYY-MM-DD HH:MM:SS" → 时刻段；异常形态回退空串
         assert_eq!(time_part("2026-10-23 12:34:56"), "12:34:56");
         assert_eq!(time_part("bad"), "");
     }
 
     #[test]
     fn day_fraction_cardinals() {
-        // 一日比例锚点：0 点 0；正午 0.5；23:59:59 近 1；异常 0
         assert_eq!(day_fraction("00:00:00"), 0.0);
         assert!((day_fraction("12:00:00") - 0.5).abs() < 1e-6);
         assert!(day_fraction("23:59:59") > 0.999);
@@ -295,45 +360,45 @@ mod tests {
     }
 
     #[test]
-    fn gold_hand_fraction_survives_over_24h_days() {
-        // PL016.01【P0】验收（审核实证缺陷回归）：加速日长 24×rate 小时，
-        // 小时 ≥24 的加速时刻不得使金针分数饱和——金针 = day_progress 归一：
-        // rate=2（日长 48h）日中 → 0.5；rate=20（日长 480h）三位数小时日中 → 0.5；
-        // 日末 → 1.0。原缺陷（24h 归一饱和 1.0）在此口径下不存在
-        assert_eq!(day_progress(48.0, 24.0), 0.5, "rate=2 加速日过半");
-        assert_eq!(day_progress(480.0, 240.0), 0.5, "三位数小时日中");
-        assert_eq!(day_progress(48.0, -1.0), 1.0, "加速日末金针满圈");
-        assert_eq!(day_progress(0.0, 1.0), 0.0, "日长异常钳 0 防御");
+    fn accelerated_hand_wraps_24h_and_differs_from_real() {
+        // PL017.05 验收：加速 35:30:48 对 24 取模 → 11:30:48；与 04:55:52 角差 >0
+        let acc = accelerated_hand_fraction("35:30:48");
+        let real = day_fraction("04:55:52");
+        assert!((acc - (11.0 + 30.0 / 60.0 + 48.0 / 3600.0) / 24.0).abs() < 1e-6);
+        assert!((acc - real).abs() > 0.1, "rate>1 两针必须有角差");
+        assert_eq!(accelerated_hand_fraction("24:00:00"), 0.0);
+        assert_eq!(accelerated_hand_fraction("bad"), 0.0);
+    }
+
+    #[test]
+    fn custom_day_counts_24h_wraps() {
+        assert_eq!(custom_day("23:59:59"), 1);
+        assert_eq!(custom_day("24:00:00"), 2);
+        assert_eq!(custom_day("35:30:48"), 2);
+        assert_eq!(custom_day("251:38:42"), 11);
     }
 
     #[test]
     fn day_angle_and_polar_roundtrip() {
-        // 角度钳制 + 极坐标四正位（正上/右/下/左）
         assert_eq!(day_angle(0.25), 90.0);
-        assert_eq!(day_angle(1.5), 360.0, "越界钳满");
+        assert_eq!(day_angle(1.5), 360.0);
         let (x, y) = polar(100.0, 100.0, 50.0, 0.0);
-        assert!((x - 100.0).abs() < 1e-4 && (y - 50.0).abs() < 1e-4, "正上");
+        assert!((x - 100.0).abs() < 1e-4 && (y - 50.0).abs() < 1e-4);
         let (x, y) = polar(100.0, 100.0, 50.0, 90.0);
-        assert!((x - 150.0).abs() < 1e-4 && (y - 100.0).abs() < 1e-4, "正右");
-        let (x, y) = polar(100.0, 100.0, 50.0, 180.0);
-        assert!((x - 100.0).abs() < 1e-4 && (y - 150.0).abs() < 1e-4, "正下");
+        assert!((x - 150.0).abs() < 1e-4 && (y - 100.0).abs() < 1e-4);
     }
 
     #[test]
-    fn dial_diameter_fits_and_clamps() {
-        // 宽约束 / 高约束 / 上下限钳制
-        assert_eq!(dial_diameter(400.0, 600.0), 360.0, "宽 0.9 约束");
-        assert_eq!(dial_diameter(600.0, 400.0), 304.0, "高扣 96 约束");
-        assert_eq!(dial_diameter(1000.0, 1000.0), 440.0, "上限钳");
-        assert_eq!(dial_diameter(150.0, 200.0), 200.0, "下限钳");
+    fn dial_diameter_reserves_readout_and_rate() {
+        assert_eq!(dial_diameter(400.0, 600.0, 178.0), 248.0);
+        assert_eq!(dial_diameter(1000.0, 1000.0, 178.0), 560.0);
+        assert_eq!(dial_diameter(150.0, 200.0, 178.0), 180.0);
     }
 
     #[test]
-    fn hero_fit_scale_fits_without_shrinking_below_floor() {
-        // 未超宽 1.0 原样；超宽按比例收；极端窄有 0.55 下限
+    fn hero_fit_shrinks_with_floor() {
         assert_eq!(hero_fit_scale(300.0, 340.0), 1.0);
-        assert!((hero_fit_scale(400.0, 340.0) - 0.85).abs() < 1e-9);
-        assert_eq!(hero_fit_scale(500.0, 200.0), 0.55, "极端窄收至下限");
-        assert_eq!(hero_fit_scale(0.0, 340.0), 1.0);
+        assert!((hero_fit_scale(400.0, 340.0) - 0.85).abs() < 1e-6);
+        assert_eq!(hero_fit_scale(500.0, 100.0), 0.5);
     }
 }

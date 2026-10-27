@@ -1,8 +1,9 @@
-//! 倒计时页（PL014.08）：hero 最近目标 + 目标卡网格 + 加号校验 + 减号
-//! 纯逻辑（校验/最近目标选取）抽离为可测函数，UI 层仅装配
+//! 倒计时页（PL017 重排）：PageHeader（Pages 统一）+ 可滚内容 + 固定 Footer。
+//! hero = 下一个目标（不与列表重复：列表只列其余目标）+ 节日 meta 行 + 目标行卡；
+//! 添加表单常驻页脚，目标再多也够得着。纯逻辑（校验/最近目标/派生）保持可测。
 
 use crate::tools::countdown::format_remaining;
-use crate::widgets::{chip, digits};
+use crate::widgets::{digits, field, icon_button, icons};
 use accel_core::types::FrontendCommand;
 use chrono::{Duration, NaiveDate, NaiveDateTime, TimeZone};
 
@@ -38,9 +39,7 @@ static DERIVED_CACHE: DateCache<Option<(&'static str, NaiveDateTime)>> = DateCac
 /// 近期节日 chips 日缓存槽
 static CHIPS_CACHE: DateCache<Vec<(NaiveDate, String)>> = DateCache::new();
 
-/// 日粒度结果缓存（FIX007.7 可测核心）：同日期只算一次，跨日换槽——
-/// 农历派生输入为日粒度（春节转换循环/节日 BTreeMap 重建/节气取表），
-/// 原实现每帧重算属纯浪费；单槽即可（同一帧内日期恒定，日切时换值）
+/// 日粒度结果缓存（FIX007.7 可测核心）：同日期只算一次，跨日换槽
 fn cached_by_date<T: Clone>(
     slot: &DateCache<T>,
     today: NaiveDate,
@@ -106,8 +105,7 @@ impl std::fmt::Display for AddErr {
     }
 }
 
-/// 最近未到目标（hero 用）：取未到项中 at 最小者（A005 #23：借用切片，无每帧克隆；
-/// 排序改为单次线性取最小，避免 to_vec + sort）
+/// 最近未到目标（hero 用）：取未到项中 at 最小者
 pub fn next_target<'a>(
     targets: &[(&'a str, NaiveDateTime)],
     now: NaiveDateTime,
@@ -119,300 +117,362 @@ pub fn next_target<'a>(
         .copied()
 }
 
-/// 目标卡列数（纯函数，UIR3 断点）：宽 >380 双列（卡 ≥180 可容名称+剩余并排），
-/// 否则单列——「结构撑到破为止」，破在卡内元素重叠处而非设备预设
-pub fn grid_cols(avail_w: f32) -> usize {
-    if avail_w > 380.0 { 2 } else { 1 }
-}
-
 impl crate::pages::Page for crate::pages::CountdownPage {
     fn ui(&mut self, ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
         let ink = crate::theme::ink();
-        // PL016.04：武装超时解除（FIX011.03 单源方法 + token 时长）
         state.armed_delete_tick();
         let now = chrono::Local::now().naive_local();
-        // 目标快照（state.countdown_targets：启动快照 + ConfigSaved 重拉）
-        let mut targets: Vec<(&str, NaiveDateTime)> = Vec::new();
-        for t in &state.countdown_targets {
-            if let Some(at) = t.parse_at() {
-                targets.push((t.name.as_str(), at));
-            }
-        }
-        // hero：最近目标大字（FIX006.3：持久目标与派生春节目标取更近者——空列表亦有兜底）
-        // FIX007.7：派生结果按日缓存（原每帧重算春节循环）
+        let targets: Vec<(String, NaiveDateTime)> = state
+            .countdown_targets
+            .iter()
+            .filter_map(|t| t.parse_at().map(|at| (t.name.clone(), at)))
+            .collect();
+        let pairs: Vec<(&str, NaiveDateTime)> =
+            targets.iter().map(|(n, at)| (n.as_str(), *at)).collect();
         let derived = cached_by_date(&DERIVED_CACHE, now.date(), derived_spring_festival);
+        let hero = hero_target(&pairs, derived, now).map(|(n, at)| (n.to_string(), at));
+        let hero_name = hero.as_ref().map(|(n, _)| n.clone());
 
-        // hero 大字（等宽数字位；派生春节目标以雄黄金点缀）
-        let center_x = ui.max_rect().center().x;
-        match hero_target(&targets, derived, now) {
-            Some((name, at)) => {
-                let (text, ended) = format_remaining(at, now);
-                let color = if ended {
-                    ink.danger
-                } else if derived.is_some_and(|(dn, _)| dn == name) {
-                    crate::theme::accent_color()
-                } else {
-                    ink.strong
-                };
-                ui.painter().text(
-                    egui::pos2(center_x, ui.cursor().top() + 14.0),
-                    egui::Align2::CENTER_TOP,
-                    name,
-                    egui::FontId::proportional(crate::theme::font_size("time_sm")),
-                    ink.muted,
-                );
-                let hero_font = digits::digit_font(crate::theme::font_size("hero") * 0.78);
-                digits::draw_centered(
-                    ui.painter(),
-                    egui::pos2(
-                        center_x,
-                        ui.cursor().top() + 44.0 + crate::theme::font_size("hero") * 0.42,
-                    ),
-                    &text,
-                    &hero_font,
-                    color,
-                );
-                ui.allocate_space(egui::vec2(
-                    0.0,
-                    crate::theme::font_size("hero") * 1.15 + 44.0,
-                ));
-            }
-            None => {
-                ui.painter().text(
-                    egui::pos2(center_x, ui.cursor().top() + 20.0),
-                    egui::Align2::CENTER_TOP,
-                    "还没有目标——春节倒计时在上方；下方填写名称与时刻可添加自定义目标",
-                    egui::FontId::proportional(crate::theme::font_size("body_lg")),
-                    ink.muted,
-                );
-                ui.allocate_space(egui::vec2(0.0, 44.0));
-            }
-        }
-
-        // 目标卡网格（矢量圆角卡：名称/日期/剩余 + 减号；派生目标不落盘不在列表）；
-        // 内容包 ScrollArea（目标多时不出窗）；卡内边距/网格间距全走 token
-        // UIR3：列数随可用宽断点（better-layout「结构撑到破为止」——340px 内容区
-        // 双列卡宽 164 连「名称+剩余」都放不下，破即降列）
-        let card_h = 84.0_f32;
-        let gap = crate::theme::spacing("md");
-        let pad = crate::theme::layout_i64("card_pad") as f32;
-        let avail = ui.available_width();
-        let cols = grid_cols(avail);
-        let card_w = ((avail - gap * (cols - 1) as f32) / cols as f32)
-            .clamp(0.0, 340.0)
-            .max(0.0);
-        let radius = crate::theme::radius_px("md") as u8;
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            if !targets.is_empty() {
-                egui::Grid::new("countdown_grid")
-                    .num_columns(cols)
-                    .spacing([gap, gap])
-                    .show(ui, |ui| {
-                        for (idx, (name, at)) in targets.iter().enumerate() {
-                            let (rect, _) = ui.allocate_exact_size(
-                                egui::vec2(card_w, card_h),
-                                egui::Sense::hover(),
-                            );
-                            // 卡底：卡面色 + 发丝描边（子夜星图卡语言）
-                            ui.painter().rect_filled(
-                                rect,
-                                egui::epaint::CornerRadius::same(radius),
-                                crate::theme::card_bg(),
-                            );
-                            ui.painter().rect_stroke(
-                                rect,
-                                egui::epaint::CornerRadius::same(radius),
-                                egui::Stroke::new(1.0, crate::theme::border_color()),
-                                egui::StrokeKind::Inside,
-                            );
-                            ui.painter().text(
-                                egui::pos2(rect.left() + pad, rect.top() + 12.0),
-                                egui::Align2::LEFT_TOP,
-                                *name,
-                                egui::FontId::proportional(crate::theme::font_size("body_lg")),
-                                ink.body,
-                            );
-                            ui.painter().text(
-                                egui::pos2(rect.left() + pad, rect.bottom() - 12.0),
-                                egui::Align2::LEFT_BOTTOM,
-                                at.format("%Y-%m-%d %H:%M").to_string(),
-                                egui::FontId::proportional(crate::theme::font_size("meta")),
-                                ink.meta,
-                            );
-                            let (text, ended) = format_remaining(*at, now);
-                            let rem_font = digits::digit_font(crate::theme::font_size("time_md"));
-                            digits::draw_centered(
-                                ui.painter(),
-                                egui::pos2(rect.right() - 92.0, rect.center().y),
-                                &text,
-                                &rem_font,
-                                if ended { ink.danger } else { ink.muted },
-                            );
-                            // 删除（PL016.04 两步确认：Minus→Check 武装态，再击执行）
-                            let del_key = format!("cd:{name}");
-                            let armed = matches!(
-                                &state.armed_delete,
-                                Some((k, _)) if *k == del_key
-                            );
-                            let del_resp = ui.interact(
-                                egui::Rect::from_center_size(
-                                    egui::pos2(rect.right() - 18.0, rect.top() + 18.0),
-                                    egui::vec2(24.0, 24.0),
-                                ),
-                                egui::Id::unique(("cd_del", *name)),
-                                egui::Sense::click(),
-                            );
-                            let del_resp = if armed {
-                                del_resp.on_hover_text("再次点击确认移除")
-                            } else {
-                                del_resp
-                            };
-                            let del_resp = del_resp.on_hover_cursor(egui::CursorIcon::PointingHand);
-                            crate::widgets::icons::draw(
-                                ui.painter(),
-                                egui::pos2(rect.right() - 18.0, rect.top() + 18.0),
-                                14.0,
-                                if armed {
-                                    crate::widgets::icons::Icon::Check
-                                } else {
-                                    crate::widgets::icons::Icon::Minus
-                                },
-                                if armed || del_resp.hovered() {
-                                    ink.danger
-                                } else {
-                                    ink.meta
-                                },
-                            );
-                            if del_resp.clicked() {
-                                if armed {
-                                    bus.send(FrontendCommand::RemoveCountdownTarget(
-                                        (*name).to_string(),
-                                    ));
-                                    state.armed_delete = None;
-                                } else {
-                                    state.armed_delete = Some((del_key, std::time::Instant::now()));
-                                }
-                            }
-                            // 满行换行（列数随断点——单列时每卡即满行）
-                            if (idx + 1) % cols == 0 || idx + 1 == targets.len() {
-                                ui.end_row();
-                            }
-                        }
-                    });
-            }
-        }); // ScrollArea
-
-        // 近期节日 chips（year_chips 派生取最近 6 枚，不落盘；FIX007.7 按日缓存）；
-        // 换行排布（原单行水平 6 枚溢出窗缘——截图实证修正）
-        let chips = cached_by_date(&CHIPS_CACHE, now.date(), |d| {
-            accel_core::chinese_calendar::year_chips(d)
-        });
-        if !chips.is_empty() {
-            // 组距纪律（better-layout）：卡网格组内距 md(12)，组间 ≥2× → xl(24)
-            ui.add_space(crate::theme::spacing("xl"));
-            ui.horizontal_wrapped(|ui| {
-                ui.label(
-                    egui::RichText::new("近期节日")
-                        .size(crate::theme::font_size("body"))
-                        .color(ink.muted),
-                );
-                for (_, fest) in chips.iter().take(6) {
-                    // A008 #7：chip id 形参已删（玻璃面废除后零消费，不再每帧 format!）
-                    chip::show(ui, "节日", fest);
-                }
-            });
-        }
-
-        ui.add_space(crate::theme::spacing("lg"));
-        // 加号行：名称 + 日期时间文本（解析单一来源 tools::countdown::parse_target_text）
-        // 校验（空名/同名/<24h 拒）→ 确认经 local_from_naive（DST 歧义取较早一侧）
-        // UIR2 二轮：宽度随可用宽自适应（原固定 150+200 在最小窗内容区 340px 溢出）
-        // FIX012.01：错误提示计算提于行外——空草稿（初始态/添加成功清空后）不产红字
-        //   （FIX011.16 无门常驻回归收口，对照 alarm.rs:143「非空才校验」门）；空名同门
-        let draft_at_empty = state.countdown_draft_at.is_empty();
-        let draft_name_empty = state.countdown_draft_name.is_empty();
-        let (err_msg, local_at) = {
-            let name = state.countdown_draft_name.clone();
-            match crate::tools::countdown::parse_target_text(&state.countdown_draft_at) {
-                Some(at) => {
-                    let names: Vec<String> =
-                        targets.iter().map(|(n, _)| (*n).to_string()).collect();
-                    match validate_add(&name, at, now, &names) {
-                        Ok(()) => match local_from_naive(at) {
-                            Some(local) => (String::new(), Some(local)),
-                            // FIX011.16：DST 跳过的时刻不存在——红字同位反馈不静默
-                            None => ("该时刻在本地时区不存在（夏令时切换跳过）".to_string(), None),
-                        },
-                        // FIX012.01：空名红字加门（未输入名称不提示）
-                        Err(_) if draft_name_empty => (String::new(), None),
-                        Err(e) => (e.to_string(), None),
+        // 页脚固定；滚动只发生在内容区
+        let footer_h = crate::theme::page_footer_height();
+        let body_h = (ui.available_height() - footer_h - 8.0).max(0.0);
+        ui.allocate_ui(egui::vec2(ui.available_width(), body_h), |ui| {
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    if let Some((name, at)) = &hero {
+                        draw_hero(ui, name, *at, now, &ink);
+                    } else {
+                        crate::widgets::empty::show(
+                            ui,
+                            "还没有目标",
+                            "在下方填写名称与时刻，添加第一个倒计时",
+                        );
                     }
-                }
-                // FIX012.01：空草稿不产红字
-                None if draft_at_empty => (String::new(), None),
-                // FIX011.16：解析失败不再静默 no-op——红字与 validate 失败同位反馈
-                None => (
-                    "时刻无法解析——格式应为 YYYY-MM-DD HH:MM[:SS] 或 YYYY-MM-DD".to_string(),
-                    None,
-                ),
-            }
-        };
-        ui.horizontal(|ui| {
-            let row_w = ui.available_width();
-            let name_w = ((row_w - 46.0) * 0.42).clamp(80.0, 150.0);
-            let at_w = ((row_w - 46.0) * 0.58).clamp(120.0, 200.0);
-            egui::TextEdit::singleline(&mut state.countdown_draft_name)
-                .hint_text("目标名称")
-                .desired_width(name_w)
-                .show(ui);
-            egui::TextEdit::singleline(&mut state.countdown_draft_at)
-                .hint_text("YYYY-MM-DD[ HH:MM[:SS]]")
-                .desired_width(at_w)
-                .show(ui);
-            let add_resp = crate::widgets::icon_button::show(
-                ui,
-                crate::widgets::icons::Icon::Plus,
-                18.0,
-                false,
-            );
-            if add_resp.on_hover_text("添加目标").clicked()
-                && let Some(local) = local_at
-            {
-                bus.send(FrontendCommand::AddCountdownTarget {
-                    name: state.countdown_draft_name.clone(),
-                    at: local,
+
+                    // 近期节日：一条 meta 行，不用 chips 盒子
+                    let chips = cached_by_date(&CHIPS_CACHE, now.date(), |d| {
+                        accel_core::chinese_calendar::year_chips(d)
+                    });
+                    if !chips.is_empty() {
+                        ui.add_space(crate::theme::spacing("md"));
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(
+                                egui::RichText::new("近期节日")
+                                    .font(crate::theme::font_regular(crate::theme::font_size(
+                                        "meta",
+                                    )))
+                                    .color(ink.muted),
+                            );
+                            for (i, (_, fest)) in chips.iter().take(6).enumerate() {
+                                if i > 0 {
+                                    ui.label(
+                                        egui::RichText::new("·")
+                                            .font(crate::theme::font_regular(
+                                                crate::theme::font_size("meta"),
+                                            ))
+                                            .color(ink.meta),
+                                    );
+                                }
+                                ui.label(
+                                    egui::RichText::new(fest)
+                                        .font(crate::theme::font_regular(crate::theme::font_size(
+                                            "meta",
+                                        )))
+                                        .color(ink.body),
+                                );
+                            }
+                        });
+                    }
+
+                    // 其余目标（hero 已单列，避免同一数字出现两次）
+                    let rest: Vec<&(String, NaiveDateTime)> = targets
+                        .iter()
+                        .filter(|(n, _)| Some(n) != hero_name.as_ref())
+                        .collect();
+                    if !rest.is_empty() {
+                        ui.add_space(crate::theme::spacing("lg"));
+                        ui.label(
+                            egui::RichText::new("其他目标")
+                                .font(crate::theme::font_regular(crate::theme::font_size("meta")))
+                                .color(ink.muted),
+                        );
+                        ui.add_space(6.0);
+                        for (name, at) in rest {
+                            draw_target_row(ui, state, bus, name, *at, now, &ink);
+                        }
+                    }
+
+                    if targets.is_empty() {
+                        ui.add_space(crate::theme::spacing("sm"));
+                        ui.label(
+                            egui::RichText::new("还没有自定义目标——用下方表单添加")
+                                .font(crate::theme::font_regular(crate::theme::font_size("meta")))
+                                .color(ink.meta),
+                        );
+                    }
                 });
-                state.countdown_draft_name.clear();
-                state.countdown_draft_at.clear();
-            }
         });
-        // FIX012.11：错误红字独立行（原 horizontal 行内长文案窄抽屉横向溢出）
-        if !err_msg.is_empty() {
-            ui.label(egui::RichText::new(&err_msg).color(ink.danger));
+
+        ui.add_space(8.0);
+        draw_footer(ui, state, bus, &now, &targets);
+    }
+}
+
+/// hero 卡：下一个目标 + 大剩余 + 日期；不与列表重复
+fn draw_hero(
+    ui: &mut egui::Ui,
+    name: &str,
+    at: NaiveDateTime,
+    now: NaiveDateTime,
+    ink: &crate::theme::Ink,
+) {
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), 126.0),
+        egui::Sense::hover(),
+    );
+    ui.painter().rect_filled(
+        rect,
+        egui::epaint::CornerRadius::same(crate::theme::radius_px("md") as u8),
+        crate::theme::card_bg(),
+    );
+    ui.painter().rect_stroke(
+        rect,
+        egui::epaint::CornerRadius::same(crate::theme::radius_px("md") as u8),
+        egui::Stroke::new(1.2, crate::theme::accent_color()),
+        egui::StrokeKind::Inside,
+    );
+    ui.painter().text(
+        egui::pos2(rect.left() + 16.0, rect.top() + 12.0),
+        egui::Align2::LEFT_TOP,
+        "下一个",
+        crate::theme::font_medium(crate::theme::font_size("meta")),
+        crate::theme::accent_color(),
+    );
+    ui.painter().text(
+        egui::pos2(rect.left() + 16.0, rect.top() + 31.0),
+        egui::Align2::LEFT_TOP,
+        name,
+        crate::theme::font_semibold(crate::theme::font_size("body_lg")),
+        ink.strong,
+    );
+    ui.painter().text(
+        egui::pos2(rect.left() + 16.0, rect.bottom() - 10.0),
+        egui::Align2::LEFT_BOTTOM,
+        at.format("%Y-%m-%d %H:%M").to_string(),
+        crate::theme::font_regular(crate::theme::font_size("meta")),
+        ink.meta,
+    );
+    let (text, ended) = format_remaining(at, now);
+    let base = 40.0;
+    let font = digits::digit_font(base);
+    let measured = digits::text_width(ui.painter(), &text, &font);
+    let scale = crate::pages::clock::hero_fit_scale(measured, rect.width() - 32.0);
+    let font = digits::digit_font(base * scale);
+    digits::draw_centered(
+        ui.painter(),
+        egui::pos2(
+            rect.right() - 16.0 - measured * scale / 2.0,
+            rect.center().y + 6.0,
+        ),
+        &text,
+        &font,
+        if ended { ink.danger } else { ink.strong },
+    );
+}
+
+/// 目标行卡：名称/日期左，剩余右对齐；删除为 Trash（悬停/聚焦可见提示）
+fn draw_target_row(
+    ui: &mut egui::Ui,
+    state: &mut crate::bus::UiState,
+    bus: &crate::bus::Bus,
+    name: &str,
+    at: NaiveDateTime,
+    now: NaiveDateTime,
+    ink: &crate::theme::Ink,
+) {
+    let (rect, _) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 68.0), egui::Sense::hover());
+    ui.painter().rect_filled(
+        rect,
+        egui::epaint::CornerRadius::same(crate::theme::radius_px("md") as u8),
+        crate::theme::card_bg(),
+    );
+    ui.painter().rect_stroke(
+        rect,
+        egui::epaint::CornerRadius::same(crate::theme::radius_px("md") as u8),
+        egui::Stroke::new(1.0, crate::theme::border_color()),
+        egui::StrokeKind::Inside,
+    );
+    ui.painter().text(
+        egui::pos2(rect.left() + 14.0, rect.top() + 10.0),
+        egui::Align2::LEFT_TOP,
+        name,
+        crate::theme::font_medium(crate::theme::font_size("body")),
+        ink.body,
+    );
+    ui.painter().text(
+        egui::pos2(rect.left() + 14.0, rect.bottom() - 9.0),
+        egui::Align2::LEFT_BOTTOM,
+        at.format("%Y-%m-%d %H:%M").to_string(),
+        crate::theme::font_regular(crate::theme::font_size("meta")),
+        ink.meta,
+    );
+    let (text, ended) = format_remaining(at, now);
+    let font = digits::digit_font(crate::theme::font_size("time_sm"));
+    let w = digits::text_width(ui.painter(), &text, &font);
+    digits::draw_centered(
+        ui.painter(),
+        egui::pos2(rect.right() - 36.0 - w / 2.0, rect.center().y),
+        &text,
+        &font,
+        if ended { ink.danger } else { ink.muted },
+    );
+    // 删除：Trash + 两步武装（Check），常显但低对比，悬停转 danger
+    let del_key = format!("cd:{name}");
+    let armed = matches!(&state.armed_delete, Some((k, _)) if *k == del_key);
+    let del_rect = egui::Rect::from_center_size(
+        egui::pos2(rect.right() - 18.0, rect.center().y),
+        egui::vec2(24.0, 24.0),
+    );
+    let del = ui.interact(
+        del_rect,
+        egui::Id::unique(("cd_del", name)),
+        egui::Sense::click(),
+    );
+    icons::draw(
+        ui.painter(),
+        del_rect.center(),
+        14.0,
+        if armed {
+            icons::Icon::Check
+        } else {
+            icons::Icon::Trash
+        },
+        if armed || del.hovered() {
+            ink.danger
+        } else {
+            ink.meta
+        },
+    );
+    if del.has_focus() {
+        ui.painter().rect_stroke(
+            del_rect,
+            egui::epaint::CornerRadius::same(6),
+            egui::Stroke::new(1.5, ink.knob),
+            egui::StrokeKind::Inside,
+        );
+    }
+    let del = del
+        .on_hover_text(if armed {
+            "再次点击确认移除"
+        } else {
+            "删除目标"
+        })
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
+    if del.clicked() {
+        if armed {
+            bus.send(FrontendCommand::RemoveCountdownTarget(name.to_string()));
+            state.armed_delete = None;
+        } else {
+            state.armed_delete = Some((del_key, std::time::Instant::now()));
         }
     }
 }
 
+/// 页脚：名称 + 时刻 + 添加；错误行恒占位（不跳版）
+fn draw_footer(
+    ui: &mut egui::Ui,
+    state: &mut crate::bus::UiState,
+    bus: &crate::bus::Bus,
+    now: &NaiveDateTime,
+    targets: &[(String, NaiveDateTime)],
+) {
+    let ink = crate::theme::ink();
+    let avail = ui.available_width();
+    let name_w = (avail * 0.36).clamp(100.0, 150.0);
+    let at_w = (avail * 0.40).clamp(120.0, 190.0);
+    let draft_at_empty = state.countdown_draft_at.is_empty();
+    let draft_name_empty = state.countdown_draft_name.is_empty();
+    let (err_msg, local_at) = {
+        let name = state.countdown_draft_name.clone();
+        match crate::tools::countdown::parse_target_text(&state.countdown_draft_at) {
+            Some(at) => {
+                let names: Vec<String> = targets.iter().map(|(n, _)| n.clone()).collect();
+                match validate_add(&name, at, *now, &names) {
+                    Ok(()) => match local_from_naive(at) {
+                        Some(local) => (String::new(), Some(local)),
+                        None => ("该时刻在本地时区不存在（夏令时切换跳过）".to_string(), None),
+                    },
+                    Err(_) if draft_name_empty => (String::new(), None),
+                    Err(e) => (e.to_string(), None),
+                }
+            }
+            None if draft_at_empty => (String::new(), None),
+            None => (
+                "时刻无法解析——格式应为 YYYY-MM-DD HH:MM[:SS] 或 YYYY-MM-DD".to_string(),
+                None,
+            ),
+        }
+    };
+    ui.horizontal(|ui| {
+        field::show(
+            ui,
+            "目标名称",
+            "例如 项目发布",
+            &mut state.countdown_draft_name,
+            name_w,
+        );
+        ui.add_space(8.0);
+        field::show(
+            ui,
+            "目标时刻",
+            "YYYY-MM-DD HH:MM",
+            &mut state.countdown_draft_at,
+            at_w,
+        );
+        ui.add_space(8.0);
+        let add = icon_button::show(ui, icons::Icon::Plus, 18.0, false);
+        if add.on_hover_text("添加目标").clicked()
+            && let Some(local) = local_at
+        {
+            bus.send(FrontendCommand::AddCountdownTarget {
+                name: state.countdown_draft_name.clone(),
+                at: local,
+            });
+            state.countdown_draft_name.clear();
+            state.countdown_draft_at.clear();
+        }
+    });
+    let (hint_rect, _) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 16.0), egui::Sense::hover());
+    if !err_msg.is_empty() {
+        ui.painter().text(
+            egui::pos2(hint_rect.left(), hint_rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            &err_msg,
+            crate::theme::font_regular(crate::theme::font_size("meta")),
+            ink.danger,
+        );
+    }
+}
+
 // ===== src/pages/countdown.rs 说明区 =====
-// 输入：UiState.countdown_targets（后端权威列表）+ 草稿输入态；输出：hero/网格/节日
-//   chips/加号（校验）+ Add/RemoveCountdownTarget 命令
-// 逻辑步骤：parse_at 装载 → hero 取「持久目标最近未到者 vs 派生春节目标」更近者
-//   （FIX006.3）→ 网格行卡 + 减号 → 近期节日 chips（year_chips 取 6）→ 加号行
-//   （validate_add：空名/同名/<24h 拒）→ 确认经 local_from_naive（FIX006.8 DST 歧义
-//   取较早一侧、不存在则不提交）后发命令
-// 设计理由：校验/最近目标/派生目标选取全抽纯函数（可测）；FIX006.3：PL014.07 的
-//   「默认派生目标 = next_spring_festival（不落盘）+ 节日 chips」在 UI 层接线，空列表
-//   亦有兜底（原实现仅显示「暂无目标」）；FIX006.2：命令统一经 bus.send（待发队列保底）
-// 已知偏移：草稿日期输入用单行文本（日期件控件未引入——A005 #25 已移除未用的 egui_extras）
-// 异常处理：非法输入/校验失败禁用确认并显示原因；DST 不存在时刻不提交（不改写目标）
-// 关联依赖：core::chinese_calendar（节日派生）/tools::countdown/settings::CountdownTarget；
-//   消费方：pages::Pages
+// 输入：UiState 的目标快照 + 草稿；输出：hero/节日 meta/其他目标行/固定 Footer 添加
+// 逻辑步骤：目标快照 → hero（最近目标 vs 派生春节；列表排除 hero，避免重复）→
+//   节日 meta 行 → 其余目标行（剩余右对齐、Trash 两步确认）→ Footer（名称/时刻/
+//   添加，错误恒占位 16px）
+// 设计理由（PL017）：原 hero + 列表重复同一数字，3 个目标后 Footer 被 ScrollArea
+//   挤出；本版 hero 单列 + 列表只列其余 + 页脚固定；56px hero 拆成 40px 并收号，
+//   280px 抽屉不再两端裁切
+// 异常处理：空草稿不产红字；DST 不存在不提交；非法格式同位红字；hero 空有兜底
+// 关联依赖：tools::countdown/chinese_calendar/widgets(field/digits/empty)；
+//   消费方：pages::Pages 抽屉
 #[cfg(test)]
 mod tests {
     use super::*;
     use chrono::Datelike;
 
-    /// 常规时刻（便于构造固定 now）
     fn at(y: i32, m: u32, d: u32, hh: u32) -> NaiveDateTime {
         NaiveDate::from_ymd_opt(y, m, d)
             .expect("合法日期")
@@ -422,27 +482,24 @@ mod tests {
 
     #[test]
     fn derived_target_present_for_empty_list() {
-        // FIX006.3 回归：空 targets 时 hero 仍有派生春节目标（原实现显示「暂无目标」）
         let now = at(2026, 3, 1, 9);
         let derived = derived_spring_festival(now.date());
         let (name, dat) = derived.expect("派生目标应恒存在");
         assert_eq!(name, "春节");
-        assert!(dat > now, "2026-03 的派生目标应为未来");
+        assert!(dat > now);
         assert_eq!(hero_target(&[], derived, now).map(|(n, _)| n), Some("春节"));
     }
 
     #[test]
     fn derived_target_rolls_to_next_year() {
-        // 跨年用例：now = 12-31 时派生目标切次年春节（PL014.07 验收点）
         let now = at(2026, 12, 31, 9);
         let (_, dat) = derived_spring_festival(now.date()).expect("派生目标");
         assert!(dat > now);
-        assert_eq!(dat.date().year(), 2027, "12-31 应切次年春节");
+        assert_eq!(dat.date().year(), 2027);
     }
 
     #[test]
     fn hero_prefers_nearer_target() {
-        // 持久目标更近取持久目标；更远取派生目标
         let now = at(2026, 3, 1, 9);
         let near = now + Duration::days(10);
         assert_eq!(
@@ -459,23 +516,13 @@ mod tests {
 
     #[test]
     fn local_from_naive_never_silently_shifts() {
-        // FIX006.8 回归：常规时刻解析后与输入一致（原实现 .single().unwrap_or(now) 会静默改写）
         let input = at(2027, 2, 6, 8);
         let local = local_from_naive(input).expect("常规时刻应可解析");
-        assert_eq!(local.naive_local(), input, "不得改写用户所填时刻");
-    }
-
-    #[test]
-    fn grid_cols_breaks_at_card_overflow() {
-        // UIR3 验收：宽窗双列；340px 最小窗内容区（双列卡 164 放不下名称+剩余）降单列
-        assert_eq!(grid_cols(600.0), 2);
-        assert_eq!(grid_cols(380.0), 1, "380 恰破不进双列");
-        assert_eq!(grid_cols(340.0), 1);
+        assert_eq!(local.naive_local(), input);
     }
 
     #[test]
     fn cached_by_date_loads_once_per_date() {
-        // FIX007.7 验收：同日期两次调用只解析一次（计数桩）；跨日重新解析
         static SLOT: DateCache<u32> = DateCache::new();
         let d1 = NaiveDate::from_ymd_opt(2026, 10, 23).expect("日期合法");
         let d2 = NaiveDate::from_ymd_opt(2026, 10, 24).expect("日期合法");
@@ -488,14 +535,14 @@ mod tests {
             loads += 1;
             99
         });
-        assert_eq!(a, 7, "首调返回装载值");
-        assert_eq!(b, 7, "同日期二次调用命中缓存");
-        assert_eq!(loads, 1, "同日期只解析一次");
+        assert_eq!(a, 7);
+        assert_eq!(b, 7);
+        assert_eq!(loads, 1);
         let c = cached_by_date(&SLOT, d2, |_| {
             loads += 1;
             8
         });
-        assert_eq!(c, 8, "跨日重新解析");
-        assert_eq!(loads, 2, "跨日装载恰一次");
+        assert_eq!(c, 8);
+        assert_eq!(loads, 2);
     }
 }

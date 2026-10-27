@@ -84,6 +84,7 @@ pub struct Ink {
     pub muted: Color32,
     pub meta: Color32,
     pub danger: Color32,
+    pub success: Color32,
     pub knob: Color32,
 }
 
@@ -96,6 +97,7 @@ pub fn ink() -> Ink {
         muted: color32_at("text_muted", 154),
         meta: color32_at("text_meta", 138),
         danger: color32_at("danger", 238),
+        success: color32_at("success", 95),
         knob: color32_at("knob", 242),
     })
 }
@@ -103,6 +105,31 @@ pub fn ink() -> Ink {
 /// 卡面底色（colors.card_bg）
 pub fn card_bg() -> Color32 {
     color32_at("card_bg", 20)
+}
+
+/// 输入框填充（colors.input_bg——比卡面更深一档的“洞”）
+pub fn input_bg() -> Color32 {
+    color32_at("input_bg", 11)
+}
+
+/// 输入框描边（colors.input_border——对 input_bg ≥3:1，非文本可辨）
+pub fn input_border_color() -> Color32 {
+    color32_at("input_border", 85)
+}
+
+/// 强描边（colors.border_strong——可点击表面/控件边界，对卡面 ≥3:1）
+pub fn border_strong_color() -> Color32 {
+    color32_at("border_strong", 85)
+}
+
+/// 语义成功色（colors.success——开关 on，替代品牌金）
+pub fn success_color() -> Color32 {
+    color32_at("success", 95)
+}
+
+/// 星点色（colors.star——低对比背景纹理）
+pub fn star_color() -> Color32 {
+    color32_at("star", 42)
 }
 
 /// 卡面悬停底色（colors.hover_bg）
@@ -139,6 +166,65 @@ pub fn tick_idle_color() -> Color32 {
 pub fn font_size(key: &str) -> f32 {
     static C: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();
     cached(&C, key, || Static::get().ui_nested_i64("scale", key) as f32)
+}
+
+/// 中文字体族（Regular，Proportional 默认）——正文/标签
+pub fn font_regular(size: f32) -> egui::FontId {
+    egui::FontId::proportional(size)
+}
+
+/// 中文字体族（Medium 500）——次级标题/按钮/标签
+pub fn font_medium(size: f32) -> egui::FontId {
+    egui::FontId::new(size, egui::FontFamily::Name("medium".into()))
+}
+
+/// 中文字体族（Semibold 600）——页面标题/分区标题/强调
+pub fn font_semibold(size: f32) -> egui::FontId {
+    egui::FontId::new(size, egui::FontFamily::Name("semibold".into()))
+}
+
+/// 布局 token → f32（layout.{key}）
+pub fn layout_f32(key: &str) -> f32 {
+    layout_i64(key) as f32
+}
+
+/// 窗口最大内尺寸（layout.window_max_*）
+pub fn window_max_size() -> egui::Vec2 {
+    egui::vec2(
+        layout_f32("window_max_width"),
+        layout_f32("window_max_height"),
+    )
+}
+
+/// 页面头部高度（layout.page_header）
+pub fn page_header_height() -> f32 {
+    layout_f32("page_header")
+}
+
+/// 页面页脚高度（layout.page_footer）
+pub fn page_footer_height() -> f32 {
+    layout_f32("page_footer")
+}
+
+/// sRGB 相对亮度（WCAG；对比度测试用）
+pub fn relative_luminance(c: Color32) -> f32 {
+    let lin = |v: u8| {
+        let s = v as f32 / 255.0;
+        if s <= 0.04045 {
+            s / 12.92
+        } else {
+            ((s + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * lin(c.r()) + 0.7152 * lin(c.g()) + 0.0722 * lin(c.b())
+}
+
+/// WCAG 对比度（1..21；同色/非法不 panic）
+pub fn contrast_ratio(a: Color32, b: Color32) -> f32 {
+    let la = relative_luminance(a);
+    let lb = relative_luminance(b);
+    let (hi, lo) = if la > lb { (la, lb) } else { (lb, la) };
+    (hi + 0.05) / (lo + 0.05)
 }
 
 /// 间距 token → 逻辑点（spacing.{key}——UIR2 新域：页面/卡内间距不再写魔法数）
@@ -222,7 +308,7 @@ fn dark_visuals() -> Visuals {
     let mut v = Visuals::dark();
     v.panel_fill = window_bg();
     v.window_fill = card_bg();
-    v.extreme_bg_color = sidebar_bg();
+    v.extreme_bg_color = input_bg();
     v.faint_bg_color = hover_bg();
     v.override_text_color = Some(ink().strong);
     // 输入框占位等弱文本对齐 muted 层（egui dark 默认 3.06:1 不达标——UIR2 二轮实测）
@@ -230,8 +316,11 @@ fn dark_visuals() -> Visuals {
     v.selection.stroke.color = color32_at("selection", 42);
     v.widgets.noninteractive.bg_fill = card_bg();
     v.widgets.inactive.bg_fill = card_bg();
+    v.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, input_border_color());
     v.widgets.hovered.bg_fill = hover_bg();
+    v.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, border_strong_color());
     v.widgets.active.bg_fill = color32_at("selection", 42);
+    v.widgets.active.bg_stroke = egui::Stroke::new(1.0, accent_color());
     v.widgets.inactive.fg_stroke.color = ink().strong;
     v.widgets.hovered.fg_stroke.color = ink().strong;
     v.window_corner_radius = corner(radius_px("lg") as u8);
@@ -319,6 +408,31 @@ mod tests {
                 assert_ne!(tiers[i], tiers[j], "文本层级 {i}/{j} 不得同值");
             }
         }
+    }
+
+    #[test]
+    fn control_borders_meet_non_text_contrast() {
+        // PL017：输入框/可点击表面边界 ≥3:1（非文本 1.4.11 口径）
+        let input = contrast_ratio(input_border_color(), input_bg());
+        assert!(input >= 3.0, "输入框边界 {input:.2}:1 < 3:1");
+        let strong = contrast_ratio(border_strong_color(), card_bg());
+        assert!(strong >= 3.0, "强描边 {strong:.2}:1 < 3:1");
+        let track = contrast_ratio(color32_at("track", 48), window_bg());
+        assert!(track >= 1.6, "轨道为弱轨（非控件唯一边界）：{track:.2}");
+        let text = contrast_ratio(ink().strong, accent_color());
+        assert!(
+            text >= 1.5,
+            "文字不应直接压在金底（记录值 {text:.2}）；用 on_accent"
+        );
+        let on_accent = contrast_ratio(on_accent_color(), accent_color());
+        assert!(on_accent >= 4.5, "金底前景 {on_accent:.2} < 4.5:1");
+    }
+
+    #[test]
+    fn semantic_colors_are_not_the_accent() {
+        // PL017：金只做数据/当前值；成功/焦点不得复用 accent
+        assert_ne!(success_color(), accent_color());
+        assert_ne!(ink().knob, accent_color());
     }
 
     #[test]

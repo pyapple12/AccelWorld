@@ -9,7 +9,7 @@
 cargo workspace 双 crate，依赖单向 `app → core`（CI 机器强制零反向）：
 
 - `crates/accel-core`：纯业务（时间膨胀/农历/天气/闹钟/配置/数据表/工具/接口契约），零 GUI 依赖
-- `crates/accel-app`：egui 前端（实心主题窗口/侧栏导航五页 + 设置浮窗/自绘控件/系统集成），一切后端写操作经 core::interface 命令/事件总线（只读 token/DTO 允许直取，见 AGENTS 契约边界）
+- `crates/accel-app`：egui 前端（实心主题窗口/星盘主仪 + 悬浮仪器坞 + 抽屉页 + 设置抽屉/自绘控件/系统集成），一切后端写操作经 core::interface 命令/事件总线（只读 token/DTO 允许直取，见 AGENTS 契约边界）
 
 ## 构建与运行
 

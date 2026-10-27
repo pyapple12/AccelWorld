@@ -8,6 +8,7 @@ pub mod alarm;
 pub mod clock;
 pub mod countdown;
 pub mod ime_sim;
+pub mod settings;
 pub mod weather;
 pub mod world;
 
@@ -46,15 +47,21 @@ impl Pages {
         }
     }
 
-    /// 总装配（UIR4 模型）：非 Clock 页先占右侧仪器抽屉（卡面 + 发丝左缘），
-    /// 星盘主仪恒驻中央 CentralPanel——抽屉开合只缩让、不遮挡、不消失
-    /// PL016.06 medium：抽屉开合过冲滑入（bouncy 弹簧，动画期 16ms 提频）
+    /// 总装配（PL017）：非时钟页/设置占右侧抽屉（PageHeader + Scroll + Footer），
+    /// 星盘主仪恒驻中央 CentralPanel；<760 抽屉全宽（compact），开合只缩让不遮挡。
     pub fn ui(&mut self, ui: &mut egui::Ui, state: &mut UiState, bus: &Bus) {
-        // UiState.current_page 单源：Pages.current 镜像自 state.current_page（仪器坞点击直改）
         self.current = state.current_page;
+        // ESC：优先关设置，否则回时钟（页头关闭的键盘等价）
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if state.settings_open {
+                state.settings_open = false;
+            } else if state.current_page != PageId::Clock {
+                state.current_page = PageId::Clock;
+            }
+        }
+        let drawer_open = self.current != PageId::Clock || state.settings_open;
 
-        // 抽屉开合弹簧（0=收起 → 1=全开；过冲到 ~1.1 再回摆；减少动效直取目标）
-        let drawer_open = self.current != PageId::Clock;
+        // 抽屉开合弹簧（0=收起 → 1=全开；reduce 直取；ζ=1 无过冲）
         let target = if drawer_open { 1.0 } else { 0.0 };
         let reduce = crate::theme::reduce_motion(ui.ctx());
         if reduce {
@@ -68,33 +75,59 @@ impl Pages {
                     .request_repaint_after(std::time::Duration::from_secs_f32(0.016));
             }
         }
-        // 过冲钳 1.06（抽屉比全开宽 6% 的呼吸感足够，防大窗溢出）
-        let spring_v = state.drawer_spring.value.min(1.06);
+        let spring_v = state.drawer_spring.value.clamp(0.0, 1.0);
+        let compact = ui.available_width() < 760.0;
 
-        if spring_v > 0.005 {
-            // FIX011.03：宽度比例与钳界 token 单源（theme::drawer_width 纯函数）
-            let full_w = crate::theme::drawer_width(ui.available_width());
+        if spring_v > 0.005 && drawer_open {
+            let full_w = if compact {
+                ui.available_width()
+            } else {
+                crate::theme::drawer_width(ui.available_width())
+            };
             egui::Panel::right("page_drawer")
                 .exact_size(full_w * spring_v)
                 .frame(
                     egui::Frame::new()
                         .fill(crate::theme::card_bg())
-                        .stroke(egui::Stroke::new(1.0, crate::theme::border_color()))
-                        .inner_margin(egui::Margin::same(16)),
+                        .stroke(egui::Stroke::new(1.0, crate::theme::border_color())),
                 )
                 .show(ui, |inner| {
-                    let page: &mut dyn Page = match self.current {
-                        PageId::Clock => &mut self.clock,
-                        PageId::Countdown => &mut self.countdown,
-                        PageId::World => &mut self.world,
-                        PageId::Weather => &mut self.weather,
-                        PageId::Alarm => &mut self.alarm,
+                    let (title, subtitle) = if state.settings_open {
+                        ("设置", Some("外观 · 动效 · 关于"))
+                    } else {
+                        (page_title(self.current), None)
                     };
-                    page.ui(inner, state, bus);
+                    if crate::widgets::page_header::show(inner, title, subtitle) {
+                        if state.settings_open {
+                            state.settings_open = false;
+                        } else {
+                            state.current_page = PageId::Clock;
+                        }
+                    }
+                    let content = egui::Frame::new().inner_margin(egui::Margin {
+                        left: 20,
+                        right: 20,
+                        top: 8,
+                        bottom: 16,
+                    });
+                    content.show(inner, |body| {
+                        if state.settings_open {
+                            settings::ui(body, state);
+                        } else {
+                            let page: &mut dyn Page = match self.current {
+                                PageId::Clock => &mut self.clock,
+                                PageId::Countdown => &mut self.countdown,
+                                PageId::World => &mut self.world,
+                                PageId::Weather => &mut self.weather,
+                                PageId::Alarm => &mut self.alarm,
+                            };
+                            page.ui(body, state, bus);
+                        }
+                    });
                 });
         }
 
-        // 星盘主仪（时钟页恒驻 home——仪器在住，抽屉在查）
+        // 星盘主仪（时钟页恒驻 home；compact 抽屉全宽时中央宽度为 0，自然隐藏）
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
@@ -104,7 +137,17 @@ impl Pages {
             .show(ui, |inner| {
                 self.clock.ui(inner, state, bus);
             });
-        // 设置浮窗绘制在 window.rs::paint_settings_pop
+    }
+}
+
+/// 抽屉页标题（结构即信息；PL017 页头）
+pub fn page_title(page: PageId) -> &'static str {
+    match page {
+        PageId::Clock => "时钟",
+        PageId::Countdown => "倒计时",
+        PageId::World => "世界时钟",
+        PageId::Weather => "天气",
+        PageId::Alarm => "闹钟",
     }
 }
 
@@ -147,10 +190,10 @@ pub struct AlarmPage;
 
 // ===== src/pages/mod.rs 说明区 =====
 // 输入：UiState（current_page/settings_open 等）+ 各页自持临时输入态；输出：装配
-// 逻辑步骤：current 镜像 → 非 Clock 页 Panel::right 抽屉（exact_size 宽 46% 钳
-//   [280,420]，卡面 + 发丝描边）→ CentralPanel 星盘主仪恒驻
-// 设计理由（UIR4）：时钟是「住在里面」的仪表——主仪永不下场，抽屉页是「查阅」
-//   用的临时面板，开合只缩让主仪（dial_diameter 随宽自适应）；抽屉卡面与窗底
-//   分层（文本层在卡面 5.93..14.16 全部实测达标）
+// 逻辑步骤：ESC 关设置/回时钟 → current 镜像 → 非 Clock/设置 Panel::right 抽屉
+//   （PageHeader 56 + ScrollArea + Footer；32% 宽钳 [320,400]；<760 全宽）→
+//   CentralPanel 星盘主仪恒驻
+// 设计理由（PL017）：时钟是「住在里面」的仪表——主仪永不下场，抽屉页是「查阅」
+//   用的临时面板；三段式让页脚添加控件永远可达；设置与四页同构，不再是三行浮窗
 // 异常处理：无 panic 面（页 id 固定五档，match 穷尽）
-// 关联依赖：crate::bus（Bus/PageId/UiState）；消费方：window.rs
+// 关联依赖：crate::bus（Bus/PageId/UiState）/widgets::page_header；消费方：window.rs

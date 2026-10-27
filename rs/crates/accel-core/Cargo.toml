@@ -2,7 +2,7 @@
 # 铁律：零 egui/eframe 依赖（CI 机器强制，z.plan 修订一）
 [package]
 name = "accel-core"
-version = "0.6.2"
+version = "0.6.3"
 edition = "2024"
 description = "AccelWorld 核心业务域：时间膨胀/农历/天气/闹钟/配置/数据表"
 
@@ -23,7 +23,7 @@ httpmock = { workspace = true }
 chrono-tz = { workspace = true }
 
 # ===== crates/accel-core/Cargo.toml 说明区 =====
-# version = "0.6.2"：随产品 minor 段人工推进（A011 订正——原 0.6.0 滞后失实）；
+# version = "0.6.3"：随产品 minor 段人工推进（A011 订正——原 0.6.0 滞后失实）；
 #   显示版本单一来源在 config/static/base.json，经 app 侧 build.rs 注入，core 自身不感知版本
 # 依赖全部经 workspace.dependencies 继承，本文件禁止直写版本号（版本单源）
 # httpmock 仅 dev：本地桩服务支撑 weather 传输层五路径单测，不进正式产物

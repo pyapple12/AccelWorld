@@ -1,5 +1,5 @@
 {
-  "version": "0.6.2.2",
+  "version": "0.6.3.0",
   "rate_min": 1.0,
   "rate_max": 20.0,
   "default_rate": 2.0,
@@ -26,8 +26,8 @@
   "quick_alarm_minutes": [15, 30, 60, 240],
   "window_x": 100,
   "window_y": 100,
-  "window_width": 900,
-  "window_height": 500,
+  "window_width": 960,
+  "window_height": 640,
   "window_min_width": 520,
   "window_min_height": 420,
   "clock_tick_ms": 100,

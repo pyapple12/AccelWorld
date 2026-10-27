@@ -12,7 +12,7 @@ cargo workspace 双 crate 桌面应用：基于加速倍率的时间膨胀时钟
 ```
 [输入]   用户设定加速倍率（rate_min 1.0 - rate_max 20.0，来自 config/static/base.json）
 [引擎]   accel-core::time_dilation 按倍率换算：加速时钟 1 秒 = 现实 1/rate 秒
-[展示]   accel-app（egui + eframe/glow）：单环双针星盘主仪恒驻 + 底部仪器坞 + 抽屉页 + 设置浮窗（单强调色）
+[展示]   accel-app（egui + eframe/glow）：单环双针星盘主仪恒驻 + 悬浮仪器坞 + 抽屉页（页头/滚动/页脚）+ 设置抽屉（单强调色）
 [周边]   农历干支节气 / 世界时钟 / 倒计时 / 天气（Open-Meteo）/ 闹钟 / 托盘 / 全局热键
 [持久化] 用户配置 config/user_config.json（exe 同目录，FIX007.15 基准；倍率/主题/城市/时区/倒计时/窗口几何/闹钟）
 ```
@@ -48,12 +48,12 @@ rs/                              # cargo workspace 根
     src/util/                    # file_io（原子写/白名单）/ retry（泛型重试）
   crates/accel-app/              # egui 前端 crate
     src/main.rs / lib.rs         # 入口 + 编译期版本（compiled_version）
-    src/window.rs                # 主窗装配器（AppHandle：drain→底部仪器坞→页总装→平台→节奏 + 截图/几何探针）
+    src/window.rs                # 主窗装配器（AppHandle：drain→窗口夹取→仪器坞→页总装→平台→节奏 + 截图/几何探针）
     src/bus.rs                   # 信号总线（UiState 快照 + drain/apply + 命令出口）
     src/theme.rs                 # 设计系统（ui.json colors 实心色板 → Visuals 深色单板，仅深色定案）
     src/logging.rs               # tracing 每日滚动 + panic hook 崩溃栈
-    src/pages/                   # 五页（clock/countdown/world/weather/alarm）+ 设置浮窗
-    src/widgets/                 # 自绘控件（digits/icons/icon_button/chip/slider）
+    src/pages/                   # 五页（clock/countdown/world/weather/alarm）+ 设置抽屉
+    src/widgets/                 # 自绘控件（digits/icons/icon_button/dock/page_header/field/switch/empty/rate_strip/chip/slider/toast）
     src/tools/                   # 展示运算纯函数（clock/countdown/alarm_text）
     src/platform/                # 系统集成（tray/notify/hotkey，非 Windows 桩化）
   assets/                        # 托盘图标等内嵌资源
@@ -124,16 +124,16 @@ pub async fn fetch(&self, city: &str, force: bool) -> Result<WeatherData, Weathe
 - `bus.rs`（app 侧）：每帧 `logic()` 首行 drain 全部事件 → `UiState::apply` 更新快照；命令经 `send` 统一出口
 - 硬保障：CI 关卡 4 校验 core 依赖树零 egui/eframe（单向分层从约定升级为机器强制）
 
-### 3.7 界面装配 — 星盘主仪 + 仪器坞 + 抽屉页（UIR4 现役）
+### 3.7 界面装配 — 星盘主仪 + 悬浮仪器坞 + 抽屉页（PL017 现役）
 
-- `window.rs`：`AppHandle`（logic：drain/探针/退出序列 + ui：底部仪器坞 Panel → 页总装 → 设置浮窗）
-- `pages/mod.rs`：总装配——非时钟页 Panel::right 抽屉（卡面+发丝，46% 宽钳 280..420）+ CentralPanel 星盘主仪恒驻
-- `clock.rs`：单环双针表盘（24h 刻度环纯量尺 + 金长针=加速此刻 + 灰细针=现实此刻 + 轴毂；中心等宽 hero+×徽标）——两针速差即膨胀（钟表本源语法；UIR4.6 定案：含义唯一，刻度=尺/指针=数据，废除同义重复的填金弧与双环）
-- `theme.rs`：ui.json `colors.*` 深色实心单板（仅深色定案）→ egui Visuals + 语义色（strong/body/muted/meta 五层，对比度全矩阵 ≥4.5:1 实测）/字号/间距/圆角访问器
-- `widgets/`：digits（等宽数字位）/ icons（矢量图标零字体依赖）/ icon_button（含指针对）/ chip（单行安静徽标）/ slider
-- 高 DPI 纪律：面/文本坐标一律逻辑点；标题栏底色经 DWMWA_CAPTION_COLOR 恒钉深色（仅深色定案）
-- 走查门：`ACCELWORLD_UI_SHOT` 截图探针（真窗逐页 PrintWindow PNG；底部约一坞高条带为已知捕获伪影，真机不可见）+ 用户桌面终审
-- 历史：玻璃渲染（WGSL + GlassScene + Acrylic）废弃（UIR）；UIR 初代灰石板金调（UIR2 子夜星图换装）；UIR2 侧栏五页模型（UIR4 改星盘主仪+仪器坞+抽屉）
+- `window.rs`：`AppHandle`（logic：drain/探针/退出序列 + ui：首帧窗口几何夹取 → 悬浮仪器坞 → 页总装 → toast）；设置不再是浮窗，而是抽屉页；标题去版本号、窗口用托盘图标
+- `pages/mod.rs`：总装配——非时钟页/设置 Panel::right 抽屉（PageHeader 56 + ScrollArea + 内容 + Footer；32% 宽钳 320..400；<760 全宽 compact）+ CentralPanel 星盘主仪恒驻；ESC 关设置/回时钟
+- `clock.rs`：单环双针表盘（24h 刻度环纯量尺 + 金针=加速时刻 24h 取模 + 灰针=现实 24h + 两针间金弧；盘下 readout：加速 64/现实 24/×倍率；360px 短倍率条）；短窗（<380 高）退化为数字版
+- `theme.rs`：ui.json `colors.*` 深色实心单板（仅深色定案）→ egui Visuals + 语义色（strong/body/muted/meta/success 五层，对比度全矩阵 ≥4.5:1 实测）/input_border/border_strong/字号/间距/圆角访问器；MiSans Regular/Medium/Semibold 三档字重
+- `widgets/`：digits（等宽数字位）/ icons（矢量图标零字体依赖）/ icon_button / dock（悬浮带标签）/ page_header / field / switch / empty / rate_strip / slider / chip / toast
+- 高 DPI 纪律：面/文本坐标一律逻辑点；标题栏底色经 DWMWA_CAPTION_COLOR 恒钉深色；窗口几何按当前显示器工作区夹取（max 1200×820）
+- 走查门：`ACCELWORLD_UI_SHOT` 截图探针（真窗逐页 PrintWindow PNG，`PW_CLIENTONLY` 已消除底部白带；固定 `ACCELWORLD_UI_SHOT_GEOMETRY` 测试几何）+ 用户桌面终审
+- 历史：玻璃渲染（WGSL + GlassScene + Acrylic）废弃（UIR）；UIR 初代灰石板金调（UIR2 子夜星图换装）；UIR2 侧栏五页模型（UIR4 改星盘主仪+仪器坞+抽屉）；PL017 结构重排（图标坞/盘下读数/抽屉三段式/字重/短倍率条）
 
 ### 3.8 日志 — 每日滚动 + 崩溃栈
 

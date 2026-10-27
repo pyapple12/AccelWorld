@@ -1,6 +1,6 @@
 # AccelWorld —— 加速世界世界钟
 
-[![Version](https://img.shields.io/badge/Version-0.6.2.2-blue.svg)](rs/config/static/base.json)
+[![Version](https://img.shields.io/badge/Version-0.6.3.0-blue.svg)](rs/config/static/base.json)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](rs/rust-toolchain.toml)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
@@ -27,16 +27,16 @@
 ## 特性
 
 - **时间膨胀计算**：根据可配置的加速倍率（1.0x - 20.0x）计算自定义时间流速
-- **实时时钟**：加速时间大字英雄区（等宽数字位不抖动）+ 标准时间对照 + 星轨刻度日进度
-- **实心桌面 UI**：「子夜星图」深色主题（黛蓝星图底 + 雄黄金单强调）+ 底部仪器坞导航 + 矢量图标（零字体依赖）+ 三级动效（可一键减少）
-- **星盘主仪**：单环双针 24 小时表盘常驻——金长针为加速时刻、灰细针为现实时刻，同一表盘上两针速差直观呈现时间膨胀（高倍率下金针肉眼可见地甩开灰针）；倒计时/世界/天气/闹钟为右侧抽屉页（开启时主仪缩让不退场）
+- **实时时钟**：加速时间大字英雄区（等宽数字位不抖动）+ 标准时间对照 + 盘下读数带
+- **实心桌面 UI**：「子夜星图」深色主题（黛蓝星图底 + 雄黄金单强调）+ 悬浮仪器坞（图标 + 标签）+ 矢量图标（零字体依赖）+ MiSans Regular/Medium/Semibold 字重层级 + 三级动效（可一键减少）
+- **星盘主仪**：单环双针 24 小时表盘常驻——金针为加速时刻（24h 取模，高倍率下肉眼可见地甩开灰针）、灰细针为现实时刻，两针间金色弧显示膨胀差；读数在盘下，指针不再穿过数字；倒计时/世界/天气/闹钟为右侧抽屉页（PageHeader + 内容滚动 + 固定 Footer，开启时主仪缩让不退场）
 - **农历信息**：天干地支年、生肖、时辰、月相、节气、公历节日、拜财神方向
-- **世界时钟**：城市矩阵走时 + 昼夜指示，支持增删城市与基准时区切换
-- **倒计时功能**：多目标列表，法定/传统节日自动派生
-- **天气显示**：Open-Meteo 免费 API，当前 / 逐小时（24 点曲线）/ 七日预报，单城市可换（城市选择器，选择即持久化）；失败保留旧值 + 缓存角标，断网重启不空白
+- **世界时钟**：紧凑城市行走时 + 昼夜指示 + 「基准」文字标，支持增删城市与基准时区切换
+- **倒计时功能**：多目标列表（hero 单列下一个、列表列其余），法定/传统节日自动派生
+- **天气显示**：Open-Meteo 免费 API，当前 / 逐小时（24 点无框曲线）/ 七日范围条，单城市可换（城市选择器，选择即持久化）；失败保留旧值 + 重试，断网重启不空白
 - **闹钟功能**：多闹钟、预设/自定义铃声、一键快捷添加、系统通知提醒、删除两步确认
 - **系统集成**：系统托盘菜单树（显示/隐藏/退出，关闭按钮隐藏驻留）+ 全局热键（Ctrl+S 保存 / Ctrl+Q 退出）
-- **配置持久化**：倍率、城市、时区、倒计时目标、闹钟、窗口几何等自动保存
+- **配置持久化**：倍率、城市、时区、倒计时目标、闹钟、窗口几何等自动保存；窗口启动按当前显示器工作区夹取（尺寸/位置不在屏外）
 
 ## 快速开始
 
@@ -66,20 +66,21 @@ pwsh rs/ci.ps1
 # 仅测试
 cargo test --workspace
 
-# UI 截图探针（真窗逐页 PNG 后自动退出，输出到指定目录）
-$env:ACCELWORLD_UI_SHOT=".temp/ui_shots"; cargo run -p accel-app
+# UI 截图探针（真窗逐页 PNG 后自动退出，输出到指定目录；固定测试几何）
+$env:ACCELWORLD_UI_SHOT=".temp/ui_shots"; $env:ACCELWORLD_UI_SHOT_GEOMETRY="900x500"; cargo run -p accel-app
 ```
 
 ## 使用说明
 
 ### 界面操作
 
-- **导航**：底部仪器坞图标切换——时钟图标回主仪 home，倒计时 / 世界时钟 / 天气 / 闹钟以右侧抽屉页展开（主仪缩让仍走时）；右端齿轮打开设置浮窗（版本信息）
-- **调节倍率**：时钟页拖动滑杆（拖动即生效，松手落盘），支持 0.1x 步进
-- **世界时钟**：点击城市磁贴切换基准时区，加号添加城市、悬停减号移除（至少保留一个）
-- **倒计时**：加号新增目标（名称 + 日期时间），减号移除；默认目标为下一个春节
-- **天气**：城市选择器切换查看城市（选择即持久化），刷新按钮强制拉取
-- **闹钟**：快捷按钮（15/30/60/240 分钟）或自定义添加（时间/标签/重复星期），行卡开关与删除
+- **导航**：底部悬浮仪器坞（图标 + 标签）切换——时钟图标回主仪 home，倒计时 / 世界时钟 / 天气 / 闹钟以右侧抽屉页展开（主仪缩让仍走时）；抽屉页头可关闭（ESC 同效），右端齿轮打开设置抽屉（外观/动效/关于）
+- **调节倍率**：时钟页 360px 短条（1×/20× 端标，拖动即生效，松手落盘），支持 0.1x 步进与方向键
+- **世界时钟**：点击城市行切换基准时区（行内「基准」文字标），行尾垃圾桶两步确认移除；「添加城市」常驻页脚
+- **倒计时**：页脚固定表单新增目标（名称 + 日期时间），Trash 两步移除；hero 显示下一个目标，列表只列其余目标，避免同一数字重复
+- **天气**：城市选择器切换查看城市（选择即持久化），刷新按钮强制拉取；逐时曲线与七日范围条值在卡面，不压金条
+- **闹钟**：快捷按钮（15/30/60/240 分钟，2×2）或页脚自定义添加（标签/时间），行卡开关与 Trash 删除
+- **窗口**：默认 960×640，上限 1200×820；启动时按显示器工作区夹取；短窗（<380 高）时钟退化为数字版，抽屉 <760 全宽
 - **托盘**：关闭按钮隐藏到托盘后台驻留；右键弹出菜单（显示窗口 / 隐藏到托盘 / 退出），双击托盘图标还原
 - **全局热键**：Ctrl+S 保存 / Ctrl+Q 退出（窗口失焦亦生效）
 
@@ -91,29 +92,32 @@ $env:ACCELWORLD_UI_SHOT=".temp/ui_shots"; cargo run -p accel-app
 ## 项目结构
 
 ```
-rs/                              # cargo workspace 根（全部命令在此执行）
-├── Cargo.toml                   # [workspace] members = ["crates/*"] + 统一依赖版本
+
+rs/ # cargo workspace 根（全部命令在此执行）
+├── Cargo.toml # [workspace] members = ["crates/*"] + 统一依赖版本
 ├── rust-toolchain.toml / rustfmt.toml / clippy.toml
-├── ci.ps1                       # 四关卡本地 CI（fmt / clippy / test / 依赖树）
-├── README.md                    # Rust 工程房规与结构说明
-├── fixtures/                    # golden 夹具（Python 0.6.0.0 行为快照，parity 基准）
-├── config/static/               # 应用静态配置（零硬编码 token）
-│   ├── base.json                # 应用参数 + version（版本单一来源）
-│   ├── ui.json                  # 字体/布局 tokens/颜色
-│   ├── holidays.json            # 法定节假日（逐年导出）
-│   └── world_cities.json        # 世界时钟城市表（名称/坐标/IANA 时区；天气候选另用 rs/data/cities.json）
+├── ci.ps1 # 四关卡本地 CI（fmt / clippy / test / 依赖树）
+├── README.md # Rust 工程房规与结构说明
+├── fixtures/ # golden 夹具（Python 0.6.0.0 行为快照，parity 基准）
+├── config/static/ # 应用静态配置（零硬编码 token）
+│ ├── base.json # 应用参数 + version（版本单一来源）
+│ ├── ui.json # 字体/布局 tokens/颜色
+│ ├── holidays.json # 法定节假日（逐年导出）
+│ └── world_cities.json # 世界时钟城市表（名称/坐标/IANA 时区；天气候选另用 rs/data/cities.json）
 ├── crates/
-│   ├── accel-core/              # 纯业务（零 GUI 依赖，CI 强制）
-│   │   └── src/                 # interface/types/time_dilation/chinese_calendar/weather/
-│   │                            #   alarm/settings/static_config/audio/data/util
-│   └── accel-app/               # egui 前端
-│       └── src/                 # window/bus/theme/logging/lib/main.rs
-│           ├── pages/           # 五页（clock/countdown/world/weather/alarm）+ 设置浮窗
-│           ├── widgets/         # 自绘控件（digits/icons/icon_button/chip/slider）
-│           ├── tools/           # 展示运算纯函数
-│           └── platform/        # 系统集成（tray/notify/hotkey）
-├── assets/                      # 托盘图标等内嵌资源
-└── logs/                        # 运行日志（gitignore）
+│ ├── accel-core/ # 纯业务（零 GUI 依赖，CI 强制）
+│ │ └── src/ # interface/types/time_dilation/chinese_calendar/weather/
+│ │ # alarm/settings/static_config/audio/data/util
+│ └── accel-app/ # egui 前端
+│ └── src/ # window/bus/theme/logging/lib/main.rs
+│ ├── pages/ # 五页（clock/countdown/world/weather/alarm）+ 设置抽屉
+│ ├── widgets/ # 自绘控件（digits/icons/icon_button/dock/page_header/field/
+│ │ # switch/empty/rate_strip/slider/chip/toast）
+│ ├── tools/ # 展示运算纯函数
+│ └── platform/ # 系统集成（tray/notify/hotkey）
+├── assets/ # 托盘图标/窗口图标；fonts/（MiSans Regular/Medium/Semibold 子集）
+└── logs/ # 运行日志（gitignore）
+
 ```
 
 ## 依赖
@@ -161,6 +165,10 @@ A：点击窗口关闭按钮即隐藏到系统托盘驻留；托盘右键菜单�
 
 A：任意名称 + 日期时间目标，另自动派生当年/次年法定节假日与传统节日；未设置时默认指向上一个/下一个春节。
 
+### Q6：窗口很小时为什么星盘不见了？
+
+A：这是 PL017 的紧凑布局：可用高 <380 时时钟退化为数字版（避免 200px 盘内塞大字），抽屉页在 <760 宽时全宽显示；窗口启动时会按当前显示器工作区夹取，最大 1200×820，dock 与设置不会落到屏幕外。
+
 ## 维护者
 
 - 作者：[pyapple12](https://github.com/pyapple12)
@@ -169,3 +177,7 @@ A：任意名称 + 日期时间目标，另自动派生当年/次年法定节假
 ## 许可证
 
 本项目基于 [GNU GPL v3 许可证](./LICENSE) 开源，允许自由使用、修改及分发，但必须保留源代码并以相同许可证发布。
+
+```
+
+```

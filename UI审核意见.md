@@ -1,5 +1,7 @@
 # AccelWorld UI 审核意见
 
+> **2026-10-28 复审更新**：本文件为 2026-10-27 的上一轮评审记录；其“**不建议完全重新设计**”的结论已被 `UI审核意见_20261028.md` 撤回（本轮基于六页实拍与三档窗口实测，判定需要 PL017 结构性重排）。本文件其余证据与条目保留作历史对照，不再作为当前设计依据。
+
 > 生成：2026-10-27 · 评审基线：HEAD `7083456`（V0.6.1.8），文中行号以该版本为准
 > 方式：**只读静态评审**——读代码与设计令牌，未构建、未运行；本文件是本次评审对仓库的唯一写入
 > 评审标准：Anthropic frontend-design 技能 + taste-skill 应用界面量规（`app-screens.md`，源自 23 个真实产品屏实测）+ gamedev `game-ui-ux` / `game-feel` 跨引擎纪律技能 + kinetics 弹簧参数 + icon assets 选型决策树
@@ -17,17 +19,17 @@ UI 骨架**已达到设计技能的核心要求，多项超出**：星图身份�
 
 ## 二、已达标项（复核确认，保持现状）
 
-| 量规要求 | 现状证据 |
-|---|---|
+| 量规要求                                   | 现状证据                                                   |
+| ------------------------------------------ | ---------------------------------------------------------- |
 | 颜色只上数据不上 chrome（accent 份额极低） | accent 唯一用色纪律（`theme.rs:62`）；语义色五层按角色命名 |
-| 表面扁平、1px 发丝线分离、零阴影 | 全实色无透明无 GL（`theme.rs` 说明区） |
-| 数字等宽 / tabular figures | `digits.rs` 槽宽制，强于 tabular-nums |
-| 产品签名元素（only this product has） | 星盘主仪单环双针（`pages/clock.rs`，UIR4.6 定案） |
-| HUD 事件驱动、禁止轮询 | 命令/事件总线推送 + Tick 快照，无每帧读状态 |
-| 导航退后（active 非彩色强调） | 侧栏比窗底深一档（sidebar_bg `#0B0F19`） |
-| 图标零字体依赖 | `widgets/icons.rs` 16 个矢量描线，线宽随尺寸缩放 |
-| 字号地板 | meta 12px ≥ 11px house floor |
-| 布局随容器自适应（非绝对像素） | `dial_diameter` 钳 [200,440] + `hero_fit_scale` 收号 |
+| 表面扁平、1px 发丝线分离、零阴影           | 全实色无透明无 GL（`theme.rs` 说明区）                     |
+| 数字等宽 / tabular figures                 | `digits.rs` 槽宽制，强于 tabular-nums                      |
+| 产品签名元素（only this product has）      | 星盘主仪单环双针（`pages/clock.rs`，UIR4.6 定案）          |
+| HUD 事件驱动、禁止轮询                     | 命令/事件总线推送 + Tick 快照，无每帧读状态                |
+| 导航退后（active 非彩色强调）              | 侧栏比窗底深一档（sidebar_bg `#0B0F19`）                   |
+| 图标零字体依赖                             | `widgets/icons.rs` 16 个矢量描线，线宽随尺寸缩放           |
+| 字号地板                                   | meta 12px ≥ 11px house floor                               |
+| 布局随容器自适应（非绝对像素）             | `dial_diameter` 钳 [200,440] + `hero_fit_scale` 收号       |
 
 ---
 

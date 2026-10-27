@@ -1,6 +1,6 @@
-//! 主窗装配器（ui/main_window.py 的 Rust 对等物；UIR 重塑：实心桌面装配）
-//! AppHandle + eframe::App 实现：logic（drain/探针/退出）+ ui（仪器坞→页总装
-//! （抽屉+主仪）→toast→设置浮窗）（FIX012.04 订正：UIR4 已废侧栏）
+//! 主窗装配器（ui/main_window.py 的 Rust 对等物；PL017 实心桌面装配）
+//! AppHandle + eframe::App 实现：logic（窗口夹取/探针/退出）+ ui（悬浮仪器坞→页总装
+//! （抽屉+主仪）→toast）（PL017：设置改为抽屉页，标题去版本，窗口用托盘图标）
 //! 玻璃管线/Acrylic/透明窗口整体废弃——标准不透明桌面应用（UIR 定案）
 
 use std::sync::Arc;
@@ -61,6 +61,9 @@ pub struct AppHandle {
     ui_shot_switched: Option<std::time::Instant>,
     /// 标题栏句柄缓存（首帧取到后存档——每帧 DWM 钉色用）
     titlebar_hwnd: Option<isize>,
+    /// 启动几何（内尺寸；首帧按当前显示器夹取一次——PL017.01）
+    initial_geometry: (f32, f32, f32, f32),
+    geometry_clamped: bool,
     /// 托盘句柄（构造失败降级 None——无托盘环境行为无损）
     tray: Option<crate::platform::tray::TrayHandles>,
     /// 全局热键句柄（注册失败降级 None）
@@ -92,9 +95,11 @@ impl eframe::App for AppHandle {
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
 
-    /// 帧绘制：底部仪器坞 → 页总装 → toast → 设置浮窗 → 重绘节奏（UIR4 装配）
+    /// 帧绘制：悬浮仪器坞 → 页总装 → toast → 重绘节奏（PL017 装配）
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        // PL017.01：首帧按当前显示器工作区夹取窗口（存档可能来自更大屏幕/旧 DPI）
+        self.clamp_window_once(&ctx);
         // PL016.06：减少动效开关写入 ctx data（控件层经 theme::reduce_motion 读取）
         ctx.data_mut(|d| {
             d.insert_temp(
@@ -115,54 +120,39 @@ impl eframe::App for AppHandle {
             apply_caption_color(hwnd, crate::theme::sidebar_bg());
         }
 
-        // 底部仪器坞（UIR4：侧栏废除——导航为图标仪器排，星盘主仪恒驻中央）
+        // 底部仪器坞（PL017）：居中浮动 pill + 五页标签 + 设置齿轮
+        let dock_items = [
+            crate::widgets::dock::DockItem {
+                page: PageId::Clock,
+                icon: sidebar_icon(PageId::Clock),
+                label: sidebar_label(PageId::Clock),
+            },
+            crate::widgets::dock::DockItem {
+                page: PageId::Countdown,
+                icon: sidebar_icon(PageId::Countdown),
+                label: sidebar_label(PageId::Countdown),
+            },
+            crate::widgets::dock::DockItem {
+                page: PageId::World,
+                icon: sidebar_icon(PageId::World),
+                label: sidebar_label(PageId::World),
+            },
+            crate::widgets::dock::DockItem {
+                page: PageId::Weather,
+                icon: sidebar_icon(PageId::Weather),
+                label: sidebar_label(PageId::Weather),
+            },
+            crate::widgets::dock::DockItem {
+                page: PageId::Alarm,
+                icon: sidebar_icon(PageId::Alarm),
+                label: sidebar_label(PageId::Alarm),
+            },
+        ];
         egui::Panel::bottom("instrument_dock")
             .exact_size(crate::theme::layout_i64("dock_height") as f32)
-            .frame(
-                egui::Frame::new()
-                    .fill(crate::theme::sidebar_bg())
-                    .inner_margin(egui::Margin::same(8)),
-            )
+            .frame(egui::Frame::new().fill(crate::theme::window_bg()))
             .show(ui, |ui| {
-                // 坞顶发丝（与内容区分层的唯一线——结构即信息）
-                let top = ui.cursor().left_top();
-                let w = ui.available_width();
-                ui.painter().rect_filled(
-                    egui::Rect::from_min_size(top, egui::vec2(w, 1.0)),
-                    egui::epaint::CornerRadius::same(0),
-                    crate::theme::border_color(),
-                );
-                ui.add_space(crate::theme::spacing("xs") + 1.0);
-                ui.horizontal_centered(|ui| {
-                    ui.add_space(crate::theme::spacing("lg"));
-                    // 五仪导航（时钟=回 home；选中金底深图标）
-                    for page in PAGE_ORDER {
-                        let selected = self.state.current_page == page;
-                        let btn = crate::widgets::icon_button::show(
-                            ui,
-                            sidebar_icon(page),
-                            20.0,
-                            selected,
-                        );
-                        if btn.on_hover_text(sidebar_label(page)).clicked() {
-                            self.state.current_page = page;
-                        }
-                        ui.add_space(crate::theme::spacing("xs"));
-                    }
-                    // 右端：设置齿轮
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.add_space(crate::theme::spacing("lg"));
-                        let gear = crate::widgets::icon_button::show(
-                            ui,
-                            crate::widgets::icons::Icon::Gear,
-                            20.0,
-                            self.state.settings_open,
-                        );
-                        if gear.on_hover_text("设置").clicked() {
-                            self.state.settings_open = !self.state.settings_open;
-                        }
-                    });
-                });
+                crate::widgets::dock::show(ui, &mut self.state, &dock_items);
             });
 
         // 页面总装（星盘主仪恒驻 + 非时钟页右侧仪器抽屉）
@@ -170,9 +160,6 @@ impl eframe::App for AppHandle {
 
         // 应用内 toast（PL016.07：右上堆叠；存活期自提频，零忙转不破）
         crate::widgets::toast::paint(&ctx, &mut self.state.toasts);
-
-        // 设置浮窗
-        self.paint_settings_pop(&ctx);
 
         // UI 截图探针（UIR.2：逐页 PrintWindow 出 PNG 后自动退出）
         self.ui_shot_tick(ui.ctx(), frame);
@@ -188,7 +175,7 @@ impl eframe::App for AppHandle {
     }
 }
 
-/// 页 → 侧栏图标（纯函数可测）
+/// 页 → 导航图标（纯函数可测）
 fn sidebar_icon(page: PageId) -> crate::widgets::icons::Icon {
     match page {
         PageId::Clock => crate::widgets::icons::Icon::Clock,
@@ -199,7 +186,7 @@ fn sidebar_icon(page: PageId) -> crate::widgets::icons::Icon {
     }
 }
 
-/// 页 → 侧栏文字（纯函数可测）
+/// 页 → 导航文字（纯函数可测）
 fn sidebar_label(page: PageId) -> &'static str {
     match page {
         PageId::Clock => "时钟",
@@ -211,6 +198,30 @@ fn sidebar_label(page: PageId) -> &'static str {
 }
 
 impl AppHandle {
+    /// 首帧窗口几何夹取（PL017.01）：显示器逻辑尺寸 − 安全边距，且不超过
+    /// ui.json window_max_*；位置夹到可见区。只做一次，之后尊重用户手动调整。
+    fn clamp_window_once(&mut self, ctx: &Context) {
+        if self.geometry_clamped {
+            return;
+        }
+        let Some(monitor) = ctx.input(|i| i.viewport().monitor_size) else {
+            return;
+        };
+        let max = crate::theme::window_max_size();
+        let (sx, sy, sw, sh) = self.initial_geometry;
+        let (x, y, w, h) =
+            clamp_geometry_to_monitor(self.initial_geometry, monitor, (520.0, 420.0), max);
+        if (w - sw).abs() > 1.0 || (h - sh).abs() > 1.0 {
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(w, h)));
+        }
+        if (x - sx).abs() > 1.0 || (y - sy).abs() > 1.0 {
+            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(x, y)));
+        }
+        self.geometry_clamped = true;
+        tracing::info!(
+            "窗口几何夹取: {sw:.0}x{sh:.0}@{sx:.0},{sy:.0} → {w:.0}x{h:.0}@{x:.0},{y:.0}"
+        );
+    }
     /// 探针时序（隐藏期仍由 logic 驱动）：隐藏 → 显示 → 退出三段模拟
     /// 隐藏/显示两侧打印同源状态指纹，供"隐藏→显示状态保持"断言比对
     fn probe_tick(&mut self, ctx: &Context) {
@@ -261,14 +272,16 @@ impl AppHandle {
                     // (-32000,-32000)，存档将被 parse_window_geometry 越域拒绝
                     // （走「保存失败」误弹链且几何未被存档）
                     let minimized = ctx.input(|i| i.viewport().minimized) == Some(true);
-                    if !minimized && let Some(rect) = ctx.input(|i| i.viewport().outer_rect) {
+                    let inner = ctx.input(|i| i.viewport().inner_rect);
+                    if !minimized && let Some(outer) = ctx.input(|i| i.viewport().outer_rect) {
+                        // PL017.01：保存 inner 尺寸（含标题栏的 outer 会把窗口逐次撑大）
+                        let (gw, gh) = inner
+                            .map(|r| (r.width(), r.height()))
+                            .unwrap_or((outer.width(), outer.height()));
                         self.bus.send(FrontendCommand::SetWindowGeometry {
                             geometry: format!(
                                 "{:.0},{:.0},{:.0},{:.0}",
-                                rect.min.x,
-                                rect.min.y,
-                                rect.width(),
-                                rect.height()
+                                outer.min.x, outer.min.y, gw, gh
                             ),
                         });
                     }
@@ -332,8 +345,8 @@ impl AppHandle {
     const UI_SHOT_FRAME: std::time::Duration = std::time::Duration::from_millis(16);
 
     /// UI 截图探针（UIR.2 开发期自检）：两段式逐页 PrintWindow 出 PNG 后自动退出——
-    /// step 0-4 五页（每拍完切下一页并起结算窗，step 4 拍完开设置浮窗）、step 5 拍
-    /// 设置浮窗（拍完关闭）、step 6 触发退出（不再出图——防覆盖设置帧）。
+    /// step 0-4 五页（每拍完切下一页并起结算窗，step 4 拍完开设置页）、step 5 拍
+    /// 设置抽屉（拍完关闭）、step 6 触发退出（不再出图——防覆盖设置帧）。
     /// PL016.17：PrintWindow 在 update 内读到的是上一帧 present，低帧率下切页后
     /// 立即采会拍切换前旧帧（复审实证 00≡01/02≡03 哈希对、04/05 名实错位）——
     /// 切页先进结算窗（16ms 提频驱动新页 present 与抽屉弹簧走完）再采。
@@ -395,7 +408,7 @@ impl AppHandle {
             if ok { "ok" } else { "FAIL" }
         ));
 
-        // 状态推进：拍完当前页切下一页并起结算窗；五页后开设置浮窗；设置帧拍完关闭
+        // 状态推进：拍完当前页切下一页并起结算窗；五页后开设置页；设置帧拍完关闭
         if step < PAGE_ORDER.len() - 1 {
             self.state.current_page = PAGE_ORDER[step + 1];
         } else {
@@ -432,76 +445,6 @@ impl AppHandle {
             PlatformAction::Quit => self.quit_requested = true,
         }
     }
-
-    /// 设置浮窗绘制（PL013.10：egui::Window + 失焦/ESC 关）
-    /// UIR 实心蒙皮：窗体 fill 走 token、圆角随 radius.lg
-    /// A008 #2：主题三段切换段已删（定案仅深色），浮窗留存版本信息
-    fn paint_settings_pop(&mut self, ctx: &Context) {
-        if !self.state.settings_open {
-            return;
-        }
-        let mut keep_open = true;
-        let frame = egui::Frame::new()
-            .fill(crate::theme::card_bg())
-            .corner_radius(egui::epaint::CornerRadius::same(
-                crate::theme::radius_px("lg") as u8,
-            ))
-            .stroke(egui::Stroke::new(1.0, crate::theme::border_color()))
-            .inner_margin(egui::Margin::same(crate::theme::spacing("md") as i8));
-        let settings_window = egui::Window::new("设置")
-            .open(&mut keep_open)
-            .collapsible(false)
-            .resizable(false)
-            .title_bar(false)
-            .frame(frame)
-            .anchor(
-                // UIR4：侧栏废除后重锚右下（坞上方——齿轮就在坞右端）
-                egui::Align2::RIGHT_BOTTOM,
-                [
-                    -24.0,
-                    -(crate::theme::layout_i64("dock_height") as f32 + 12.0),
-                ],
-            )
-            .show(ctx, |ui| {
-                // A008 #2：主题三段切换段已删（定案仅深色，ThemePref 配置域仅存档）
-                ui.label(
-                    egui::RichText::new(format!(
-                        "加速世界 · 版本 {}",
-                        accel_core::static_config::Static::get().version()
-                    ))
-                    .size(crate::theme::font_size("body"))
-                    .color(crate::theme::ink().strong),
-                );
-                ui.add_space(4.0);
-                ui.label(
-                    egui::RichText::new("深色主题（实心桌面）")
-                        .size(crate::theme::font_size("meta"))
-                        .color(crate::theme::ink().meta),
-                );
-                // PL016.06（审核 #7 铁律）：减少动效开关——关闭三级动效（会话级）
-                ui.add_space(4.0);
-                ui.checkbox(&mut self.state.reduce_motion, "减少动效");
-            });
-        // 点窗外关闭：主键点击且交互点不在窗体 rect 内（.10 检验项）
-        if keep_open && let Some(win) = &settings_window {
-            let clicked_outside = ctx.input(|i| {
-                i.pointer.primary_clicked()
-                    && i.pointer
-                        .interact_pos()
-                        .is_some_and(|pos| !win.response.rect.contains(pos))
-            });
-            if clicked_outside {
-                keep_open = false;
-            }
-        }
-        // ESC 关闭
-        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-            keep_open = false;
-        }
-        if !keep_open {
-            self.state.settings_open = false;
-        }
-    }
 }
 
 /// 探针标记：stdout（人读）+ tracing 文件日志（脚本断言用，避开 stdout 管道缓冲）
@@ -532,6 +475,22 @@ pub fn close_action(has_tray: bool, has_hotkey: bool) -> CloseAction {
     } else {
         CloseAction::Quit
     }
+}
+
+/// 启动几何按显示器夹取（纯函数，PL017.01）：尺寸不超过显示器−边距与 max，
+/// 位置夹到可见区；返回 (x,y,w,h)。显示器未知时调用方跳过。
+pub fn clamp_geometry_to_monitor(
+    saved: (f32, f32, f32, f32),
+    monitor: Vec2,
+    min: (f32, f32),
+    max: Vec2,
+) -> (f32, f32, f32, f32) {
+    let (sx, sy, sw, sh) = saved;
+    let w = sw.min((monitor.x - 48.0).max(min.0)).min(max.x).max(min.0);
+    let h = sh.min((monitor.y - 110.0).max(min.1)).min(max.y).max(min.1);
+    let x = sx.clamp(24.0, (monitor.x - w - 24.0).max(24.0));
+    let y = sy.clamp(24.0, (monitor.y - h - 48.0).max(24.0));
+    (x, y, w, h)
 }
 
 /// 启动快照填充（A005 #2）：列表域显式拉取——core 的 spawn 首帧只推 Tick，
@@ -606,8 +565,9 @@ fn capture_window_png(hwnd: isize, path: &std::path::Path) -> bool {
         let hdc_mem = CreateCompatibleDC(Some(hdc_win));
         let hbmp = CreateCompatibleBitmap(hdc_win, w, h);
         let old = SelectObject(hdc_mem, hbmp.into());
-        // PW_RENDERFULLCONTENT = 0x2：采 DWM 合成后内容（UI 截图探针专用路径）
-        let printed = PrintWindow(hwnd, hdc_mem, PRINT_WINDOW_FLAGS(0x2));
+        // PW_CLIENTONLY(0x1) | PW_RENDERFULLCONTENT(0x2)：只采客户区并取 DWM 合成后内容
+        // （PL017.20：原仅 0x2 会把整窗画进客户区尺寸位图，底部 dock 被裁成白带）
+        let printed = PrintWindow(hwnd, hdc_mem, PRINT_WINDOW_FLAGS(0x3));
         let mut bmi = BITMAPINFO::default();
         bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
         bmi.bmiHeader.biWidth = w;
@@ -722,8 +682,9 @@ pub fn run_with_counter(
 
     // 窗口几何恢复（UIR.7）：用户存档 "x,y,w,h" 优先，缺档/非法回退 token 基准；
     // A009 #6：恢复侧自行钳到最小尺寸下限（winit 创建期不施加 min_inner_size 实证）
+    // PL017.01：截图探针固定测试几何，不读用户存档；首帧再按当前显示器夹取
     let base = accel_core::static_config::Static::get();
-    let (x, y, w, h) = clamped_restore_geometry(
+    let (mut x, mut y, mut w, mut h) = clamped_restore_geometry(
         iface
             .get_window_geometry()
             .and_then(|ref g| accel_core::interface::parse_window_geometry(g)),
@@ -733,19 +694,37 @@ pub fn run_with_counter(
             base.base_f64("window_min_height") as f32,
         ),
     );
+    if ui_shot_dir.is_some() {
+        let (sw, sh) = std::env::var("ACCELWORLD_UI_SHOT_GEOMETRY")
+            .ok()
+            .and_then(|v| {
+                let (a, b) = v.split_once('x')?;
+                Some((a.trim().parse::<f32>().ok()?, b.trim().parse::<f32>().ok()?))
+            })
+            .unwrap_or((1200.0, 720.0));
+        x = 80.0;
+        y = 80.0;
+        w = sw;
+        h = sh;
+    }
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_inner_size(Vec2::new(w, h))
+        .with_position(Pos2::new(x, y))
+        // A008 #8：最小尺寸下限入 token（页内减法布局不再塌负宽）
+        .with_min_inner_size(Vec2::new(
+            base.base_f64("window_min_width") as f32,
+            base.base_f64("window_min_height") as f32,
+        ))
+        // PL017.01：窗口上限；首帧再按显示器工作区夹取
+        .with_max_inner_size(crate::theme::window_max_size())
+        .with_title("加速世界");
+    if let Ok(icon) =
+        eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/accelworld-tray.png"))
+    {
+        viewport = viewport.with_icon(icon);
+    }
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size(Vec2::new(w, h))
-            .with_position(Pos2::new(x, y))
-            // A008 #8：最小尺寸下限入 token（页内减法布局不再塌负宽）
-            .with_min_inner_size(Vec2::new(
-                base.base_f64("window_min_width") as f32,
-                base.base_f64("window_min_height") as f32,
-            ))
-            .with_title(format!(
-                "加速世界 {}",
-                accel_core::static_config::Static::get().version()
-            )),
+        viewport,
         ..Default::default()
     };
 
@@ -811,6 +790,8 @@ pub fn run_with_counter(
                 ui_shot_last: std::time::Instant::now(),
                 ui_shot_switched: None,
                 titlebar_hwnd: None,
+                initial_geometry: (x, y, w, h),
+                geometry_clamped: false,
                 tray,
                 hotkeys,
                 quit_requested: false,
@@ -838,6 +819,10 @@ pub fn run_with_counter(
 /// SIL/MI 授权免费商用）；font_family token = MiSans 时优先走内嵌，
 /// 系统文件仅作 token 自定义时的回退路径
 const MISANS_EMBEDDED: &[u8] = include_bytes!("../../../assets/fonts/MiSans-Regular-sub.ttf");
+/// 中等字重（500）——次级标题/按钮/标签；PL017 层级（Regular 之上、Semibold 之下）
+const MISANS_MEDIUM: &[u8] = include_bytes!("../../../assets/fonts/MiSans-Medium-sub.ttf");
+/// 半粗字重（600）——页面标题/分区标题/强调；PL017 层级
+const MISANS_SEMIBOLD: &[u8] = include_bytes!("../../../assets/fonts/MiSans-Semibold-sub.ttf");
 
 /// 字体注入（PL013.03 + A005 #8 接线）：族名读 ui.json token
 /// `font_family`（中文，默认族）/ `font_family_digits`（数字等宽族）
@@ -878,7 +863,24 @@ pub fn install_fonts(ctx: &Context) {
         tracing::warn!("{cjk_family} 未找到，中文回退 egui 内置字体（可能 tofu）");
     }
     install_digit_family(&mut fonts, digit_family);
+    install_weight_families(&mut fonts);
     ctx.set_fonts(fonts);
+}
+
+/// 中文字重族装载（PL017）：Medium 500 / Semibold 600 与 Regular 同源子集；
+/// 两族各以自身为首选、Regular(cjk) 为兜底，缺失时回退默认 proportional
+fn install_weight_families(fonts: &mut egui::FontDefinitions) {
+    for (name, bytes) in [("medium", MISANS_MEDIUM), ("semibold", MISANS_SEMIBOLD)] {
+        fonts.font_data.insert(
+            name.into(),
+            egui::FontData::from_owned(bytes.to_vec()).into(),
+        );
+        let family = egui::FontFamily::Name(name.into());
+        let list = fonts.families.entry(family).or_default();
+        list.insert(0, name.into());
+        list.push("cjk".into());
+    }
+    tracing::info!("中文字重加载: MiSans Medium 500 / Semibold 600（内嵌子集）");
 }
 
 /// 数字等宽族装载（FIX011.11 单源）：命中则插 Monospace 队首，未命中回退内置
@@ -941,7 +943,7 @@ mod tests {
 
     #[test]
     fn sidebar_icon_label_matrix() {
-        // 五页侧栏图标/文字矩阵（导航语义锚点——替代原 dock 矩阵测试）
+        // 五页导航图标/文字矩阵（导航语义锚点——替代原 dock 矩阵测试）
         assert_eq!(
             sidebar_icon(PageId::Clock),
             crate::widgets::icons::Icon::Clock
@@ -992,6 +994,28 @@ mod tests {
         );
         assert!(!exit_ready(false, Duration::from_millis(299), t));
         assert!(exit_ready(false, t, t), "超时兜底放行");
+    }
+
+    #[test]
+    fn clamp_geometry_keeps_window_in_monitor() {
+        // PL017.01：1550×1058 存档在 1536×816 逻辑屏上夹到 ≤1200×820 且位置可见
+        let (x, y, w, h) = clamp_geometry_to_monitor(
+            (-7.0, -7.0, 1550.0, 1058.0),
+            Vec2::new(1536.0, 816.0),
+            (520.0, 420.0),
+            Vec2::new(1200.0, 820.0),
+        );
+        assert!(w <= 1200.0 && h <= 820.0, "尺寸未夹取: {w}x{h}");
+        assert!(x >= 24.0 && y >= 24.0, "位置越界: {x},{y}");
+        assert!(x + w <= 1536.0 - 24.0 + 0.1, "右缘越界: {}", x + w);
+        // 正常存档不被改写
+        let (x, y, w, h) = clamp_geometry_to_monitor(
+            (100.0, 100.0, 900.0, 500.0),
+            Vec2::new(1536.0, 816.0),
+            (520.0, 420.0),
+            Vec2::new(1200.0, 820.0),
+        );
+        assert_eq!((x, y, w, h), (100.0, 100.0, 900.0, 500.0));
     }
 
     #[test]
