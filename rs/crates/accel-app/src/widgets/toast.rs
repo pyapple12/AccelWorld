@@ -106,4 +106,4 @@ pub fn paint(ctx: &egui::Context, toasts: &mut Vec<Toast>) {
 //   手写零依赖且动画参数/主题全走 ui.json motion 段（自持纪律）；出场选滑出
 //   而非淡出（Frame 无 alpha 管线，滑出同样成立且实现干净）
 // 异常处理：空队列零绘制零提频；reduce_motion 直出直隐（PL016.06 开关联动）
-// 关联配置：motion.toast_{ttl,in,out}_ms；消费方：window.rs（每帧调用）
+// 关联配置：motion.toast_{ttl,in,out}_ms + layout.toast_step（FIX012.04 补记）；消费方：window.rs（每帧调用）

@@ -105,11 +105,25 @@ struct HolidaysDoc(HashMap<String, HashMap<String, String>>);
 
 static HOLIDAYS: OnceLock<HashMap<String, HashMap<String, String>>> = OnceLock::new();
 
+/// holidays 数据是否覆盖指定年份（FIX012.08 纯函数可测——运维触发信号：
+/// 2027 安排公布后重跑导出脚本前的静默缺失不再无日志）
+fn holidays_covers_year(table: &HashMap<String, HashMap<String, String>>, year: i32) -> bool {
+    table.contains_key(&year.to_string())
+}
+
 fn holidays_table() -> &'static HashMap<String, HashMap<String, String>> {
     HOLIDAYS.get_or_init(|| {
-        serde_json::from_str::<HolidaysDoc>(HOLIDAYS_JSON)
-            .expect("holidays.json 解析失败（嵌入产物损坏）")
-            .0
+        let table: HashMap<String, HashMap<String, String>> =
+            serde_json::from_str::<HolidaysDoc>(HOLIDAYS_JSON)
+                .expect("holidays.json 解析失败（嵌入产物损坏）")
+                .0;
+        let year = chrono::Local::now().year();
+        if !holidays_covers_year(&table, year) {
+            tracing::warn!(
+                "holidays 数据不含当年 {year}，法定节假日降级为空——年末安排公布后重跑导出脚本"
+            );
+        }
+        table
     })
 }
 
@@ -299,7 +313,8 @@ pub fn get_lunar_info(now: DateTime<Local>) -> String {
 //   lunar_ymd_to_solar 农历转公历 / qingming_of_gregorian_year 清明节气日）
 // 逻辑步骤：lunar-rust 直调六字段（干支/生肖/月/日/月相/节气）→ 时辰表/财神表/
 //   西式节日表本地匹配 → 节日三级兜底（T1 农历节日 → T2 holidays.json → T3 表）；
-//   节日派生：两年轮（当年+次年）扫春节/除夕锚点 + 清明节气表取值，horizon 365
+//   节日派生：两年轮（当年+次年）扫法定 holidays 表合并 + LUNAR_FESTIVAL_RULES
+//   全部 8 项农历规则 + 清明节气表取值 + 除夕回退（腊月最后一天），horizon 365
 //   天过滤后按日升序出 chips（除夕回退 = 腊月最后一天，无「除夕」键年份走此路）
 // 设计理由：三分法出入清单（z.plan B'）实测定案——lunar-rust 与 lunar-python 同源，
 //   六字段 749 条比对全等直调；时辰/财神/西式节日三表纯移植；T2 数据文件化将
@@ -381,6 +396,17 @@ mod tests {
         assert_eq!(info.cai_shen_dir, "正北", "越界月取首档兜底");
         let info0 = get_chinese_lunar_calendar(2026, 0, 1, 12);
         assert_eq!(info0.cai_shen_dir, "正北");
+    }
+
+    #[test]
+    fn holidays_covers_year_check() {
+        // FIX012.08（A012 #8）验收：数据覆盖判定纯函数——真实嵌入表含 2026 不含 2027
+        let table = holidays_table();
+        assert!(holidays_covers_year(table, 2026), "数据上界年份应覆盖");
+        assert!(
+            !holidays_covers_year(table, 2027),
+            "上界外年份应判不覆盖（触发装载期 warn）"
+        );
     }
 
     #[test]

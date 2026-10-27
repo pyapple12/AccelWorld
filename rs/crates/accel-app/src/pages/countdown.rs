@@ -327,6 +327,36 @@ impl crate::pages::Page for crate::pages::CountdownPage {
         // 加号行：名称 + 日期时间文本（解析单一来源 tools::countdown::parse_target_text）
         // 校验（空名/同名/<24h 拒）→ 确认经 local_from_naive（DST 歧义取较早一侧）
         // UIR2 二轮：宽度随可用宽自适应（原固定 150+200 在最小窗内容区 340px 溢出）
+        // FIX012.01：错误提示计算提于行外——空草稿（初始态/添加成功清空后）不产红字
+        //   （FIX011.16 无门常驻回归收口，对照 alarm.rs:143「非空才校验」门）；空名同门
+        let draft_at_empty = state.countdown_draft_at.is_empty();
+        let draft_name_empty = state.countdown_draft_name.is_empty();
+        let (err_msg, local_at) = {
+            let name = state.countdown_draft_name.clone();
+            match crate::tools::countdown::parse_target_text(&state.countdown_draft_at) {
+                Some(at) => {
+                    let names: Vec<String> =
+                        targets.iter().map(|(n, _)| (*n).to_string()).collect();
+                    match validate_add(&name, at, now, &names) {
+                        Ok(()) => match local_from_naive(at) {
+                            Some(local) => (String::new(), Some(local)),
+                            // FIX011.16：DST 跳过的时刻不存在——红字同位反馈不静默
+                            None => ("该时刻在本地时区不存在（夏令时切换跳过）".to_string(), None),
+                        },
+                        // FIX012.01：空名红字加门（未输入名称不提示）
+                        Err(_) if draft_name_empty => (String::new(), None),
+                        Err(e) => (e.to_string(), None),
+                    }
+                }
+                // FIX012.01：空草稿不产红字
+                None if draft_at_empty => (String::new(), None),
+                // FIX011.16：解析失败不再静默 no-op——红字与 validate 失败同位反馈
+                None => (
+                    "时刻无法解析——格式应为 YYYY-MM-DD HH:MM[:SS] 或 YYYY-MM-DD".to_string(),
+                    None,
+                ),
+            }
+        };
         ui.horizontal(|ui| {
             let row_w = ui.available_width();
             let name_w = ((row_w - 46.0) * 0.42).clamp(80.0, 150.0);
@@ -339,30 +369,6 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                 .hint_text("YYYY-MM-DD[ HH:MM[:SS]]")
                 .desired_width(at_w)
                 .show(ui);
-            let (err_msg, local_at) = {
-                let name = state.countdown_draft_name.clone();
-                match crate::tools::countdown::parse_target_text(&state.countdown_draft_at) {
-                    Some(at) => {
-                        let names: Vec<String> =
-                            targets.iter().map(|(n, _)| (*n).to_string()).collect();
-                        match validate_add(&name, at, now, &names) {
-                            Ok(()) => match local_from_naive(at) {
-                                Some(local) => (String::new(), Some(local)),
-                                // FIX011.16：DST 跳过的时刻不存在——红字同位反馈不静默
-                                None => {
-                                    ("该时刻在本地时区不存在（夏令时切换跳过）".to_string(), None)
-                                }
-                            },
-                            Err(e) => (e.to_string(), None),
-                        }
-                    }
-                    // FIX011.16：解析失败不再静默 no-op——红字与 validate 失败同位反馈
-                    None => (
-                        "时刻无法解析——格式应为 YYYY-MM-DD HH:MM[:SS] 或 YYYY-MM-DD".to_string(),
-                        None,
-                    ),
-                }
-            };
             let add_resp = crate::widgets::icon_button::show(
                 ui,
                 crate::widgets::icons::Icon::Plus,
@@ -379,10 +385,11 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                 state.countdown_draft_name.clear();
                 state.countdown_draft_at.clear();
             }
-            if !err_msg.is_empty() {
-                ui.label(egui::RichText::new(&err_msg).color(ink.danger));
-            }
         });
+        // FIX012.11：错误红字独立行（原 horizontal 行内长文案窄抽屉横向溢出）
+        if !err_msg.is_empty() {
+            ui.label(egui::RichText::new(&err_msg).color(ink.danger));
+        }
     }
 }
 

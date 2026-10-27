@@ -1,7 +1,7 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告 + Rust 重构总纲）
-> 当前版本：0.6.2.1（FIX011 第 11 轮审计修复完成：六命令拒绝分流补齐/toast 步距与抽屉宽等参数进 token/滑杆点击落盘/注释失实族清扫/死键清理；PL016 已收口推送 0e2252f）
+> 当前版本：0.6.2.2（FIX012 第 12 轮审计修复完成：倒计时空草稿红字回归收口/磁盘缓存上限 token 化/测试时间炸弹拆除/闹钟自动禁用幂等化/serde 死 derive 清理；FIX011 已收口推送 7578106）
 > 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；FIX007–FIX010、UIR2-4 轮（至 7083456）均已提交推送，当前阶段为 PL016 审核精修（待提交）
 > 更新（2026-10-17）：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow——UIR 定案 wgpu 废弃）；Python 版全量归档 `.archived/`（git 忽略），本文件自 PL011 起记录 RS 任务
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
@@ -677,3 +677,18 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] FIX011.18 [P3] series_strings 错误语义分档（A011 #18） —— weather.rs 元素非串改报 BadType(key)（对照 series_numbers 错型/缺失分档）+ :144 注释语病订正（本函数不产 Null 变体）；TDD：新测试 series_string_wrong_type_is_badtype 先 FAIL（SeriesMissing 实锤）后 PASS；验证：weather 域 24 测试全绿 + 四关卡（2026-10-28 完成）
 - [x] FIX011.19 [P3] 退出几何存档钳域（A011 #19） —— 需验证先行完成：egui 0.37 ViewportInfo.minimized: Option<bool> 字段实证（registry viewport_info.rs:69）；window.rs 退出存档前最小化守卫 `minimized != Some(true)` 跳过（Windows 最小化 OS 矩形 -32000 惯例不再入存档/不触发误弹链）；验证：字段实证 + 代码锚点 + 四关卡（最小化→退出全链路手测留用户）（2026-10-28 完成）
 - [x] FIX011.20 收尾 —— 四关卡 ALL_GREEN + cargo test --workspace 结果行全量 209（app 74+bin 1+core 114+parity 20，较 0.6.2.0 增 2）+ 截图探针六帧 exit 0 哈希全异 + token 对账双绿 + 反向验收（.temp/verify_fix011_accept.md）+ bump 0.6.2.1（五处同步）+ 文档连带（z.plan A011 状态翻转/本组整行翻转/m.milestone 条目）+ commit 草案；验证：pwsh rs/ci.ps1 ALL_GREEN（2026-10-28 完成）
+
+### FIX012: 第12轮审计修复 [audit#A012]
+
+- [x] FIX012.01 [P2] 倒计时空草稿红字常驻（A012 #1，FIX011.16 回归） —— countdown.rs err_msg 计算提于行外并加 `draft_at_empty`/`draft_name_empty` 双门（空串/空名不产红字）；验证：探针 01_countdown 帧视觉实证空草稿无红字（加号行仅 placeholder）+ 现树测试全绿 + 四关卡（2026-10-28 完成）
+- [x] FIX012.02 [P2] 磁盘缓存 30 天上限进 token（A012 #2，A011 漏报补列） —— base.json 增 `weather_disk_cache_max_age_s: 2592000`，weather.rs 改 `disk_cache_max_age_secs()` Static 读取（下钳 1 防损坏配置）；验证：token 对账双绿（7 枚 weather_* 全消费）+ weather 域测试全绿 + 四关卡（2026-10-28 完成）
+- [x] FIX012.03 [P3] 测试时间炸弹拆除（A012 #3） —— alarm.rs 夹具 created_at "2027-01-01T06:00:00"→"9999-12-31T00:00:00"（零产品代码改动）；验证：该测试绿 + 全量回归绿（2026-10-28 完成，硬截止前 64 天落地）
+- [x] FIX012.04 [P3] 说明区/注释失实族订正（A012 #4，4 处合并） —— ①toast.rs 关联配置补 layout.toast_step；②slider.rs 头/尾「松手→on_commit」改「松手/点击→on_commit 恰一发」；③window.rs 模块头+说明区「侧栏→当前页」改「仪器坞→页总装（抽屉+主仪）→toast→设置浮窗」；④chinese_calendar.rs 订正为「法定表+8 项农历规则+清明+除夕回退」；验证：rg 失实词清零（2026-10-28 完成）
+- [x] FIX012.05 [P3] serde derive 死代码族处置（A012 #5） —— ①types.rs 新测试模块 theme_pref_serde_matches_as_str（to_value/from_value 双向 + as_str/parse 锚定——「rename 锚定」承诺可失败化）；②alarm.rs 删 Alarm::Deserialize 与 AlarmDraft 双 derive + serde(default) 族属性 + 孤儿 default_true + Deserialize import；验证：新单测绿 + 全量回归绿 + 四关卡（2026-10-28 完成）
+- [x] FIX012.06 [P3] 闹钟自动禁用幂等化（A012 #6） —— alarm.rs 增 `set_enabled(id, enabled)`（返回实际变更——禁用不回翻，clippy 可折叠 if 经 let 链收拢），interface.rs:380 调度侧 toggle 替换；验证：新单测 set_enabled_is_idempotent_disable（重复禁用不报不变更/不回翻/ghost 无变更）+ 现树闹钟测试全绿（2026-10-28 完成）
+- [x] FIX012.07 [P3] 前置校验双次装载收拢评估（A012 #7） —— 短期接受（单命令 ms 级、已知偏移族）；中期登记：六配置方法改返回三态枚举（Rejected/Idempotent/Saved(IO)）供总线直用、前置判定与落盘单次装载收拢——登记即完成（触发条件：配置写命令再增加时）；验证：登记条目在 z.plan A012 #7 + 本条目（2026-10-28 完成）
+- [x] FIX012.08 [P3] holidays 装载期超界提醒（A012 #8） —— chinese_calendar.rs 增纯函数 `holidays_covers_year` + get_or_init 闭包内当年不覆盖时 tracing::warn!（装载期一次性）；验证：新单测 holidays_covers_year_check（真实嵌入表含 2026 不含 2027——数据更新时该断言同步触发测试更新，运维双保险）+ 四关卡（2026-10-28 完成）
+- [x] FIX012.09 [P3] toast 步距残余处置（A012 #9，A011 #2 残余） —— ui.json toast_step 88→120（覆盖 3 行 error 卡 + 间距）；中期「逐卡实测高度堆叠」登记缓行不变；验证：token 对账 + 探针六帧 exit 0（2026-10-28 完成）
+- [x] FIX012.10 [P3] drawer_width 锚定测试（A012 #10） —— theme.rs 补 drawer_width_ratio_and_clamp 单测（宽窗钳上限/窄窗钳下限/中段比例式对照）；验证：新测试绿 + 全量回归（2026-10-28 完成）
+- [x] FIX012.11 [P3] 倒计时红字布局（A012 #11，随 01 一并） —— countdown.rs 红字移出 horizontal 行外独立行（全宽不裁切）；验证：探针帧布局正常 + 窄抽屉最小窗手测留用户（2026-10-28 完成）
+- [x] FIX012.12 收尾 —— 四关卡 ALL_GREEN + cargo test --workspace 结果行全量 213（app 75+bin 1+core 117+parity 20，较 0.6.2.1 增 4）+ 截图探针六帧 exit 0 哈希全异（01 帧视觉实证 .01）+ token 对账双绿 + 反向验收（.temp/verify_fix012_accept.md）+ bump 0.6.2.2（五处同步）+ 文档连带（z.plan A012 状态翻转/本组整行翻转/m.milestone 条目）+ commit 草案；验证：pwsh rs/ci.ps1 ALL_GREEN（2026-10-28 完成）

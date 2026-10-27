@@ -38,7 +38,7 @@ pub fn knob_center_y(track: Rect) -> f32 {
 }
 
 /// 滑杆交互 + 绘制（页面调用）：拖动/点击 → on_change(rate) 实时；
-/// 松手 → on_commit(rate)（落盘去抖等价——ApplyRate 单发）
+/// 松手/点击 → on_commit(rate)（FIX012.04 订正：点击同刻落盘，恰一发）
 pub fn show(
     ui: &mut egui::Ui,
     track_h: f32,
@@ -176,7 +176,7 @@ fn draw(painter: &egui::Painter, track: Rect, track_h: f32, ratio: f32) {
 // ===== src/widgets/slider.rs 说明区 =====
 // 输入：min/max/当前倍率 + change/commit 回调；输出：三层几何绘制 + 值映射
 // 逻辑步骤：ratio_to_rate（0.1 步进）→ 拖动期 on_change 每变化帧一发 →
-//   drag_stopped on_commit 恰一发；绘制底轨/填充（零进度整圆定案）/旋钮浮点居中
+//   松手/点击 on_commit 恰一发；绘制底轨/填充（零进度整圆定案）/旋钮浮点居中
 // 设计理由：Python CapsuleSlider 三纪律平移——零进度保留整圆（用户定案）、
 //   TRACK_PAD 边距（fill/cap 内缩 12 起点防触裁剪界）、旋钮圆心=轨垂直中心
 //   （浮点除 2 奇偶轨高均分）；命令频率语义（拖动 SetRate 高频/松手 ApplyRate

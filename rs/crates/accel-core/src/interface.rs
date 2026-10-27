@@ -376,9 +376,13 @@ impl AppInterface {
                             let now = clock.now();
                             let hits = itf.check_alarms(now);
                             for alarm in hits {
-                                // 一次性触发后自动禁用（列表回推供 UI 刷新）
+                                // 一次性触发后自动禁用（FIX012.06：幂等直设不回翻——
+                                // 原 toggle 盲翻在两次锁之间可被用户手动关停插队翻回）
                                 let changed = if alarm.is_one_time() {
-                                    itf.alarms.lock().expect("闹钟锁中毒").toggle_alarm(&alarm.id)
+                                    itf.alarms
+                                        .lock()
+                                        .expect("闹钟锁中毒")
+                                        .set_enabled(&alarm.id, false)
                                 } else {
                                     false
                                 };

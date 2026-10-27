@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, NaiveDateTime, Timelike};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 
 use crate::static_config::Static;
@@ -116,28 +116,25 @@ pub fn default_sound_value() -> String {
 }
 
 /// 闹钟实体（Python Alarm.to_dict 字段名/默认值完全一致——持久化兼容硬约束）
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+/// FIX012.05：Deserialize derive 删除（零消费死代码——装载走手写 lenient
+/// from_json_value，serde(default) 族属性随之移除；Serialize 经 to_json_value 活跃保留）
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct Alarm {
     pub label: String,
     /// 触发时分（"HH:MM"）
     pub time: String,
-    #[serde(default = "default_sound_type")]
     pub sound_type: String,
-    #[serde(default = "default_sound_value")]
     pub sound_value: String,
     /// 重复星期（0-6 周一至周日，空 = 一次性）
-    #[serde(default)]
     pub repeat_days: Vec<i64>,
-    #[serde(default = "default_true")]
     pub enabled: bool,
-    #[serde(default = "gen_id")]
     pub id: String,
-    #[serde(default = "now_iso")]
     pub created_at: String,
 }
 
 /// 新建闹钟草稿（AddAlarm 命令负载：无 id/created_at，落库时生成）
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+/// FIX012.05：Serialize/Deserialize derive 删除（零消费——总线进程内 mpsc 不经序列化）
+#[derive(Debug, Clone, PartialEq)]
 pub struct AlarmDraft {
     pub label: String,
     pub time: String,
@@ -381,10 +378,7 @@ fn normalize_repeat_days(days: &[Value]) -> Vec<i64> {
     normalize_i64_days(&parsed)
 }
 
-/// serde 默认值：enabled 字段缺省为启用（Python dataclass default 对等）
-fn default_true() -> bool {
-    true
-}
+// default_true 随 FIX012.05 serde(default) 属性移除删除（唯一消费面为该属性）
 
 /// 生成闹钟 id（8 位十六进制，uuid4[:8] 形态对齐）
 /// FIX007.1：原「pid^纳秒取高 32 位」实际只随纳秒 bit32..63 变化（粒度 2^32ns≈4.3s），
@@ -508,6 +502,19 @@ impl AlarmManager {
     pub fn toggle_alarm(&mut self, alarm_id: &str) -> bool {
         if let Some(pos) = self.alarms.iter().position(|a| a.id == alarm_id) {
             self.alarms[pos].enabled = !self.alarms[pos].enabled;
+            return true;
+        }
+        false
+    }
+
+    /// 启用态直设（FIX012.06 幂等）：调度侧「触发后自动禁用」专用——toggle 为盲翻，
+    /// 多线程 runtime 下用户手动关停可插队两次锁之间被翻回启用（A012 #6）；禁用
+    /// 语义不回翻。返回是否发生实际变更（供调用方决定是否回推列表）
+    pub fn set_enabled(&mut self, alarm_id: &str, enabled: bool) -> bool {
+        if let Some(pos) = self.alarms.iter().position(|a| a.id == alarm_id)
+            && self.alarms[pos].enabled != enabled
+        {
+            self.alarms[pos].enabled = enabled;
             return true;
         }
         false
@@ -1008,7 +1015,9 @@ mod tests {
                 "ok",
                 "07:00",
                 serde_json::json!([1]),
-                "2027-01-01T06:00:00",
+                // FIX012.03：远期固定值（原 2027-01-01 为时间炸弹——该时刻后过期
+                // 禁用生效致断言确定性转红）
+                "9999-12-31T00:00:00",
             ),
         ]);
         assert_eq!(m2.alarms.len(), 1);
@@ -1036,6 +1045,30 @@ mod tests {
         // 次周同日（周一）可再触发
         let hits3 = m.check_alarms(local(2026, 6, 8, 9, 0));
         assert_eq!(hits3.len(), 1);
+    }
+
+    #[test]
+    fn set_enabled_is_idempotent_disable() {
+        // FIX012.06（A012 #6）验收：禁用语义不回翻——幂等直设替代 toggle 盲翻，
+        // 调度侧与用户手动关停竞态时不再把刚关停的闹钟翻回启用；返回实际变更
+        let mut m = AlarmManager::new();
+        m.add_alarm(
+            Alarm::from_json_value(&alarm_json(
+                "s1",
+                "幂等",
+                "07:00",
+                serde_json::json!([]),
+                "2026-05-01T08:00:00",
+            ))
+            .unwrap(),
+        );
+        assert!(m.set_enabled("s1", false), "首次禁用应报变更");
+        assert!(!m.alarms[0].enabled);
+        assert!(!m.set_enabled("s1", false), "重复禁用无变更不报");
+        assert!(!m.alarms[0].enabled, "重复禁用不得回翻启用");
+        assert!(!m.set_enabled("ghost", false), "不存在 id 返回无变更");
+        assert!(m.set_enabled("s1", true), "启用为实际变更");
+        assert!(m.alarms[0].enabled);
     }
 
     #[test]

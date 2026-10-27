@@ -1318,6 +1318,84 @@ Acrylic 技术要点：
 
 ---
 
+## 附录 A012：全量代码审计报告（第 12 轮，Rust 侧第 8 轮，2026-10-28）
+
+> 范围：`rs/` 双 crate 52 源文件 + 4 静态配置 + Cargo 清单×3 + 根文档；`.archived/`、`rs/target/`、`.temp/` 排除。
+> 方式：只读。主会话亲做 A011 十九条修复回归复核（grep 19/19 + git show 7578106 抽查六分支/三页）+ 文档一致性专项；三路子代理并行全文通读（A core 基础 / B core 业务 / C app 全组，含 egui registry 源码实证）；主会话亲验唯一行为级回归后合并去重。
+> 本轮为 FIX011（V0.6.2.1，30 文件 +491/−176）后体检轮。
+> 豁免：本轮无新增豁免定案（新增观察项 14 条经处置全部维持观察级，A011 定案 24 条维持）。
+> 状态：✅ 已修复（FIX012 完成，V0.6.2.2——12 条全落地，任务清单见 x.progress.md）
+
+### 零、上轮修复复核清单（FIX011，提交 7578106）
+
+**A011 十九条修复 19/19 在位，零回退**；git show 逐文件对比发现 **1 处修复引入回归**（→ P2-1）：
+
+| 上轮条目 | 现状 | 证据 |
+| --- | --- | --- |
+| #1 六命令拒绝分流（前置校验+测试） | ✅ 在位且等域成立 | 六分支前置与方法内校验逐对验证等域；17 变体「拒绝不发 ConfigSaved」穷尽复核全局成立；测试 interface.rs:1535 双断言（拒绝不发 + success 仍发） |
+| #2 toast 步距 token | ✅ 在位（数值残余→P3-9） | toast.rs:41 token 消费；步距 88 仍 <多行卡高 |
+| #3 drawer_width/armed token+单源 | ✅ 在位（测试锚定缺→P3-10） | theme.rs:204-208 / bus.rs:88-94 / 三页 armed_delete_tick |
+| #4 滑杆点击落盘 | ✅ 在位无双发实证 | egui registry 源码：click 闩锁/拖动阈值互斥，OR 单发 |
+| #5 注释失实族 | ✅ 主体在位（新文本不全→P3-4；连带遗漏→P3-4） | rg 失实词清零 |
+| #6/#7 Cargo 对齐/死键 | ✅ 在位 | 双 Cargo 0.6.2；time_lg/drawer_ms 零残留 |
+| #8-#12（Id/Info/reduce/helper/window_bg） | ✅ 在位 | toast.rs:61 born 锚 / weather.rs:77 info / alarm.rs:194 / window.rs:884,903 / pages/mod.rs:101 |
+| #13/#14 幂等短路/主题单源 | ✅ 在位（derive 面→P3-5） | interface.rs:277；as_str/parse 消费在案 |
+| #15 测试卫生 | ✅ 在位 | hit_side 可失败断言；冒烟 18 变体 |
+| #16 解析反馈 | ⚠️ 引入回归 | 漏「草稿非空」门 → P2-1（alarm.rs:143 有门对照） |
+| #17/#18/#19 格式/分档/最小化 | ✅ 在位 | use 清零+缩进对齐；BadType 长度判定链核实闭合、夹具零影响；minimized 守卫 fail-safe 方向正确 |
+| ——（文档一致性） | ✅ 全绿 | 徽章==base.json==0.6.2.1；FIX011 全勾；A010/A011 递增 |
+| ——（专项确认） | ✅ | time_dilation.rs 零改动实证；base.json 23 键对账零漂移（shortcuts 经 hotkey.rs JSON pointer 消费） |
+
+### 一、P0–P3 修复清单（P0/P1 无；共 11 条 = P2×2 + P3×9）
+
+> 性质：遗留 = 历轮已列未修；新增 = 本轮新发现。
+
+| # | 级别 | 文件:行号 | 类型 | 描述 | 建议 | 性质 | 影响面 |
+|---|---|---|---|---|---|---|---|
+| 1 | P2 | accel-app/src/pages/countdown.rs:342-364（显示 :382-384） | 1/3 | **FIX011.16 引入：空草稿红字常驻**。parse_target_text("") 返 None → err_msg 恒为「时刻无法解析…」——页面初开、添加成功清空草稿后、仅填名称未填时刻时红字永久显示；对照 alarm.rs:143 同款提示有 `!is_empty() && !valid_hhmm` 门，倒计时侧漏门；空名「名称不能为空」同为无门常驻（存量同族） | err_msg 计算加 `!state.countdown_draft_at.is_empty()` 前置（名称红字加 `!name.is_empty()` 门）；长文案布局随 P3-11 处理 | 新增（FIX011.16 回归） | GUI 面板 |
+| 2 | P2 | accel-core/src/weather.rs:330 | 3 | **磁盘缓存 30 天上限硬编码**：DISK_CACHE_MAX_AGE_SECS 游离 token 体系——同域已有 6 枚 weather_* token（FIX007.9 纪律），本常量独例外；A011 精读漏报本轮补列 | 增 weather_disk_cache_max_age_s token（2592000）经 Static 读取 | 新增（A011 漏报补列） | 天气服务/配置体系 |
+| 3 | P3 | accel-core/src/alarm.rs:1011（测试 :1001-1016） | 10 | **测试时间炸弹**：夹具 created_at "2027-01-01T06:00:00"+time 07:00，from_value_list 内部取 Local::now()——2027-01-01 07:00 后过期禁用生效，assert!(enabled) 确定性转红 | created_at 改远期固定值（"9999-12-31T00:00:00"）零产品代码改动 | 新增 | 测试 |
+| 4 | P3 | widgets/toast.rs:109 ＋ widgets/slider.rs:40,178 ＋ window.rs:2,1106 ＋ chinese_calendar.rs:302 | 6 | **说明区/注释失实族（同根因 4 处合并）**：①toast 关联配置漏 layout.toast_step；②slider「松手→on_commit」缺点击路（FIX011.04 半句）；③window.rs 模块头/说明区仍写「侧栏」（UIR4 已废）；④chinese_calendar「扫春节/除夕锚点」漏法定表与 6 项传统规则（FIX011.05 新文本自身不全） | 逐处订正 | ①②④新增 ③遗留（UIR4 残留） | 文档（源码注释） |
+| 5 | P3 | accel-core/src/types.rs:118-124 ＋ alarm.rs:119,140-148 | 5 | **serde derive 死代码族（同根因 2 处合并）**：ThemePref 的 Serialize/Deserialize 全 workspace 零消费（「serde rename 锚定」注释实为不可达承诺——漂移无测试可红）；Alarm::Deserialize 与 AlarmDraft 双 derive 零 serde 消费 | ThemePref 补锚定单测（to_value(Dark)=="dark" 双向）使承诺可失败；alarm 侧删三死 derive 或注释登记预留 | 新增（需验证） | 配置体系/测试 |
+| 6 | P3 | accel-core/src/interface.rs:377-384（配合 alarm.rs:508-514） | 2 | 一次性闹钟「命中检查」与「自动禁用」分两次加锁——多线程 runtime 下用户手动 ToggleAlarm 可插队，盲翻把刚关停的闹钟翻回启用并随落盘固化（亚毫秒窗理论可达） | 调度侧改幂等 set_enabled(id, false) 或合并单次锁内 | 新增（需验证） | 闹钟服务 |
+| 7 | P3 | accel-core/src/interface.rs:584,611-615,625-628 | 9 | FIX011.01 三前置校验（RemoveWorldCity/AddCountdownTarget/RemoveCountdownTarget）各引入一次全量 settings::load，方法内再 load——单命令双次装载 | 中期：六方法返回三态枚举收拢单次装载；短期可接受 | 新增 | 配置体系 |
+| 8 | P3 | accel-core/src/chinese_calendar.rs:108-114 | 10 | holidays.json 上界 2026，装载期无「当前年份超数据范围」提醒——2027 法定节假日静默缺失日志零线索（A011 运维事项的触发信号缺口） | get_or_init 闭包内超界 tracing::warn! 一次 | 新增 | 农历日历/运维 |
+| 9 | P3 | accel-app/src/widgets/toast.rs:41 | 9/3 | 步距 88 仍低于多行卡高（error reason 含 URL 3-4 行卡高 ≈100px+）——A011 #2 核心重叠面未随修复消除 | 短期 toast_step 提 ≥120 或限 body 行数；中期逐卡实测高度堆叠 | 遗留（A011 #2 残余） | GUI 面板 |
+| 10 | P3 | accel-app/src/theme.rs:204-210 | 10 | drawer_width 注释自述「纯函数可测」但零测试锚定（比例/钳界/min>max 损坏配置 panic 面无回归锚） | 补锚定测试 | 新增（FIX011.03 连带） | 测试 |
+| 11 | P3 | accel-app/src/pages/countdown.rs:382-384（随 P2-1 修复） | 6 | err_msg 长文案（30+ 字）在 horizontal 行内窄抽屉横向溢出裁切 | 移出行外独立行或截断，随 P2-1 一并 | 新增（P2-1 连带） | GUI 面板 |
+
+> 运维事项延续：holidays.json 2027 安排公布后重跑导出脚本（P3-8 的 warn 为其触发信号）。
+
+### 二、参考级观察项（A011 定案 24 条维持；本轮新增 14 条，处置全部维持观察级）
+
+| 位置 | 描述 | 回落理由 |
+| --- | --- | --- |
+| interface.rs:573-634 | 六前置分支 else 日志与方法内拒绝日志文案逐对双源（互斥执行不重复输出） | 方法内分支服务同步直调面；文案低频 |
+| interface.rs:757-785 | 说明区未登记「拒绝不发 ConfigSaved」总线级不变量 | 无失实仅缺登记，随触碰顺手 |
+| util/file_io.rs:88-94 | write_json 同路径 resolve 两次 | 白名单写低频微秒级 |
+| settings.rs:202-204 | legacy 迁移名「我的目标」字面量 | 单次使用有注释依据（豁免条款内） |
+| interface.rs:299 | parse 放行 0<w<0.5 而 {:.0} 归一取整致重启拒档回退 | A011 #24 同族；整型像素入参不可达 |
+| toast.rs:61 | Id 含序号分量 i：前序过期后继 Id 漂移 | Area 纯绘制无逐 Id 状态，零功能缺陷 |
+| toast.rs:38-39 等 | width 260/margin 16/slide 24、加号行 0.42/0.58 钳值族未进 layout | A011 #2 有意只动步距的同族残余 |
+| clock.rs:176 等 | hero 0.92 收号与偏移家族 | A010 观察项延续（视觉走查门管辖） |
+| icon_button.rs:10 | HIT_PAD 8.0 代码常量未进 ui.json | FIX011.15 定案产物（const+可失败测试锚定） |
+| slider.rs:110 | 无值变化纯点击也发 ApplyRate（每击一次写盘） | ApplyRate 内聚落盘设计语义内 |
+| bus.rs:90 | armed_timeout_ms 落 motion 域（交互超时非动效，语义域轻微越界） | 单键注释自辩；挪域收益低 |
+| weather.rs:216-219 等 | expect("已过数值校验")×3 守卫后不变量 | 守卫即证明，panic 面不可达 |
+| alarm.rs:337-344 | parse_created_at RFC3339 取 naive_local（偏移本地非机器本地） | 手改配置才触达且偏保守方向 |
+| fixtures/weather_samples.json | 夹具零 series 域样本（hourly/daily 提取无 parity 锁） | 登记方向非缺陷；扩夹具另立 |
+
+### 三、亮点
+
+- **A011 十九条 19/19 零回退**，文档一致性全绿；time_dilation.rs 零改动实证。
+- **FIX011.01 修复质量三重验证**：六分支与方法内部校验等域逐一成立、17 变体拒绝语义穷尽复核全局成立、success 侧回推保留双断言。
+- **slider 落盘修复经 egui registry 源码实证**：click 闩锁与拖动阈值互斥、OR 单发——修复正确性靠源码不靠推断。
+- **install_fonts 重构等价性逐分支对齐**；minimized 守卫 fail-safe 方向正确（None 仍存档，拒绝侧静默兜底闭环）。
+- **A011 修复引入 1 处回归被本轮即抓**（P2-1）——「审计→修复→再审计」循环对修复自身的把关价值再度实证。
+- base.json 23 键对账零漂移（shortcuts 经 JSON pointer 消费——对账方法论修正）。
+
+---
+
 ## 临时记录：后续候选事项（2026-09-12 随手记，未立项、未排期）
 
 > 性质：临时清单，只记方向不拆任务；正式立项时移入对应 PL 预记并细化到 x.progress.md

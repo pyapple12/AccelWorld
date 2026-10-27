@@ -326,8 +326,13 @@ impl IsRetryable for FetchErr {
 const LAT_RANGE: (f64, f64) = (-90.0, 90.0);
 const LON_RANGE: (f64, f64) = (-180.0, 180.0);
 
-/// 磁盘缓存年龄上限（PL016.03）：30 天——断网回退不限 TTL，但过期数据防永久兜底
-const DISK_CACHE_MAX_AGE_SECS: u64 = 30 * 24 * 3600;
+/// 磁盘缓存年龄上限秒（FIX012.02：token 单源——原 30 天字面量游离于同域
+/// weather_* token 体系外；下钳 1 防零/负配置损坏致缓存永不失效）
+fn disk_cache_max_age_secs() -> u64 {
+    Static::get()
+        .base_i64("weather_disk_cache_max_age_s")
+        .max(1) as u64
+}
 
 /// 缓存年龄话术（纯函数可测，PL016.03 审核文案纪律：说清事实不含糊）
 pub fn humanize_age(age_secs: u64) -> String {
@@ -519,7 +524,7 @@ impl WeatherClient {
             return None; // 时钟回拨防御
         }
         let age = now - fetched_at;
-        if age > DISK_CACHE_MAX_AGE_SECS {
+        if age > disk_cache_max_age_secs() {
             tracing::warn!("天气磁盘缓存超龄丢弃: {city}（{age}s）");
             return None;
         }
@@ -587,8 +592,9 @@ impl WeatherClient {
 //   优先；②serde_json 缩进/NaN 文本层差异（见 settings 说明区）；③SSRF 防线由
 //   运行期校验改为构造期固定（防线等价性登记）；④整值浮点码（0.0）自判命中
 //   整键（serde as_i64 对浮点底数恒 None）
-// 关联配置：weather_cache_ttl/weather_timeout_s/weather_retries/weather_retry_delay/
-//   weather_forecast_days/weather_forecast_hours（A009 #10 采样参数 token 化）
+// 关联配置：weather_cache_ttl/weather_disk_cache_max_age_s（FIX012.02 token 化）/
+//   weather_timeout_s/weather_retries/weather_retry_delay/weather_forecast_days/
+//   weather_forecast_hours（A009 #10 采样参数 token 化）
 //   （base.json）；城市表 data::cities；重试 util::retry；消费方：interface（.13）
 #[cfg(test)]
 mod tests {

@@ -1,5 +1,6 @@
 //! 主窗装配器（ui/main_window.py 的 Rust 对等物；UIR 重塑：实心桌面装配）
-//! AppHandle + eframe::App 实现：logic（drain/探针/退出）+ ui（侧栏→当前页→设置浮窗）
+//! AppHandle + eframe::App 实现：logic（drain/探针/退出）+ ui（仪器坞→页总装
+//! （抽屉+主仪）→toast→设置浮窗）（FIX012.04 订正：UIR4 已废侧栏）
 //! 玻璃管线/Acrylic/透明窗口整体废弃——标准不透明桌面应用（UIR 定案）
 
 use std::sync::Arc;
@@ -1104,7 +1105,8 @@ mod tests {
 // 逻辑步骤：build_runtime → AppInterface::new → NativeOptions（token 几何 + 最小
 //   尺寸下限 + 存档几何优先恢复）→ run_native（create_app：主题 apply/fonts/state
 //   装配 + 托盘/热键挂接 → AppHandle）→ logic（drain → 平台事件 → 探针时序 →
-//   退出/驻留 → 托盘状态）→ ui（侧栏 → 当前页 → 设置浮窗 → 截图探针 → 节奏）
+//   退出/驻留 → 托盘状态）→ ui（仪器坞 → 页总装（抽屉+主仪） → toast → 设置
+//   浮窗 → 截图探针 → 节奏）
 // 设计理由：drain→部件→节奏对齐 z.plan A 节主循环骨架（UIR 重塑后背板为 CentralPanel
 //   实心 window_bg，玻璃面注册/acrylic/透明 viewport 整体废弃——A008 #6 说明区
 //   随实心现状重写）；**隐藏期不重绘但 logic 仍逐轮驱动**——视口命令（托盘恢复/

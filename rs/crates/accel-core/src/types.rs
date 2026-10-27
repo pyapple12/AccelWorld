@@ -218,3 +218,32 @@ pub enum BackendEvent {
 // 协议 v1.1（2026-10-23，UIR.7）：FrontendCommand 扩 SetWindowGeometry（窗口
 //   几何记忆契约，17 变体——「协议 v1 定死」自本条起为「演进须登记」口径）
 // 关联依赖：serde/chrono/alarm（数据形状）；消费方：interface（分发）/ app bus
+#[cfg(test)]
+mod tests {
+    use super::ThemePref;
+
+    #[test]
+    fn theme_pref_serde_matches_as_str() {
+        // FIX012.05（A012 #5）验收：serde rename 形态与 as_str/parse 锚定——
+        // derive 零生产消费，注释承诺的「rename 与 as_str 同形」须有可失败测试
+        for (pref, text) in [
+            (ThemePref::Auto, "auto"),
+            (ThemePref::Light, "light"),
+            (ThemePref::Dark, "dark"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(pref).unwrap(),
+                serde_json::json!(text),
+                "serde 形态漂移：{text}"
+            );
+            assert_eq!(
+                serde_json::from_value::<ThemePref>(serde_json::json!(text)).unwrap(),
+                pref,
+                "serde 逆形态漂移：{text}"
+            );
+            assert_eq!(pref.as_str(), text);
+            assert_eq!(ThemePref::parse(text), Some(pref));
+        }
+        assert_eq!(ThemePref::parse("night"), None, "非法串应拒绝");
+    }
+}

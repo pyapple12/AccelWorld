@@ -334,4 +334,20 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn drawer_width_ratio_and_clamp() {
+        // FIX012.10（A012 #10）锚定：比例换算与钳界（ui.json layout 域 token）——
+        // 宽窗走钳界上限、窄窗走钳界下限、中段走比例
+        let max = layout_i64("drawer_width_max") as f32;
+        let min = layout_i64("drawer_width_min") as f32;
+        let ratio = layout_i64("drawer_width_ratio_x100") as f32 / 100.0;
+        assert_eq!(drawer_width(2000.0), max, "宽窗应钳上限");
+        assert_eq!(drawer_width(400.0), min, "窄窗应钳下限");
+        let mid = 1000.0;
+        assert!(
+            (drawer_width(mid) - (mid * ratio).clamp(min, max)).abs() < 1e-4,
+            "中段应等于比例值"
+        );
+    }
 }
