@@ -1,8 +1,8 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告 + Rust 重构总纲）
-> 当前版本：0.6.1.7（UIR4 开创性重构完成：侧栏废除——双环星轨仪主仪恒驻 + 底部仪器坞 + 右侧抽屉页；时间膨胀画成两个转速不同的同心环；PL015 已收口，不做人工测试与定版仪式）
-> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；FIX007–FIX010 与 UIR2/3 轮（52daaf6/cc58746 及三轮）均已提交推送，当前阶段为 UIR4 开创性重构（待提交）
+> 当前版本：0.6.2.0（PL016 UI 审核精修 + 整体复审补修完成：P0 金针修复 + 全部 15 条审核意见落实 + 复审三条补修——状态覆盖/两步确认/键盘焦点/三级动效/应用内 toast/egui_plot/MiSans 内嵌/探针两段式；PL015 已收口，不做人工测试与定版仪式）
+> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；FIX007–FIX010、UIR2-4 轮（至 7083456）均已提交推送，当前阶段为 PL016 审核精修（待提交）
 > 更新（2026-10-17）：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow——UIR 定案 wgpu 废弃）；Python 版全量归档 `.archived/`（git 忽略），本文件自 PL011 起记录 RS 任务
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
 
@@ -326,7 +326,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 ### PL012: RS 重构·核心域二期 → core 全量 parity（农历/闹钟/数据/音频） [plan#RS]（开发版 0.6.0.0-dev.PL012；详细技术方案见 z.plan「总纲修订二·PL012」：LunarInfo DTO/实现三分法/holidays schema/Alarm serde 结构/状态机/Clock 抽象/验证流程）
 
 - [x] PL012.01 lunar-rust API 面清点 —— 做法：①core 依赖加 lunar-rust ②写临时对比 bin（rs 模块内 example）：从 lunar_samples.json 抽 30 个代表日（节气日/月初/月末/闰月边界/普通日各若干），逐字段调 lunar-rust API 与夹具期望并列输出 ③按 z.plan 修订二·B 三分法（直调/薄实现+导表/纯本地）由比对脚本输出 + AI 裁决逐字段归类；检验：「字段级出入清单」落 z.plan 本节——LunarInfo 十字段每条标注归属与依据（API 名/数据表来源/本地算法），零未决字段（2026-10-16 完成：examples/lunar_compare.rs 实测 107 代表日 × 7 字段 = 749 条比对，仅 38 条 DIFF 全为节日 T2/T3 来源；出入清单落 z.plan B' 节——六字段直调/三表纯本地/节日三级兜底，月相预判消解）
-- [x] PL012.02 chinese_calendar.rs 之农历串 —— 做法：①按出入清单实现：直调字段接 lunar-rust；月相名=农历日数→30 日名称表（从 lunar-python 源码导出为 Rust 常量表）；财神方位=12 月支→方位表（从 Python Cai_SHEN_DIRECTION 导出常量）②`lunar_info_str()` 拼装顺序与标记契约逐字符对齐：`{年}（{生肖}年）{月}{日}{时辰} 月相：{X} 财神：{Y}方向（{Z}）`，节气/节日不入串；检验：对 lunar_samples.json **全年 366 天逐日断言 info_str 字符串全等**（含月相段无"拜"回归——FIX004.3 纪律延续）（2026-10-16 完成：365 天（2026 实际天数）十字段 + info_str + chinese_date 三组夹具断言全绿；TimeInfo 扩 chinese_date/lunar_info + TimeDilation 秒级缓存（Python _lunar_cache 同构））
+- [x] PL012.02 chinese_calendar.rs 之农历串 —— 做法：①按出入清单实现：直调字段接 lunar-rust；月相名=农历日数→30 日名称表（从 lunar-python 源码导出为 Rust 常量表）；财神方位=12 月支→方位表（从 Python Cai_SHEN_DIRECTION 导出常量）②`lunar_info_str()` 拼装顺序与标记契约逐字符对齐：`{年}（{生肖}年）{月}{日}{时辰} 月相：{X} 财神：{Y}方向（{Z}）`，节气/节日不入串；检验：对 lunar_samples.json **全年 366 天逐日断言 info_str 字符串全等**（含月相段无"拜"回归——FIX004.3 纪律延续）（2026-10-16 完成：365 天（2026 实际天数）十字段 + info_str + chinese_date 三组夹具断言全绿；TimeInfo 扩 chinese_date/lunar_info + TimeDilation 秒级缓存（Python \_lunar_cache 同构））
 - [x] PL012.03 chinese_calendar.rs 之节气与降级 —— 做法：jieqi 字段经 lunar-rust 节气 API（仅节气日有值否则空串）；年份超 lunar 数据范围（实测 2035+）与超 holidays 范围时各字段走安全路径：节气空串/节日空串/其余字段正常——不 panic；检验：夹具节气日及前后 ±1 日三连断言（当日有名/前后空）；构造 2035-01-01 全流程 lunar_info 不 panic 且 jieqi/public_holiday 为空（2026-10-16 完成：秋分 ±1 三连断言绿；2035 安全路径绿——T3 元旦兜底命中、holidays() 返 None、全流程零 panic）
 - [x] PL012.04 节假日数据文件化 —— 做法：①Python 导出脚本：chinese-calendar 遍历 [2024,2026] 每日 holiday 判定 → `config/static/holidays.json`（{"2026":{"01-01":"元旦",...}} 中文名经 HOLIDAY_TRANSLATION 映射）②core 加载器 `holidays(year) -> Option<&BTreeMap<String,String>>`（None=超范围空表语义）③年末维护说明写 z.plan（升级 chinese-calendar 重跑导出——替代原依赖升级路径）；检验：全年条目数与名称对 Python 版逐一相等（导出时即自校验）；单测 2026 已知节日（元旦/春节/清明/劳动/端午/中秋/国庆）名称断言；无数据年份返回 None 不崩（2026-10-16 完成：.archived/export_holidays.py 导出 89 天（28/28/33），门控对齐 if holiday_detail[0]（自校验剔除 19 个调休补班日）；已知节日锚点 + 2023/2035 None 断言绿；年末维护路径=y.problems#8 根治）
 - [x] PL012.05 core::alarm 模型 —— 做法：`Alarm` serde 结构按 z.plan 修订二·D 代码（字段名/default 函数与 Python 持久化逐字一致：default_preset="preset"/default_classic="classic"/gen_id/now_iso）+ `Alarm::normalize() -> Result<(),AlarmErr>`（repeat_days 元素字符串强转 i64/bool 剔除/越界 [0,6] 剔除/去重；time 匹配 HH:MM 校验）；检验：移植 Python test_alarm_service 模型类用例——[true]→[1]、[1.7]/["1.5"]→[]、[9]→[]、["09:30"] 合法、"9:30" 补 :00、"25:00"→Err、created_at 键在但非字符串→整条拒绝（2026-10-16 完成：serde 结构 + from_json_value lenient + from_draft；实测修正两处任务文本误差——Python 实码 [true] 为剔除非转 1、"9:30" 单位数小时即拒绝（fromisoformat 严格位宽）；模型类用例全绿，偏移登记 z.plan J 节）
@@ -411,7 +411,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] FIX005.23 [P3] 每帧分配热点收敛 —— 做法：页面/场景 id 串（`format!("{SURFACE_PAGE_PREFIX}{page:?}")` 等）预生成缓存；`weather_cities_view()` 改借用迭代；world/countdown 页避免每帧 clone+sort（快照变更时排序一次）；`scene.draw_list()` 复用缓冲；`accent_rgba()` 每帧算一次经参数传入；验证：`cargo test --workspace` 全绿 + 帧计数探针（`ACCELWORLD_FPS_PROBE=5`）REPAINT_COUNT 与基线不劣化
 - [x] FIX005.24 [P3] 自定义铃声路径校验 —— 做法：`bus.rs:231-237` 的 `play_alarm_sound` 在 `sound_type == "custom"` 时校验扩展名白名单（wav/mp3）并规范化路径，非法回退 preset 并记日志；验证：`cargo test -p accel-app` 新增单测"非白名单扩展名回退 preset 且不打开文件"
 - [x] FIX005.25 [P3] 依赖与路径卫生 —— 做法：①删 `accel-app/Cargo.toml:14` 未用 `egui_extras`（或接线日期选择器）；②`egui-wgpu = "0.37.0"` 迁入 `rs/Cargo.toml [workspace.dependencies]` 并在 crate 内改 `{ workspace = true }`；③`base.json` 的 `user_config` token 由 `interface.rs:85` 读取（与 FIX005.8 同一处，合并执行）；验证：`cargo tree -p accel-app | rg egui_extras` 零命中（若删除）、`cargo metadata` 版本单源、`pwsh rs/ci.ps1` 四关卡 ALL_GREEN
-- [x] FIX005.26 [P3] 测试卫生与里程碑说明 —— 做法：①`crates/accel-core/tests/parity.rs` 的 config_parity 临时目录改 `tempfile::TempDir`（或 teardown 清理，纳入 `ACCELWORLD_WRITE_ROOT` 沙箱）；②`m.milestone.md:156→163` 在 0.5.5.0 条目内补一行"0.5.4.x 段未使用"说明；验证：连跑 `cargo test -p accel-core --test parity` 两次后 `%TEMP%` 无残留 `accel_cfgparity_*` 目录；文档通读
+- [x] FIX005.26 [P3] 测试卫生与里程碑说明 —— 做法：①`crates/accel-core/tests/parity.rs` 的 config*parity 临时目录改 `tempfile::TempDir`（或 teardown 清理，纳入 `ACCELWORLD_WRITE_ROOT` 沙箱）；②`m.milestone.md:156→163` 在 0.5.5.0 条目内补一行"0.5.4.x 段未使用"说明；验证：连跑 `cargo test -p accel-core --test parity` 两次后 `%TEMP%` 无残留 `accel_cfgparity*\*` 目录；文档通读
 - [x] FIX005.27 [P3] 隐藏期托盘/热键响应时延（观察项提升）—— 做法：`window.rs:66-82,125-170` 平台事件改为事件驱动唤醒——托盘/热键事件投递时同步调用 `ctx.request_repaint()`（经 `Context` 克隆注入 platform 层回调），保留 logic 轮询为兜底；验证：真窗探针脚本断言"隐藏态下事件响应 < 200ms"（`ACCELWORLD_HIDE_AFTER` + 合成托盘/热键触发），并复核退出码 0
 - [x] FIX005.28 [P3] 退出保存被取消风险（观察项提升）—— 做法：`window.rs:153-170` 退出序列改为"发 SaveNow → 等后端 ConfigSaved 回执（带超时兜底 ~300ms）→ 再 Close"；验证：真窗探针断言退出前配置落盘（`user_config.json` mtime/内容更新）+ 退出码 0；`cargo test -p accel-app` 覆盖回执/超时两分支
 - [x] FIX005.29 [P3] 边界入参 panic 防护（观察项提升）—— 做法：`time_dilation.rs:119` 对 `day_hours <= 0` 早退或钳制（如 `max(1)`）；`chinese_calendar.rs:253` 月份索引改 `get((month-1) as usize).copied().unwrap_or(("正北","坎位"))` 或前置断言 1..=12；验证：`cargo test -p accel-core` 新增单测覆盖 `day_hours=0` 与 `month=0/13` 返安全值不 panic
@@ -513,7 +513,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] UIR.2 截图探针 —— `ACCELWORLD_UI_SHOT=<目录>` 真窗逐页 PrintWindow(PW_RENDERFULLCONTENT)→GetDIBits→PNG（五页+设置浮窗共 6 帧后自动退出）；开发期自检闭环（观感终审权仍在用户真机目测）；顺带实证两大玻璃时代隐性缺陷：①高 DPI 下 uniforms「点÷物理像素」致全部玻璃面缩水漂移；②设置浮窗捕获时序（2026-10-23 完成）
 - [x] UIR.3 矢量图标库 —— `widgets/icons.rs`：Clock/Hourglass/Globe/Cloud/Bell/Gear/Plus/Minus/Trash/Sun/Moon/Refresh 十二枚 painter path 绘制（arc_points 采样）；零字体/零 emoji 依赖（天气 emoji 因 egui 内置字体缺字形 tofu 一并替换矢量）（2026-10-23 完成）
 - [x] UIR.4 控件套件 —— widgets/ 重建：digits（等宽数字位槽宽制——根治 y.problems#12 Bahnschrift 走秒抖动；Monospace 族挂 cjk 回退修「105天」tofu）/icons/icon_button/switch（胶囊缓动开关）/chip（自适应宽纸片）/slider 沿用；dock.rs 一阶段产物后随玻璃拆除（侧栏内联进 window.rs）（2026-10-23 完成）
-- [x] UIR.5 主题重构 —— theme.rs 全量重写：colors.* 实心色板（深浅两套）→ egui Visuals + parse_hex 直产预乘 Color32 + 语义色/字号/几何访问器；field/glass GL token 域删除（2026-10-23 完成）
+- [x] UIR.5 主题重构 —— theme.rs 全量重写：colors.\* 实心色板（深浅两套）→ egui Visuals + parse_hex 直产预乘 Color32 + 语义色/字号/几何访问器；field/glass GL token 域删除（2026-10-23 完成）
 - [x] UIR.6 五页重塑 —— 时钟（表盘 hero：中文日期+标准时+加速大字+×倍率徽标+日进度细条+滑杆+农历 chips）/ 倒计时（派生春节金框 hero+双列目标卡+悬停减号+节日 chips 换行）/ 世界（三列磁贴+基准金框金点+昼夜图标+悬停减号）/ 天气（当下 hero+逐时温度曲线+3h 刻度+七日距条）/ 闹钟（快捷 chips+行卡+胶囊开关+悬停垃圾桶）；世界/倒计时 Grid 逐行 end_row 退化单列缺陷截图实证后修正（2026-10-23 完成）
 - [x] UIR.7 设置浮窗重蒙皮 + 窗口几何记忆 —— 浮窗实心卡面+主题三段分段胶囊（锚点避让侧栏）；新增 `FrontendCommand::SetWindowGeometry` 契约 + interface 读写 + 退出序列存档外框矩形 + 启动恢复（旧 Python base64 存档天然弃档一次性迁移）；标题栏底色经 DWMWA_CAPTION_COLOR/BORDER_COLOR 钉制随主题（2026-10-23 完成）
 - [x] UIR.8 收尾 —— 四关卡全绿（fmt/clippy -D/test 180 项/依赖树零 egui）+ 真窗探针 exit 0（隐藏→恢复指纹一致 + REPAINT 60-79/6s）+ 截图自检六帧全过 + 文档四件套同步（AGENTS/README×2/w.study 玻璃表述清零）；** demolition 清单**：src/glass//render_probe/acrylic/nav/dock/ring 删除、eframe wgpu→glow、wgpu/egui-wgpu 依赖移除（exe 体积与 GPU 黑窗面同步收敛）；PrintWindow 底部白条为采集伪影（DWM 阴影 alpha 丢失）已记录待真机复核（2026-10-23 完成）
@@ -521,6 +521,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 ### FIX008: 第 8 轮审计修复 [audit#A008]
 
 > 范围：A008 十九条（P1×2 / P2×3 / P3×14，含观察项提升 2 条：#6 内 Cargo.toml 版本注释、#19 bus.rs 读 token）。修复完成后按规范 bump 版本（fix 类型 patch 位 +1）。
+>
 > - **完成（2026-10-24）**：19 条 + 收尾全落地。**FIX008.2 用户定案仅深色**——浅色体系整体删除（light_visuals/Theme 三态/设置浮窗主题段/热键 Ctrl+T/ui.json 8 死键），ThemePref 配置域保留存档（SetTheme 命令保留协议位），alarm 快捷 chip 悬停前景归位 on_accent；switch.rs 整文件删除（闹钟行卡内联为唯一实现）；icons.rs 扩 Rain/Snow/Fog/Storm 四枚（云形抽取共用）+ icon_for_code 码段映射；窗口最小尺寸 token 化（window_min_520×420）+ 三页 clamp；DWM 钉色失败去抖留痕；闹钟前端 HH:MM 校验（valid_hhmm 与 core 同口径，非法不发送不清草稿+红字）；interface 主循环 tick 改绝对截止时间（sleep 句柄复用+倍率变化 reset 重排）；几何解析 is_finite+w/h>0+存档规范化；闹钟四命令失败恒回推 AlarmsChanged；测试 RAII SandboxDir 两处；托盘倍率文本镜像跳过；bus 兜底读 token；Cargo 版本注释 0.6.1 段同步。
 > - **验证**：`pwsh rs/ci.ps1` 四关卡 ALL_GREEN；**测试 185 通过**（app 57 + bin 1 + core 107 + parity 20，较 UIR 180 净增 5）；真窗 fps 探针 REPAINT_COUNT=55/6s（预期 ≈60±6，零忙转保持）；UI 截图探针六帧全 ok（.temp/ui_shots_fix008/——设置浮窗帧实证主题段删除、天气帧实证晴天出太阳图标）
 > - **反向验收**：`.temp/verify_fix008_accept.md`（19 项逐条「原问题 → 修复后事实 → 证据」三重口径；人工走查项 3 处如实标注待真机复核）
@@ -531,7 +532,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] FIX008.4 [P2] 闹钟四命令失败回推 —— accel-core/src/interface.rs:502-533 Add/Remove/Replace/Toggle 失败分支补 `AlarmsChanged(self.get_alarms())` 回推（或引入拒绝事件，与 A005 #19 RateRejected 对齐）；验证：单测（重复添加/不存在 id 后事件仍到达）+ 真窗重复添加不静默（2026-10-24 完成：四分支恒回推现值；bus_alarm_rejection_pushes_unchanged_list 绿）
 - [x] FIX008.5 [P2] 天气现象图标随码映射 —— widgets/icons.rs 扩雨/雪/晴/雾等矢量图标 + pages/weather.rs:78-84 按 weather_code 选图 + 统一 :73 与 :231 口径；验证：单测码表映射 + 截图探针对比不同码出不同图标（2026-10-24 完成：Rain/Snow/Fog/Storm 四枚新增+云形共用；icon_for_code 码段映射；icon_mapping_covers_wmo_segments 绿+天气帧晴天出太阳实证）
 - [x] FIX008.6 [P3] UIR 残留注释文档清扫（一次收口） —— 代码侧：lib.rs:2 / window.rs:1118-1143 说明区按实心现状重写（几何恢复已做、删 glass/acrylic/wgpu/field 表述）/ pages/mod.rs:113 / icons.rs:330 / main.rs:21,74,77 / slider.rs:1-2 / icon_button.rs:2 / chip.rs:3 / theme.rs:2 / accel-app/Cargo.toml:7-10,41-43（description 去「玻璃渲染」、双 bin 注释改写、说明区 wgpu→glow、**版本注释 0.6.0.0 段→0.6.1.0 段【★提升项】**）/ interface.rs:667-668+types.rs:190-194（16→17 变体并登记 UIR.7 扩展）；文档侧：x.progress.md:45-46 删失效 render_probe 命令、:5 改「已收口 0.6.1.0」、:6 wgpu→glow、README.md:70-71 删重复代码块、w.study.md:4 注记改「3.7 已按实心主题重写」、y.problems.md:22,94-95 #10 改「几何记忆已落地，残余 with_position 落点偏差待实测校准」；验证：rg 关键词（render_probe/acrylic/glass_lift/wgpu）在现役文档与注释层零命中 + 四关卡（2026-10-24 完成：全清单落地，剩余命中均为「已删缘由」注记与 Python 源出处）
-- [x] FIX008.7 [P3] 死代码与空耗清理 —— 删 Theme::mode()/fmt_percent；AppHandle.theme 降局部变量；chip.rs:20 删 id 死参 + countdown.rs:290 删每帧 format!；删 interface.rs:159-167 fetch_weather（说明区同步）；switch 双实现二选一（alarm.rs:119-150 改调 switch::show 或删 switch.rs）；清理占位 let _（window.rs:396,435/slider.rs:128/weather.rs:216/countdown.rs:260）；验证：rg 零调用零命中 + 四关卡（2026-10-24 完成：switch.rs 删除/fmt_percent/fetch_weather/chip id/占位全清；Theme 随 .2 整体退役）
+- [x] FIX008.7 [P3] 死代码与空耗清理 —— 删 Theme::mode()/fmt*percent；AppHandle.theme 降局部变量；chip.rs:20 删 id 死参 + countdown.rs:290 删每帧 format!；删 interface.rs:159-167 fetch_weather（说明区同步）；switch 双实现二选一（alarm.rs:119-150 改调 switch::show 或删 switch.rs）；清理占位 let *（window.rs:396,435/slider.rs:128/weather.rs:216/countdown.rs:260）；验证：rg 零调用零命中 + 四关卡（2026-10-24 完成：switch.rs 删除/fmt_percent/fetch_weather/chip id/占位全清；Theme 随 .2 整体退役）
 - [x] FIX008.8 [P3] 窗口最小尺寸与负宽钳制 —— NativeOptions 增 with_min_inner_size（下限入 base.json token）+ pages/weather.rs:190、countdown.rs:188、world.rs:37 页内宽度 max(0) 钳制；验证：真窗缩至极小布局不破版 + clippy 零警告（2026-10-24 完成：window_min_520×420 入 token；三页 clamp（clippy manual_clamp 整改为 clamp(0.0, 上限)）；极小窗人工走查项）
 - [x] FIX008.9 [P3] 天气容器错型严校验 —— accel-core/src/weather.rs:64-84 hourly/daily 键存在但错型时返 SeriesMissing（与 :64-65 注释承诺对齐）；验证：单测 `hourly:"x"`/`hourly:[]` → Err（2026-10-24 完成：返 BadType（语义更准）；series_container_wrong_type_rejects 绿）
 - [x] FIX008.10 [P3] 天气缓存锁中毒策略统一 —— weather.rs:383,391,399 三处统一 expect（中毒属不可恢复编程错误）；验证：既有天气单测全绿（2026-10-24 完成）
@@ -539,7 +540,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] FIX008.12 [P3] DWM 钉色失败留痕 —— window.rs:753-777 DwmSetWindowAttribute 失败记一次 warn（去抖，不逐帧刷屏）；验证：真窗日志恰一条 + Win11 钉色不受影响（2026-10-24 完成：AtomicBool 去抖；Win11 成功路径截图探针日志干净；Win10 失败路径属真机走查项）
 - [x] FIX008.13 [P3] 闹钟添加前端校验 —— pages/alarm.rs:82-94 client 侧校验 HH:MM（对照 countdown.rs:340-342 红字内联校验同款），失败不清草稿并显示错误；验证：真窗非法输入有反馈、合法输入正常添加（2026-10-24 完成：valid_hhmm 纯函数+红字提示；valid_hhmm_matrix 绿；红字交互属人工走查项）
 - [x] FIX008.14 [P3] remove_countdown_target 补日志 —— interface.rs:354-362 不存在分支补 tracing::info!（对照 remove_world_city:286-295）；验证：真窗删除不存在目标日志可达（2026-10-24 完成）
-- [x] FIX008.15 [P3] 测试临时目录 RAII —— interface.rs:697-702 temp_config、settings.rs:306-311 temp_cfg 照搬 parity.rs:490-510 SandboxDir 模式；验证：全量回归后 %TEMP% 无 accel_iface_*/accel_settings_* 残留（2026-10-24 完成：两模块 SandboxDir 落地，17 处调用点迁移）
+- [x] FIX008.15 [P3] 测试临时目录 RAII —— interface.rs:697-702 temp*config、settings.rs:306-311 temp_cfg 照搬 parity.rs:490-510 SandboxDir 模式；验证：全量回归后 %TEMP% 无 accel_iface*_/accel*settings*_ 残留（2026-10-24 完成：两模块 SandboxDir 落地，17 处调用点迁移）
 - [x] FIX008.16 [P3] 温度曲线平线取中 —— pages/weather.rs:8/:27 公式改平线居中（或订正注释，以设计意图为准）+ 补等温序列单测；验证：单测平线 y=中位（2026-10-24 完成：等温 ratio 0.5；测试绿）
 - [x] FIX008.17 [P3] alarm.rs 补 /// —— :77 Clock::now、:375 default_true 各补一行中文文档注释；验证：rg 房规抽查（2026-10-24 完成）
 - [x] FIX008.18 [P3] 托盘倍率菜单 set_text 镜像跳过 —— platform/tray.rs:88 镜像上次倍率文本，未变化跳过（对齐 tooltip 同款）；验证：真窗托盘观察 + 倍率变化仍即时更新（2026-10-24 完成：last_rate_text 镜像）
@@ -549,6 +550,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 ### FIX009: 第 9 轮审计修复 [audit#A009]
 
 > 范围：A009 二十条（P2×3 / P3×17）。修复完成后按规范 bump 版本（fix 类型 patch 位 +1）。**UI 行为变更固定连带清单**（#3 定案）：README 特性/使用说明/项目结构三节 + w.study 3.7 + m.milestone「后续版本」规划节。
+>
 > - **完成（2026-10-24）**：20 条 + 收尾全落地。**#6 真机实证抓到真问题**——winit 对 with_inner_size 创建期**不施加** with_min_inner_size（旧 100×100 存档原样创建 125px 窄窗，tiny-geo 探针实证），新增 clamped_restore_geometry 恢复侧钳制（修复后 650×525 = 520×420 逻辑点 @1.25 DPI）；#9 裁决：删四转发（get_weather_refresh_interval_ms/get_alarm/get_max_alarms/get_world_cities），get_timezone_options 保留登记（timezones 表+n_tz 夹具锚）、format_weather_info 保留登记（parity 契约）；#10 base.json 新增 weather_forecast_days/hours 两键（WeatherClient 字段化注入）；#14 chip_size→chip_height 单值（layout_vec2 删）；#3 固定连带清单落 AGENTS「操作注意」节。
 > - **验证**：`pwsh rs/ci.ps1` 四关卡 ALL_GREEN；**测试 187 通过**（app 58 + bin 1 + core 108 + parity 20，较 FIX008 后 185 净增 2：from_draft 规范化/restore 钳制）；真窗 fps 探针 60/6s + 截图六帧全 ok（.temp/ui_shots_fix009/）+ 旧小存档钳制前后对比 125x125→650x525
 > - **反向验收**：`.temp/verify_fix009_accept.md`（20 项三重口径；人工走查 2 项 + 非 Win 交叉编译受限 1 项如实标注）
@@ -558,7 +560,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] FIX009.3 [P2] README 三态主题/Ctrl+T 失实组 —— README.md:31（深浅两套→单一深色实心主题）、:38（三态主题条整行改写或删）、:39/:86（热键删 Ctrl+T 主题）、:80（切换主题段改仅深色口径）；并将「README 三节 + w.study 3.7 + m.milestone 规划节」写入 AGENTS 或本文件作为 UI 行为变更固定连带清单；验证：rg `三态|Ctrl\+T|浅色` README.md 零命中（2026-10-24 完成：五处改写 + 清单落 AGENTS「操作注意」节）
 - [x] FIX009.4 [P3] 文档清扫漏网族（一次收口） —— w.study.md:130-132（深浅两套/switch/钉色随主题）；README.md:90-91,152（配置/日志路径改 exe 同目录基准）、:114（删 switch）、:112（补 lib.rs）；m.milestone.md:285（删「浅色主题色板实测校准」或注明已随仅深色定案作废）；x.progress.md:5（状态行改「FIX008 已随 fd04683 提交」）；icons.rs:6,403（Dock→侧栏）；window.rs:631（删 Acrylic/玻璃管线口径）；window.rs:869（Monospace 槽位序号订正）；bus.rs:48（SetTheme 注释改「ThemePref 仅存档」）+ :124（`ConfigSaved(_ok)` 改名去下划线）；验证：rg 关键词零命中 + 四关卡（2026-10-24 完成：全清单落地）
 - [x] FIX009.5 [P3] 闹钟落盘失败回推 ConfigSaved —— accel-core/src/interface.rs:506-539 四分支改 `let saved = self.save_config_now();` 且失败不吞（`if ok { ... } let _ = evt_tx.send(ConfigSaved(ok && saved))` 或按契约恒回推现值+ConfigSaved）；验证：单测——配置路径只读（SandboxDir 只读挂载或权限注入）时 AddAlarm 仍收到 ConfigSaved(false)（2026-10-24 完成：四分支 saved 回推；crud 测试增 true 断言/rejection 测试增 false 断言双绿）
-- [x] FIX009.6 [P3] 几何存档无上限 —— accel-core/src/interface.rs:650 parse_window_geometry 补上限域钳制（如 |x|,|y|≤1e4、w,h≤1e4，超界回退 None）；恢复侧与 window_min_* 关系真机验证：构造 `10,10,100,100` 旧存档启动，确认窗口创建即 ≥520×420（winit 行为记录进 y.problems 或代码注释）；验证：单测超界用例 → None + 真窗旧小存档启动不塌负宽（2026-10-24 完成：parse 三条超域用例；**真机实证 winit 不施加 min**→恢复侧 clamped_restore_geometry 钳制 + 三例单测 + tiny-geo 前后 125x125→650x525 实证）
+- [x] FIX009.6 [P3] 几何存档无上限 —— accel-core/src/interface.rs:650 parse*window_geometry 补上限域钳制（如 |x|,|y|≤1e4、w,h≤1e4，超界回退 None）；恢复侧与 window_min*\* 关系真机验证：构造 `10,10,100,100` 旧存档启动，确认窗口创建即 ≥520×420（winit 行为记录进 y.problems 或代码注释）；验证：单测超界用例 → None + 真窗旧小存档启动不塌负宽（2026-10-24 完成：parse 三条超域用例；**真机实证 winit 不施加 min**→恢复侧 clamped_restore_geometry 钳制 + 三例单测 + tiny-geo 前后 125x125→650x525 实证）
 - [x] FIX009.7 [P3] tick 分支退出收尾对称 —— accel-core/src/interface.rs:597-601：evt_tx.send 失败 break 前复用 Quit 收尾块（abort 在飞天气任务 + 置 sd_tx）；验证：单测——先 drop evt_rx 再 Quit，闹钟调度任务终止（watch 已变）且在飞表清空（2026-10-24 完成：内联同款收尾；watch 私有黑盒不可观察，以与 Quit 同构 + 既有 Quit 测试背书，注记如实）
 - [x] FIX009.8 [P3] 倒计时落盘格式复用单源 —— accel-core/src/interface.rs:338 改调 `settings::format_date_text(at.naive_local())`；验证：rg `%Y-%m-%d %H:%M:%S` 仅 settings.rs 一处 + 既有倒计时落盘测试全绿（2026-10-24 完成）
 - [x] FIX009.9 [P3] 零调用契约 API 裁决 —— accel-core/src/interface.rs:159,182,229,238,250 与 weather.rs:261,264-277：逐个删除（get_alarm 若测试依赖改测试直入 manager），或对照 world_cities.json 先例在说明区登记「Python 七域契约形态保留」；验证：rg 零调用零命中（或登记在位）+ 全量测试绿（2026-10-24 完成：删四转发+测试直查；get_timezone_options/format_weather_info 双登记；说明区同步）
@@ -572,7 +574,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] FIX009.17 [P3] Storm 图标底部留边 —— accel-app/src/widgets/icons.rs:223-231 闪电末端 0.88r 收至 ≤0.80r；验证：单测几何锚点（末端 y ≤ center+0.80r）+ 截图探针 40px hero 无贴边（2026-10-24 完成：0.80r + 注释锚定；截图帧 03 无回归）
 - [x] FIX009.18 [P3] alarm 红字跳版处置 —— accel-app/src/pages/alarm.rs:114-120：真机走查若可感则改恒占位（红字行常驻、未非法时 `Visibility::Invisible`）；验证：真窗输入非法→列表首行不动（人工走查项）（2026-10-24 完成：直接恒占位——allocate_exact_size 固定高 + 条件绘制，跳版根除；观感终审真机）
 - [x] FIX009.19 [P3] weather 距条零宽孤点 —— accel-app/src/pages/weather.rs:211-225 `bar_w <= 0.0` 时跳过轨道与填充绘制；验证：单测或真窗极窄容器（≤min 宽前窗口已钳制，属防御）无孤立金点（2026-10-24 完成：if bar_w > 0.0 跳过，占位保留）
-- [x] FIX009.20 [P3] window.rs 测试目录 RAII —— accel-app/src/window.rs:996-1027 补 remove_dir_all 或 RAII guard（对照 logging.rs:163-179 样板）；验证：测试后 %TEMP% 无 accel_startup_* 残留（2026-10-24 完成：RemoveOnDrop guard）
+- [x] FIX009.20 [P3] window.rs 测试目录 RAII —— accel-app/src/window.rs:996-1027 补 remove*dir_all 或 RAII guard（对照 logging.rs:163-179 样板）；验证：测试后 %TEMP% 无 accel_startup*\* 残留（2026-10-24 完成：RemoveOnDrop guard）
 - [x] FIX009.21 收尾 —— 四关卡全绿（pwsh rs/ci.ps1）+ `cargo test --workspace` 结果行全量显示 + 真窗探针 exit 0 + 截图自检 + 反向验收 .temp/verify_fix009_accept.md + 文档同步（z.plan A009 状态行翻转、m.milestone 条目）+ commit 草案（禁轮次字样，标题只写改了什么）；验证：四关卡 ALL_GREEN（2026-10-24 完成：ALL_GREEN + 187 测试 + fps 60/6s + 截图六帧 + tiny-geo 钳制实证；m.milestone 条目随提交环节版本定案补记）
 
 ### FIX010: 第 10 轮审计修复 [audit#A010]
@@ -591,7 +593,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] FIX010.10 [P3] .gitignore 去重 —— 删 `.vscode/` 重复条目之一；验证：rg -c "\.vscode" .gitignore == 1（2026-10-24 完成：删 Environment 节错位条目，保留 IDE 节）
 - [x] FIX010.11 收尾 —— 四关卡全绿（pwsh rs/ci.ps1）+ `cargo test --workspace` 结果行全量显示 + 真窗探针 exit 0 + 截图自检 + 反向验收 .temp/verify_fix010_accept.md + 文档同步（z.plan A010 状态行翻转、m.milestone 条目）+ commit 草案（禁轮次字样，标题只写改了什么）；验证：四关卡 ALL_GREEN（2026-10-24 完成：ALL_GREEN + 测试 189 + 探针六帧 exit 0 + 版本 bump 0.6.1.3 + 文档三件同步）
 
-### UIR2: 子夜星图视觉全盘重塑 [design#UIR2]（2026-10-24，用户定案「全盘推倒重来」+ better-* 技能族组合）
+### UIR2: 子夜星图视觉全盘重塑 [design#UIR2]（2026-10-24，用户定案「全盘推倒重来」+ better-\* 技能族组合）
 
 - [x] UIR2.1 审计取证 —— 六域方法论（better-interface 编排 + colors/typography/layout/ui 四域 + frontend-design 定向）代码/token 层审查：text_dim 卡面 2.85:1 实测失效（正文级信息）、text_soft·muted 仅差 1.28:1 同职、字阶 12 键含重复值（16×2/12×2）无梯度、间距魔法数（6/8/10/12/20）、删除钮悬停才显形、hero=大数字+小标签+强调徽标属通用默认处理；验证：.temp/contrast_check.awk 实测矩阵在案
 - [x] UIR2.2 新视觉语言定案 —— 「子夜星图」：黛蓝星图底 ramp（#0F1420/#0B0F19/#141A29/#1A2135）× 暖米白五层文本 × 雄黄金 #E8B544 单强调 × 朱砂 #EE7265；签名元素=星轨刻度（仪器标尺语义承接「时间膨胀观测」主题）；验证：全矩阵对比度 ≥4.5:1（meta 卡面 4.79/窗底 5.08）
@@ -602,7 +604,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] UIR2.7 chip 单行化 —— 56px 双行 → 32px 单行安静徽标（label muted + value body 同行）；chip_width 钳 [56,240]；验证：chip 测试锚点更新绿
 - [x] UIR2.8 验证收尾 —— 四关卡 ALL_GREEN + 测试 192（app 61+bin 1+core 110+parity 20）+ 截图探针六帧 exit 0 + 像素采样实证（侧栏 #0B0F19/内容 #0F1420 精确命中）+ 版本 bump 0.6.1.4 + 文档同步（README/w.study 3.7/m.milestone/z.plan 附录）；验证：pwsh rs/ci.ps1 ALL_GREEN
 
-### UIR2.9: 子夜星图二轮精修 [design#UIR2]（2026-10-24，better-* 复检：实际渲染对精算 + 布局纪律）
+### UIR2.9: 子夜星图二轮精修 [design#UIR2]（2026-10-24，better-\* 复检：实际渲染对精算 + 布局纪律）
 
 - [x] UIR2.9.1 非文本对比度补测与色值修正 —— 实测渲染对：文本对全绿（strong-on-card 14.16/selection 9.91/sidebar 11.79）；**track 未过刻度 1.69:1 失效**→新键 tick_idle #55648A（3.13:1）；border 1.33→#33406A（1.82，提浓一档仍属 hairline——登记为设计选择）；egui 默认 weak 占位 3.06→visuals.weak_text 对齐 muted（6.28）；验证：.temp/contrast_check.awk 矩阵全过
 - [x] UIR2.9.2 星轨刻度窄窗自适应 —— 刻度数 48 固定改 tick_count(scale_w)（约 9px/道，钳 [24,48] 取偶——窄窗不挤成实心块）；验证：新测 tick_count_adapts_and_stays_even 绿
@@ -631,3 +633,24 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 
 - [x] UIR4.6.1 表盘语法重写 —— 双环（形异义同）废；单环双针：金长针=加速此刻（配重尾）、灰细针=现实此刻、轴毂；刻度环退纯量尺（整点刻长刻亮）；含义唯一原则（刻度=尺/指针=数据，废除同义重复的已过段填金）；验证：编译 + 帧渲染 + 既有几何单测绿
 - [x] UIR4.6.2 收尾 —— 四关卡 ALL_GREEN + 测试 198 + 截图六帧 + bump 0.6.1.8 + 文档连带（README/w.study/AGENTS 双环→单环双针 + m.milestone 0.6.1.8 条目）+ 重新拉起真窗走查；验证：pwsh rs/ci.ps1 ALL_GREEN
+
+### PL016: UI 审核精修——全部 15 条落实 [plan#PL016]（2026-10-27，依据根目录 UI审核意见.md@7083456；版本 0.6.2.0，初拟 0.7.0.0 提交前定案改号）
+
+- [x] PL016.01【P0】金针角度修复（审核 #1） —— 采纳方案 a：金针改 day_progress(expanded_hours, remaining) 加速日进度归一（金针一圈=一个加速日，与灰针同构可比，两针速差=倍率）；day_fraction 限定 24h 制钟面源（现实标准时）；补测 gold_hand_fraction_survives_over_24h_days（rate=2 日中 0.5 / 三位数小时 / 日末 1.0 / 异常钳 0）；验证：测试绿
+- [x] PL016.02 最小窗口复核（审核 #5） —— 取证在位：base.json window_min 520×420 + with_min_inner_size（window.rs:702）+ clamped_restore_geometry（FIX009）+ dial_diameter 钳 200 下限——审核项已由 FIX008/009 覆盖，关单附证据
+- [x] PL016.03 状态四态（审核 #2/#15） —— ①天气磁盘缓存：fetch_by_city 成功落盘 exe 旁 weather_cache/{city}.json（fetched_at+data；30 天上限防陈旧兜底），失败回退 StaleServed（Box<WeatherData>+age_secs+source）→ interface 先发 Updated（旧值上屏）再发 Failed（"N 前缓存，点刷新重试"）②bus WeatherFailed 不再清旧数据（A005 #13 口径翻转，测试同步）③在飞集合 weather_loading：刷新/换城入集、收事件出集 → 无数据两态「天气获取中…」/「选择上方城市开始查看天气…」④三页空态行动话术（闹钟/倒计时；世界页常驻集不可空 N/A）⑤humanize_age 分桶话术 + fetch_failure_serves_disk_stale 测试（重启等价回退）；验证：测试 203 绿
+- [x] PL016.04 破坏性两步确认（审核 #3） —— 闹钟/倒计时/常驻城市三处删除改 armed 两步：首击武装（图标 Trash/Minus→Check 朱砂 + 悬停「再次点击确认」），再击执行；4s 超时自动解除（页首帧核验）；验证：编译 + 真窗手势路径
+- [x] PL016.05 键盘焦点（审核 #4） —— egui 0.37 Sense::click 自带 focusable（源码实证）→ 补可见焦点环（icon_button/slider has_focus 时 accent 描边）+ 滑杆 ←→ 方向键 0.1 步进（400ms 无按键自动落盘恰一次，对齐拖动语义）；键盘行为真机走查留用户
+- [x] PL016.06 motion 令牌 + 三级动效（审核 #6/#7） —— ui.json 增 motion 段（hover/press/drawer/alarm_pulse/toast 五组；弹簧参数整型 x10/x100 存储规避 ui_nested_i64）+ 顶部 design 哲学行（同时承载 #12 黛蓝辩证与 #13 开关金登记）；tools/motion.rs 阻尼谐振子（半隐式欧拉，ζ<1 过冲/ζ=1 平滑，两测）；large=闹钟触发表盘 accent 描边三闪 + 金针加粗脉冲（600ms，动画期 16ms 提频）；medium=抽屉开合 bouncy 3.5Hz/ζ0.55 过冲滑入（UiState.drawer_spring 跨帧，过冲钳 1.06）；small=icon_button hover 0.15s 透明度缓动 + 按压下沉 0.06s + chip 描边增亮；设置浮窗「减少动效」复选框（会话级，ctx data 分发，reduce 直取终态）；零忙转纪律不破（animate_value_with_time 自提频 + 手动窗口期 16ms）
+- [x] PL016.07 应用内 toast（审核 #8） —— egui-notify 维护线未覆盖 egui 0.37（登记）→ 手写 widgets/toast.rs 零依赖：右上堆叠、入场 0.3s 滑入/末段 0.15s 滑出（相位推导无逐卡状态）、左缘色条+标题+正文三层冗余；ConfigSaved(false) 与 WeatherFailed 入队（系统通知保留为驻留兜底——分层）；存活期 16ms 提频/静驻 0.25s
+- [x] PL016.08 egui_plot 温度曲线（审核 #9） —— workspace 引入 egui_plot 0.38（对齐 egui 0.37 单源实证 cargo tree）；Plot 无 chrome：show_axes(false)/show_grid(false)/全交互禁用/margin ZERO/bounds 固定防跳动；金线单序列 + 3h 金点 + RichText 温度/时刻标注；temp_curve_points 死代码随删（A008 #16 平线居中由 y-bounds 承接）
+- [x] PL016.09 图标（审核 #10） —— 网格纪律登记头部（等效 24 网格/r 基准分数坐标/线宽单源）；补 Check（武装态）+ Wind（天气要素行风力段前置）两枚接线；「编辑/定位」无宿主场景未加（零调用即死代码，登记）；Lucide 中期迁移登记缓行
+- [x] PL016.10 正文字体（审核 #11） —— MiSans 官方包下载 → fonttools 子集化（CJK 基本区全量 + 标点 + 界面固定文案字，5.6MB 防农历生僻字 tofu）→ rs/assets/fonts 编译期 include_bytes 内嵌；install_fonts 内嵌优先路径（token=MiSans 时零系统依赖跨机一致；Bahnschrift 数字保留——审核亦认可）；日志「中文族字体加载: MiSans（内嵌子集）」实证
+- [x] PL016.11 记录性核查（审核 #12/#13/#14） —— 黛蓝偏离辩护 + 开关 on 金色登记入 ui.json design 行（#12/#13）；倒计时到点态「已到达」文字替代纯红 00:00（#14 非颜色冗余；toast 色条/图标武装态同为形状冗余）
+- [x] PL016.12 收尾 —— 四关卡 ALL_GREEN + 测试 203（app 70+bin 1+core 112+parity 20）+ 截图探针六帧 exit 0 + 像素实证（窗底 #0F1420 命中）+ bump 0.6.2.0 + 文档连带（README 徽章 0.6.1.2→0.6.2.0 补课/特性/依赖表、w.study、m.milestone、z.plan）；验证：pwsh rs/ci.ps1 ALL_GREEN
+- [x] PL016.13 图表网格线补装（审核 #9 复核） —— 「图表无 chrome」口径含**网格线 3–7 条淡线**，PL016.08 首轮全关属矫枉过正 → 温度曲线补 4 条横向淡线（HLine muted 40/255 alpha，y 域五等分内偏）；验证：四关卡 ALL_GREEN + 探针六帧复跑
+- [x] PL016.14 记录性登记补全 —— ①egui_flex（审核 #9 后半）：条件项「抽屉页布局复杂化再引」——现布局未复杂化，条件未触发不引入（登记）；②闹钟启用态非颜色冗余（审核 #14）：开关滑钮**位置**即启闭主信号（左=关/右=开），颜色仅辅助——固有在位登记；③闹钟脉冲时长（审核 #7）：审核建议 hit-stop 0.08s 量级，落地取 600ms 三闪衰减（token alarm_pulse_ms 可调——「唯一编排时刻」的可视性优先，幅度登记为设计选择）
+- [x] PL016.15 移交项明示（审核 §五.3） —— taste-skill 正式三轮截图评审（14 遍看图法→评分→每轮修 top3→复照）**要求看图评图**：本会话模型无视觉通道，6 页截图已产出于 .temp/ui_shots_pl016/ 供用户真机走查或下次多模态会话执行；此为 PL016 唯一未闭环环节（后续：整体复审借 analyze_image 视觉模型打通看图通道，见 PL016.16-.18）
+- [x] PL016.16 [P1] 天气 hero 行相对布局 + 截断（整体复审 HIGH） —— 现象文字原锚 left+214 固定偏移，最小窗宽 520（抽屉钳 280、内容 248）下仅剩 18px 被推出右缘；新增纯函数 hero_anchors（宽抽屉逐像素保持 104/214 原节奏，窄时随温度右缘回退、长温度右移避让图标）+ ellipsize_to 超预算省略截断；验证：四单测（宽节奏保持/最小窗界内/长温度避让/截断回退）+ 四关卡 ALL_GREEN
+- [x] PL016.17 [P2] 截图探针两段式时序（整体复审 MEDIUM） —— 根因：PrintWindow 在 update 内读到的是上一帧 present，低帧率下切页后立即采必拍旧帧（复审实证 00≡01/02≡03 哈希对、04 实为天气/05 实为闹钟，countdown/world/settings 三页无有效截图；弹簧 dt 钳 [1/240,1/30] 致稀疏帧下动画按帧数爬行叠加）；修法：切页后 1.6s 结算窗（16ms 提频驱动新页 present + 弹簧走完）窗满才采；验证：探针复跑六帧哈希全异 + 视觉模型复核名实一致（含设置浮窗首次入镜）
+- [x] PL016.18 [P3] Wind 图标小尺寸辨识度（整体复审 LOW） —— 14px 下线距 1.68px 减线宽 1.26 仅 ~0.4px 间隙视觉读作「≈」；图标几何线距 0.24r→0.35r（对齐 Lucide 疏密）+ 调用点 14→18px；验证：探针复跑视觉复检「三条短线右端上卷，可辨识为风非 ≈」

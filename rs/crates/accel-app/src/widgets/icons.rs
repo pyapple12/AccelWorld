@@ -1,5 +1,8 @@
 //! 矢量图标库（UIR 重塑新增）：painter path 直接绘制，零字体/零 emoji 依赖
 //! 跨设备字体回落不再影响图标观感；线宽随尺寸缩放，颜色走调用方语义色
+//! PL016.09 网格纪律：等效 24 网格——全部图形以 r=size/2 为基准的分数坐标定位，
+//! 线宽单源 st（0.09×size，下限 1.2）；审核建议的「编辑/定位」无宿主场景未加
+//! （零调用即死代码），Check/Wind 已接线（删除武装态/天气要素行）
 
 use egui::{Color32, Painter, Pos2, Stroke, Vec2};
 
@@ -38,6 +41,10 @@ pub enum Icon {
     Moon,
     /// 循环箭头（刷新）
     Refresh,
+    /// 对勾（PL016.04：删除两步确认的武装态）
+    Check,
+    /// 风（PL016.09：天气要素行风力段）
+    Wind,
 }
 
 /// 圆弧折线采样（图标内圆弧共用）：a0→a1 弧度逆时针 segs 段
@@ -392,6 +399,65 @@ pub fn draw(painter: &Painter, center: Pos2, size: f32, icon: Icon, color: Color
             let ah = sw * 2.6;
             painter.line_segment([tip, tip - inward * ah + tangent * ah], st);
             painter.line_segment([tip, tip - inward * ah - tangent * ah], st);
+        }
+        Icon::Check => {
+            // PL016.04：对勾（删除两步确认武装态）——短臂下折 + 长臂上扬
+            painter.line_segment(
+                [
+                    egui::pos2(center.x - r * 0.44, center.y + 0.02 * r),
+                    egui::pos2(center.x - r * 0.10, center.y + r * 0.34),
+                ],
+                st,
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(center.x - r * 0.10, center.y + r * 0.34),
+                    egui::pos2(center.x + r * 0.46, center.y - r * 0.30),
+                ],
+                st,
+            );
+        }
+        Icon::Wind => {
+            // PL016.09：风——三道横流 + 上两道右端上卷（arc 采样与库同语言）
+            // PL016.18：线距 0.24r→0.35r（对齐 Lucide 光学网格疏密）——14-18px
+            // 小尺寸下原间距减线宽仅 ~0.4px 视觉读作「≈」（复审视觉实测）
+            painter.line_segment(
+                [
+                    egui::pos2(center.x - r * 0.50, center.y - r * 0.30),
+                    egui::pos2(center.x + r * 0.16, center.y - r * 0.30),
+                ],
+                st,
+            );
+            let pts = arc_points(
+                egui::pos2(center.x + r * 0.16, center.y - r * 0.48),
+                r * 0.18,
+                std::f32::consts::FRAC_PI_2,
+                0.0,
+                8,
+            );
+            painter.add(egui::Shape::line(pts, st));
+            painter.line_segment(
+                [
+                    egui::pos2(center.x - r * 0.30, center.y + r * 0.05),
+                    egui::pos2(center.x + r * 0.24, center.y + r * 0.05),
+                ],
+                st,
+            );
+            let pts = arc_points(
+                egui::pos2(center.x + r * 0.24, center.y - r * 0.13),
+                r * 0.18,
+                std::f32::consts::FRAC_PI_2,
+                0.0,
+                8,
+            );
+            painter.add(egui::Shape::line(pts, st));
+            painter.line_segment(
+                [
+                    egui::pos2(center.x - r * 0.44, center.y + r * 0.42),
+                    egui::pos2(center.x + r * 0.30, center.y + r * 0.42),
+                ],
+                st,
+            );
         }
     }
 }

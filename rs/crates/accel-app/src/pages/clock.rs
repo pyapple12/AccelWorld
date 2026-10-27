@@ -21,6 +21,8 @@ pub fn time_part(standard_datetime: &str) -> &str {
 }
 
 /// "HH:MM:SS" → 一日已过比例（纯函数）：0 点正上起算；异常形态返 0
+/// PL016.01：仅用于 24h 制钟面源（现实标准时）——加速时刻小时可超 24
+/// （日长 24×rate），金针已改走 day_progress 归一，本函数不再接收该域
 pub fn day_fraction(time_hms: &str) -> f32 {
     let h: f32 = time_hms
         .get(0..2)
@@ -108,10 +110,40 @@ impl crate::pages::Page for crate::pages::ClockPage {
                 );
             }
 
+            // PL016.06 large（唯一编排时刻）：闹钟触发 → 表盘 accent 描边闪 +
+            // 金针加粗脉冲（三闪衰减，hit-stop 量级；动画期 16ms 提频；
+            // 减少动效/到期即清零静息）
+            let mut needle_w = 3.0_f32;
+            if let Some(since) = state.alarm_pulse_since {
+                let dur = (crate::theme::motion_ms("alarm_pulse_ms") / 1000.0).max(0.1);
+                let t = since.elapsed().as_secs_f32() / dur;
+                if t >= 1.0 || crate::theme::reduce_motion(ui.ctx()) {
+                    state.alarm_pulse_since = None;
+                } else {
+                    let flash = (1.0 - t) * (0.5 + 0.5 * (t * std::f32::consts::TAU * 3.0).sin());
+                    needle_w += 2.0 * flash;
+                    ui.painter().circle_stroke(
+                        egui::pos2(cx, cy),
+                        outer_r + 6.0,
+                        egui::Stroke::new(
+                            2.0,
+                            crate::theme::with_alpha(accent, (200.0 * flash) as u8),
+                        ),
+                    );
+                    ui.ctx()
+                        .request_repaint_after(std::time::Duration::from_secs_f32(0.016));
+                }
+            }
+
             // 双针（同一表盘两种时间——膨胀即两针速差与角差，钟表的本源语法）：
             // 金色长针 = 加速此刻（快转，倍率高时肉眼可见甩开灰针）；
             // 灰色细针 = 现实此刻（慢转基准）；轴心小毂承载双针
-            let acc_frac = day_fraction(&info.custom_time);
+            // PL016.01【P0】审核实证缺陷：原 day_fraction(custom_time) 按 24h 归一，
+            // 加速日长 = 24×rate 小时，小时 ≥24 后分数恒 1 → 金针死钉正上方
+            // （rate=20 时约 96% 时间如此）。改加速日进度归一（方案 a）：金针一圈 =
+            // 一个加速日，与灰针「各自一日」同构可比，两针速差 = 倍率；
+            // 三位数小时（rate=20 日长 480h）天然落在 [0,1] 域
+            let acc_frac = day_progress(info.expanded_hours_per_day, info.remaining_hours);
             let real_frac = day_fraction(time_part(&info.standard_datetime));
             let hand_r = outer_r - 26.0;
             // 金针（加速）：长针 + 短配重尾
@@ -119,7 +151,7 @@ impl crate::pages::Page for crate::pages::ClockPage {
             let (tx, ty) = polar(cx, cy, -14.0, day_angle(acc_frac));
             ui.painter().line_segment(
                 [egui::pos2(tx, ty), egui::pos2(gx, gy)],
-                egui::Stroke::new(3.0, accent),
+                egui::Stroke::new(needle_w, accent),
             );
             // 灰针（现实）：细短针
             let (rx, ry) = polar(cx, cy, hand_r * 0.62, day_angle(real_frac));
@@ -260,6 +292,18 @@ mod tests {
         assert!((day_fraction("12:00:00") - 0.5).abs() < 1e-6);
         assert!(day_fraction("23:59:59") > 0.999);
         assert_eq!(day_fraction(""), 0.0);
+    }
+
+    #[test]
+    fn gold_hand_fraction_survives_over_24h_days() {
+        // PL016.01【P0】验收（审核实证缺陷回归）：加速日长 24×rate 小时，
+        // 小时 ≥24 的加速时刻不得使金针分数饱和——金针 = day_progress 归一：
+        // rate=2（日长 48h）日中 → 0.5；rate=20（日长 480h）三位数小时日中 → 0.5；
+        // 日末 → 1.0。原缺陷（24h 归一饱和 1.0）在此口径下不存在
+        assert_eq!(day_progress(48.0, 24.0), 0.5, "rate=2 加速日过半");
+        assert_eq!(day_progress(480.0, 240.0), 0.5, "三位数小时日中");
+        assert_eq!(day_progress(48.0, -1.0), 1.0, "加速日末金针满圈");
+        assert_eq!(day_progress(0.0, 1.0), 0.0, "日长异常钳 0 防御");
     }
 
     #[test]

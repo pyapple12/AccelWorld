@@ -281,8 +281,9 @@ pub fn format_weather_info(weather: Option<&WeatherData>, city_name: &str) -> St
 // ===== 传输层（PL011.12）：WeatherClient =====
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::data::cities;
 use crate::static_config::Static;
@@ -299,6 +300,16 @@ pub enum FetchErr {
     Network(String),
     #[error("响应解析失败: {0}")]
     Parse(String),
+    /// PL016.03（审核 #2）：拉取失败但磁盘缓存有历史数据——陈旧数据随错误
+    /// 一并上抛，UI 保留旧值 +「N 前缓存」角标（不再整页空白，重启亦可恢复）
+    /// data 装箱：FetchErr 体积受 clippy result_large_err 纪律约束
+    #[error("拉取失败，显示 {} 前缓存", humanize_age(*age_secs))]
+    StaleServed {
+        data: Box<WeatherData>,
+        age_secs: u64,
+        #[source]
+        source: Box<FetchErr>,
+    },
 }
 
 impl From<WeatherErr> for FetchErr {
@@ -318,6 +329,22 @@ impl IsRetryable for FetchErr {
 const LAT_RANGE: (f64, f64) = (-90.0, 90.0);
 const LON_RANGE: (f64, f64) = (-180.0, 180.0);
 
+/// 磁盘缓存年龄上限（PL016.03）：30 天——断网回退不限 TTL，但过期数据防永久兜底
+const DISK_CACHE_MAX_AGE_SECS: u64 = 30 * 24 * 3600;
+
+/// 缓存年龄话术（纯函数可测，PL016.03 审核文案纪律：说清事实不含糊）
+pub fn humanize_age(age_secs: u64) -> String {
+    if age_secs < 60 {
+        format!("{age_secs} 秒前")
+    } else if age_secs < 3600 {
+        format!("{} 分钟前", age_secs / 60)
+    } else if age_secs < 24 * 3600 {
+        format!("{} 小时前", age_secs / 3600)
+    } else {
+        format!("{} 天前", age_secs / (24 * 3600))
+    }
+}
+
 /// 天气客户端：按城缓存 TTL + 重试 + force 穿透
 /// SSRF 防线（结构性）：base 构造期固定（生产 = https://api.open-meteo.com 常量），
 /// 运行期 URL 全部由 base + 已校验坐标派生，用户输入永不进入 host 部分；
@@ -331,6 +358,8 @@ pub struct WeatherClient {
     /// 采样参数（A009 #10 token 化：原 URL 字面量 forecast_days=7/forecast_hours=24）
     forecast_days: i64,
     forecast_hours: i64,
+    /// PL016.03 磁盘缓存目录（None 禁用——测试隔离；生产 = exe 同目录 weather_cache/）
+    disk_cache_dir: Option<PathBuf>,
 }
 
 impl Default for WeatherClient {
@@ -352,14 +381,17 @@ impl WeatherClient {
             delay: Duration::from_secs_f64(base.base_f64("weather_retry_delay")),
         };
         let ttl = Duration::from_secs(base.base_i64("weather_cache_ttl") as u64);
-        WeatherClient::custom(
+        let mut client = WeatherClient::custom(
             "https://api.open-meteo.com".to_string(),
             retry_spec,
             timeout,
             ttl,
             base.base_i64("weather_forecast_days"),
             base.base_i64("weather_forecast_hours"),
-        )
+        );
+        // PL016.03：生产启用磁盘缓存（FIX007.15 基准 exe 同目录；目录懒建）
+        client.disk_cache_dir = Some(crate::util::paths::exe_dir().join("weather_cache"));
+        client
     }
 
     /// 测试构造：注入 base/重试规格/超时/缓存 TTL/采样参数（httpmock 桩服务用）
@@ -385,6 +417,7 @@ impl WeatherClient {
             retry_spec,
             forecast_days,
             forecast_hours,
+            disk_cache_dir: None,
         }
     }
 
@@ -394,8 +427,16 @@ impl WeatherClient {
         self
     }
 
+    /// 覆写磁盘缓存目录（PL016.03 测试用：沙箱目录隔离，防写 exe 旁）
+    pub fn with_disk_cache(mut self, dir: PathBuf) -> Self {
+        self.disk_cache_dir = Some(dir);
+        self
+    }
+
     /// 城市查询：缓存命中直返（Python get_weather_by_city 对等）；
     /// 未知城市 UnknownCity；force 先清该城缓存穿透
+    /// PL016.03（审核 #2）：成功同步落盘缓存；失败回退磁盘陈旧值
+    /// （StaleServed 携带数据与年龄上抛——UI 保留旧值 + 角标，重启可恢复）
     pub async fn fetch_by_city(&self, city: &str, force: bool) -> Result<WeatherData, FetchErr> {
         if force {
             self.cache.lock().expect("天气缓存锁中毒").remove(city);
@@ -404,15 +445,29 @@ impl WeatherClient {
         }
         let (lat, lon) =
             cities::get(city).ok_or_else(|| FetchErr::UnknownCity(city.to_string()))?;
-        let result = self.fetch_by_coords(lat, lon).await?;
-        // 仅缓存成功（失败可立即重试，Python 语义）
-        // A008 #10：锁中毒策略与 force/读路径统一为 expect（不可恢复编程错误，
-        // 原写路径静默放弃缓存与另两处分叉）
-        self.cache
-            .lock()
-            .expect("天气缓存锁中毒")
-            .insert(city.to_string(), (Instant::now(), result.clone()));
-        Ok(result)
+        match self.fetch_by_coords(lat, lon).await {
+            Ok(data) => {
+                // 仅缓存成功（失败可立即重试，Python 语义）
+                // A008 #10：锁中毒策略与 force/读路径统一为 expect
+                self.cache
+                    .lock()
+                    .expect("天气缓存锁中毒")
+                    .insert(city.to_string(), (Instant::now(), data.clone()));
+                self.disk_cache_write(city, &data);
+                Ok(data)
+            }
+            Err(e) => match self.disk_cache_read(city) {
+                Some((age_secs, stale)) => {
+                    tracing::warn!("天气拉取失败，回退磁盘缓存: {city}（{age_secs}s 前）");
+                    Err(FetchErr::StaleServed {
+                        data: Box::new(stale),
+                        age_secs,
+                        source: Box::new(e),
+                    })
+                }
+                None => Err(e),
+            },
+        }
     }
 
     /// 缓存命中读取：未过 TTL 才有效
@@ -422,6 +477,56 @@ impl WeatherClient {
             Some((at, w)) if at.elapsed() < self.ttl => Some(w.clone()),
             _ => None,
         }
+    }
+
+    /// 磁盘缓存落盘（PL016.03，尽力而为）：{"fetched_at": epoch, "data": …}
+    /// 写失败仅记日志——磁盘缓存是恢复手段，不构成失败路径
+    fn disk_cache_write(&self, city: &str, data: &WeatherData) {
+        let Some(dir) = &self.disk_cache_dir else {
+            return;
+        };
+        let Ok(epoch) = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+        else {
+            return;
+        };
+        let payload = serde_json::json!({ "fetched_at": epoch, "data": data });
+        let path = dir.join(format!("{}.json", city));
+        if let Some(parent) = path.parent()
+            && let Err(e) = std::fs::create_dir_all(parent)
+        {
+            tracing::warn!("天气磁盘缓存目录创建失败: {}（{e}）", parent.display());
+            return;
+        }
+        match serde_json::to_string(&payload) {
+            Ok(text) => {
+                if let Err(e) = std::fs::write(&path, text) {
+                    tracing::warn!("天气磁盘缓存写入失败: {}（{e}）", path.display());
+                }
+            }
+            Err(e) => tracing::warn!("天气磁盘缓存序列化失败: {e}"),
+        }
+    }
+
+    /// 磁盘缓存读取（PL016.03）：返回 (年龄秒, 数据)；缺失/损坏/超龄上限返 None。
+    /// 无 TTL 限制（断网回退语义），但 30 天上限防陈旧数据永久兜底
+    fn disk_cache_read(&self, city: &str) -> Option<(u64, WeatherData)> {
+        let dir = self.disk_cache_dir.as_ref()?;
+        let text = std::fs::read_to_string(dir.join(format!("{city}.json"))).ok()?;
+        let v: Value = serde_json::from_str(&text).ok()?;
+        let fetched_at = v.get("fetched_at")?.as_u64()?;
+        let data = serde_json::from_value::<WeatherData>(v.get("data")?.clone()).ok()?;
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
+        if now < fetched_at {
+            return None; // 时钟回拨防御
+        }
+        let age = now - fetched_at;
+        if age > DISK_CACHE_MAX_AGE_SECS {
+            tracing::warn!("天气磁盘缓存超龄丢弃: {city}（{age}s）");
+            return None;
+        }
+        Some((age, data))
     }
 
     /// 经纬度查询：定义域校验 → URL 派生 → 重试网络层 → 解析
@@ -733,6 +838,55 @@ mod tests {
         client.fetch_by_city("北京", false).await.expect("应成功");
         mock.assert();
         assert_eq!(mock.calls(), 1, "拒绝路径零请求 + 成功路径恰一次");
+    }
+
+    #[tokio::test]
+    async fn fetch_failure_serves_disk_stale() {
+        // PL016.03（审核 #2）验收：首拉成功落盘 → 服务转 500 → force 拉取失败
+        // 回退磁盘陈旧值（StaleServed 携带数据），重启后（新 client 同目录）同享
+        let server = MockServer::start();
+        let mut mock = stub(&server);
+        let sandbox = std::env::temp_dir().join(format!("accel_wcache_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&sandbox);
+        let client = fast_client(server.base_url()).with_disk_cache(sandbox.clone());
+        let fresh = client
+            .fetch_by_city("北京", false)
+            .await
+            .expect("首拉应成功");
+        mock.delete();
+        server.mock(|when, then| {
+            when.method(Method::GET)
+                .path("/v1/forecast")
+                .query_param("latitude", "39.9042")
+                .query_param("longitude", "116.4074")
+                .query_param("timezone", "auto");
+            then.status(500).body("boom");
+        });
+        match client.fetch_by_city("北京", true).await {
+            Err(FetchErr::StaleServed { data, .. }) => {
+                assert_eq!(
+                    data.temperature, fresh.temperature,
+                    "陈旧值应为上次成功数据"
+                );
+            }
+            other => panic!("应回退磁盘缓存，实际 {other:?}"),
+        }
+        // 重启等价：新 client 同目录（内存缓存为空 + force）仍可回退
+        let client2 = fast_client(server.base_url()).with_disk_cache(sandbox.clone());
+        assert!(matches!(
+            client2.fetch_by_city("北京", true).await,
+            Err(FetchErr::StaleServed { .. })
+        ));
+        let _ = std::fs::remove_dir_all(&sandbox);
+    }
+
+    #[test]
+    fn humanize_age_buckets() {
+        // PL016.03 话术分桶：秒/分钟/小时/天
+        assert_eq!(humanize_age(5), "5 秒前");
+        assert_eq!(humanize_age(125), "2 分钟前");
+        assert_eq!(humanize_age(3 * 3600), "3 小时前");
+        assert_eq!(humanize_age(2 * 24 * 3600), "2 天前");
     }
 
     // ===== PL014.11 天气扩展（hourly/daily）路径 =====

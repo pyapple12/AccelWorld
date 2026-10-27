@@ -15,7 +15,7 @@ use crate::settings;
 use crate::static_config::Static;
 use crate::time_dilation::TimeDilation;
 use crate::types::{BackendEvent, FrontendCommand, TimeInfo, UiPreferences};
-use crate::weather::WeatherClient;
+use crate::weather::{FetchErr, WeatherClient};
 
 // 主题偏好合法取值（PL002.02 三态）
 const THEME_CHOICES: [&str; 3] = ["auto", "light", "dark"];
@@ -464,16 +464,38 @@ impl AppInterface {
                                     tracing::info!("天气拉取开始: {city}（force={force}）");
                                     let handle = tokio::spawn(async move {
                                         let result = weather.fetch_by_city(&city_task, force).await;
+                                        // PL016.03（审核 #2）：StaleServed = 失败但磁盘缓存
+                                        // 有历史——先发 Updated（旧值上屏）再发 Failed（角标），
+                                        // bus 侧不再清旧数据
                                         let evt = match result {
                                             Ok(data) => BackendEvent::WeatherUpdated {
                                                 city: city_task.clone(),
                                                 data,
                                             },
+                                            Err(FetchErr::StaleServed {
+                                                data,
+                                                age_secs,
+                                                source,
+                                            }) => {
+                                                let _ = evt_tx
+                                                    .send(BackendEvent::WeatherUpdated {
+                                                        city: city_task.clone(),
+                                                        data: *data,
+                                                    })
+                                                    .await;
+                                                BackendEvent::WeatherFailed {
+                                                    city: city_task.clone(),
+                                                    reason: format!(
+                                                        "{source}；正在显示 {} 的缓存，点刷新重试",
+                                                        crate::weather::humanize_age(age_secs)
+                                                    ),
+                                                }
+                                            }
                                             Err(e) => BackendEvent::WeatherFailed {
                                                 city: city_task.clone(),
                                                 reason: e.to_string(),
                                             },
-                                        };
+                                    };
                                         match &evt {
                                             BackendEvent::WeatherUpdated { city, .. } => {
                                                 tracing::info!("天气更新完成: {city}");

@@ -48,14 +48,33 @@ impl Pages {
 
     /// 总装配（UIR4 模型）：非 Clock 页先占右侧仪器抽屉（卡面 + 发丝左缘），
     /// 星盘主仪恒驻中央 CentralPanel——抽屉开合只缩让、不遮挡、不消失
+    /// PL016.06 medium：抽屉开合过冲滑入（bouncy 弹簧，动画期 16ms 提频）
     pub fn ui(&mut self, ui: &mut egui::Ui, state: &mut UiState, bus: &Bus) {
         // UiState.current_page 单源：Pages.current 镜像自 state.current_page（仪器坞点击直改）
         self.current = state.current_page;
 
-        if self.current != PageId::Clock {
-            let drawer_w = (ui.available_width() * 0.46).clamp(280.0, 420.0);
+        // 抽屉开合弹簧（0=收起 → 1=全开；过冲到 ~1.1 再回摆；减少动效直取目标）
+        let drawer_open = self.current != PageId::Clock;
+        let target = if drawer_open { 1.0 } else { 0.0 };
+        let reduce = crate::theme::reduce_motion(ui.ctx());
+        if reduce {
+            state.drawer_spring.value = target;
+            state.drawer_spring.velocity = 0.0;
+        } else {
+            let dt = ui.ctx().input(|i| i.stable_dt);
+            let (f, z) = crate::theme::drawer_spring_params();
+            if state.drawer_spring.step(target, dt, f, z) {
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_secs_f32(0.016));
+            }
+        }
+        // 过冲钳 1.06（抽屉比全开宽 6% 的呼吸感足够，防大窗溢出）
+        let spring_v = state.drawer_spring.value.min(1.06);
+
+        if spring_v > 0.005 {
+            let full_w = (ui.available_width() * 0.46).clamp(280.0, 420.0);
             egui::Panel::right("page_drawer")
-                .exact_size(drawer_w)
+                .exact_size(full_w * spring_v)
                 .frame(
                     egui::Frame::new()
                         .fill(crate::theme::card_bg())

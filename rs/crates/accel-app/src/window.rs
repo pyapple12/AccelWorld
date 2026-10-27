@@ -56,6 +56,8 @@ pub struct AppHandle {
     ui_shot_dir: Option<std::path::PathBuf>,
     ui_shot_step: usize,
     ui_shot_last: std::time::Instant,
+    /// PL016.17 两段式：切页时刻——结算窗内每帧 16ms 提频，窗满才允许出图
+    ui_shot_switched: Option<std::time::Instant>,
     /// 标题栏句柄缓存（首帧取到后存档——每帧 DWM 钉色用）
     titlebar_hwnd: Option<isize>,
     /// 托盘句柄（构造失败降级 None——无托盘环境行为无损）
@@ -89,9 +91,16 @@ impl eframe::App for AppHandle {
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
 
-    /// 帧绘制：侧栏导航 → 当前页 → 设置浮窗 → 重绘节奏（UIR 实心装配）
+    /// 帧绘制：底部仪器坞 → 页总装 → toast → 设置浮窗 → 重绘节奏（UIR4 装配）
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        // PL016.06：减少动效开关写入 ctx data（控件层经 theme::reduce_motion 读取）
+        ctx.data_mut(|d| {
+            d.insert_temp(
+                egui::Id::unique("accel.reduce_motion"),
+                self.state.reduce_motion,
+            )
+        });
 
         // 标题栏底色钉制（首帧缓存句柄；每帧幂等——DWM 属性写入廉价，
         // 随主题循环自动换色）
@@ -158,11 +167,14 @@ impl eframe::App for AppHandle {
         // 页面总装（星盘主仪恒驻 + 非时钟页右侧仪器抽屉）
         self.pages.ui(ui, &mut self.state, &self.bus);
 
+        // 应用内 toast（PL016.07：右上堆叠；存活期自提频，零忙转不破）
+        crate::widgets::toast::paint(&ctx, &mut self.state.toasts);
+
         // 设置浮窗
         self.paint_settings_pop(&ctx);
 
         // UI 截图探针（UIR.2：逐页 PrintWindow 出 PNG 后自动退出）
-        self.ui_shot_tick(frame);
+        self.ui_shot_tick(ui.ctx(), frame);
 
         // 重绘节奏：Tick 间隔（空闲 1s 兜底）——零忙转纪律
         // A005 #27：有平台集成（托盘/热键）时间隔收紧到 ≤200ms——平台事件仅在帧内
@@ -308,18 +320,36 @@ impl AppHandle {
         )
     }
 
-    /// UI 截图探针（UIR.2 开发期自检）：每 1.2s 拍一帧 PrintWindow 出 PNG——
-    /// step 0-4 五页（每拍完切下一页，step 4 拍完开设置浮窗）、step 5 拍设置浮窗
-    /// （拍完关闭）、step 6 触发退出（不再出图——防覆盖设置帧）。
+    /// 探针节拍（PL016.17，开发基建参数非业务 token）：出图最小间隔 / 切页后
+    /// 结算窗（≥ 新页 present + 抽屉弹簧走完）/ 结算窗内提频周期
+    const UI_SHOT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(1200);
+    const UI_SHOT_SETTLE: std::time::Duration = std::time::Duration::from_millis(1600);
+    const UI_SHOT_FRAME: std::time::Duration = std::time::Duration::from_millis(16);
+
+    /// UI 截图探针（UIR.2 开发期自检）：两段式逐页 PrintWindow 出 PNG 后自动退出——
+    /// step 0-4 五页（每拍完切下一页并起结算窗，step 4 拍完开设置浮窗）、step 5 拍
+    /// 设置浮窗（拍完关闭）、step 6 触发退出（不再出图——防覆盖设置帧）。
+    /// PL016.17：PrintWindow 在 update 内读到的是上一帧 present，低帧率下切页后
+    /// 立即采会拍切换前旧帧（复审实证 00≡01/02≡03 哈希对、04/05 名实错位）——
+    /// 切页先进结算窗（16ms 提频驱动新页 present 与抽屉弹簧走完）再采。
     /// 观感终审权仍在用户真机目测；本探针只服务开发迭代（视觉设计不得向测试环境妥协）
-    fn ui_shot_tick(&mut self, frame: &mut eframe::Frame) {
+    fn ui_shot_tick(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         let Some(dir) = self.ui_shot_dir.clone() else {
             return;
         };
         // step len+1 = 退出步（不出图）；其后守卫拦空转
-        if self.ui_shot_step > PAGE_ORDER.len() + 1
-            || self.ui_shot_last.elapsed() < std::time::Duration::from_millis(1200)
+        if self.ui_shot_step > PAGE_ORDER.len() + 1 {
+            return;
+        }
+        // 结算窗：切页后 SETTLE 内每帧 16ms 提频（新页 present + 弹簧走完）
+        if let Some(at) = self.ui_shot_switched
+            && at.elapsed() < Self::UI_SHOT_SETTLE
         {
+            ctx.request_repaint_after(Self::UI_SHOT_FRAME);
+            return;
+        }
+        self.ui_shot_switched = None;
+        if self.ui_shot_last.elapsed() < Self::UI_SHOT_INTERVAL {
             return;
         }
         self.ui_shot_last = std::time::Instant::now();
@@ -360,12 +390,13 @@ impl AppHandle {
             if ok { "ok" } else { "FAIL" }
         ));
 
-        // 状态推进：拍完当前页切下一页；五页后开设置浮窗；设置帧拍完关闭
+        // 状态推进：拍完当前页切下一页并起结算窗；五页后开设置浮窗；设置帧拍完关闭
         if step < PAGE_ORDER.len() - 1 {
             self.state.current_page = PAGE_ORDER[step + 1];
         } else {
             self.state.settings_open = step == PAGE_ORDER.len() - 1;
         }
+        self.ui_shot_switched = Some(std::time::Instant::now());
         self.ui_shot_step = step + 1;
     }
 
@@ -442,6 +473,9 @@ impl AppHandle {
                         .size(crate::theme::font_size("meta"))
                         .color(crate::theme::ink().meta),
                 );
+                // PL016.06（审核 #7 铁律）：减少动效开关——关闭三级动效（会话级）
+                ui.add_space(4.0);
+                ui.checkbox(&mut self.state.reduce_motion, "减少动效");
             });
         // 点窗外关闭：主键点击且交互点不在窗体 rect 内（.10 检验项）
         if keep_open && let Some(win) = &settings_window {
@@ -770,6 +804,7 @@ pub fn run_with_counter(
                 ui_shot_dir,
                 ui_shot_step: 0,
                 ui_shot_last: std::time::Instant::now(),
+                ui_shot_switched: None,
                 titlebar_hwnd: None,
                 tray,
                 hotkeys,
@@ -793,6 +828,12 @@ pub fn run_with_counter(
     result
 }
 
+/// 内嵌 MiSans 子集（PL016.10，审核 #11）：正文字体脱离系统默认性——
+/// 编译期嵌入（CJK 基本区全量子集 5.6MB，农历生僻字无 tofu；MiSans 官方
+/// SIL/MI 授权免费商用）；font_family token = MiSans 时优先走内嵌，
+/// 系统文件仅作 token 自定义时的回退路径
+const MISANS_EMBEDDED: &[u8] = include_bytes!("../../../assets/fonts/MiSans-Regular-sub.ttf");
+
 /// 字体注入（PL013.03 + A005 #8 接线）：族名读 ui.json token
 /// `font_family`（中文，默认族）/ `font_family_digits`（数字等宽族）
 pub fn install_fonts(ctx: &Context) {
@@ -800,6 +841,45 @@ pub fn install_fonts(ctx: &Context) {
     let s = accel_core::static_config::Static::get();
     let cjk_family = s.ui_str("font_family");
     let digit_family = s.ui_str("font_family_digits");
+    // 内嵌优先：token 指向 MiSans 时直接用编译期字节（零系统依赖，跨机一致）
+    if cjk_family.replace(' ', "") == "MiSans" {
+        fonts.font_data.insert(
+            "cjk".into(),
+            egui::FontData::from_owned(MISANS_EMBEDDED.to_vec()).into(),
+        );
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .insert(0, "cjk".into());
+        // 数字族内的 CJK 回退（UIR：等宽数字串含「天/周」等汉字——Bahnschrift
+        // 无 CJK 字形，缺失时数字族渲染 tofu；中文族向 Monospace 族尾部追加
+        // cjk 兜底（内置等宽 Hack 之后，缺字形时才回落））
+        fonts
+            .families
+            .entry(egui::FontFamily::Monospace)
+            .or_default()
+            .push("cjk".into());
+        tracing::info!("中文族字体加载: MiSans（内嵌子集）");
+        // 数字族照旧走系统 Bahnschrift
+        if let Some((path, bytes)) =
+            load_font(digit_family, &["Bahnschrift.ttf", "bahnschrift.ttf"])
+        {
+            tracing::info!("数字族字体加载: {path}");
+            fonts
+                .font_data
+                .insert("digits".into(), egui::FontData::from_owned(bytes).into());
+            fonts
+                .families
+                .entry(egui::FontFamily::Monospace)
+                .or_default()
+                .insert(0, "digits".into());
+        } else {
+            tracing::warn!("{digit_family} 未找到，数字等宽回退内置等宽族");
+        }
+        ctx.set_fonts(fonts);
+        return;
+    }
     // 候选名 = 族名去空格派生 + 平台常见文件名兜底（族名与文件名未必同名）
     if let Some((path, bytes)) = load_font(cjk_family, &["msyh.ttc", "msyh.ttf", "msyhbd.ttc"]) {
         tracing::info!("中文族字体加载: {path}");

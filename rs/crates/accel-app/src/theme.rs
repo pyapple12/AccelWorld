@@ -59,6 +59,12 @@ pub fn parse_hex(text: &str) -> Option<Color32> {
     Some(Color32::from_rgba_premultiplied(lut(r), lut(g), lut(b), a))
 }
 
+/// 不透明色 → 指定 alpha 的预乘色（PL016.06 动效：hover/脉冲按进度染透明度）
+pub fn with_alpha(c: Color32, a: u8) -> Color32 {
+    let lut = |v: u8| ((v as u32 * a as u32 + 127) / 255) as u8;
+    Color32::from_rgba_premultiplied(lut(c.r()), lut(c.g()), lut(c.b()), a)
+}
+
 /// 强调色（colors.accent——雄黄金：选中态/当前值/主操作唯一用色）
 pub fn accent_color() -> Color32 {
     color32_at("accent", 0xE8)
@@ -140,6 +146,32 @@ pub fn spacing(key: &str) -> f32 {
     static C: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();
     cached(&C, key, || {
         Static::get().ui_nested_i64("spacing", key) as f32
+    })
+}
+
+/// 动效时长 token → 秒（motion.{key}——PL016.06 三级动效单源；0.001 精度足够）
+pub fn motion_ms(key: &str) -> f32 {
+    static C: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();
+    cached(&C, key, || {
+        Static::get().ui_nested_i64("motion", key) as f32
+    })
+}
+
+/// 动效弹簧参数（motion.drawer_bouncy_{hz_x10,zeta_x100}——ui_nested_i64 整型
+/// 单源，读取侧除回实际值）——(频率 Hz, 阻尼比 ζ<1 过冲)
+pub fn drawer_spring_params() -> (f32, f32) {
+    (
+        motion_ms("drawer_bouncy_hz_x10") / 10.0,
+        motion_ms("drawer_bouncy_zeta_x100") / 100.0,
+    )
+}
+
+/// 减少动效开关读取（PL016.06：每帧由 window 写入 ctx data，控件层读取；
+/// 缺省 false——关是默认态，开是用户显式选择）
+pub fn reduce_motion(ctx: &egui::Context) -> bool {
+    ctx.data(|d| {
+        d.get_temp::<bool>(egui::Id::unique("accel.reduce_motion"))
+            .unwrap_or(false)
     })
 }
 

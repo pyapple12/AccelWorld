@@ -128,6 +128,12 @@ pub fn grid_cols(avail_w: f32) -> usize {
 impl crate::pages::Page for crate::pages::CountdownPage {
     fn ui(&mut self, ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
         let ink = crate::theme::ink();
+        // PL016.04：武装超时解除（4s 未确认即放下）
+        if let Some((_, at)) = &state.armed_delete
+            && at.elapsed().as_secs() >= 4
+        {
+            state.armed_delete = None;
+        }
         let now = chrono::Local::now().naive_local();
         // 目标快照（state.countdown_targets：启动快照 + ConfigSaved 重拉）
         let mut targets: Vec<(&str, NaiveDateTime)> = Vec::new();
@@ -179,7 +185,7 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                 ui.painter().text(
                     egui::pos2(center_x, ui.cursor().top() + 20.0),
                     egui::Align2::CENTER_TOP,
-                    "暂无目标 · 下方添加（24 小时后）",
+                    "还没有目标——春节倒计时在上方；下方填写名称与时刻可添加自定义目标",
                     egui::FontId::proportional(crate::theme::font_size("body_lg")),
                     ink.muted,
                 );
@@ -246,8 +252,12 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                                 &rem_font,
                                 if ended { ink.danger } else { ink.muted },
                             );
-                            // 减号（常显元信息色、悬停朱砂——UIR2：可达性优先于安静，
-                            // 破坏性操作不再悬停才显形；RemoveCountdownTarget 命令）
+                            // 删除（PL016.04 两步确认：Minus→Check 武装态，再击执行）
+                            let del_key = format!("cd:{name}");
+                            let armed = matches!(
+                                &state.armed_delete,
+                                Some((k, _)) if *k == del_key
+                            );
                             let del_resp = ui.interact(
                                 egui::Rect::from_center_size(
                                     egui::pos2(rect.right() - 18.0, rect.top() + 18.0),
@@ -256,23 +266,36 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                                 egui::Id::unique(("cd_del", *name)),
                                 egui::Sense::click(),
                             );
-                            let del_color = if del_resp.hovered() {
-                                ink.danger
+                            let del_resp = if armed {
+                                del_resp.on_hover_text("再次点击确认移除")
                             } else {
-                                ink.meta
+                                del_resp
                             };
                             let del_resp = del_resp.on_hover_cursor(egui::CursorIcon::PointingHand);
                             crate::widgets::icons::draw(
                                 ui.painter(),
                                 egui::pos2(rect.right() - 18.0, rect.top() + 18.0),
                                 14.0,
-                                crate::widgets::icons::Icon::Minus,
-                                del_color,
+                                if armed {
+                                    crate::widgets::icons::Icon::Check
+                                } else {
+                                    crate::widgets::icons::Icon::Minus
+                                },
+                                if armed || del_resp.hovered() {
+                                    ink.danger
+                                } else {
+                                    ink.meta
+                                },
                             );
                             if del_resp.clicked() {
-                                bus.send(FrontendCommand::RemoveCountdownTarget(
-                                    (*name).to_string(),
-                                ));
+                                if armed {
+                                    bus.send(FrontendCommand::RemoveCountdownTarget(
+                                        (*name).to_string(),
+                                    ));
+                                    state.armed_delete = None;
+                                } else {
+                                    state.armed_delete = Some((del_key, std::time::Instant::now()));
+                                }
                             }
                             // 满行换行（列数随断点——单列时每卡即满行）
                             if (idx + 1) % cols == 0 || idx + 1 == targets.len() {

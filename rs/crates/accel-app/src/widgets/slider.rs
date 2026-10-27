@@ -67,8 +67,42 @@ pub fn show(
             dragged_rate = Some(new_rate);
         }
     }
+    // PL016.05（审核 #4）：键盘步进——聚焦后 ←→ 各 0.1，400ms 无按键自动落盘
+    //（对齐拖动语义：连续调值只发 SetRate，停手恰一次 ApplyRate）
+    let mut key_stepped = false;
+    if resp.has_focus() {
+        let step = ui.ctx().input(|i| {
+            if i.key_pressed(egui::Key::ArrowLeft) {
+                Some(-0.1)
+            } else if i.key_pressed(egui::Key::ArrowRight) {
+                Some(0.1)
+            } else {
+                None
+            }
+        });
+        if let Some(d) = step {
+            let new_rate =
+                ratio_to_rate(rate_to_ratio(*rate, min, max) + d / (max - min), min, max);
+            if (new_rate - *rate).abs() > f64::EPSILON {
+                *rate = new_rate;
+                key_stepped = true;
+            }
+        }
+    }
     if let Some(r) = dragged_rate {
         on_change(r); // 实时生效（SetRate——拖动期每帧一发）
+    }
+    // PL016.05：键盘落盘核验（每帧）——最后步进后 400ms 无新步进 → 恰一次 ApplyRate
+    let now = ui.ctx().input(|i| i.time);
+    let commit_id = resp.id.with("kbd_commit");
+    if key_stepped {
+        on_change(*rate);
+        ui.memory_mut(|m| m.data.insert_temp(commit_id, now));
+    } else if let Some(last_step) = ui.memory(|m| m.data.get_temp::<f64>(commit_id))
+        && now - last_step >= 0.4
+    {
+        ui.memory_mut(|m| m.data.remove::<f64>(commit_id));
+        on_commit(*rate);
     }
     if resp.drag_stopped() {
         on_commit(*rate); // 松手落盘（ApplyRate 恰一次）
@@ -80,6 +114,16 @@ pub fn show(
         track_h,
         rate_to_ratio(*rate, min, max) as f32,
     );
+
+    // PL016.05：可见焦点环（键盘可达性的可见凭据）
+    if resp.has_focus() {
+        ui.painter().rect_stroke(
+            track.expand(4.0),
+            egui::epaint::CornerRadius::same(6),
+            egui::Stroke::new(1.5, crate::theme::accent_color()),
+            egui::StrokeKind::Inside,
+        );
+    }
 }
 
 /// 三层几何绘制：底轨胶囊 → 填充（零进度整圆）→ 旋钮

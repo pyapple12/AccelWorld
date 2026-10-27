@@ -29,11 +29,13 @@ impl NaiveDatePart {
 }
 
 /// 剩余时间拆解（Python format_remaining 对等）：
-/// 已到点/过期 → ("00天 00:00:00", true)；否则 ("X天 HH:MM:SS", false)
+/// 已到点/过期 → ("已到达", true)（PL016.11 文字冗余）；否则 ("X天 HH:MM:SS", false)
 pub fn format_remaining(target: NaiveDateTime, now: NaiveDateTime) -> (String, bool) {
     let remaining = target - now;
     if remaining <= TimeDelta::zero() {
-        return ("00天 00:00:00".to_string(), true);
+        // PL016.11（审核 #14，状态不只靠颜色）：到点态由纯「红色 00:00」升级为
+        // 文字「已到达」——朱砂色之外的语义冗余
+        return ("已到达".to_string(), true);
     }
     let days = remaining.num_days();
     let secs = remaining.num_seconds() % 86_400;
@@ -97,14 +99,14 @@ mod tests {
         let (text, ended) = format_remaining(target, now);
         assert_eq!(text, "01天 01:30:05");
         assert!(!ended);
-        // 已到点
+        // 已到点（PL016.11：文字态替代红色 00:00——非颜色冗余）
         let (text, ended) = format_remaining(now, now);
-        assert_eq!(text, "00天 00:00:00");
+        assert_eq!(text, "已到达");
         assert!(ended);
         // 过期
         let past = now - TimeDelta::hours(2);
         let (text, ended) = format_remaining(past, now);
-        assert_eq!(text, "00天 00:00:00");
+        assert_eq!(text, "已到达");
         assert!(ended);
     }
 }

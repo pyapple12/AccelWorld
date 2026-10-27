@@ -43,6 +43,18 @@ pub struct UiState {
     /// 天气快照（city → 数据/失败原因）
     pub weather: HashMap<String, WeatherData>,
     pub weather_errors: HashMap<String, String>,
+    /// 在飞拉取集合（PL016.03：加载中指示——发 RefreshWeather 入集，收事件出集）
+    pub weather_loading: std::collections::HashSet<String>,
+    /// 应用内 toast 队列（PL016.07：保存失败/天气失败统一反馈层）
+    pub toasts: Vec<Toast>,
+    /// 闹钟触发脉冲起点（PL016.06 large 动效：表盘金针脉冲 + accent 描边闪）
+    pub alarm_pulse_since: Option<std::time::Instant>,
+    /// 减少动效开关（PL016.06 会话级——设置浮窗切换；默认关）
+    pub reduce_motion: bool,
+    /// 抽屉开合弹簧（PL016.06 medium：过冲滑入状态跨帧持有）
+    pub drawer_spring: crate::tools::motion::Spring,
+    /// 两步删除确认态（PL016.04：key + 武装时刻；4s 未确认自动解除）
+    pub armed_delete: Option<(String, std::time::Instant)>,
     /// 闹钟列表快照（AlarmsChanged 全量回推）
     pub alarms: Vec<accel_core::alarm::Alarm>,
     /// 会话偏好（启动时拉取；ThemePref 仅存档——A008 #2 定案仅深色，app 侧零消费）
@@ -83,6 +95,12 @@ impl Default for UiState {
             rate_bounds: (base.base_f64("rate_min"), base.base_f64("rate_max")),
             weather: HashMap::new(),
             weather_errors: HashMap::new(),
+            weather_loading: std::collections::HashSet::new(),
+            toasts: Vec::new(),
+            alarm_pulse_since: None,
+            reduce_motion: false,
+            drawer_spring: crate::tools::motion::Spring::new(0.0),
+            armed_delete: None,
             alarms: Vec::new(),
             prefs: UiPreferences {
                 theme: base.base_str("default_theme").to_string(),
@@ -110,12 +128,14 @@ impl UiState {
             BackendEvent::Tick(info) => self.time = Some(info),
             BackendEvent::WeatherUpdated { city, data } => {
                 self.weather_errors.remove(&city);
-                self.weather.insert(city, data);
+                self.weather.insert(city.clone(), data);
+                self.weather_loading.remove(&city);
             }
             BackendEvent::WeatherFailed { city, reason } => {
-                // A005 #13：失败须清除同城旧成功数据，否则页面"红字失败 + 完整数据"并存
-                self.weather.remove(&city);
-                self.weather_errors.insert(city, reason);
+                // PL016.03（审核 #2）：失败保留旧值（磁盘缓存回退语义）——旧实现
+                // 清数据致断网刷新一次即整页空白；错误角标与数据并存
+                self.weather_errors.insert(city.clone(), reason);
+                self.weather_loading.remove(&city);
             }
             BackendEvent::AlarmTriggered(alarm) => {
                 tracing::info!("闹钟触发: {}（{}）", alarm.label, alarm.time);
@@ -155,10 +175,43 @@ impl UiState {
 pub enum SideEffect {
     /// 闹钟触发通知（label, HH:MM）
     NotifyAlarm(String, String),
-    /// 配置保存失败通知
+    /// 配置保存失败通知（PL016.07 分层：系统级驻留提醒；应用内另有 toast 即时反馈）
     NotifySaveFailed,
     /// 铃声（sound_type, sound_value）
     PlaySound(String, String),
+}
+
+/// 应用内 toast（PL016.07，审核 #8）：出生时刻驱动出入场动画——
+/// 入场 0.3s 右侧滑入、驻留 TOAST_TTL、末 0.15s 淡出；错误红缘 / 信息金缘
+#[derive(Debug, Clone)]
+pub struct Toast {
+    pub title: String,
+    pub body: String,
+    pub born: std::time::Instant,
+    pub kind: ToastKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ToastKind {
+    Error,
+    Info,
+}
+
+impl Toast {
+    /// 错误 toast 构造（标题 + 正文）
+    pub fn error(title: &str, body: &str) -> Toast {
+        Toast {
+            title: title.to_string(),
+            body: body.to_string(),
+            born: std::time::Instant::now(),
+            kind: ToastKind::Error,
+        }
+    }
+}
+
+/// toast 驻留时长（含末段淡出；ui.json motion.toast_ttl_ms 单源）
+pub fn toast_ttl() -> std::time::Duration {
+    std::time::Duration::from_millis(crate::theme::motion_ms("toast_ttl_ms").max(200.0) as u64)
 }
 
 /// 副作用工作线程（A005 #22②）：std mpsc 无界队列（入队恒成功，UI 帧不阻塞）
@@ -308,13 +361,16 @@ impl Bus {
     /// window::logic 直接丢弃；帧计数由 AppHandle.repaint_count 承接）
     pub fn drain(&mut self, state: &mut UiState) {
         self.cmd.flush();
+        // PL016.07：过期 toast 修剪（绘制层按 born 驱动动画，队列只留存活项）
+        let ttl = toast_ttl();
+        state.toasts.retain(|t| t.born.elapsed() < ttl);
         let mut need_reload = false;
         let mut need_rate_resync = false;
         while let Ok(evt) = self.evt_rx.try_recv() {
             match &evt {
                 BackendEvent::AlarmTriggered(alarm) => {
                     // 系统通知 + 铃声经工作线程（失败皆降级不阻塞；触发事实已由
-                    // AlarmsChanged/列表状态承载）
+                    // AlarmsChanged/列表状态承载）；PL016.06 large 动效：表盘脉冲起点
                     self.side_effect(SideEffect::NotifyAlarm(
                         alarm.label.clone(),
                         alarm.time.clone(),
@@ -323,11 +379,24 @@ impl Bus {
                         alarm.sound_type.clone(),
                         alarm.sound_value.clone(),
                     ));
+                    state.alarm_pulse_since = Some(std::time::Instant::now());
                 }
                 // FIX010.1：ConfigSaved(false) 已收敛为纯 IO 失败信号（core 侧拒绝
-                // 路径不再回推 false）——此处「保存失败」toast 只对真落盘失败触发
+                // 路径不再回推 false）——此处「保存失败」只对真落盘失败触发；
+                // PL016.07 分层：应用内 toast 即时反馈 + 系统通知驻留兜底
                 BackendEvent::ConfigSaved(false) => {
+                    state.toasts.push(Toast::error(
+                        "配置保存失败",
+                        "设置未能写入磁盘——检查文件权限或磁盘空间后重试",
+                    ));
                     self.side_effect(SideEffect::NotifySaveFailed);
+                }
+                // PL016.03/07（审核 #2/#8）：天气失败应用内 toast（页面另有角标与
+                // 旧值并存；不打系统通知防连刷骚扰）
+                BackendEvent::WeatherFailed { city, reason } => {
+                    state
+                        .toasts
+                        .push(Toast::error(&format!("{city} 天气拉取失败"), reason));
                 }
                 // A005 #19：倍率被拒 → 回拉权威值（乐观更新回退）
                 BackendEvent::RateRejected(_) => need_rate_resync = true,
@@ -448,14 +517,15 @@ mod tests {
         );
         state.apply(BackendEvent::AlarmsChanged(vec![]));
         assert!(state.alarms.is_empty());
-        // A005 #13 回归：失败事件必须清除同城旧成功数据（否则错误+数据并存）
+        // PL016.03 回归（审核 #2，替代 A005 #13 旧口径）：失败事件保留同城旧数据
+        // ——磁盘缓存回退语义，错误角标与数据并存（旧实现清数据致断网整页空白）
         state.apply(BackendEvent::WeatherFailed {
             city: "北京".into(),
             reason: "刷新失败".into(),
         });
         assert!(
-            !state.weather.contains_key("北京"),
-            "失败后同城旧数据应被清除"
+            state.weather.contains_key("北京"),
+            "失败后同城旧数据应保留（陈旧缓存回退）"
         );
         assert!(state.weather_errors.contains_key("北京"));
     }

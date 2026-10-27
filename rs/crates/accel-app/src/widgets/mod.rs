@@ -7,6 +7,7 @@ pub mod digits;
 pub mod icon_button;
 pub mod icons;
 pub mod slider;
+pub mod toast;
 
 // ===== src/widgets/mod.rs 说明区 =====
 // UIR 实心主题套件：digits.rs（等宽数字位——y.problems#12 根治）/icons.rs（矢量

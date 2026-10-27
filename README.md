@@ -1,6 +1,6 @@
 # AccelWorld —— 加速世界世界钟
 
-[![Version](https://img.shields.io/badge/Version-0.6.1.2-blue.svg)](rs/config/static/base.json)
+[![Version](https://img.shields.io/badge/Version-0.6.2.0-blue.svg)](rs/config/static/base.json)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](rs/rust-toolchain.toml)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
@@ -28,13 +28,13 @@
 
 - **时间膨胀计算**：根据可配置的加速倍率（1.0x - 20.0x）计算自定义时间流速
 - **实时时钟**：加速时间大字英雄区（等宽数字位不抖动）+ 标准时间对照 + 星轨刻度日进度
-- **实心桌面 UI**：「子夜星图」深色主题（黛蓝星图底 + 雄黄金单强调）+ 底部仪器坞导航 + 矢量图标（零字体依赖）
+- **实心桌面 UI**：「子夜星图」深色主题（黛蓝星图底 + 雄黄金单强调）+ 底部仪器坞导航 + 矢量图标（零字体依赖）+ 三级动效（可一键减少）
 - **星盘主仪**：单环双针 24 小时表盘常驻——金长针为加速时刻、灰细针为现实时刻，同一表盘上两针速差直观呈现时间膨胀（高倍率下金针肉眼可见地甩开灰针）；倒计时/世界/天气/闹钟为右侧抽屉页（开启时主仪缩让不退场）
 - **农历信息**：天干地支年、生肖、时辰、月相、节气、公历节日、拜财神方向
 - **世界时钟**：城市矩阵走时 + 昼夜指示，支持增删城市与基准时区切换
 - **倒计时功能**：多目标列表，法定/传统节日自动派生
-- **天气显示**：Open-Meteo 免费 API，当前 / 逐小时（24 点）/ 七日预报，单城市可换（城市选择器，选择即持久化）
-- **闹钟功能**：多闹钟、预设/自定义铃声、一键快捷添加、系统通知提醒
+- **天气显示**：Open-Meteo 免费 API，当前 / 逐小时（24 点曲线）/ 七日预报，单城市可换（城市选择器，选择即持久化）；失败保留旧值 + 缓存角标，断网重启不空白
+- **闹钟功能**：多闹钟、预设/自定义铃声、一键快捷添加、系统通知提醒、删除两步确认
 - **系统集成**：系统托盘菜单树（显示/隐藏/退出，关闭按钮隐藏驻留）+ 全局热键（Ctrl+S 保存 / Ctrl+Q 退出）
 - **配置持久化**：倍率、城市、时区、倒计时目标、闹钟、窗口几何等自动保存
 
@@ -122,7 +122,7 @@ rs/                              # cargo workspace 根（全部命令在此执�
 
 | 领域     | 依赖                                                              |
 | -------- | ----------------------------------------------------------------- |
-| GUI      | eframe(glow) / egui / image                                       |
+| GUI      | eframe(glow) / egui / egui_plot / image                           |
 | 后端     | tokio / reqwest(rustls) / chrono / chrono-tz / lunar_rust / rodio |
 | 序列化   | serde / serde_json                                                |
 | 日志     | tracing / tracing-subscriber / tracing-appender                   |

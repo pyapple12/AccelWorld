@@ -4,6 +4,7 @@
 pub mod alarm_text;
 pub mod clock;
 pub mod countdown;
+pub mod motion;
 
 // ===== src/tools/mod.rs 说明区 =====
 // 对位：clock.rs ← ui/tools/clock_tools.py；countdown.rs ← countdown_tools.py；

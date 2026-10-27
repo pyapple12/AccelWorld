@@ -1,5 +1,17 @@
 {
-  "font_family": "Microsoft YaHei",
+  "design": "子夜星图——地面黛蓝 #0F1420 为有意偏离中性黑的星图身份选择（对比度矩阵兜底，非疏失）；开关 on 金色属单强调色纪律的激活态职责；动效哲学：夸张瞬时并回静息态、不阻塞输入、常规动作零动效、可一键减少",
+  "motion": {
+    "hover_ms": 150,
+    "press_ms": 60,
+    "drawer_ms": 350,
+    "drawer_bouncy_hz_x10": 35,
+    "drawer_bouncy_zeta_x100": 55,
+    "alarm_pulse_ms": 600,
+    "toast_ttl_ms": 4000,
+    "toast_in_ms": 300,
+    "toast_out_ms": 150
+  },
+  "font_family": "MiSans",
   "font_family_digits": "Bahnschrift",
   "scale": {
     "hero": 72,

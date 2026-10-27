@@ -39,6 +39,12 @@ pub fn tile_cols(avail_w: f32) -> usize {
 impl crate::pages::Page for crate::pages::WorldPage {
     fn ui(&mut self, ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
         let ink = crate::theme::ink();
+        // PL016.04：武装超时解除（4s 未确认即放下）
+        if let Some((_, at)) = &state.armed_delete
+            && at.elapsed().as_secs() >= 4
+        {
+            state.armed_delete = None;
+        }
         let utc_now = chrono::Utc::now();
         // 常驻城市（FIX007.2：权威域 = 城市名；显示直用名，走时经 tz_of 映射）
         let pins: Vec<String> = state.world_pins_view().to_vec();
@@ -124,9 +130,15 @@ impl crate::pages::Page for crate::pages::WorldPage {
                             &walk_font,
                             if is_base { ink.strong } else { ink.body },
                         );
-                        // 减号（常显元信息色、悬停朱砂；城市数 ≤1 隐藏——常驻集不可清空）
+                        // 删除（PL016.04 两步确认：Minus→Check 武装态；城市数 ≤1 隐藏——
+                        // 常驻集不可清空）
                         let mut del_hover = false;
                         if pins.len() > 1 {
+                            let del_key = format!("world:{name}");
+                            let armed = matches!(
+                                &state.armed_delete,
+                                Some((k, _)) if *k == del_key
+                            );
                             let del_resp = ui.interact(
                                 egui::Rect::from_center_size(
                                     egui::pos2(rect.right() - 22.0, rect.bottom() - 22.0),
@@ -136,16 +148,34 @@ impl crate::pages::Page for crate::pages::WorldPage {
                                 egui::Sense::click(),
                             );
                             del_hover = del_resp.hovered();
+                            let del_resp = if armed {
+                                del_resp.on_hover_text("再次点击确认移除")
+                            } else {
+                                del_resp
+                            };
                             let del_resp = del_resp.on_hover_cursor(egui::CursorIcon::PointingHand);
                             crate::widgets::icons::draw(
                                 ui.painter(),
                                 egui::pos2(rect.right() - 22.0, rect.bottom() - 22.0),
                                 14.0,
-                                crate::widgets::icons::Icon::Minus,
-                                if del_hover { ink.danger } else { ink.meta },
+                                if armed {
+                                    crate::widgets::icons::Icon::Check
+                                } else {
+                                    crate::widgets::icons::Icon::Minus
+                                },
+                                if armed || del_hover {
+                                    ink.danger
+                                } else {
+                                    ink.meta
+                                },
                             );
                             if del_resp.clicked() {
-                                bus.send(FrontendCommand::RemoveWorldCity(name.clone()));
+                                if armed {
+                                    bus.send(FrontendCommand::RemoveWorldCity(name.clone()));
+                                    state.armed_delete = None;
+                                } else {
+                                    state.armed_delete = Some((del_key, std::time::Instant::now()));
+                                }
                             }
                         }
                         // 点卡选基准（IANA 经 tz_of 映射——与 set_base_timezone 校验同域；

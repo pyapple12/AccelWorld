@@ -44,6 +44,31 @@ pub fn show(ui: &mut egui::Ui, label: &str, value: &str) -> egui::Response {
         egui::Stroke::new(1.0, crate::theme::border_color()),
         egui::StrokeKind::Inside,
     );
+    // PL016.06 small：悬停描边增亮 0.15s（纯信息徽标无操作态，仅可读性反馈）
+    let reduce = crate::theme::reduce_motion(ui.ctx());
+    let hover_t = if reduce {
+        if resp.hovered() { 1.0 } else { 0.0 }
+    } else {
+        ui.ctx().animate_value_with_time(
+            resp.id.with("hover"),
+            if resp.hovered() { 1.0 } else { 0.0 },
+            crate::theme::motion_ms("hover_ms") / 1000.0,
+        )
+    };
+    if hover_t > 0.003 {
+        ui.painter().rect_stroke(
+            rect,
+            egui::epaint::CornerRadius::same(radius),
+            egui::Stroke::new(
+                1.0,
+                crate::theme::with_alpha(
+                    crate::theme::color32_at("selection", 42),
+                    (160.0 * hover_t) as u8,
+                ),
+            ),
+            egui::StrokeKind::Inside,
+        );
+    }
     let center_y = rect.center().y;
     ui.painter().text(
         egui::pos2(rect.left() + 12.0, center_y),

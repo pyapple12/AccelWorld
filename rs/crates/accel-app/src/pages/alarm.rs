@@ -44,6 +44,12 @@ pub fn truncate_chars(text: &str, keep: usize) -> String {
 impl crate::pages::Page for crate::pages::AlarmPage {
     fn ui(&mut self, ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
         let ink = crate::theme::ink();
+        // PL016.04：武装超时解除（4s 未确认即放下——不留常驻武装态）
+        if let Some((_, at)) = &state.armed_delete
+            && at.elapsed().as_secs() >= 4
+        {
+            state.armed_delete = None;
+        }
 
         // 内容包 ScrollArea（闹钟多时不出窗）
         egui::ScrollArea::vertical().show(ui, |ui| {
@@ -151,8 +157,9 @@ impl crate::pages::Page for crate::pages::AlarmPage {
 
             // 列表行卡（AlarmsChanged 全量回推重建——UI 无状态）
             if state.alarms.is_empty() {
+                // PL016.03（审核 #15）：空态=行动邀请，不留白不道歉
                 ui.label(
-                    egui::RichText::new("暂无闹钟")
+                    egui::RichText::new("还没有闹钟——上方输入时间后点 +，或用快捷添加")
                         .size(crate::theme::font_size("body_lg"))
                         .color(ink.muted),
                 );
@@ -260,7 +267,13 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                 if shown != full_label {
                     row_resp.on_hover_text(&full_label);
                 }
-                // 垃圾桶（常显元信息色、悬停朱砂；RemoveAlarm——UIR2 可达性优先）
+                // 删除（PL016.04 两步确认：首击武装→对勾朱砂+悬停提示，再击执行；
+                // 4s 未确认自动解除——破坏性操作不再单击直删）
+                let del_key = format!("alarm:{}", alarm.id);
+                let armed = matches!(
+                    &state.armed_delete,
+                    Some((k, _)) if *k == del_key
+                );
                 let del_resp = ui.interact(
                     egui::Rect::from_center_size(
                         egui::pos2(rect.right() - 28.0, rect.center().y),
@@ -273,16 +286,30 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                     ui.painter(),
                     egui::pos2(rect.right() - 28.0, rect.center().y),
                     16.0,
-                    crate::widgets::icons::Icon::Trash,
-                    if del_resp.hovered() {
+                    if armed {
+                        crate::widgets::icons::Icon::Check
+                    } else {
+                        crate::widgets::icons::Icon::Trash
+                    },
+                    if armed || del_resp.hovered() {
                         ink.danger
                     } else {
                         ink.meta
                     },
                 );
+                let del_resp = if armed {
+                    del_resp.on_hover_text("再次点击确认删除")
+                } else {
+                    del_resp.on_hover_text("删除闹钟")
+                };
                 let del_resp = del_resp.on_hover_cursor(egui::CursorIcon::PointingHand);
                 if del_resp.clicked() {
-                    bus.send(FrontendCommand::RemoveAlarm(alarm.id.clone()));
+                    if armed {
+                        bus.send(FrontendCommand::RemoveAlarm(alarm.id.clone()));
+                        state.armed_delete = None;
+                    } else {
+                        state.armed_delete = Some((del_key, std::time::Instant::now()));
+                    }
                 }
                 ui.add_space(crate::theme::spacing("xs"));
             }
