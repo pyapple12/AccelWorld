@@ -1,6 +1,6 @@
 # AccelWorld 项目说明
 
-Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow 实心桌面 UI，中文界面为主）。2026-10-16 起由 Python（PyQt6 + Fluent Widgets）重构为 Rust，Python 版全量归档 `.archived/`（git 忽略，仅供 golden 夹具再生）。2026-10-23 UI 推倒重塑（UIR）：玻璃管线/Acrylic/透明窗口整体废弃；2026-10-24 UIR4 开创性重构：单环双针星盘主仪恒驻 + 底部仪器坞 + 抽屉页（侧栏导航废除）；2026-10-28 PL017 结构重排：悬浮带标签坞 + 抽屉三段式 + 盘下读数 + 短倍率条 + 设置抽屉 + 三档字重（V0.6.3.0）。2026-09-10 起接入 DeepTransHub 工作流体系（文档四件套 + Commit 提交规范 + `.agents/skills/` 项目级技能）。
+Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow 实心桌面 UI，中文界面为主）。2026-10-16 起由 Python（PyQt6 + Fluent Widgets）重构为 Rust，Python 版全量归档 `.archived/`（git 忽略，仅供 golden 夹具再生）。2026-10-23 UI 推倒重塑（UIR）：玻璃管线/Acrylic/透明窗口整体废弃；2026-10-24 UIR4 开创性重构：单环双针星盘主仪恒驻 + 底部仪器坞 + 抽屉页（侧栏导航废除）；2026-10-28 PL017 结构重排：悬浮带标签坞 + 抽屉三段式 + 盘下读数 + 短倍率条 + 设置抽屉 + 三档字重（V0.6.3.1）。2026-09-10 起接入 DeepTransHub 工作流体系（文档四件套 + Commit 提交规范 + `.agents/skills/` 项目级技能）。
 
 ## 运行与验证
 
@@ -8,7 +8,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - **统一入口四关卡**：`pwsh rs/ci.ps1`（fmt --check → clippy `-D warnings` → `cargo test --workspace` → core 依赖树零 egui/eframe）；`.github/workflows/rs-ci.yml` 复用同一命令集
 - 全量测试：`cargo test --workspace`（core 单测 + 夹具 parity 集成 + app 单测）
 - GUI 冒烟（真窗出血，会弹窗）：`cargo run -p accel-app`；UI 截图探针（逐页 PNG 后自动退出）：`$env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app`
-- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.3.0`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
+- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.3.1`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
 - **版本体系**：四段式纯数字 `X.Y.Z.P`（无 `ver ` 前缀）；`feat`/`fix`/`refactor`/`perf` 提交前 bump patch 位；历史存量 `ver 0.4x` 三段式仅存于历史文档与提交记录，不回溯改写
 
 ## 环境陷阱

@@ -1,9 +1,19 @@
 //! 应用内 toast 堆叠（PL016.07，审核 #8）：右上角滑入卡片——入场 0.3s
 //! ease-out 平移、驻留、末段 0.15s 滑出；错误红缘/信息金缘；主题 token 全源
+//! PL017.19：<600 宽窗口用全宽 −32px，宽窗 260px；右上 × 可关闭
 //! 替代 egui-notify（其维护线未跟进 egui 0.37——手写零依赖，动画与
 //! 零忙转纪律自持）
 
 use crate::bus::{Toast, ToastKind};
+
+/// toast 卡片宽（纯函数）：<600 视口全宽 −32，宽窗 260；下限 180
+pub fn toast_width(viewport_w: f32) -> f32 {
+    if viewport_w < 600.0 {
+        (viewport_w - 32.0).max(180.0)
+    } else {
+        260.0
+    }
+}
 
 /// 绘制 toast 堆栈（每帧调用）；存活期自提频重绘（动画 16ms/驻留 0.25s）
 pub fn paint(ctx: &egui::Context, toasts: &mut Vec<Toast>) {
@@ -35,10 +45,11 @@ pub fn paint(ctx: &egui::Context, toasts: &mut Vec<Toast>) {
     };
     ctx.request_repaint_after(std::time::Duration::from_secs_f32(wake));
 
-    let width = 260.0;
+    let width = toast_width(ctx.input(|i| i.viewport_rect().width()));
     let margin = 16.0;
     // FIX011.02：堆叠步距 token 单源（原 80.0 内联魔法数；88 预留单行卡间距）
     let step = crate::theme::layout_i64("toast_step") as f32;
+    let mut dismiss: Option<usize> = None;
     for (i, toast) in toasts.iter().enumerate() {
         let age = toast.born.elapsed().as_secs_f32();
         let remain = ttl.as_secs_f32() - age;
@@ -56,6 +67,7 @@ pub fn paint(ctx: &egui::Context, toasts: &mut Vec<Toast>) {
             ToastKind::Error => ink.danger,
             ToastKind::Info => crate::theme::accent_color(),
         };
+        let mut close = false;
         // FIX011.08：Id 锚出生时刻（单条生命周期内稳定——原 elapsed().as_nanos()
         // 每帧变化，依赖 egui Memory GC 兜底的反模式；Instant 实现 Hash 可直作键）
         egui::Area::new(egui::Id::unique(("accel_toast", i, toast.born)))
@@ -83,18 +95,46 @@ pub fn paint(ctx: &egui::Context, toasts: &mut Vec<Toast>) {
                             egui::epaint::CornerRadius::same(0),
                             edge,
                         );
-                        ui.label(
-                            egui::RichText::new(&toast.title)
-                                .size(crate::theme::font_size("body"))
-                                .color(ink.strong),
-                        );
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(&toast.title)
+                                    .font(crate::theme::font_medium(crate::theme::font_size(
+                                        "body",
+                                    )))
+                                    .color(ink.strong),
+                            );
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if ui
+                                        .add(
+                                            egui::Button::new(
+                                                egui::RichText::new("×").size(16.0).color(ink.meta),
+                                            )
+                                            .frame(false)
+                                            .min_size(egui::vec2(20.0, 20.0)),
+                                        )
+                                        .on_hover_text("关闭")
+                                        .clicked()
+                                    {
+                                        close = true;
+                                    }
+                                },
+                            );
+                        });
                         ui.label(
                             egui::RichText::new(&toast.body)
-                                .size(crate::theme::font_size("meta"))
+                                .font(crate::theme::font_regular(crate::theme::font_size("meta")))
                                 .color(ink.muted),
                         );
                     });
             });
+        if close {
+            dismiss = Some(i);
+        }
+    }
+    if let Some(i) = dismiss {
+        toasts.remove(i);
     }
 }
 
@@ -107,3 +147,14 @@ pub fn paint(ctx: &egui::Context, toasts: &mut Vec<Toast>) {
 //   而非淡出（Frame 无 alpha 管线，滑出同样成立且实现干净）
 // 异常处理：空队列零绘制零提频；reduce_motion 直出直隐（PL016.06 开关联动）
 // 关联配置：motion.toast_{ttl,in,out}_ms + layout.toast_step（FIX012.04 补记）；消费方：window.rs（每帧调用）
+#[cfg(test)]
+mod tests {
+    use super::toast_width;
+
+    #[test]
+    fn toast_width_follows_viewport() {
+        assert_eq!(toast_width(900.0), 260.0);
+        assert_eq!(toast_width(520.0), 488.0);
+        assert_eq!(toast_width(320.0), 288.0);
+    }
+}

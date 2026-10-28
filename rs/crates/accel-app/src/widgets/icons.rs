@@ -1,11 +1,10 @@
-//! 矢量图标库（UIR 重塑新增）：painter path 直接绘制，零字体/零 emoji 依赖
-//! 跨设备字体回落不再影响图标观感；线宽随尺寸缩放，颜色走调用方语义色
-//! PL016.09 网格纪律：等效 24 网格——全部图形以 r=size/2 为基准的分数坐标定位，
-//! 线宽单源 st（0.09×size，下限 1.2）；PL017 补 Close/Pin（20 变体）
+//! 矢量图标库（PL017 Lucide 24 网格归一）：painter path 直接绘制，零字体/零 emoji
+//! 依赖；线宽按 24 网格 2px 随尺寸缩放（钳 [1.25,2.0]），颜色走调用方语义色；
+//! 几何按 Lucide 线稿归一（圆/线/弧采样），不引运行时 SVG/字体依赖。
 
 use egui::{Color32, Painter, Pos2, Stroke, Vec2};
 
-/// 图标集（侧栏五页 + 通用操作 + 昼夜/天气现象指示）
+/// 图标集（侧栏五页 + 通用操作 + 昼夜/天气现象指示；20 变体）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Icon {
     /// 时钟（表盘 + 指针）
@@ -97,7 +96,8 @@ fn cloud_line(painter: &Painter, center: Pos2, r: f32, st: Stroke) {
 
 /// 图标绘制：以 center 为中心、边长 size 的方形域内描线（线宽随尺寸缩放）
 pub fn draw(painter: &Painter, center: Pos2, size: f32, icon: Icon, color: Color32) {
-    let sw = (size * 0.09).max(1.2);
+    // Lucide 24 网格：默认 2px / 24；随尺寸缩放，小尺寸钳 1.25，大尺寸不超过 2.0
+    let sw = (size * 2.0 / 24.0).clamp(1.25, 2.0);
     let st = Stroke::new(sw, color);
     let r = size / 2.0;
     match icon {
@@ -274,16 +274,16 @@ pub fn draw(painter: &Painter, center: Pos2, size: f32, icon: Icon, color: Color
             painter.circle_filled(egui::pos2(center.x, rim_y + sw * 1.6), sw * 1.1, color);
         }
         Icon::Gear => {
-            // 外圈 + 8 齿短辐条 + 中心孔
+            // Lucide settings 线稿：12 齿短辐条 + 内圈 + 中心孔
             let gr = r * 0.58;
             painter.circle_stroke(center, gr, st);
-            for i in 0..8 {
-                let a = std::f32::consts::FRAC_PI_4 * i as f32;
+            for i in 0..12 {
+                let a = std::f32::consts::TAU * (i as f32 / 12.0);
                 let (s, c) = a.sin_cos();
                 painter.line_segment(
                     [
                         egui::pos2(center.x + gr * c, center.y + gr * s),
-                        egui::pos2(center.x + r * 0.88 * c, center.y + r * 0.88 * s),
+                        egui::pos2(center.x + r * 0.86 * c, center.y + r * 0.86 * s),
                     ],
                     st,
                 );
@@ -365,29 +365,38 @@ pub fn draw(painter: &Painter, center: Pos2, size: f32, icon: Icon, color: Color
             );
         }
         Icon::Sun => {
-            painter.circle_filled(center, r * 0.34, color);
+            painter.circle_stroke(center, r * 0.36, st);
             for i in 0..8 {
                 let a = std::f32::consts::FRAC_PI_4 * i as f32;
                 let (s, c) = a.sin_cos();
                 painter.line_segment(
                     [
-                        egui::pos2(center.x + r * 0.50 * c, center.y + r * 0.50 * s),
-                        egui::pos2(center.x + r * 0.86 * c, center.y + r * 0.86 * s),
+                        egui::pos2(center.x + r * 0.56 * c, center.y + r * 0.56 * s),
+                        egui::pos2(center.x + r * 0.90 * c, center.y + r * 0.90 * s),
                     ],
                     st,
                 );
             }
         }
         Icon::Moon => {
-            // 厚弧月牙：开口朝右的 C 形粗弧（stroke 宽 = 0.42r，弧段 120°→420°）
-            let crescent = arc_points(
+            // Lucide moon 线稿：外弧 + 内弧闭合成细月牙（不再用 0.42r 厚弧）
+            let mut pts = arc_points(
                 center,
-                r * 0.58,
-                std::f32::consts::FRAC_PI_3 * 2.0,
-                std::f32::consts::TAU + std::f32::consts::FRAC_PI_3 * 2.0,
-                24,
+                r * 0.62,
+                std::f32::consts::FRAC_PI_3,
+                std::f32::consts::TAU - std::f32::consts::FRAC_PI_3,
+                20,
             );
-            painter.add(egui::Shape::line(crescent, Stroke::new(r * 0.42, color)));
+            let inner_center = egui::pos2(center.x + r * 0.20, center.y - r * 0.10);
+            let inner = arc_points(
+                inner_center,
+                r * 0.46,
+                std::f32::consts::TAU - std::f32::consts::FRAC_PI_3,
+                std::f32::consts::FRAC_PI_3,
+                20,
+            );
+            pts.extend(inner);
+            painter.add(egui::Shape::closed_line(pts, st));
         }
         Icon::Refresh => {
             // 开口圆弧 + 箭头（两短线收口）
@@ -549,7 +558,9 @@ mod tests {
             Icon::Pin,
             Icon::Wind,
         ] {
-            draw(&painter, egui::pos2(50.0, 50.0), 20.0, icon, Color32::WHITE);
+            for size in [16.0, 20.0, 24.0, 32.0] {
+                draw(&painter, egui::pos2(50.0, 50.0), size, icon, Color32::WHITE);
+            }
             draw(&painter, egui::pos2(0.0, 0.0), 4.0, icon, Color32::GRAY);
         }
     }

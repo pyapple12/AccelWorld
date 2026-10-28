@@ -108,9 +108,14 @@ impl crate::pages::Page for crate::pages::ClockPage {
         }
 
         let reserved = 82.0 + 62.0 + 40.0 + 24.0;
-        let dial_d = dial_diameter(ui.available_width(), ui.available_height(), reserved);
+        let show_header = ui.available_height() >= 560.0;
+        let avail_h = ui.available_height() - if show_header { 52.0 } else { 0.0 };
+        if show_header {
+            draw_stage_header(ui, &info);
+        }
+        let dial_d = dial_diameter(ui.available_width(), avail_h, reserved);
         let total = dial_d + 8.0 + 82.0 + 8.0 + 62.0 + 8.0 + 40.0;
-        let top_pad = ((ui.available_height() - total) / 2.0).max(0.0);
+        let top_pad = ((avail_h - total) / 2.0).max(0.0);
         ui.add_space(top_pad);
         let center_x = ui.max_rect().center().x;
         let center_y = ui.cursor().top() + dial_d / 2.0;
@@ -122,6 +127,47 @@ impl crate::pages::Page for crate::pages::ClockPage {
         ui.add_space(8.0);
         draw_meta(ui, &info);
     }
+}
+
+/// 舞台页头（PL017 N5）：产品标/名 + 中文日期；只在可用高 ≥560 时占 52px，
+/// 短窗不抢星盘空间（compact 另有 wordmark）。
+fn draw_stage_header(ui: &mut egui::Ui, info: &accel_core::types::TimeInfo) {
+    let ink = crate::theme::ink();
+    let (rect, _) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 52.0), egui::Sense::hover());
+    ui.painter().circle_filled(
+        egui::pos2(rect.left() + 6.0, rect.center().y - 7.0),
+        3.5,
+        crate::theme::accent_color(),
+    );
+    ui.painter().text(
+        egui::pos2(rect.left() + 18.0, rect.center().y - 12.0),
+        egui::Align2::LEFT_CENTER,
+        "加速世界",
+        crate::theme::font_semibold(14.0),
+        ink.strong,
+    );
+    ui.painter().text(
+        egui::pos2(rect.left() + 18.0, rect.center().y + 9.0),
+        egui::Align2::LEFT_CENTER,
+        "子夜星图",
+        crate::theme::font_regular(11.0),
+        ink.meta,
+    );
+    ui.painter().text(
+        egui::pos2(rect.right(), rect.center().y - 2.0),
+        egui::Align2::RIGHT_CENTER,
+        &info.chinese_date,
+        crate::theme::font_regular(crate::theme::font_size("meta")),
+        ink.muted,
+    );
+    ui.painter().line_segment(
+        [
+            egui::pos2(rect.left(), rect.bottom()),
+            egui::pos2(rect.right(), rect.bottom()),
+        ],
+        egui::Stroke::new(1.0, crate::theme::border_color()),
+    );
 }
 
 /// 12 个固定星点（静态、不随机——不引入帧间状态）

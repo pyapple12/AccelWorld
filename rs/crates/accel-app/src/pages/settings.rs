@@ -51,7 +51,7 @@ pub fn ui(ui: &mut egui::Ui, state: &mut UiState) {
                 accel_core::static_config::Static::get().version(),
             );
             row_static(ui, "数据来源", "Open-Meteo（免费天气接口）");
-            row_static(ui, "字体", "MiSans / Bahnschrift");
+            row_static(ui, "字体", "MiSans（小米，免费商用）/ Bahnschrift");
             ui.add_space(crate::theme::spacing("lg"));
             ui.label(
                 egui::RichText::new("加速世界 · 子夜星图")

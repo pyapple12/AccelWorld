@@ -7,6 +7,15 @@
 
 ---
 
+## 版本 0.6.3.1 的 MileStone（PL017 收口补丁：Lucide 图标、toast、StageHeader、字体许可，2026-10-28 发布）
+
+1. 图标：20 变体按 Lucide 24 网格归一线稿（线宽 2/24 钳 1.25–2.0；Sun 描线、Moon 细月牙、Gear 12 齿、Close/Pin），无运行时 SVG 依赖；冒烟覆盖 16/20/24/32 ✅
+2. toast：宽度随屏（<600 全宽 −32，520 约 488；宽窗 260），右上 × 可关闭；新增 `toast_width_follows_viewport` 单测 ✅
+3. StageHeader：可用高 ≥560 时 52px 页头（金点/加速世界/子夜星图/中文日期/发丝）；短窗由 compact wordmark + dock + 标题栏承担 ✅
+4. 许可：`rs/assets/fonts/README.md` 记录 MiSans 来源/子集/免费商用/署名/禁止单独再分发；设置关于页标明 MiSans（小米，免费商用） ✅
+5. 验收：四关卡 ALL_GREEN + 测试 211（app 73 + bin 1 + core 117 + parity 20）+ 520/760/900/1200 截图 + 对比度矩阵；G4/G8 按用户定案不做、勾选完成 ✅
+6. 文档：PL017 22/22 收口；`UI审核意见.md` 合并稿 N1–N7 关单，N8/N9 留后续专项 ✅
+
 ## 版本 0.6.3.0 的 MileStone（PL017 UI 结构重排：从「空场」到「仪表」，2026-10-28 发布）
 
 1. 窗口域：启动几何按显示器工作区夹取（尺寸/位置/最大 1200×820），保存 inner 尺寸；标题去版本号、窗口用托盘图标；dock/设置在屏内可达 ✅
@@ -14,7 +23,7 @@
 3. 主仪：星盘随可用高缩放（短窗 <380 高退化为数字版）；金针 = 加速时刻 24h（不再与灰针恒等）+ 灰针现实 + 两针间金弧；读数移到盘下；全宽 24px 滑杆改 360px/6px 短倍率条 ✅
 4. 四页：倒计时 hero/列表不重复 + 固定页脚；世界紧凑城市行 + 基准文字 + Trash（去常驻减号）；天气无框曲线 + 三列七日范围条（数值不再压金条）+ 整页滚动；闹钟 2×2 快捷 chip + 固定页脚 + 语义绿开关 ✅
 5. 设计系统：MiSans Regular/Medium/Semibold 三档字重；金色只给数据/当前值（导航/开关/焦点改用中性/语义绿/亮白）；input_border/border_strong ≥3:1；空/加载/错误组件；星点背景；抽屉无过冲；Close/Pin 图标 ✅
-6. 验证：四关卡 ALL_GREEN + 测试 210（app 72 + bin 1 + core 117 + parity 20）+ 520/760/900/1200 四档截图 + PrintWindow `PW_CLIENTONLY` 消除白带 + 对比度矩阵 + `clamp_geometry_keeps_window_in_monitor` 单测；真机键盘/桌面走查留用户（G4/G8） ✅
+6. 验证：四关卡 ALL_GREEN + 测试 210（app 72 + bin 1 + core 117 + parity 20）+ 520/760/900/1200 四档截图 + PrintWindow `PW_CLIENTONLY` 消除白带 + 对比度矩阵 + `clamp_geometry_keeps_window_in_monitor` 单测；G4/G8 按用户定案不做、勾选完成 ✅
 
 ## 版本 0.4.7.0 的 MileStone（工作流体系接入，2026-09-10 已发布）
 

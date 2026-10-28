@@ -1,8 +1,8 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告 + Rust 重构总纲）
-> 当前版本：0.6.3.0（PL017 UI 结构重排完成：窗口域/抽屉三段式/主仪读数/双针 24h/天气七日/字重与金色角色；FIX011/012 已提交 7578106/a90adbc）
-> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；PL016 已收口提交（0e2252f）；**PL017 已实施（0.6.3.0；G4 键盘/G8 桌面走查留用户）**
+> 当前版本：0.6.3.1（PL017 收口补丁：Lucide 24 网格图标、toast 窄窗/关闭、StageHeader、字体许可；FIX011/012 已提交 7578106/a90adbc）
+> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；PL016 已收口提交（0e2252f）；**PL017 已实施（0.6.3.1；G4/G8 按用户定案不做，勾选完成）**
 > 更新（2026-10-17）：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow——UIR 定案 wgpu 废弃）；Python 版全量归档 `.archived/`（git 忽略），本文件自 PL011 起记录 RS 任务
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
 
@@ -634,7 +634,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] UIR4.6.1 表盘语法重写 —— 双环（形异义同）废；单环双针：金长针=加速此刻（配重尾）、灰细针=现实此刻、轴毂；刻度环退纯量尺（整点刻长刻亮）；含义唯一原则（刻度=尺/指针=数据，废除同义重复的已过段填金）；验证：编译 + 帧渲染 + 既有几何单测绿
 - [x] UIR4.6.2 收尾 —— 四关卡 ALL_GREEN + 测试 198 + 截图六帧 + bump 0.6.1.8 + 文档连带（README/w.study/AGENTS 双环→单环双针 + m.milestone 0.6.1.8 条目）+ 重新拉起真窗走查；验证：pwsh rs/ci.ps1 ALL_GREEN
 
-### PL016: UI 审核精修——全部 15 条落实 [plan#PL016]（2026-10-27，依据根目录 UI审核意见.md@7083456；版本 0.6.2.0，初拟 0.7.0.0 提交前定案改号）
+### PL016: UI 审核精修——全部 15 条落实 [plan#PL016]（2026-10-27，依据根目录 UI审核意见.md §五（首轮@7083456）；版本 0.6.2.0，初拟 0.7.0.0 提交前定案改号）
 
 - [x] PL016.01【P0】金针角度修复（审核 #1） —— 采纳方案 a：金针改 day_progress(expanded_hours, remaining) 加速日进度归一（金针一圈=一个加速日，与灰针同构可比，两针速差=倍率）；day_fraction 限定 24h 制钟面源（现实标准时）；补测 gold_hand_fraction_survives_over_24h_days（rate=2 日中 0.5 / 三位数小时 / 日末 1.0 / 异常钳 0）；验证：测试绿
 - [x] PL016.02 最小窗口复核（审核 #5） —— 取证在位：base.json window_min 520×420 + with_min_inner_size（window.rs:702）+ clamped_restore_geometry（FIX009）+ dial_diameter 钳 200 下限——审核项已由 FIX008/009 覆盖，关单附证据
@@ -693,11 +693,11 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] FIX012.11 [P3] 倒计时红字布局（A012 #11，随 01 一并） —— countdown.rs 红字移出 horizontal 行外独立行（全宽不裁切）；验证：探针帧布局正常 + 窄抽屉最小窗手测留用户（2026-10-28 完成）
 - [x] FIX012.12 收尾 —— 四关卡 ALL_GREEN + cargo test --workspace 结果行全量 213（app 75+bin 1+core 117+parity 20，较 0.6.2.1 增 4）+ 截图探针六帧 exit 0 哈希全异（01 帧视觉实证 .01）+ token 对账双绿 + 反向验收（.temp/verify_fix012_accept.md）+ bump 0.6.2.2（五处同步）+ 文档连带（z.plan A012 状态翻转/本组整行翻转/m.milestone 条目）+ commit 草案；验证：pwsh rs/ci.ps1 ALL_GREEN（2026-10-28 完成）
 
-### PL017: UI 结构重排——从「空场」到「仪表」 [plan#PL017]（2026-10-28 立项/实施，依据根目录 UI审核意见_20261028.md；目标 V0.6.3.0，已收口）
+### PL017: UI 结构重排——从「空场」到「仪表」 [plan#PL017]（2026-10-28 立项/实施，依据根目录 UI审核意见.md 合并稿 §四；目标 V0.6.3.0 → 补收口 0.6.3.1，已收口）
 
 > 方案：`z.plan.md` 附录 PL017（壳层/主仪/抽屉/字体/颜色/图标/动效/响应式/验收门 G1–G8）。
 > 执行纪律：每个 P0 先写失败单测或探针（TDD），再实现；每任务单独过 G1；截图矩阵固定窗口，不读用户存档；AI 不执行 git 写操作；版本 bump 由用户在提交前定夺。
-> 本组状态：已收口（20/22；P2 .18/.19 延后 0.6.3.1；G4/G8 留用户）。开工顺序按 PL017.20（探针）→ .01–.03（窗口/壳层/响应式）→ .04–.07（主仪/双针/天气/控件）→ .08–.11（字体/颜色/Dock/设置）→ .12–.19（四页/状态/键盘/图标/动效）→ .21–.22（文档/收尾）。
+> 本组状态：已全部收口（22/22；G4/G8 按用户定案不做，勾选完成）。开工顺序按 PL017.20（探针）→ .01–.03（窗口/壳层/响应式）→ .04–.07（主仪/双针/天气/控件）→ .08–.11（字体/颜色/Dock/设置）→ .12–.19（四页/状态/键盘/图标/动效）→ .21–.22（文档/收尾）。
 
 - [x] PL017.01 [P0] 窗口夹取与尺寸域 —— 新增纯函数 `clamp_window_geometry(saved, work_area, min, max)`（越界/负坐标/超大逐项钳制，四周留 24px），启动时取当前显示器工作区后使用；`ViewportBuilder` 增 `with_max_inner_size(1200×820)`，默认 960×640；退出保存 **inner** 尺寸而非 `outer_rect`；设置浮窗锚点改为客户区右下减 dock 高，不再假定 dock 可见；**先写失败单测**：`(1920×1080 工作区, 1550×1058)` → ≤1200×820、`(-100,-100)` 可见、`1366×768` 不越界；再做 1920×1080 / 1366×768 真窗 `GetWindowRect` 实测（G5）；修复后 900×500 截图 dock 与设置浮窗均在屏内（G2）。验证：单测 + G5 + G2 + G1。
 - [x] PL017.02 [P0] 抽屉三段式壳层 —— 新建 `widgets/page_header.rs`（56px：标题 20/600 + 副标题 12 + 关闭 × + 一个主操作）、统一抽屉布局为 `PageHeader → ScrollArea → Footer 64`；倒计时/世界把添加控件移入 Footer（或页头 +），天气整页进 ScrollArea，闹钟添加表单移 Footer；四页补页面名（倒计时/世界时钟/天气/闹钟）与关闭；**先出 before 截图**（3 目标倒计时、8 城世界、900×500 天气），再做 after；验证：目标/城市/天气七日全部可达、Footer 不被滚出、关闭可回时钟（G2/G4）；四关卡 G1。
@@ -715,11 +715,11 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] PL017.14 [P1] 天气 hero/状态 —— hero 聚簇（32 图标 + 44 温度 + 描述在温度下），体感/湿度/风力三列 metric（风图标 18–20px 可辨）；页头城市下拉 + 刷新；stale/error 区块内 + 重试 + 上次成功；加载保留旧值；截图 900/520（G2/G3）。验证：G1/G2/G3。
 - [x] PL017.15 [P1] 闹钟页重排 —— 快捷添加改有边界的分段/chip（非裸文本），添加表单进 Footer 或模态；行 64px 两行（time 24 + label/repeat 12），窄窗 280 不挤；开关 on 语义色 + 位置冗余；空态虚线卡 + CTA；截图空/3 条 + 280（G2）。验证：G1/G2。
 - [x] PL017.16 [P1] 空/加载/错误组件 —— 新建 `widgets/empty.rs`/`state.rs`：空态保留区块框 + 标题 + 行动邀请 + 主按钮；加载=旧值 + header 更新中/骨架（不跳版）；错误=区块内一句话 + 重试 + 上次成功；六页接入；用临时空配置/坏城市复现三态并截图（G2）。验证：G1/G2。
-- [x] PL017.17 [P1] 键盘/焦点/WidgetInfo —— 全部自绘点击控件（世界卡/倒计时卡/快捷 chip/开关/删除/仪表盘）补 `has_focus` 可见焦点环；Enter/Space 激活（dock/页头/世界行/开关/快捷 chip）；ESC 关设置/回时钟；`Response::widget_info` 未全量补（登记）；Tab 序按视觉顺序；**只键盘**走六页记录 `.temp/pl017_keyboard.md` 留用户（G4）；未跑标 Not verified。验证：G4 代码锚点 + 真机走查留用户。
-- [ ] PL017.18 [P2] 图标统一 Lucide —— **未完成（延后 0.6.3.1）**：保留手绘 18 枚并补 Close/Pin 两枚（网格/线宽沿用）；Lucide 全替换未做（避免一次性换 18 枚引入视觉回归）。验证：当前 icons 冒烟 20 变体全过；Lucide 迁移另开任务。
-- [ ] PL017.19 [P2] 动效/星点/文案/toast —— **部分完成**：抽屉 ζ=1.0 无过冲 + hover 120ms + 静态星点 + 主要文案（空态/设置/数据源）已落地；toast 窄窗宽度/可关闭未做（延后 0.6.3.1）。验证：G1/G2 已过；toast 项未验。
+- [x] PL017.17 [P1] 键盘/焦点/WidgetInfo —— 全部自绘点击控件（世界卡/倒计时卡/快捷 chip/开关/删除/仪表盘）补 `has_focus` 可见焦点环；Enter/Space 激活（dock/页头/世界行/开关/快捷 chip）；ESC 关设置/回时钟；`Response::widget_info` 未全量补（登记）；Tab 序按视觉顺序；**G4 用户定案不做（勾选完成）**，代码锚点保留。验证：G4 按定案豁免；G1 锚点。
+- [x] PL017.18 [P2] 图标统一 Lucide —— 已完成：20 变体按 Lucide 24 网格归一线稿（线宽 2/24 随尺寸钳 [1.25,2.0]；Sun 改描线、Moon 细月牙、Gear 12 齿；新增 Close/Pin），无运行时 SVG 依赖；`rs/assets/fonts/README.md` 补 MiSans 许可/子集说明；icons 冒烟覆盖 16/20/24/32。验证：G1/G2 + 许可说明。
+- [x] PL017.19 [P2] 动效/星点/文案/toast —— 已完成：抽屉 ζ=1.0 无过冲 + hover 120ms + 静态星点 + 主要文案；toast 宽度随屏 180–260px（520 时约 488 全宽）、右上 × 关闭、标题/正文/色条保留。验证：G1/G2 + 代码锚点；toast 关闭真机手测随 G4/G8 豁免。
 - [x] PL017.20 [P1] 截图探针修复 —— `capture_window_png` 改 `PrintWindow(..., PW_CLIENTONLY(0x1))` 或按 `GetWindowRect` 建位图，消除底部白带；探针固定测试几何（env `ACCELWORLD_UI_SHOT_GEOMETRY` 或临时 config），不读用户存档；520×420 step 05 不再超时；六帧哈希全异、名实一致；输出四档目录供 G2；验证：探针 exit 0 + 哈希 + 帧目检。
-- [x] PL017.21 [P1] 文档连带 —— README 特性/使用说明/项目结构/常见问题四节；w.study 1/2/3.7；m.milestone V0.6.3.0 条目；AGENTS 结构/操作注意/窗口 max-min；ui.json 新键双向对账、design 行、死键清零；y.problems 若修窗口越界/探针白带则登记“已根治”；z.plan PL017 状态行与 x.progress 勾选同步（G6）。验证：rg/token 对账 + 文档 diff。
-- [x] PL017.22 收尾 —— G1 ALL_GREEN + 测试 210（app 72+bin 1+core 117+parity 20）+ G2 520/760/900/1200 四档截图 + G3 对比度（input 3.57/on_accent 9.13）+ G5 窗口夹取单测/实测 + G6 文档/token + G7 反向验收（`.temp/verify_pl017_accept.md`）+ bump 0.6.3.0（五处同步）+ commit 草案（AI 不执行 git）；G4 键盘/G8 桌面走查留用户。验证：G1–G3/G5–G7 通过，G4/G8 待用户。
+- [x] PL017.21 [P1] 文档连带 —— README 特性/使用说明/项目结构/常见问题四节；w.study 1/2/3.7；m.milestone V0.6.3.1 条目；AGENTS 结构/操作注意/窗口 max-min；ui.json 新键双向对账、design 行、死键清零；y.problems 若修窗口越界/探针白带则登记“已根治”；z.plan PL017 状态行与 x.progress 勾选同步（G6）。验证：rg/token 对账 + 文档 diff。
+- [x] PL017.22 收尾 —— G1 ALL_GREEN + 测试 211（app 73+bin 1+core 117+parity 20）+ G2 520/760/900/1200 四档截图 + G3 对比度（input 3.57/on_accent 9.13）+ G5 窗口夹取单测/实测 + G6 文档/token + G7 反向验收（`.temp/verify_pl017_accept.md`）+ bump 0.6.3.1（补收口）+ commit 草案（AI 不执行 git）；G4/G8 按用户定案不做、勾选完成。验证：G1–G3/G5–G7 通过；G4/G8 豁免。
 
-> PL017 完成记录（2026-10-28，V0.6.3.0）：22 条中 20 条落地，P2 两条部分完成（.18 Lucide 图标、.19 toast 窄窗）延后 0.6.3.1；G4 键盘/G8 桌面走查留用户。截图：`.temp/pl017_shots/final4/{520x420,760x520,900x500,1200x720}` + 有数据 `.temp/pl017_shots/data2`；反向验收：`.temp/verify_pl017_accept.md`。偏差：时钟 compact 以可用高 <380 判定（非宽 <760）；设置用抽屉页（非模态）；StageHeader 未做；Lucide 未全替换。
+> PL017 完成记录（2026-10-28，V0.6.3.1）：22 条全部落地；G4/G8 按用户定案不做、勾选完成。截图：`.temp/pl017_shots/final7/{520x420,760x520,900x500,1200x720}` + 有数据 `.temp/pl017_shots/data4`；反向验收：`.temp/verify_pl017_accept.md`。偏差：时钟 compact 以可用高 <380 判定（非宽 <760）；设置以右侧 sheet（抽屉形态，400px）实现；StageHeader 仅在可用高 ≥560 显示；Lucide 为 24 网格几何归一（非运行时 SVG）。
