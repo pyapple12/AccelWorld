@@ -207,8 +207,17 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                                 .color(ink.muted),
                         );
                         ui.add_space(6.0);
-                        for (name, at) in rest {
-                            draw_target_row(ui, state, bus, name, *at, now, &ink);
+                        let pulse = crate::widgets::motion::list_pulse(state, "countdown");
+                        let last = rest.len().saturating_sub(1);
+                        for (i, (name, at)) in rest.iter().enumerate() {
+                            if i == last && pulse < 1.0 {
+                                ui.scope(|ui| {
+                                    ui.set_opacity(0.55 + 0.45 * pulse);
+                                    draw_target_row(ui, state, bus, name, *at, now, &ink);
+                                });
+                            } else {
+                                draw_target_row(ui, state, bus, name, *at, now, &ink);
+                            }
                         }
                     }
 
@@ -549,6 +558,7 @@ fn draw_footer(
             name: state.countdown_draft_name.clone(),
             at: local,
         });
+        state.list_pulse = Some(("countdown".to_string(), std::time::Instant::now()));
         state.countdown_draft_name.clear();
         state.countdown_draft_at.clear();
     }

@@ -17,6 +17,16 @@ pub fn hover_t(ctx: &Context, id: Id, hovered: bool, ms: f32) -> f32 {
     anim(ctx, id, if hovered { 1.0 } else { 0.0 }, ms)
 }
 
+/// 列表添加后的 120ms 淡入进度（1=已结束；reduce 直取 1）
+pub fn list_pulse(state: &crate::bus::UiState, key: &str) -> f32 {
+    state
+        .list_pulse
+        .as_ref()
+        .filter(|(k, _)| k == key)
+        .map(|(_, t)| (t.elapsed().as_secs_f32() / 0.12).min(1.0))
+        .unwrap_or(1.0)
+}
+
 /// 两色线性插值（sRGB；t 已钳 0..1）
 pub fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
     let t = t.clamp(0.0, 1.0);

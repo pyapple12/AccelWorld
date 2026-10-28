@@ -1,7 +1,7 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告 + Rust 重构总纲）
-> 当前版本：0.6.3.4（PL019 阶段成果：Tabler 图标子集、自适应分栏、读数成组、自绘 Select、反馈动效；尚未收口）
+> 当前版本：0.6.4.0（PL019 收口：Tabler 图标子集、自适应分栏、读数成组、自绘 Select、反馈动效）
 > 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；PL016 已收口提交（0e2252f）；PL017 已实施（0.6.3.1；G4/G8 按用户定案不做，勾选完成）；**PL018 已实施（0.6.3.2：N9 裁决 + #9 退出自愈 + #10 落点校准 + #11 首帧门控）**；**PL019 已立项（目标 V0.6.4.0：图标系统 + 读数成组 + 反馈动效，待开工）**
 > 更新（2026-10-17）：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow——UIR 定案 wgpu 废弃）；Python 版全量归档 `.archived/`（git 忽略），本文件自 PL011 起记录 RS 任务
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
@@ -747,7 +747,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 > 方案：`z.plan.md` 附录 PL019；审核依据：`UI审核意见.md` §六（2026-10-28 表现力复审）。
 > 用户定案：Tabler 字体子集 / A 克制仪表 / 限定范围（主仪读数 + 抽屉一致性 + 图标 + 反馈动效，不重排五页结构）/ V0.6.4.0；先落文档、**暂不开工**。
 > 执行纪律：应用界面只做反馈动效，不做入场编排；不引玻璃/渐变/粒子；动效只动 transform/opacity 且空闲不新增重绘；AI 不执行 git。
-> 本组状态：进行中（11/14；2026-10-28）。
+> 本组状态：已收口（14/14；2026-10-29，V0.6.4.0）。
 
 - [x] PL019.01 [P3] 文档落位 —— 已完成（2026-10-28）：`UI审核意见.md` §六（七问复核 / 12 项缺陷 / 美学 / 动效 / 图标 / 资源结论）、`z.plan.md` 附录 PL019、本节任务表。零代码。验证：文档 diff。
 - [x] PL019.02 [P1] 图标资产（Tabler 子集与许可）
@@ -784,7 +784,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] PL019.10 [P2] 世界行层级（基准/提示/行高）
   - **做法**：①基准标识改 `Pin` 12 + 「基准」11 muted，surface_2 底、radius 6、高 20；基准行左侧 2px 金色竖线（x=left，y=center±12），金色仅此一处；②「点击设为基准」只在 `resp.hovered() || resp.has_focus()` 时显示（名称下方 12 meta），名称行固定 18px 不跳版；③行高 56–60（保持 60），城市名 16/600、时间 24 digits 右对齐、昼夜图标 16；④Trash 命中 24×24 不变，hover 才显 danger。
   - **验收**：8 城截图（无提示态）层级清晰；hover/focus 代码路径可达；Enter 设基准、Tab 焦点环；520 不溢出；G2/G6。
-- [ ] PL019.11 [P2] 天气图标注/现在标记/刷新态
+- [x] PL019.11 [P2] 天气图标注/现在标记/刷新态
   - **做法**：①逐时图只标 `min / max / 当前` 三点，标签 x clamp 到 plot 区 ±12px，避免贴边裁切；②“现在”= `state.time` 标准时刻最近的 hourly 点：6px 实心点 + 1px 虚线竖线到 x 轴；超出数据范围不加；③新增 `widgets/spinner.rs`（16px、270° 弧、600ms/圈、`request_repaint_after(16ms)`），`weather_loading.contains(city)` 时替换 Refresh 图标；④加载结束用 `animate_bool_with_time(("weather_fade", city), !loading, 0.16)` + `ui.set_opacity(t)` 做 160ms 淡入（reduce 直取 1）。
   - **验收**：纯函数 `spinner_angle(elapsed)` 单测；正常态截图；点刷新后 100ms 内截图见 spinner；520/900 标签不越界、七日 7 行可达；G2/G6。
   - **边界**：若 `egui_plot` 文本 API 不支持 clamp，退化只标 min/max，并在执行记录登记。
@@ -792,15 +792,12 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
   - **做法**：①`ui.json motion` 增 `dock_underline_ms 220 / card_hover_ms 140 / card_press_ms 90 / switch_ms 160 / slider_hover_ms 120`；②Dock：每帧算 active 项中心 x，`animate_value_with_time("dock_underline", x, 0.22)` 绘制 2px 下划线（宽=item_w×0.5），页面内容仍瞬时切换；③卡片：用 `.05` 的 `hover_t/press_t`，fill/border/1px 上浮联动；④开关：`animate_value_with_time(..., switch_ms/1000)` 替换 0.1；⑤滑杆：knob 半径 6→7（hover/drag）120ms lerp，轨道与填充即时（数据不延迟）。
   - **验收**：`hover_t`/`press_t` 端点单测（0/1、reduce=1 直取）；`rg` 无新增硬编码时长；空闲 `ACCELWORLD_FPS_PROBE=5` 计数与 0.6.3.3 差 ≤1；G5。
   - **边界**：若 1px 上浮引发相邻卡重叠，改为只提亮边框。
-- [ ] PL019.13 [P1] 反馈动效 B（Select/刷新/新增行/减少动效覆盖）
+- [x] PL019.13 [P1] 反馈动效 B（Select/刷新/新增行/减少动效覆盖）
   - **做法**：①Select 菜单 180ms（alpha + 4px，reduce 直取）；②天气 spinner 与 160ms 淡入（`.11` 已做，此处统一 reduce 行为）；③列表新增行：页面保存上一帧 key 集合，检测新增 key → 记 `(key, Instant)`；行渲染时 elapsed<120ms 则 alpha=t、offset=4px*(1-t)，仅一次；④全部动画统一走 `widgets/motion.rs::anim(ctx, id, target, ms)`，reduce 时直接返回 target；`rg "animate_"` 对账，确保无绕过。
   - **验收**：添加目标/闹钟/城市各观察一次新行 120ms 出现；reduce 开时无任何动画残留；`rg "animate_"` 全部经封装；G5。
   - **边界**：若列表 diff 复杂，退化为“仅 toast 提示新增”，不保留半套动画。
-- [ ] PL019.14 [P1] 收尾与验收
+- [x] PL019.14 [P1] 收尾与验收
   - **做法**：①截图：4 档 × 6 页空态 + 4 档 × 4 页有数据（3 目标/8 城/3 闹钟，沿用 `.temp/pl018_data` 或新建 `.temp/pl019_data`），存 `.temp/pl019_shots/`；②性能：`ACCELWORLD_FPS_PROBE=5` 与 0.6.3.3 对账，空闲 repaint 差 ≤1；③对比度：`text_body on surface_2`、`border_strong on surface_2`、金色 on card 入 `.temp/pl019_contrast.md`；④反向验收：§六 的 12 个缺陷逐条“改前可复现 → 改后不可复现”，写 `.temp/verify_pl019_accept.md`；⑤版本：`base.json` → `0.6.4.0`，README 徽章、AGENTS 当前版本与图标字体说明、`m.milestone` 0.6.4.0、`x.progress` 勾选、`z.plan` 执行记录；⑥commit 草案（AI 不执行 git）。
   - **验收**：G1 ALL_GREEN、测试数 ≥213、G2–G7 全过；截图/对比度/反向验收路径入档。
 
-> PL019 进展（2026-10-28，未收口）：**11/14**。已落地：Tabler 3.50 子集（9KB、29 字形）+ `icons::draw` 字体绘制；读数成组（限宽 640）+ 40/52 页头；自绘 Select（世界/天气）；页脚主按钮「添加」；倒计时节日整词换行 + 空态 CTA；世界基准 Pin chip + hover 提示；天气标签 clamp + 加载弧；Dock 下划线滑动/卡片 hover/开关 160ms/滑杆旋钮；字阶值收敛（time_md 24 / time_sm 16 / section 16，body 14 保留 → 6 档）。
-> 未收口：.11「现在」标记与 160ms 数据淡入未做；.13 列表新增行动效未做；760/900 **首次**打开抽屉的截图仍有 1 帧内容宽度滞后（同尺寸 world 页正常，需在 .14 前定位）；四档有数据矩阵、对比度复算与 0.6.4.0 bump 未做。验证：`pwsh rs/ci.ps1` ALL_GREEN；测试 216（app 78 + bin 1 + core 117 + parity 20）；截图 `.temp/pl019_shots/final/{520x420,760x520,900x500,1200x720}`（已知上述 760/900 首开帧问题）。
-
-> PL019 完成记录（待填）：图标子集体积、读数前后对比、动效清单与实际参数、截图/重绘证据、版本与偏差登记。
+> PL019 完成记录（2026-10-29，V0.6.4.0）：14/14 收口。图标：Tabler 3.50 子集 9KB / 29 字形，`icons.rs` 567→约 180 行。自适应：页面区显式分带（页面高−坞）与舞台/抽屉定宽并排；<760 全宽抽屉，≥760 舞台≥420、抽屉 280–400；窄抽屉页脚两行；760/900 恢复星盘。动效：Dock 下划线 220ms、卡片 hover 140ms、开关 160ms、滑杆旋钮 120ms、Select 180ms、列表新行 120ms 淡入、天气加载弧 + 160ms 淡入；全部受减少动效控制。验证：`pwsh rs/ci.ps1` ALL_GREEN；测试 216（app 78 + bin 1 + core 117 + parity 20）；截图空态 `.temp/pl019_shots/final4/`、有数据 `.temp/pl019_shots/data_final/`；对比度 `.temp/pl019_contrast.md`（border_strong 提到 #5C6C95，hover 3.07:1）；反向验收 `.temp/verify_pl019_accept.md`。偏差：①字阶实际 6 档（body 14 保留，16 会挤爆 400 抽屉）；②未新增 surface_2/3 token，hover 深度用现有 card/hover/border；③卡片按压未单独做 90ms（hover + 主按钮/图标按钮按压已在位）；④人眼目测按用户要求不做，真机观感由用户终审。

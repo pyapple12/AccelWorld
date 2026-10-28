@@ -9,7 +9,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - 全量测试：`cargo test --workspace`（core 单测 + 夹具 parity 集成 + app 单测）
 - GUI 冒烟（真窗出血，会弹窗）：`cargo run -p accel-app`；UI 截图探针（逐页 PNG 后自动退出）：`$env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app`
 - 探针环境变量（正常模式零影响）：`ACCELWORLD_FPS_PROBE=<秒>` 静置测帧；`ACCELWORLD_UI_SHOT_GEOMETRY=WxH` 固定测试几何；`ACCELWORLD_TEST_NO_SAVE=1` 退出不写窗口存档；`ACCELWORLD_TEST_POS="x,y"` + `ACCELWORLD_EXPECT_POS="x,y"` 落点对照；`ACCELWORLD_EARLY_SHOT_MS=<ms>` 早期帧；`ACCELWORLD_TEST_CLOSE_LOSS=n` 丢弃前 n 次 Close（验证退出自愈）
-- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.3.4`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
+- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.4.0`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
 - **版本体系**：四段式纯数字 `X.Y.Z.P`（无 `ver ` 前缀）；`feat`/`fix`/`refactor`/`perf` 提交前 bump patch 位；历史存量 `ver 0.4x` 三段式仅存于历史文档与提交记录，不回溯改写
 
 ## 环境陷阱
@@ -23,7 +23,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 
 - cargo workspace 双 crate，依赖单向 `app → core`（CI 关卡 4 机器强制 core 零 egui/eframe）：
   - `rs/crates/accel-core`：纯业务（时间膨胀 / 农历干支节气 / 天气 / 闹钟 / 配置 / 数据表 / 通用工具 / 接口契约），零 GUI 依赖
-  - `rs/crates/accel-app`：egui 前端（实心主题窗口装配 / 星盘主仪 + 悬浮仪器坞 + 抽屉页（PageHeader/Scroll/Footer）+ 设置抽屉 / 自绘控件 / 系统集成 / 首帧门控显示）
+  - `rs/crates/accel-app`：egui 前端（实心主题窗口装配 / 星盘主仪 + 悬浮仪器坞 + 抽屉页（PageHeader/Scroll/Footer）+ 设置抽屉 / 自绘控件（含 Select）/ Tabler 图标字族 / 反馈动效 / 系统集成 / 首帧门控显示）
 - **分层与镜像**（Python → Rust，完整对应见 z.plan 镜像映射表）：`interface.rs` 七域契约 + `FrontendCommand`/`BackendEvent` 命令事件总线是 UI **写操作**后端的唯一入口（UI 不直改业务状态）；app 经 `bus.rs` 每帧 drain 事件、按需发命令，core 不感知 egui。**契约边界（A005 #12 明确）**：只读访问允许直取——`static_config::Static`（渲染 token）、`types` 与纯常量 DTO（`alarm::PresetSound`、`settings::CountdownTarget`）、`data::{cities,world_cities}` 只读检索、`audio`（平台侧播放封装）；判定口径：**改变后端状态**才必须走总线，纯读取再经 interface 转一层属无价值间接
 - **代码零硬编码**：业务参数（倍率范围/默认值/周期/窗口几何/颜色/日志路径等）全部从 `rs/config/static/*.json` 读取（`static_config.rs` 单例经 `include_str!` 编译期嵌入）；运行期文件一律 exe 同目录相对（FIX007.15）：用户配置 `config/user_config.json`、日志 `logs/`（每日独立文件）
 - **注释房规**：`///` 中文文档注释（函数/方法，1-3 行，说明用途与核心逻辑）；模块头 `//!` 一行职责；每个 `.rs` 文件末尾保留 `// ===== 说明区 =====`（输入输出 / 逻辑步骤 / 设计理由 / 异常处理 / 关联配置）

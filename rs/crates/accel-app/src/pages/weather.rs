@@ -22,6 +22,15 @@ impl crate::pages::Page for crate::pages::WeatherPage {
     fn ui(&mut self, ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
         let ink = crate::theme::ink();
         let city = state.prefs.last_city.clone();
+        // 加载期 0.72 透明度，结束后 160ms 淡入（减少动效直取）
+        let loading = state.weather_loading.contains(&city);
+        let fade = if crate::theme::reduce_motion(ui.ctx()) {
+            1.0
+        } else {
+            ui.ctx()
+                .animate_bool_with_time(egui::Id::unique("weather_fade"), !loading, 0.16)
+        };
+        ui.set_opacity(0.72 + 0.28 * fade);
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -263,6 +272,47 @@ fn draw_hourly(ui: &mut egui::Ui, hourly: &[HourlyPoint], ink: &crate::theme::In
                     } else {
                         egui::Align2::CENTER_BOTTOM
                     }),
+                );
+            }
+            // 现在：最近小时点 + 竖线（超出数据范围不画）
+            let now = chrono::Local::now().naive_local();
+            let mut now_i = None;
+            let mut best = i64::MAX;
+            for (i, h) in hours.iter().enumerate() {
+                let parsed = chrono::NaiveDateTime::parse_from_str(&h.time, "%Y-%m-%dT%H:%M")
+                    .or_else(|_| {
+                        chrono::NaiveDateTime::parse_from_str(&h.time, "%Y-%m-%d %H:%M:%S")
+                    });
+                if let Ok(t) = parsed {
+                    let d = (t - now).num_minutes().abs();
+                    if d < best {
+                        best = d;
+                        now_i = Some(i);
+                    }
+                }
+            }
+            if let Some(i) = now_i.filter(|_| best <= 90) {
+                let h = hours[i];
+                plot_ui.vline(
+                    egui_plot::VLine::new("now", i as f64).stroke(egui::Stroke::new(
+                        1.0,
+                        crate::theme::with_alpha(ink.muted, 110),
+                    )),
+                );
+                plot_ui.points(
+                    egui_plot::Points::new("now_point", vec![[i as f64, h.temperature]])
+                        .color(ink.body)
+                        .radius(3.0),
+                );
+                plot_ui.text(
+                    egui_plot::Text::new(
+                        "now_label",
+                        egui_plot::PlotPoint::new(i as f64, y_hi),
+                        egui::RichText::new("现在")
+                            .font(meta_font.clone())
+                            .color(ink.meta),
+                    )
+                    .anchor(egui::Align2::CENTER_BOTTOM),
                 );
             }
         });

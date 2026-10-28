@@ -179,15 +179,24 @@ impl eframe::App for AppHandle {
                 label: sidebar_label(PageId::Alarm),
             },
         ];
-        egui::Panel::bottom("instrument_dock")
-            .exact_size(crate::theme::layout_i64("dock_height") as f32)
-            .frame(egui::Frame::new().fill(crate::theme::window_bg()))
-            .show(ui, |ui| {
-                crate::widgets::dock::show(ui, &mut self.state, &dock_items);
-            });
-
-        // 页面总装（星盘主仪恒驻 + 非时钟页右侧仪器抽屉）
-        self.pages.ui(ui, &mut self.state, &self.bus);
+        // 页面区 / 底部坞显式分带（PL019）：页面先画、坞后画，互不覆盖
+        let full = ui.max_rect();
+        let dock_h = crate::theme::layout_f32("dock_height");
+        let page_rect = egui::Rect::from_min_max(
+            full.min,
+            egui::pos2(full.right(), (full.bottom() - dock_h).max(full.top())),
+        );
+        let dock_rect =
+            egui::Rect::from_min_max(egui::pos2(full.left(), page_rect.bottom()), full.max);
+        ui.scope_builder(egui::UiBuilder::new().max_rect(page_rect), |page_ui| {
+            self.pages.ui(page_ui, &mut self.state, &self.bus);
+        });
+        ui.scope_builder(egui::UiBuilder::new().max_rect(dock_rect), |dock_ui| {
+            dock_ui
+                .painter()
+                .rect_filled(dock_rect, 0, crate::theme::window_bg());
+            crate::widgets::dock::show(dock_ui, &mut self.state, &dock_items);
+        });
 
         // 应用内 toast（PL016.07：右上堆叠；存活期自提频，零忙转不破）
         crate::widgets::toast::paint(&ctx, &mut self.state.toasts);

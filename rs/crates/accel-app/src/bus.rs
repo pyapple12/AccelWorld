@@ -68,6 +68,8 @@ pub struct UiState {
     pub countdown_draft_at: String,
     /// PL019：空态 CTA 请求把焦点放到名称输入框（footer 消费后复位）
     pub focus_countdown_name: bool,
+    /// PL019：列表添加后的 120ms 新行淡入（key = countdown/world/alarm）
+    pub list_pulse: Option<(String, std::time::Instant)>,
     /// 世界时钟常驻城市（ConfigSaved 后由 drain 重拉）
     pub world_pins: Vec<String>,
     /// 选中基准时区（IANA）
@@ -125,6 +127,7 @@ impl Default for UiState {
             countdown_draft_name: String::new(),
             countdown_draft_at: String::new(),
             focus_countdown_name: false,
+            list_pulse: None,
             world_pins: Vec::new(),
             base_timezone: None,
             alarm_draft_label: String::new(),

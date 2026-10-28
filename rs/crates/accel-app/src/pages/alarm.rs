@@ -93,8 +93,17 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                         );
                     }
                     let alarms = state.alarms.clone();
-                    for alarm in &alarms {
-                        draw_alarm_row(ui, state, bus, alarm, &ink);
+                    let pulse = crate::widgets::motion::list_pulse(state, "alarm");
+                    let last = alarms.len().saturating_sub(1);
+                    for (i, alarm) in alarms.iter().enumerate() {
+                        if i == last && pulse < 1.0 {
+                            ui.scope(|ui| {
+                                ui.set_opacity(0.55 + 0.45 * pulse);
+                                draw_alarm_row(ui, state, bus, alarm, &ink);
+                            });
+                        } else {
+                            draw_alarm_row(ui, state, bus, alarm, &ink);
+                        }
                         ui.add_space(6.0);
                     }
                 });
@@ -374,6 +383,7 @@ fn draw_footer(ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::
             repeat_days: Vec::new(),
             enabled: true,
         }));
+        state.list_pulse = Some(("alarm".to_string(), std::time::Instant::now()));
         state.alarm_draft_label.clear();
         state.alarm_draft_time.clear();
     }

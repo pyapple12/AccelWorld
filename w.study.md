@@ -127,13 +127,13 @@ pub async fn fetch(&self, city: &str, force: bool) -> Result<WeatherData, Weathe
 ### 3.7 界面装配 — 星盘主仪 + 悬浮仪器坞 + 抽屉页（PL017 现役）
 
 - `window.rs`：`AppHandle`（logic：drain/探针/退出序列（Close 丢失自愈） + ui：首帧窗口几何夹取 → 首帧门控显示 → 悬浮仪器坞 → 页总装 → toast）；设置不再是浮窗，而是抽屉页；标题去版本号、窗口用托盘图标
-- `pages/mod.rs`：总装配——非时钟页/设置 Panel::right 抽屉（PageHeader 56 + ScrollArea + 内容 + Footer；32% 宽钳 320..400；<760 全宽 compact）+ CentralPanel 星盘主仪恒驻；ESC 关设置/回时钟
-- `clock.rs`：单环双针表盘（24h 刻度环纯量尺 + 金针=加速时刻 24h 取模 + 灰针=现实 24h + 两针间金弧；盘下 readout：加速 64/现实 24/×倍率；360px 短倍率条）；短窗（<380 高）退化为数字版
-- `theme.rs`：ui.json `colors.*` 深色实心单板（仅深色定案）→ egui Visuals + 语义色（strong/body/muted/meta/success 五层，对比度全矩阵 ≥4.5:1 实测）/input_border/border_strong/字号/间距/圆角访问器；MiSans Regular/Medium/Semibold 三档字重
-- `widgets/`：digits（等宽数字位）/ icons（矢量图标零字体依赖）/ icon_button / dock（悬浮带标签）/ page_header / field / switch / empty / rate_strip / slider / chip / toast
+- `pages/mod.rs`：总装配——页面区/底部坞显式分带；舞台与抽屉按宽度定宽并排（<760 全宽抽屉；≥760 舞台 ≥420、抽屉 280..400）；ESC 关设置/回时钟
+- `clock.rs`：单环双针表盘（24h 刻度环纯量尺 + 金针=加速时刻 24h 取模 + 灰针=现实 24h + 两针间金弧；盘下 readout 限宽 640 成组；360px 短倍率条）；页头 52/40；短窗（<380 高）退化为数字版
+- `theme.rs`：ui.json `colors.*` 深色实心单板（仅深色定案）→ egui Visuals + 语义色（strong/body/muted/meta/success 五层，对比度全矩阵 ≥4.5:1 实测）/input_border/border_strong/字号/间距/圆角访问器；MiSans Regular/Medium/Semibold 三档字重 + Tabler 图标族
+- `widgets/`：digits（等宽数字位）/ icons（Tabler 子集字体绘制）/ icon_button / dock（悬浮带标签）/ page_header / field / switch / empty / rate_strip / slider / chip / toast / select / primary_button / spinner / motion
 - 高 DPI 纪律：面/文本坐标一律逻辑点；标题栏底色经 DWMWA_CAPTION_COLOR 恒钉深色；窗口几何按当前显示器工作区夹取（max 1200×820）
 - 走查门：`ACCELWORLD_UI_SHOT` 截图探针（真窗逐页 PrintWindow PNG，`PW_CLIENTONLY` 已消除底部白带；固定 `ACCELWORLD_UI_SHOT_GEOMETRY` 测试几何）+ 用户桌面终审
-- 历史：玻璃渲染（WGSL + GlassScene + Acrylic）废弃（UIR）；UIR 初代灰石板金调（UIR2 子夜星图换装）；UIR2 侧栏五页模型（UIR4 改星盘主仪+仪器坞+抽屉）；PL017 结构重排（图标坞/盘下读数/抽屉三段式/字重/短倍率条）
+- 历史：玻璃渲染（WGSL + GlassScene + Acrylic）废弃（UIR）；UIR 初代灰石板金调（UIR2 子夜星图换装）；UIR2 侧栏五页模型（UIR4 改星盘主仪+仪器坞+抽屉）；PL017 结构重排（图标坞/盘下读数/抽屉三段式/字重/短倍率条）；PL019 图标字体/自适应分栏/自绘 Select/反馈动效
 
 ### 3.8 日志 — 每日滚动 + 崩溃栈
 

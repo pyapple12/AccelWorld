@@ -44,8 +44,17 @@ impl crate::pages::Page for crate::pages::WorldPage {
                         );
                         return;
                     }
-                    for name in &pins {
-                        draw_city_row(ui, state, bus, name, &pins, &base_tz, utc_now, &ink);
+                    let pulse = crate::widgets::motion::list_pulse(state, "world");
+                    let last = pins.len().saturating_sub(1);
+                    for (i, name) in pins.iter().enumerate() {
+                        if i == last && pulse < 1.0 {
+                            ui.scope(|ui| {
+                                ui.set_opacity(0.55 + 0.45 * pulse);
+                                draw_city_row(ui, state, bus, name, &pins, &base_tz, utc_now, &ink);
+                            });
+                        } else {
+                            draw_city_row(ui, state, bus, name, &pins, &base_tz, utc_now, &ink);
+                        }
                         ui.add_space(6.0);
                     }
                 });
@@ -72,6 +81,7 @@ impl crate::pages::Page for crate::pages::WorldPage {
                 combo_w,
             ) {
                 bus.send(FrontendCommand::AddWorldCity(picked));
+                state.list_pulse = Some(("world".to_string(), std::time::Instant::now()));
             }
         });
     }
