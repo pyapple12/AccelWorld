@@ -64,6 +64,17 @@ pub struct AppHandle {
     /// 启动几何（内尺寸；首帧按当前显示器夹取一次——PL017.01）
     initial_geometry: (f32, f32, f32, f32),
     geometry_clamped: bool,
+    /// PL018.01 探针卫生：退出跳过窗口几何存档（避免循环探针覆盖用户存档）
+    test_no_save: bool,
+    /// PL018.01 期望落点（外框逻辑点）；静置后打印 target/actual/delta
+    probe_expect_pos: Option<(f32, f32)>,
+    probe_pos_logged: bool,
+    /// PL018.01 首帧早期截图毫秒（与 UI_SHOT 目录合用；抓完即退出）
+    early_shot_ms: Option<u64>,
+    early_shot_done: bool,
+    /// PL018.06 首帧门控：隐藏创建，完成 1 帧（或 250ms 看门狗）后再显示
+    first_show_done: bool,
+    frames_seen: u32,
     /// 托盘句柄（构造失败降级 None——无托盘环境行为无损）
     tray: Option<crate::platform::tray::TrayHandles>,
     /// 全局热键句柄（注册失败降级 None）
@@ -74,6 +85,11 @@ pub struct AppHandle {
     quit_sent: bool,
     /// 退出保存起始时刻（A005 #28：SaveNow 后等回执/超时才放行 Close）
     exit_save_started: Option<std::time::Instant>,
+    /// PL018.04 退出自愈：Close 发出时点与次数（None=未发）
+    close_sent_at: Option<std::time::Instant>,
+    close_attempt: u8,
+    /// PL018.04 测试钩子：丢弃前 N 次 Close，验证重发/兜底路径
+    test_close_loss: u8,
     /// 托盘状态推送节流（Tick 更新限频 1s）
     last_status: std::time::Instant,
     /// 帧计数（.13 空闲节奏探针）
@@ -98,6 +114,21 @@ impl eframe::App for AppHandle {
     /// 帧绘制：悬浮仪器坞 → 页总装 → toast → 重绘节奏（PL017 装配）
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        // PL018.06 首帧门控：隐藏创建；完成 1 帧（首帧已 present）或 250ms 兜底后再显示。
+        // 看门狗线程负责“隐藏窗口不派发首帧”的死角（见 run_with_counter）。
+        if !self.first_show_done
+            && (self.frames_seen >= 1
+                || self.start_time.elapsed() >= std::time::Duration::from_millis(250))
+        {
+            self.first_show_done = true;
+            tracing::info!(
+                "首帧门控显示: frames={} elapsed={:?}",
+                self.frames_seen,
+                self.start_time.elapsed()
+            );
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        }
         // PL017.01：首帧按当前显示器工作区夹取窗口（存档可能来自更大屏幕/旧 DPI）
         self.clamp_window_once(&ctx);
         // PL016.06：减少动效开关写入 ctx data（控件层经 theme::reduce_motion 读取）
@@ -161,6 +192,9 @@ impl eframe::App for AppHandle {
         // 应用内 toast（PL016.07：右上堆叠；存活期自提频，零忙转不破）
         crate::widgets::toast::paint(&ctx, &mut self.state.toasts);
 
+        // PL018.01：落点日志 + 首帧早期截图（仅探针环境；一次性）
+        self.probe_extras_tick(&ctx, frame);
+
         // UI 截图探针（UIR.2：逐页 PrintWindow 出 PNG 后自动退出）
         self.ui_shot_tick(ui.ctx(), frame);
 
@@ -172,6 +206,11 @@ impl eframe::App for AppHandle {
             interval = interval.min(std::time::Duration::from_millis(200));
         }
         ctx.request_repaint_after(interval);
+        self.frames_seen = self.frames_seen.saturating_add(1);
+        // PL018.06：首帧完成后立刻再跑一帧，把“显示”压到 ~1 帧内（不等 tick 间隔）
+        if !self.first_show_done {
+            ctx.request_repaint();
+        }
     }
 }
 
@@ -222,6 +261,54 @@ impl AppHandle {
             "窗口几何夹取: {sw:.0}x{sh:.0}@{sx:.0},{sy:.0} → {w:.0}x{h:.0}@{x:.0},{y:.0}"
         );
     }
+
+    /// PL018.01 探针附加项（一次性）：
+    /// ①落点日志——静置 600ms 后打印 target/actual/delta（外框逻辑点），供 #10 基线；
+    /// ②首帧早期截图——到点抓一帧落盘后立刻走退出序列（不进入六页矩阵）。
+    /// 正常模式两开关均未设时不执行任何工作。
+    fn probe_extras_tick(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+        if let Some((tx, ty)) = self.probe_expect_pos
+            && !self.probe_pos_logged
+            && self.start_time.elapsed() >= std::time::Duration::from_millis(600)
+        {
+            self.probe_pos_logged = true;
+            match ctx.input(|i| i.viewport().outer_rect) {
+                Some(r) => probe_note(&format!(
+                    "[PROBE] pos target={tx:.0},{ty:.0} actual={:.0},{:.0} delta={:.0},{:.0} ppp={:.2}",
+                    r.min.x,
+                    r.min.y,
+                    r.min.x - tx,
+                    r.min.y - ty,
+                    ctx.pixels_per_point()
+                )),
+                None => probe_note("[PROBE] pos actual=unknown"),
+            }
+        }
+        if let Some(ms) = self.early_shot_ms
+            && !self.early_shot_done
+            && self.start_time.elapsed() >= std::time::Duration::from_millis(ms)
+        {
+            self.early_shot_done = true;
+            let path = self
+                .ui_shot_dir
+                .clone()
+                .unwrap_or_default()
+                .join(format!("early_{ms}.png"));
+            let hwnd = match frame.window_handle() {
+                Ok(h) => match h.into() {
+                    RawWindowHandle::Win32(w) => Some(w.hwnd.get()),
+                    _ => None,
+                },
+                Err(_) => None,
+            };
+            let ok = hwnd.is_some_and(|h| capture_window_png(h, &path));
+            probe_note(&format!(
+                "[PROBE] early {ms}ms → {}",
+                if ok { "ok" } else { "FAIL" }
+            ));
+            self.quit_requested = true;
+        }
+    }
     /// 探针时序（隐藏期仍由 logic 驱动）：隐藏 → 显示 → 退出三段模拟
     /// 隐藏/显示两侧打印同源状态指纹，供"隐藏→显示状态保持"断言比对
     fn probe_tick(&mut self, ctx: &Context) {
@@ -253,6 +340,11 @@ impl AppHandle {
     /// 退出（托盘/热键/探针）→ SaveNow+Quit+Close 一次放行；关闭按钮 → 隐藏驻留
     /// （quit_sent 区分两种 Close 来源：放行的退出 Close 不再被拦截）
     fn exit_or_stay(&mut self, ctx: &Context) {
+        // PL018.04：Close 已发但窗口仍在 → 按 1s/2s/3s 升级（重发→显示后重发→硬退出）
+        if self.quit_sent {
+            self.escalate_close(ctx);
+            return;
+        }
         let close_requested = ctx.input(|i| i.viewport().close_requested());
         // A005 #7：托盘与热键同时缺失时"隐藏驻留"即无出口死路（唯一可置退出请求的
         // 通道全部不存在）——此时关闭按钮直接升级为退出请求，走下方退出序列
@@ -273,7 +365,10 @@ impl AppHandle {
                     // （走「保存失败」误弹链且几何未被存档）
                     let minimized = ctx.input(|i| i.viewport().minimized) == Some(true);
                     let inner = ctx.input(|i| i.viewport().inner_rect);
-                    if !minimized && let Some(outer) = ctx.input(|i| i.viewport().outer_rect) {
+                    if !minimized
+                        && !self.test_no_save
+                        && let Some(outer) = ctx.input(|i| i.viewport().outer_rect)
+                    {
                         // PL017.01：保存 inner 尺寸（含标题栏的 outer 会把窗口逐次撑大）
                         let (gw, gh) = inner
                             .map(|r| (r.width(), r.height()))
@@ -298,11 +393,13 @@ impl AppHandle {
                 }
             }
             self.quit_sent = true;
+            self.close_sent_at = Some(std::time::Instant::now());
+            self.close_attempt = 1;
             if self.probe_close_secs.is_some() {
                 probe_note("[PROBE] quit");
             }
             self.bus.send(FrontendCommand::Quit);
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            self.send_close(ctx);
             return;
         }
         // 关闭按钮 → 隐藏驻留（托盘常驻，对齐 Python closeEvent：拦截不落盘——
@@ -310,6 +407,53 @@ impl AppHandle {
         if !self.quit_sent && close_requested {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        }
+    }
+
+    /// PL018.04 发送 Close（测试钩子可丢弃前 N 次，验证重发/兜底路径）
+    fn send_close(&mut self, ctx: &Context) {
+        if self.test_close_loss > 0 {
+            self.test_close_loss -= 1;
+            tracing::warn!("[PROBE] 丢弃一次 Close（剩余 {}）", self.test_close_loss);
+            return;
+        }
+        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+
+    /// PL018.04 退出自愈：Close 后窗口仍存活时按 1s/2s/3s 升级——
+    /// 重发 → 显示并重发（覆盖隐藏态吞掉 Close）→ 硬退出（SaveNow 回执已到，数据安全）
+    fn escalate_close(&mut self, ctx: &Context) {
+        let Some(sent) = self.close_sent_at else {
+            return;
+        };
+        // 退出期保活：确保看门狗在窗口不再重绘时仍有帧驱动
+        ctx.request_repaint_after(std::time::Duration::from_millis(200));
+        match close_step(sent.elapsed(), self.close_attempt) {
+            CloseStep::None => {}
+            CloseStep::Resend => {
+                self.close_attempt += 1;
+                tracing::warn!(
+                    "退出升级: attempt={} elapsed={:?}",
+                    self.close_attempt,
+                    sent.elapsed()
+                );
+                self.send_close(ctx);
+            }
+            CloseStep::RevealAndResend => {
+                self.close_attempt += 1;
+                tracing::warn!(
+                    "退出升级: attempt={} elapsed={:?}（先显示窗口）",
+                    self.close_attempt,
+                    sent.elapsed()
+                );
+                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                self.send_close(ctx);
+            }
+            CloseStep::ForceExit => {
+                tracing::warn!("退出兜底: Close 三次重发仍未生效，强制退出（数据已保存）");
+                std::process::exit(0);
+            }
         }
     }
 
@@ -355,6 +499,10 @@ impl AppHandle {
         let Some(dir) = self.ui_shot_dir.clone() else {
             return;
         };
+        // PL018.01：早期截图模式独占本次运行（抓完即退，不跑六页矩阵）
+        if self.early_shot_ms.is_some() {
+            return;
+        }
         // step len+1 = 退出步（不出图）；其后守卫拦空转
         if self.ui_shot_step > PAGE_ORDER.len() + 1 {
             return;
@@ -475,6 +623,35 @@ pub fn close_action(has_tray: bool, has_hotkey: bool) -> CloseAction {
     } else {
         CloseAction::Quit
     }
+}
+
+/// 退出自愈步进（PL018.04 纯逻辑）：Close 发出后窗口仍在时的升级动作
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CloseStep {
+    /// 仍在等待窗口关闭
+    None,
+    /// 重发 Close（命令可能被事件循环丢弃）
+    Resend,
+    /// 显示窗口后重发（隐藏态可能吞掉 Close）
+    RevealAndResend,
+    /// 三次重发仍无效 → 硬退出（SaveNow 回执已到，数据安全）
+    ForceExit,
+}
+
+/// 退出自愈判定（PL018.04）：按「第几次发送 + 已等时长」逐级升级，早到不越级
+pub fn close_step(elapsed: std::time::Duration, attempt: u8) -> CloseStep {
+    match attempt {
+        1 if elapsed >= std::time::Duration::from_secs(1) => CloseStep::Resend,
+        2 if elapsed >= std::time::Duration::from_secs(2) => CloseStep::RevealAndResend,
+        3 if elapsed >= std::time::Duration::from_secs(3) => CloseStep::ForceExit,
+        _ => CloseStep::None,
+    }
+}
+
+/// PL018.01 解析落点探针参数 "x,y"（容忍空白；非法返回 None——探针不得 panic）
+pub fn parse_expect_pos(raw: &str) -> Option<(f32, f32)> {
+    let (x, y) = raw.split_once(',')?;
+    Some((x.trim().parse().ok()?, y.trim().parse().ok()?))
 }
 
 /// 启动几何按显示器夹取（纯函数，PL017.01）：尺寸不超过显示器−边距与 max，
@@ -677,6 +854,22 @@ pub fn run_with_counter(
     let ui_shot_dir = std::env::var("ACCELWORLD_UI_SHOT")
         .ok()
         .map(std::path::PathBuf::from);
+    // PL018.01 探针卫生/观测开关：
+    //   TEST_NO_SAVE=1 退出不写用户窗口存档；EXPECT_POS="x,y" 打印落点偏差；
+    //   EARLY_SHOT_MS=n 到点抓一帧即退（需 UI_SHOT 目录，用于热启动黑窗采样）
+    let test_no_save = std::env::var("ACCELWORLD_TEST_NO_SAVE").is_ok_and(|v| v == "1");
+    let probe_expect_pos = std::env::var("ACCELWORLD_EXPECT_POS")
+        .ok()
+        .and_then(|v| parse_expect_pos(&v));
+    let early_shot_ms = std::env::var("ACCELWORLD_EARLY_SHOT_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|_| ui_shot_dir.is_some());
+    // PL018.04 测试钩子：丢弃前 N 次 Close（验证重发/兜底；正常模式为 0）
+    let test_close_loss = std::env::var("ACCELWORLD_TEST_CLOSE_LOSS")
+        .ok()
+        .and_then(|v| v.parse::<u8>().ok())
+        .unwrap_or(0);
     let runtime = Arc::new(build_runtime());
     let iface = Arc::new(AppInterface::new());
 
@@ -706,6 +899,14 @@ pub fn run_with_counter(
         y = 80.0;
         w = sw;
         h = sh;
+        // PL018.01：落点探针可指定名义位置（仅探针；配合 TEST_NO_SAVE 不写存档）
+        if let Some((px, py)) = std::env::var("ACCELWORLD_TEST_POS")
+            .ok()
+            .and_then(|v| parse_expect_pos(&v))
+        {
+            x = px;
+            y = py;
+        }
     }
     let mut viewport = egui::ViewportBuilder::default()
         .with_inner_size(Vec2::new(w, h))
@@ -717,6 +918,8 @@ pub fn run_with_counter(
         ))
         // PL017.01：窗口上限；首帧再按显示器工作区夹取
         .with_max_inner_size(crate::theme::window_max_size())
+        // PL018.06：隐藏创建，首帧门控后再显示（防 GPU 热释放后的首帧黑窗）
+        .with_visible(false)
         .with_title("加速世界");
     if let Ok(icon) =
         eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/accelworld-tray.png"))
@@ -736,6 +939,14 @@ pub fn run_with_counter(
             // A008 #2 定案仅深色：主题偏好不再驱动 Visuals（ThemePref 配置域仅存档）
             crate::theme::apply(&cc.egui_ctx);
             install_fonts(&cc.egui_ctx);
+            // PL018.06：首帧门控看门狗——隐藏窗口若平台不派发首帧，250ms 后无条件显示，
+            // 避免“等首帧”变成“永不出现”
+            let wd_ctx = cc.egui_ctx.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(250));
+                wd_ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                wd_ctx.request_repaint();
+            });
             let mut state = UiState {
                 rate: iface.get_rate(),
                 rate_bounds: AppInterface::get_rate_bounds(),
@@ -792,11 +1003,21 @@ pub fn run_with_counter(
                 titlebar_hwnd: None,
                 initial_geometry: (x, y, w, h),
                 geometry_clamped: false,
+                test_no_save,
+                probe_expect_pos,
+                probe_pos_logged: false,
+                early_shot_ms,
+                early_shot_done: false,
+                first_show_done: false,
+                frames_seen: 0,
                 tray,
                 hotkeys,
                 quit_requested: false,
                 quit_sent: false,
                 exit_save_started: None,
+                close_sent_at: None,
+                close_attempt: 0,
+                test_close_loss,
                 last_status: std::time::Instant::now(),
                 repaint_count: counter,
             }))
@@ -966,6 +1187,30 @@ mod tests {
         );
         assert_eq!(sidebar_label(PageId::Clock), "时钟");
         assert_eq!(sidebar_label(PageId::Alarm), "闹钟");
+    }
+
+    #[test]
+    fn expect_pos_parses_xy_and_rejects_garbage() {
+        // PL018.01：探针参数容错——合法返回坐标，非法/缺项返回 None 不 panic
+        assert_eq!(parse_expect_pos("80, 90"), Some((80.0, 90.0)));
+        assert_eq!(parse_expect_pos("-12.5,3"), Some((-12.5, 3.0)));
+        assert_eq!(parse_expect_pos("80"), None);
+        assert_eq!(parse_expect_pos("a,b"), None);
+    }
+
+    #[test]
+    fn close_step_escalates_without_skipping() {
+        // PL018.04：1s 重发 → 2s 显示后重发 → 3s 兜底；早到不越级
+        use std::time::Duration;
+        assert_eq!(close_step(Duration::from_millis(999), 1), CloseStep::None);
+        assert_eq!(close_step(Duration::from_secs(1), 1), CloseStep::Resend);
+        assert_eq!(
+            close_step(Duration::from_secs(2), 2),
+            CloseStep::RevealAndResend
+        );
+        assert_eq!(close_step(Duration::from_secs(3), 3), CloseStep::ForceExit);
+        assert_eq!(close_step(Duration::from_secs(1), 2), CloseStep::None);
+        assert_eq!(close_step(Duration::from_secs(2), 3), CloseStep::None);
     }
 
     #[test]

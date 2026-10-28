@@ -126,7 +126,7 @@ pub async fn fetch(&self, city: &str, force: bool) -> Result<WeatherData, Weathe
 
 ### 3.7 界面装配 — 星盘主仪 + 悬浮仪器坞 + 抽屉页（PL017 现役）
 
-- `window.rs`：`AppHandle`（logic：drain/探针/退出序列 + ui：首帧窗口几何夹取 → 悬浮仪器坞 → 页总装 → toast）；设置不再是浮窗，而是抽屉页；标题去版本号、窗口用托盘图标
+- `window.rs`：`AppHandle`（logic：drain/探针/退出序列（Close 丢失自愈） + ui：首帧窗口几何夹取 → 首帧门控显示 → 悬浮仪器坞 → 页总装 → toast）；设置不再是浮窗，而是抽屉页；标题去版本号、窗口用托盘图标
 - `pages/mod.rs`：总装配——非时钟页/设置 Panel::right 抽屉（PageHeader 56 + ScrollArea + 内容 + Footer；32% 宽钳 320..400；<760 全宽 compact）+ CentralPanel 星盘主仪恒驻；ESC 关设置/回时钟
 - `clock.rs`：单环双针表盘（24h 刻度环纯量尺 + 金针=加速时刻 24h 取模 + 灰针=现实 24h + 两针间金弧；盘下 readout：加速 64/现实 24/×倍率；360px 短倍率条）；短窗（<380 高）退化为数字版
 - `theme.rs`：ui.json `colors.*` 深色实心单板（仅深色定案）→ egui Visuals + 语义色（strong/body/muted/meta/success 五层，对比度全矩阵 ≥4.5:1 实测）/input_border/border_strong/字号/间距/圆角访问器；MiSans Regular/Medium/Semibold 三档字重

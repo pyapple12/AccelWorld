@@ -1,6 +1,6 @@
 # AccelWorld 项目说明
 
-Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow 实心桌面 UI，中文界面为主）。2026-10-16 起由 Python（PyQt6 + Fluent Widgets）重构为 Rust，Python 版全量归档 `.archived/`（git 忽略，仅供 golden 夹具再生）。2026-10-23 UI 推倒重塑（UIR）：玻璃管线/Acrylic/透明窗口整体废弃；2026-10-24 UIR4 开创性重构：单环双针星盘主仪恒驻 + 底部仪器坞 + 抽屉页（侧栏导航废除）；2026-10-28 PL017 结构重排：悬浮带标签坞 + 抽屉三段式 + 盘下读数 + 短倍率条 + 设置抽屉 + 三档字重（V0.6.3.1）。2026-09-10 起接入 DeepTransHub 工作流体系（文档四件套 + Commit 提交规范 + `.agents/skills/` 项目级技能）。
+Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow 实心桌面 UI，中文界面为主）。2026-10-16 起由 Python（PyQt6 + Fluent Widgets）重构为 Rust，Python 版全量归档 `.archived/`（git 忽略，仅供 golden 夹具再生）。2026-10-23 UI 推倒重塑（UIR）：玻璃管线/Acrylic/透明窗口整体废弃；2026-10-24 UIR4 开创性重构：单环双针星盘主仪恒驻 + 底部仪器坞 + 抽屉页（侧栏导航废除）；2026-10-28 PL017 结构重排：悬浮带标签坞 + 抽屉三段式 + 盘下读数 + 短倍率条 + 设置抽屉 + 三档字重（V0.6.3.1）；2026-10-28 PL018 边界补强：退出自愈 + 落点校准 + 首帧门控 + `egui_flex` 裁决（V0.6.3.2）。2026-09-10 起接入 DeepTransHub 工作流体系（文档四件套 + Commit 提交规范 + `.agents/skills/` 项目级技能）。
 
 ## 运行与验证
 
@@ -8,7 +8,8 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - **统一入口四关卡**：`pwsh rs/ci.ps1`（fmt --check → clippy `-D warnings` → `cargo test --workspace` → core 依赖树零 egui/eframe）；`.github/workflows/rs-ci.yml` 复用同一命令集
 - 全量测试：`cargo test --workspace`（core 单测 + 夹具 parity 集成 + app 单测）
 - GUI 冒烟（真窗出血，会弹窗）：`cargo run -p accel-app`；UI 截图探针（逐页 PNG 后自动退出）：`$env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app`
-- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.3.1`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
+- 探针环境变量（正常模式零影响）：`ACCELWORLD_FPS_PROBE=<秒>` 静置测帧；`ACCELWORLD_UI_SHOT_GEOMETRY=WxH` 固定测试几何；`ACCELWORLD_TEST_NO_SAVE=1` 退出不写窗口存档；`ACCELWORLD_TEST_POS="x,y"` + `ACCELWORLD_EXPECT_POS="x,y"` 落点对照；`ACCELWORLD_EARLY_SHOT_MS=<ms>` 早期帧；`ACCELWORLD_TEST_CLOSE_LOSS=n` 丢弃前 n 次 Close（验证退出自愈）
+- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.3.2`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
 - **版本体系**：四段式纯数字 `X.Y.Z.P`（无 `ver ` 前缀）；`feat`/`fix`/`refactor`/`perf` 提交前 bump patch 位；历史存量 `ver 0.4x` 三段式仅存于历史文档与提交记录，不回溯改写
 
 ## 环境陷阱
@@ -22,7 +23,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 
 - cargo workspace 双 crate，依赖单向 `app → core`（CI 关卡 4 机器强制 core 零 egui/eframe）：
   - `rs/crates/accel-core`：纯业务（时间膨胀 / 农历干支节气 / 天气 / 闹钟 / 配置 / 数据表 / 通用工具 / 接口契约），零 GUI 依赖
-  - `rs/crates/accel-app`：egui 前端（实心主题窗口装配 / 星盘主仪 + 悬浮仪器坞 + 抽屉页（PageHeader/Scroll/Footer）+ 设置抽屉 / 自绘控件 / 系统集成）
+  - `rs/crates/accel-app`：egui 前端（实心主题窗口装配 / 星盘主仪 + 悬浮仪器坞 + 抽屉页（PageHeader/Scroll/Footer）+ 设置抽屉 / 自绘控件 / 系统集成 / 首帧门控显示）
 - **分层与镜像**（Python → Rust，完整对应见 z.plan 镜像映射表）：`interface.rs` 七域契约 + `FrontendCommand`/`BackendEvent` 命令事件总线是 UI **写操作**后端的唯一入口（UI 不直改业务状态）；app 经 `bus.rs` 每帧 drain 事件、按需发命令，core 不感知 egui。**契约边界（A005 #12 明确）**：只读访问允许直取——`static_config::Static`（渲染 token）、`types` 与纯常量 DTO（`alarm::PresetSound`、`settings::CountdownTarget`）、`data::{cities,world_cities}` 只读检索、`audio`（平台侧播放封装）；判定口径：**改变后端状态**才必须走总线，纯读取再经 interface 转一层属无价值间接
 - **代码零硬编码**：业务参数（倍率范围/默认值/周期/窗口几何/颜色/日志路径等）全部从 `rs/config/static/*.json` 读取（`static_config.rs` 单例经 `include_str!` 编译期嵌入）；运行期文件一律 exe 同目录相对（FIX007.15）：用户配置 `config/user_config.json`、日志 `logs/`（每日独立文件）
 - **注释房规**：`///` 中文文档注释（函数/方法，1-3 行，说明用途与核心逻辑）；模块头 `//!` 一行职责；每个 `.rs` 文件末尾保留 `// ===== 说明区 =====`（输入输出 / 逻辑步骤 / 设计理由 / 异常处理 / 关联配置）
@@ -30,7 +31,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - **平台集成降级纪律**：托盘 / 全局热键 / 通知等系统能力构造失败一律降级日志不崩（行为无损），非 Windows 平台编译期桩化
 - **视觉设计不得向测试环境妥协**：offscreen / 无头探针仅作功能与结构参考；视觉与材质的最终实测以用户桌面走查为准
 - 提交信息规范见下文「Commit 提交规范」节；功能开发先走 OpenSpec 提案流程
-- 工作流文档：`w.study.md` 项目分析 / `x.progress.md` 任务清单（PL011–PL017 + UIR/FIX，已完成在前、未完成在后）/ `y.problems.md` 已知问题 / `z.plan.md` 方案记录与审计附录（豁免定案清单 `A{NNN}` 递增）/ `m.milestone.md` 版本里程碑 / `t.hint.md` 经验复盘
+- 工作流文档：`w.study.md` 项目分析 / `x.progress.md` 任务清单（PL011–PL018 + UIR/FIX，已完成在前、未完成在后）/ `y.problems.md` 已知问题 / `z.plan.md` 方案记录与审计附录（豁免定案清单 `A{NNN}` 递增）/ `m.milestone.md` 版本里程碑 / `t.hint.md` 经验复盘
 - 项目级 Agent 技能在 `.agents/skills/`（audit-project / audit-report / progress-task / skillforge，gitignore 仅本地使用）
 - 历史规划文档 `workingboard/` 已归档 `archived/workingboard`（gitignore）
 
@@ -117,4 +118,5 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - pwsh 会话带 `-NoProfile` 不加载 `$PROFILE`，输出中文前必须先设置编码：`[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;`
 - 未经用户明确要求，不得擅自执行 `git add`、`git commit` 或任何其他 Git 写操作
 - 视觉设计不得向测试环境妥协：offscreen/无头探针仅作功能与结构参考，桌面端一律按原设计实现
+- **首帧门控**（PL018.06）：窗口以 `with_visible(false)` 创建，完成 1 帧或 250ms 看门狗后才显示；探针截图在 1.6s 后采集不受影响，若改启动时序须回归“截图矩阵/隐藏驻留/正常启动”三条路径
 - **UI 行为变更固定连带清单**（A009 #3 定案，A010 #3 放宽）：凡界面行为/能力变更（主题、导航、热键、页面能力等），除代码与测试外必须同步检查：README「特性 + 使用说明 + 项目结构 + 常见问题」四节、`w.study.md` 主题/控件/路径相关表述（1/2/3.7 节）、`m.milestone.md`「后续版本」规划节、`rs/config/static/*.json` 死键——历史教训：FIX008 仅深色定案漏扫 README 五处与 w.study 三处（A009 #3/#4）
