@@ -9,7 +9,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - 全量测试：`cargo test --workspace`（core 单测 + 夹具 parity 集成 + app 单测）
 - GUI 冒烟（真窗出血，会弹窗）：`cargo run -p accel-app`；UI 截图探针（逐页 PNG 后自动退出）：`$env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app`
 - 探针环境变量（正常模式零影响）：`ACCELWORLD_FPS_PROBE=<秒>` 静置测帧；`ACCELWORLD_UI_SHOT_GEOMETRY=WxH` 固定测试几何；`ACCELWORLD_TEST_NO_SAVE=1` 退出不写窗口存档；`ACCELWORLD_TEST_POS="x,y"` + `ACCELWORLD_EXPECT_POS="x,y"` 落点对照；`ACCELWORLD_EARLY_SHOT_MS=<ms>` 早期帧；`ACCELWORLD_TEST_CLOSE_LOSS=n` 丢弃前 n 次 Close（验证退出自愈）
-- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.4.0`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
+- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.4.1`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
 - **版本体系**：四段式纯数字 `X.Y.Z.P`（无 `ver ` 前缀）；`feat`/`fix`/`refactor`/`perf` 提交前 bump patch 位；历史存量 `ver 0.4x` 三段式仅存于历史文档与提交记录，不回溯改写
 
 ## 环境陷阱
@@ -32,7 +32,8 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - **视觉设计不得向测试环境妥协**：offscreen / 无头探针仅作功能与结构参考；视觉与材质的最终实测以用户桌面走查为准
 - 提交信息规范见下文「Commit 提交规范」节；功能开发先走 OpenSpec 提案流程
 - 工作流文档：`w.study.md` 项目分析 / `x.progress.md` 任务清单（PL011–PL018 + UIR/FIX，已完成在前、未完成在后）/ `y.problems.md` 已知问题 / `z.plan.md` 方案记录与审计附录（豁免定案清单 `A{NNN}` 递增）/ `m.milestone.md` 版本里程碑 / `t.hint.md` 经验复盘
-- 项目级 Agent 技能在 `.agents/skills/`（audit-project / audit-report / progress-task / skillforge，gitignore 仅本地使用）
+- **UI 正式文档**：`u.UI_GLOSSARY.md` UI 术语表（区域/控件/状态主称 + 代码锚点，目测对账单一入口）/ `u.UI_MAP.html` UI 标注指南（六页结构图 + 编号索引 + 状态词 + 令牌速查，浏览器直接打开）
+- 项目级 Agent 技能在 `.agents/skills/`（工作流 4 件：audit-project / audit-report / progress-task / skillforge；UI 5 件：better-interface / better-colors / better-layout / better-typography / better-ui；设计与评审 8 件：taste-skill / game-ui-ux / game-feel / diagram-design / performance-optimization / save-systems / input-systems / dimensional-drawing；gitignore 仅本地使用）
 - 历史规划文档 `workingboard/` 已归档 `archived/workingboard`（gitignore）
 
 ## 工程原则（设计哲学，所有项目通用）
@@ -92,7 +93,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - 布尔/空值判断：用 `if x` / `if !x` / `if let Some(v)` / `x.is_none()`，避免 `== true` 之类比较
 - 路径处理：强制 `std::path::Path`/`PathBuf`，禁止字符串拼接路径
 - 测试：core 各模块内联 `#[cfg(test)]` 就近单测，夹具驱动集成测试放 `rs/crates/accel-core/tests/`；app 单测就近放置
-- 临时文件：所有临时生成的脚本/文件必须写入项目根 `.temp/`（gitignore）；`.temp/` 探针脚本不受「必须用 edit」限制
+- 临时文件：所有临时生成的脚本/文件/截图必须写入项目根 `.temp/`（gitignore）；**禁止写入用户目录**（`%TEMP%`、`C:/Users/<用户>/AppData/Local/Temp/opencode/` 等）；`.temp/` 探针脚本不受「必须用 edit」限制
 - **文件修改必须用 edit 工具**：修改既有 `.rs`/`.md`/`.json` 一律用 edit 的精确 oldString/newString 替换，禁止用脚本做内容替换
 - **版本单一来源**：见「运行与验证」节
 - **全量回归输出**：`cargo test --workspace` 的结果行全量显示，禁止截断（会掩盖前段 FAIL）
@@ -109,7 +110,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 
 ## Git 注意
 
-- `.gitignore` 忽略 `CLAUDE.md`、`openspec/`、`.vscode/`、`.venv`、`archived/`、`.archived/`、`.opencode/`、`.agents/`、`.temp/`、`.history/`、`.mimosa/`、`rs/target/`、`logs/` —— 对这些文件的修改不会出现在 `git status` 中；`AGENTS.md` 与工作流文档（w/x/y/z/m/t）已纳入版本控制
+- `.gitignore` 忽略 `CLAUDE.md`、`openspec/`、`.vscode/`、`.venv`、`archived/`、`.archived/`、`.opencode/`、`.agents/`、`.temp/`、`.history/`、`.mimosa/`、`rs/target/`、`logs/` —— 对这些文件的修改不会出现在 `git status` 中；`AGENTS.md`、工作流文档（w/x/y/z/m/t）与 UI 正式文档（`u.UI_GLOSSARY.md` / `u.UI_MAP.html`）已纳入版本控制
 - ~~`rs/config/user_config.json` 每次提交必须入库~~（FIX007.15 作废：运行期文件基准统一为 exe 同目录后，dev 落点在 `rs/target/debug/config/`——属 gitignore 的 `rs/target/`，不再入库；打包产物 exe 旁自包含，无库内副本诉求）
 
 ## 操作注意
@@ -117,6 +118,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - 执行命令前先检测当前 shell（Windows 下为 pwsh）：**搜索统一用 `rg`**（ripgrep，自动遵循 .gitignore，中文 UTF-8 正常；如 `rg -n "pattern" --type rust`，统计匹配数用 `rg -c`），无 rg 环境时回退 `Select-String`；目录操作使用 PowerShell 兼容命令（`Get-ChildItem` 替代 `ls` 等），避免 Linux-only 工具
 - pwsh 会话带 `-NoProfile` 不加载 `$PROFILE`，输出中文前必须先设置编码：`[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;`
 - 未经用户明确要求，不得擅自执行 `git add`、`git commit` 或任何其他 Git 写操作
+- **临时内容落点**：探针截图、临时脚本、测试输出一律写项目根 `.temp/`，不得写入用户目录（`%TEMP%`、`C:/Users/<用户>/AppData/Local/Temp/opencode/` 等）；任务结束清理不再需要的临时文件
 - 视觉设计不得向测试环境妥协：offscreen/无头探针仅作功能与结构参考，桌面端一律按原设计实现
 - **首帧门控**（PL018.06）：窗口以 `with_visible(false)` 创建，完成 1 帧或 250ms 看门狗后才显示；探针截图在 1.6s 后采集不受影响，若改启动时序须回归“截图矩阵/隐藏驻留/正常启动”三条路径
 - **UI 行为变更固定连带清单**（A009 #3 定案，A010 #3 放宽）：凡界面行为/能力变更（主题、导航、热键、页面能力等），除代码与测试外必须同步检查：README「特性 + 使用说明 + 项目结构 + 常见问题」四节、`w.study.md` 主题/控件/路径相关表述（1/2/3.7 节）、`m.milestone.md`「后续版本」规划节、`rs/config/static/*.json` 死键——历史教训：FIX008 仅深色定案漏扫 README 五处与 w.study 三处（A009 #3/#4）

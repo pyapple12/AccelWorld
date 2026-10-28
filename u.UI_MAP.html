@@ -1,0 +1,4313 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AccelWorld UI 标注指南 · V0.6.4.1</title>
+    <style>
+      :root {
+        --bg: #0b0f19;
+        --window: #0f1420;
+        --caption: #0b0f19;
+        --card: #141a29;
+        --hover: #1a2135;
+        --border: #33406a;
+        --strong: #5c6c95;
+        --gold: #e8b544;
+        --on-gold: #221a05;
+        --ink: #ece8db;
+        --body: #cfcbbd;
+        --muted: #9a978a;
+        --meta: #8a8774;
+        --track: #303c5e;
+        --success: #5faf8a;
+        --danger: #ee7265;
+        --knob: #f2efe4;
+        --font-sans:
+          "MiSans", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+        --font-mono: "Bahnschrift", "DIN Alternate", ui-monospace, monospace;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+        scroll-padding-top: 64px;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: var(--font-sans);
+        font-size: 15px;
+        line-height: 1.65;
+        -webkit-font-smoothing: antialiased;
+      }
+      a {
+        color: var(--gold);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      code {
+        font-family: var(--font-mono);
+        font-size: 0.86em;
+        color: var(--body);
+        background: rgba(20, 26, 41, 0.9);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 0.08em 0.35em;
+        white-space: nowrap;
+      }
+      .wrap {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 0 24px 96px;
+      }
+      .hero {
+        padding: 56px 0 30px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        position: relative;
+        overflow: hidden;
+      }
+      .eyebrow {
+        font-size: 0.72rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--gold);
+        font-weight: 600;
+      }
+      h1 {
+        font-size: clamp(1.7rem, 4vw, 2.5rem);
+        line-height: 1.15;
+        margin: 0;
+        letter-spacing: -0.01em;
+        font-weight: 600;
+      }
+      .lede {
+        max-width: 760px;
+        color: var(--body);
+        font-size: 1rem;
+        margin: 0;
+      }
+      .meta-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 16px;
+        align-items: center;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--border);
+        background: var(--card);
+        color: var(--body);
+        border-radius: 999px;
+        padding: 3px 10px;
+        font-size: 0.72rem;
+      }
+      .badge.gold {
+        border-color: rgba(232, 181, 68, 0.5);
+        color: var(--gold);
+      }
+      .toc {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: flex;
+        gap: 4px;
+        overflow-x: auto;
+        background: rgba(11, 15, 25, 0.96);
+        border-top: 1px solid var(--border);
+        border-bottom: 1px solid var(--border);
+        padding: 8px 24px;
+        backdrop-filter: blur(10px);
+      }
+      .toc a {
+        flex: 0 0 auto;
+        color: var(--muted);
+        font-size: 0.76rem;
+        padding: 5px 10px;
+        border-radius: 6px;
+        border: 1px solid transparent;
+      }
+      .toc a:hover {
+        color: var(--ink);
+        background: var(--card);
+        text-decoration: none;
+        border-color: var(--border);
+      }
+      .section {
+        padding-top: 54px;
+      }
+      .section-head {
+        display: flex;
+        gap: 14px;
+        align-items: flex-start;
+        margin-bottom: 18px;
+      }
+      .section-no {
+        flex: 0 0 auto;
+        font-family: var(--font-mono);
+        font-size: 0.78rem;
+        color: var(--gold);
+        border: 1px solid rgba(232, 181, 68, 0.4);
+        border-radius: 6px;
+        padding: 2px 7px;
+        margin-top: 4px;
+      }
+      .section-head h2 {
+        font-size: 1.35rem;
+        line-height: 1.25;
+        margin: 0 0 3px;
+        font-weight: 600;
+      }
+      .section-head p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.86rem;
+        max-width: 760px;
+      }
+      .guide-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 820px) minmax(280px, 1fr);
+        gap: 24px;
+        align-items: start;
+      }
+      .window-scroll {
+        overflow-x: auto;
+        padding: 2px 2px 8px;
+      }
+      .figure {
+        margin: 0;
+      }
+      .figure figcaption {
+        color: var(--meta);
+        font-size: 0.74rem;
+        margin-top: 8px;
+        line-height: 1.5;
+      }
+      .legend-panel {
+        position: sticky;
+        top: 56px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: rgba(20, 26, 41, 0.55);
+        padding: 14px 16px;
+      }
+      .legend-panel h3 {
+        font-size: 0.82rem;
+        margin: 0 0 8px;
+        color: var(--ink);
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      .legend-panel h3 + h3 {
+        margin-top: 16px;
+      }
+      .legend-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.76rem;
+        line-height: 1.45;
+      }
+      .legend-table th {
+        text-align: left;
+        color: var(--meta);
+        font-weight: 500;
+        padding: 0 0 5px;
+        border-bottom: 1px solid var(--border);
+      }
+      .legend-table td {
+        vertical-align: top;
+        padding: 6px 0;
+        border-bottom: 1px solid rgba(51, 64, 106, 0.45);
+      }
+      .legend-table tr:last-child td {
+        border-bottom: 0;
+      }
+      .legend-table .id {
+        width: 42px;
+      }
+      .legend-table .nm {
+        width: 78px;
+        color: var(--ink);
+        font-weight: 600;
+      }
+      .legend-table .ds {
+        color: var(--muted);
+      }
+      .legend-table .ds code {
+        font-size: 0.9em;
+        padding: 0 0.2em;
+      }
+      .checklist {
+        margin: 0;
+        padding-left: 16px;
+        color: var(--body);
+        font-size: 0.78rem;
+        line-height: 1.6;
+      }
+      .checklist li {
+        margin: 4px 0;
+      }
+      .note {
+        border-left: 2px solid var(--gold);
+        padding: 8px 0 8px 12px;
+        color: var(--muted);
+        font-size: 0.8rem;
+        margin: 12px 0 0;
+      }
+      .note b {
+        color: var(--body);
+      }
+      .tag {
+        position: absolute;
+        z-index: 9;
+        background: var(--gold);
+        color: var(--on-gold);
+        font-family: var(--font-sans);
+        font-size: 9px;
+        font-weight: 700;
+        line-height: 1;
+        padding: 2px 4px;
+        border-radius: 3px;
+        letter-spacing: 0.02em;
+        pointer-events: none;
+      }
+      .tag.soft {
+        background: rgba(232, 181, 68, 0.28);
+        color: var(--gold);
+        border: 1px solid rgba(232, 181, 68, 0.45);
+      }
+      .ico {
+        width: 1em;
+        height: 1em;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        vertical-align: -0.12em;
+      }
+
+      /* ===== 窗口图 ===== */
+      .app-window {
+        width: 820px;
+        height: var(--win-h, 560px);
+        background: var(--window);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+      }
+      .win-caption {
+        height: 30px;
+        flex: 0 0 30px;
+        background: var(--caption);
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .win-caption .win-title {
+        color: var(--body);
+        padding-left: 26px;
+      }
+      .win-caption .win-controls {
+        margin-left: auto;
+        display: flex;
+        gap: 14px;
+        color: var(--meta);
+        letter-spacing: 0.05em;
+      }
+      .win-body {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+      }
+      .stage {
+        flex: 1;
+        min-width: 0;
+        padding: 0 18px 10px;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        overflow: hidden;
+        background: var(--window);
+      }
+      .app-window.solo .stage {
+        padding: 0 26px 12px;
+      }
+      .stage-head > .tag {
+        left: 6px;
+        top: 6px;
+      }
+      .dial-wrap > .tag {
+        left: 2px;
+        top: 2px;
+      }
+      .stars {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.85;
+        background-image:
+          radial-gradient(circle at 7% 18%, #2a3552 1px, transparent 1.4px),
+          radial-gradient(circle at 13% 72%, #2a3552 1px, transparent 1.4px),
+          radial-gradient(circle at 21% 36%, #2a3552 1px, transparent 1.4px),
+          radial-gradient(circle at 29% 86%, #2a3552 1px, transparent 1.4px),
+          radial-gradient(circle at 37% 12%, #2a3552 1px, transparent 1.4px),
+          radial-gradient(circle at 71% 14%, #2a3552 1px, transparent 1.4px),
+          radial-gradient(circle at 79% 62%, #2a3552 1px, transparent 1.4px),
+          radial-gradient(circle at 86% 31%, #2a3552 1px, transparent 1.4px),
+          radial-gradient(circle at 92% 78%, #2a3552 1px, transparent 1.4px),
+          radial-gradient(circle at 63% 88%, #2a3552 1px, transparent 1.4px),
+          radial-gradient(circle at 46% 6%, #2a3552 1px, transparent 1.4px),
+          radial-gradient(circle at 55% 94%, #2a3552 1px, transparent 1.4px);
+      }
+      .stage-head {
+        height: 38px;
+        flex: 0 0 38px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        border-bottom: 1px solid var(--border);
+        position: relative;
+        padding-left: 28px;
+      }
+      .stage-head .dot {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--gold);
+        flex: 0 0 auto;
+      }
+      .brand {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--ink);
+      }
+      .sub {
+        font-size: 10.5px;
+        color: var(--meta);
+      }
+      .stage-date {
+        margin-left: auto;
+        font-size: 10.5px;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .dial-wrap {
+        position: relative;
+        align-self: center;
+        width: 206px;
+        height: 206px;
+        margin: 4px 0 0;
+        flex: 0 0 auto;
+      }
+      .app-window.solo .dial-wrap {
+        width: 242px;
+        height: 242px;
+        margin-top: 8px;
+      }
+      .app-window .stage > .dial-wrap {
+        margin-top: auto;
+      }
+      .app-window .stage > .lunar {
+        margin-bottom: auto;
+      }
+      .dial-svg {
+        width: 100%;
+        height: 100%;
+      }
+      .readout {
+        position: relative;
+        display: flex;
+        align-items: stretch;
+        justify-content: center;
+        min-height: 64px;
+        margin-top: 2px;
+      }
+      .readout .col {
+        min-width: 0;
+      }
+      .readout .col:first-child {
+        flex: 0 0 58%;
+        text-align: center;
+        padding-right: 8px;
+      }
+      .readout .col:last-child {
+        flex: 1;
+        text-align: center;
+        padding-left: 10px;
+      }
+      .readout .divider {
+        width: 1px;
+        background: var(--border);
+        margin: 9px 0 5px;
+      }
+      .rlabel {
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.03em;
+      }
+      .rlabel.gold {
+        color: var(--gold);
+      }
+      .rlabel:not(.gold) {
+        color: var(--muted);
+      }
+      .rhero {
+        font-family: var(--font-mono);
+        font-size: 28px;
+        line-height: 1.15;
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.02em;
+        white-space: nowrap;
+      }
+      .rday {
+        font-size: 9.5px;
+        color: var(--meta);
+        margin-top: -1px;
+      }
+      .rreal {
+        font-family: var(--font-mono);
+        font-size: 16px;
+        line-height: 2;
+        color: var(--body);
+        font-variant-numeric: tabular-nums;
+      }
+      .rate {
+        position: relative;
+        margin: 2px auto 0;
+        width: min(100%, 330px);
+        padding-left: 24px;
+      }
+      .rate-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        font-size: 10.5px;
+        color: var(--muted);
+        padding-left: 2px;
+      }
+      .rate-head .gold {
+        color: var(--gold);
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .track {
+        position: relative;
+        height: 6px;
+        border-radius: 3px;
+        background: var(--strong);
+        margin-top: 6px;
+      }
+      .fill {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 33%;
+        border-radius: 3px;
+        background: var(--gold);
+      }
+      .knob {
+        position: absolute;
+        left: 33%;
+        top: 50%;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--knob);
+        border: 1px solid var(--meta);
+        transform: translate(-50%, -50%);
+      }
+      .lunar {
+        margin-top: 7px;
+        padding-left: 24px;
+        font-size: 10px;
+        color: var(--meta);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        position: relative;
+      }
+      .drawer {
+        width: 300px;
+        flex: 0 0 300px;
+        background: var(--card);
+        border-left: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        overflow: hidden;
+      }
+      .drawer-head {
+        height: 52px;
+        flex: 0 0 52px;
+        display: flex;
+        align-items: center;
+        border-bottom: 1px solid var(--border);
+        padding: 0 12px 0 28px;
+        position: relative;
+      }
+      .drawer-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--ink);
+      }
+      .drawer-sub {
+        font-size: 10px;
+        color: var(--muted);
+        margin-left: 8px;
+      }
+      .close {
+        margin-left: auto;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 6px;
+        font-size: 13px;
+      }
+      .close:hover {
+        background: var(--hover);
+        color: var(--ink);
+      }
+      .drawer-body {
+        flex: 1;
+        min-height: 0;
+        padding: 12px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        position: relative;
+        overflow: hidden;
+      }
+      .drawer-body > * {
+        flex-shrink: 0;
+      }
+      .drawer-foot {
+        flex: 0 0 auto;
+        border-top: 1px solid var(--border);
+        padding: 10px 16px 12px;
+        position: relative;
+        background: var(--card);
+      }
+      .dock {
+        height: 56px;
+        flex: 0 0 56px;
+        background: var(--window);
+        border-top: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+      }
+      .pill {
+        width: calc(100% - 40px);
+        height: 44px;
+        border: 1px solid var(--strong);
+        border-radius: 14px;
+        background: var(--card);
+        display: flex;
+        align-items: center;
+        padding: 0 10px;
+        position: relative;
+      }
+      .dock-item {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        font-size: 10.5px;
+        color: var(--muted);
+        position: relative;
+        height: 100%;
+      }
+      .dock-item .ico {
+        font-size: 14px;
+      }
+      .dock-item.active {
+        color: var(--ink);
+        font-weight: 600;
+      }
+      .dock-item.active::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        bottom: 4px;
+        width: 20px;
+        height: 2px;
+        border-radius: 1px;
+        background: var(--gold);
+        transform: translateX(-50%);
+      }
+      .dock-sep {
+        width: 1px;
+        height: 24px;
+        background: var(--border);
+        margin: 0 6px;
+      }
+      .pill > .tag {
+        left: 6px;
+        top: -8px;
+      }
+      .dock > .tag {
+        right: 8px;
+        top: 3px;
+      }
+
+      /* ===== 倒计时 ===== */
+      .hero-card {
+        position: relative;
+        flex: 0 0 108px;
+        border: 1px solid var(--gold);
+        border-radius: 9px;
+        background: var(--card);
+        padding: 9px 12px;
+        overflow: hidden;
+      }
+      .hero-card .kicker {
+        font-size: 9.5px;
+        color: var(--gold);
+        font-weight: 500;
+      }
+      .hero-card .hname {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--ink);
+        margin-top: 2px;
+      }
+      .hero-card .hdate {
+        position: absolute;
+        left: 12px;
+        bottom: 8px;
+        font-size: 9.5px;
+        color: var(--meta);
+      }
+      .hero-card .hremain {
+        position: absolute;
+        right: 10px;
+        bottom: 12px;
+        font-family: var(--font-mono);
+        font-size: 22px;
+        line-height: 1;
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.02em;
+      }
+      .meta-line {
+        font-size: 10px;
+        color: var(--meta);
+        position: relative;
+        padding-left: 1px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-top: 8px;
+      }
+      .list-title {
+        font-size: 10px;
+        color: var(--muted);
+        position: relative;
+        margin-top: 4px;
+      }
+      .target-row {
+        position: relative;
+        height: 56px;
+        flex: 0 0 56px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--card);
+        display: flex;
+        align-items: center;
+        padding: 0 8px 0 12px;
+        gap: 8px;
+      }
+      .target-row .tname {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--body);
+        line-height: 1.3;
+      }
+      .target-row .tdate {
+        font-size: 9.5px;
+        color: var(--meta);
+        line-height: 1.3;
+      }
+      .target-row .tremain {
+        margin-left: auto;
+        font-family: var(--font-mono);
+        font-size: 13px;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .trash {
+        width: 22px;
+        height: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--meta);
+        border-radius: 5px;
+        flex: 0 0 auto;
+        position: relative;
+      }
+      .trash:hover {
+        color: var(--danger);
+      }
+      .footer-fields {
+        display: flex;
+        gap: 6px;
+        align-items: flex-end;
+      }
+      .field {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+      }
+      .field .flabel {
+        font-size: 9px;
+        color: var(--muted);
+        padding-left: 1px;
+      }
+      .field .fbox {
+        height: 28px;
+        border: 1px solid var(--strong);
+        border-radius: 6px;
+        background: var(--caption);
+        display: flex;
+        align-items: center;
+        padding: 0 7px;
+        font-size: 10px;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .field.name {
+        flex: 1;
+      }
+      .field.time {
+        flex: 0 0 78px;
+      }
+      .btn-primary {
+        height: 28px;
+        border-radius: 6px;
+        background: var(--ink);
+        color: var(--bg);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 14px;
+        font-size: 11px;
+        font-weight: 600;
+        border: 1px solid var(--ink);
+        white-space: nowrap;
+      }
+      .btn-primary:hover {
+        background: var(--knob);
+      }
+      .err-line {
+        font-size: 9.5px;
+        color: var(--danger);
+        height: 14px;
+        line-height: 14px;
+        overflow: hidden;
+      }
+
+      /* ===== 世界 ===== */
+      .city-row {
+        position: relative;
+        height: 56px;
+        flex: 0 0 56px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--card);
+        display: flex;
+        align-items: center;
+        padding: 0 10px 0 14px;
+        gap: 8px;
+      }
+      .city-row.base {
+        border-color: var(--strong);
+      }
+      .city-row .base-line {
+        position: absolute;
+        left: 1px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 2px;
+        height: 28px;
+        border-radius: 1px;
+        background: var(--gold);
+      }
+      .city-row .cname {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--ink);
+        line-height: 1.2;
+      }
+      .city-row .cmeta {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-top: 3px;
+        position: relative;
+      }
+      .base-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        height: 16px;
+        padding: 0 5px;
+        border-radius: 4px;
+        background: var(--hover);
+        color: var(--muted);
+        font-size: 9px;
+      }
+      .base-chip .ico {
+        font-size: 9px;
+        color: var(--gold);
+      }
+      .cday {
+        color: var(--meta);
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+      }
+      .ctime {
+        margin-left: auto;
+        font-family: var(--font-mono);
+        font-size: 15px;
+        color: var(--body);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .city-row.base .ctime {
+        color: var(--ink);
+      }
+      .world-foot {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .world-foot .flabel {
+        font-size: 9.5px;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .select {
+        height: 28px;
+        border: 1px solid var(--strong);
+        border-radius: 6px;
+        background: var(--caption);
+        display: flex;
+        align-items: center;
+        padding: 0 8px;
+        gap: 8px;
+        font-size: 10px;
+        color: var(--body);
+        min-width: 120px;
+      }
+      .select .ico {
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      /* ===== 天气 ===== */
+      .wx-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        position: relative;
+      }
+      .wx-refresh {
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 5px;
+        color: var(--muted);
+      }
+      .wx-error {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 9.5px;
+        color: var(--danger);
+        position: relative;
+        flex-wrap: wrap;
+      }
+      .wx-error .old {
+        color: var(--meta);
+      }
+      .wx-error .retry {
+        font-size: 9px;
+        color: var(--body);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 1px 5px;
+      }
+      .wx-hero {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        position: relative;
+        padding: 2px 0;
+      }
+      .wx-icon {
+        font-size: 30px;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 38px;
+      }
+      .wx-temp {
+        font-family: var(--font-mono);
+        font-size: 32px;
+        line-height: 1;
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.02em;
+      }
+      .wx-desc {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 3px;
+      }
+      .metrics {
+        display: flex;
+        gap: 0;
+        position: relative;
+      }
+      .metric {
+        flex: 1;
+        min-width: 0;
+      }
+      .metric .mlabel {
+        font-size: 9px;
+        color: var(--muted);
+      }
+      .metric .mvalue {
+        font-size: 11.5px;
+        font-weight: 500;
+        color: var(--body);
+        white-space: nowrap;
+      }
+      .wx-section-title {
+        font-size: 10px;
+        color: var(--muted);
+        font-weight: 500;
+        position: relative;
+      }
+      .chart {
+        position: relative;
+        height: 132px;
+        margin-top: 2px;
+      }
+      .chart svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      .chart-axis {
+        display: flex;
+        justify-content: space-between;
+        font-size: 9px;
+        color: var(--meta);
+        margin-top: 1px;
+        padding: 0 2px;
+      }
+      .week-head {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        position: relative;
+      }
+      .week-range {
+        margin-left: auto;
+        font-size: 9px;
+        color: var(--meta);
+        font-family: var(--font-mono);
+        position: relative;
+      }
+      .week-row {
+        display: flex;
+        align-items: center;
+        height: 20px;
+        font-size: 10px;
+        color: var(--muted);
+        position: relative;
+      }
+      .week-row .wdate {
+        flex: 0 0 34px;
+        font-size: 9.5px;
+      }
+      .week-row .wtrack {
+        position: relative;
+        flex: 1;
+        height: 6px;
+        border-radius: 3px;
+        background: var(--track);
+        margin: 0 8px;
+      }
+      .week-row .wfill {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        border-radius: 3px;
+        background: var(--gold);
+      }
+      .week-row .wvalue {
+        flex: 0 0 54px;
+        text-align: right;
+        color: var(--ink);
+        font-family: var(--font-mono);
+        font-size: 9.5px;
+      }
+      .wx-source {
+        font-size: 9px;
+        color: var(--meta);
+        margin-top: 2px;
+        position: relative;
+      }
+
+      /* ===== 闹钟 ===== */
+      .quick-label {
+        font-size: 10px;
+        color: var(--muted);
+        position: relative;
+      }
+      .quick-row {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        position: relative;
+      }
+      .quick-chip {
+        height: 26px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        background: var(--card);
+        display: inline-flex;
+        align-items: center;
+        padding: 0 9px;
+        font-size: 9.5px;
+        color: var(--body);
+        white-space: nowrap;
+      }
+      .quick-chip:hover {
+        border-color: var(--strong);
+        color: var(--ink);
+      }
+      .alarm-row {
+        position: relative;
+        height: 56px;
+        flex: 0 0 56px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--card);
+        display: flex;
+        align-items: center;
+        padding: 0 10px 0 12px;
+        gap: 10px;
+      }
+      .switch {
+        width: 32px;
+        height: 18px;
+        border-radius: 9px;
+        background: var(--track);
+        position: relative;
+        flex: 0 0 auto;
+      }
+      .switch::after {
+        content: "";
+        position: absolute;
+        left: 2px;
+        top: 2px;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--knob);
+      }
+      .switch.on {
+        background: var(--success);
+      }
+      .switch.on::after {
+        left: 16px;
+      }
+      .alarm-time {
+        font-family: var(--font-mono);
+        font-size: 17px;
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+        flex: 0 0 52px;
+      }
+      .alarm-label {
+        font-size: 10.5px;
+        color: var(--body);
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .alarm-row.off .alarm-time,
+      .alarm-row.off .alarm-label {
+        color: var(--meta);
+      }
+      .alarm-row .trash {
+        margin-left: auto;
+      }
+
+      /* ===== 设置 ===== */
+      .settings-section {
+        position: relative;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border);
+      }
+      .settings-section:last-of-type {
+        border-bottom: 0;
+        padding-bottom: 0;
+      }
+      .settings-section h4 {
+        font-size: 12.5px;
+        margin: 0 0 2px;
+        color: var(--ink);
+        font-weight: 600;
+      }
+      .settings-section .sdesc {
+        font-size: 9.5px;
+        color: var(--muted);
+        margin: 0 0 7px;
+      }
+      .setting-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 34px;
+        position: relative;
+      }
+      .setting-row .slabel {
+        font-size: 11px;
+        color: var(--body);
+      }
+      .setting-row .svalue {
+        margin-left: auto;
+        font-size: 10.5px;
+        color: var(--muted);
+      }
+      .setting-row .switch {
+        margin-left: auto;
+      }
+      .setting-row .sdesc2 {
+        font-size: 9px;
+        color: var(--muted);
+        margin-top: 1px;
+      }
+      .settings-sign {
+        font-size: 9.5px;
+        color: var(--meta);
+        margin-top: 10px;
+        position: relative;
+      }
+
+      /* ===== 窄窗小图 ===== */
+      .mini-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 22px;
+        align-items: start;
+      }
+      .mini-card {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: rgba(20, 26, 41, 0.35);
+        padding: 12px;
+      }
+      .mini-card h4 {
+        font-size: 0.82rem;
+        margin: 0 0 8px;
+        color: var(--ink);
+      }
+      .mini-window {
+        width: 100%;
+        max-width: 520px;
+        height: 360px;
+        background: var(--window);
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        overflow: hidden;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+      }
+      .mini-window .mini-bar {
+        height: 24px;
+        flex: 0 0 24px;
+        background: var(--caption);
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        padding: 0 8px;
+        font-size: 9px;
+        color: var(--muted);
+      }
+      .mini-window .mini-body {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+        position: relative;
+      }
+      .mini-window .mini-drawer {
+        flex: 1;
+        background: var(--card);
+        padding: 10px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        position: relative;
+      }
+      .mini-window .mini-dock {
+        height: 34px;
+        flex: 0 0 34px;
+        border-top: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .mini-window .mini-pill {
+        width: calc(100% - 24px);
+        height: 26px;
+        border: 1px solid var(--strong);
+        border-radius: 8px;
+        background: var(--card);
+        display: flex;
+        align-items: center;
+        justify-content: space-around;
+        font-size: 8px;
+        color: var(--muted);
+      }
+      .mini-window .mini-pill .active {
+        color: var(--ink);
+        position: relative;
+      }
+      .mini-window .mini-pill .active::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        bottom: -4px;
+        width: 12px;
+        height: 2px;
+        background: var(--gold);
+        transform: translateX(-50%);
+      }
+      .mini-head {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--ink);
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 6px;
+        display: flex;
+        align-items: center;
+        position: relative;
+        padding-left: 26px;
+      }
+      .mini-scroll-note {
+        flex: 1;
+        min-height: 40px;
+        border: 1px dashed var(--border);
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--meta);
+        font-size: 8px;
+        letter-spacing: 0.02em;
+      }
+      .mini-close {
+        margin-left: auto;
+        color: var(--muted);
+      }
+      .mini-hero {
+        border: 1px solid var(--gold);
+        border-radius: 7px;
+        padding: 7px 8px;
+        font-size: 9px;
+        color: var(--body);
+        position: relative;
+      }
+      .mini-row {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 6px 8px;
+        font-size: 8.5px;
+        color: var(--muted);
+        display: flex;
+      }
+      .mini-row .r {
+        margin-left: auto;
+        font-family: var(--font-mono);
+      }
+      .mini-foot {
+        border-top: 1px solid var(--border);
+        padding-top: 6px;
+        display: flex;
+        gap: 5px;
+        align-items: center;
+        font-size: 8px;
+        color: var(--muted);
+      }
+      .mini-foot .f {
+        flex: 1;
+        height: 22px;
+        border: 1px solid var(--strong);
+        border-radius: 4px;
+        background: var(--caption);
+        display: flex;
+        align-items: center;
+        padding: 0 5px;
+      }
+      .mini-foot .b {
+        height: 22px;
+        background: var(--ink);
+        color: var(--bg);
+        border-radius: 4px;
+        padding: 0 8px;
+        display: flex;
+        align-items: center;
+        font-weight: 600;
+      }
+      .mini-clock {
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 8px;
+        flex: 1;
+        position: relative;
+      }
+      .mini-brand {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--body);
+      }
+      .mini-read {
+        margin-left: auto;
+        font-size: 7.5px;
+        color: var(--meta);
+      }
+
+      /* ===== 组件 ===== */
+      .component-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 14px;
+      }
+      .component-card {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: rgba(20, 26, 41, 0.4);
+        padding: 14px;
+        position: relative;
+      }
+      .component-card h4 {
+        font-size: 0.82rem;
+        margin: 0 0 3px;
+        color: var(--ink);
+      }
+      .component-card .cdesc {
+        font-size: 0.72rem;
+        color: var(--muted);
+        margin: 0 0 10px;
+      }
+      .demo-field {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .demo-field .flabel {
+        font-size: 9px;
+        color: var(--muted);
+      }
+      .demo-field .fbox {
+        height: 30px;
+        border: 1px solid var(--strong);
+        border-radius: 6px;
+        background: var(--caption);
+        display: flex;
+        align-items: center;
+        padding: 0 8px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .demo-field.focus .fbox {
+        box-shadow: 0 0 0 1.5px var(--knob);
+      }
+      .demo-buttons {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .demo-btn {
+        height: 30px;
+        border-radius: 6px;
+        background: var(--ink);
+        color: var(--bg);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 13px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .demo-btn.hover {
+        background: var(--knob);
+      }
+      .demo-btn.press {
+        background: var(--body);
+        transform: scale(0.985);
+      }
+      .demo-btn.focus {
+        outline: 1.5px solid var(--knob);
+        outline-offset: 2px;
+      }
+      .demo-switch {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .demo-switch .state {
+        font-size: 10px;
+        color: var(--muted);
+      }
+      .demo-chip {
+        height: 28px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        background: var(--card);
+        display: inline-flex;
+        align-items: center;
+        padding: 0 9px;
+        font-size: 10px;
+        color: var(--body);
+      }
+      .demo-empty {
+        border: 1px dashed var(--border);
+        border-radius: 8px;
+        height: 80px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+      }
+      .demo-empty .t {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--body);
+      }
+      .demo-empty .d {
+        font-size: 9px;
+        color: var(--muted);
+      }
+      .demo-spinner {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        border: 2px solid var(--track);
+        border-top-color: var(--muted);
+        animation: spin 1.1s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .demo-toast {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--card);
+        padding: 8px 10px;
+        position: relative;
+        overflow: hidden;
+      }
+      .demo-toast::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 3px;
+        background: var(--gold);
+      }
+      .demo-toast.error::before {
+        background: var(--danger);
+      }
+      .demo-toast .tt {
+        font-size: 10.5px;
+        font-weight: 600;
+        color: var(--ink);
+      }
+      .demo-toast .tb {
+        font-size: 9.5px;
+        color: var(--muted);
+        margin-top: 1px;
+      }
+      .demo-armed {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        font-size: 10px;
+        color: var(--muted);
+      }
+      .demo-armed .trash,
+      .demo-armed .check {
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--border);
+        color: var(--meta);
+      }
+      .demo-armed .check {
+        color: var(--danger);
+        border-color: var(--danger);
+      }
+      .demo-icons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        color: var(--muted);
+        font-size: 19px;
+      }
+
+      /* ===== 表格 ===== */
+      .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.8rem;
+        margin-top: 6px;
+      }
+      .data-table th {
+        text-align: left;
+        color: var(--meta);
+        font-weight: 500;
+        padding: 7px 8px;
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+      }
+      .data-table td {
+        padding: 7px 8px;
+        border-bottom: 1px solid rgba(51, 64, 106, 0.45);
+        color: var(--body);
+        vertical-align: top;
+      }
+      .data-table td:first-child {
+        color: var(--ink);
+        white-space: nowrap;
+      }
+      .table-scroll {
+        overflow-x: auto;
+      }
+      .swatches {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        gap: 10px;
+      }
+      .swatch {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px;
+        background: rgba(20, 26, 41, 0.35);
+      }
+      .swatch .chip {
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        flex: 0 0 auto;
+      }
+      .swatch .info {
+        min-width: 0;
+      }
+      .swatch .n {
+        font-size: 0.72rem;
+        color: var(--ink);
+        font-weight: 600;
+      }
+      .swatch .h {
+        font-size: 0.68rem;
+        color: var(--muted);
+        font-family: var(--font-mono);
+      }
+      .rule-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 10px;
+        margin: 10px 0 0;
+      }
+      .rule {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: rgba(20, 26, 41, 0.35);
+        padding: 10px 12px;
+        font-size: 0.78rem;
+        color: var(--muted);
+      }
+      .rule b {
+        color: var(--body);
+      }
+      .footer {
+        margin-top: 60px;
+        padding-top: 18px;
+        border-top: 1px solid var(--border);
+        color: var(--meta);
+        font-size: 0.72rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 16px;
+      }
+
+      @media (max-width: 1100px) {
+        .guide-grid {
+          grid-template-columns: 1fr;
+        }
+        .legend-panel {
+          position: static;
+        }
+      }
+      @media (max-width: 760px) {
+        .wrap {
+          padding: 0 14px 64px;
+        }
+        .hero {
+          padding-top: 36px;
+        }
+        .mini-grid {
+          grid-template-columns: 1fr;
+        }
+        .toc {
+          padding: 8px 14px;
+        }
+        .section {
+          padding-top: 40px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      style="display: none"
+      aria-hidden="true"
+    >
+      <symbol id="i-clock" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </symbol>
+      <symbol id="i-hourglass" viewBox="0 0 24 24">
+        <path d="M7 3h10M7 21h10M8 3v4l4 4 4-4V3M8 21v-4l4-4 4 4v4" />
+      </symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18" />
+      </symbol>
+      <symbol id="i-cloud" viewBox="0 0 24 24">
+        <path d="M7 18h10a4 4 0 0 0 0-8 6 6 0 0 0-11 2 3 3 0 0 0 1 6z" />
+      </symbol>
+      <symbol id="i-bell" viewBox="0 0 24 24">
+        <path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4l2-2zM10 20a2 2 0 0 0 4 0" />
+      </symbol>
+      <symbol id="i-gear" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3" />
+        <path
+          d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"
+        />
+      </symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24">
+        <path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" />
+      </symbol>
+      <symbol id="i-check" viewBox="0 0 24 24">
+        <path d="M4 12l5 5L20 6" />
+      </symbol>
+      <symbol id="i-close" viewBox="0 0 24 24">
+        <path d="M6 6l12 12M18 6L6 18" />
+      </symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24">
+        <path d="M12 21s7-6 7-12a7 7 0 1 0-14 0c0 6 7 12 7 12z" />
+        <circle cx="12" cy="9" r="2.5" />
+      </symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="4" />
+        <path
+          d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"
+        />
+      </symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24">
+        <path d="M20 14a8 8 0 1 1-9-12 6 6 0 0 0 9 12z" />
+      </symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24">
+        <path d="M20 11a8 8 0 1 0-2.3 6.7" />
+        <path d="M20 5v6h-6" />
+      </symbol>
+      <symbol id="i-chevron-down" viewBox="0 0 24 24">
+        <path d="M6 9l6 6 6-6" />
+      </symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24">
+        <path d="M12 5v14M5 12h14" />
+      </symbol>
+    </svg>
+
+    <header class="wrap hero">
+      <div class="eyebrow">AccelWorld · UI Field Guide</div>
+      <h1>UI 标注指南：把每一页拆成可以对账的名字</h1>
+      <p class="lede">
+        六页标注图 + 术语索引 + 状态词 + 尺寸/颜色
+        token。目标只有一个：你指着屏幕说“这里”，我们指的是同一个东西。
+      </p>
+      <div class="meta-row">
+        <span class="badge gold">基线 V0.6.4.1</span>
+        <span class="badge">HEAD 5b0b2da</span>
+        <span class="badge">窗口 960×640 · min 520×420 · max 1200×820</span>
+        <span>配套：<code>u.UI_GLOSSARY.md</code></span>
+      </div>
+    </header>
+
+    <nav class="toc" aria-label="目录">
+      <a href="#overview">00 总览</a>
+      <a href="#clock">01 时钟 / 主仪</a>
+      <a href="#countdown">02 倒计时</a>
+      <a href="#world">03 世界时钟</a>
+      <a href="#weather">04 天气</a>
+      <a href="#alarm">05 闹钟</a>
+      <a href="#settings">06 设置</a>
+      <a href="#responsive">07 窄窗</a>
+      <a href="#components">08 组件</a>
+      <a href="#tokens">09 令牌</a>
+      <a href="#usage">10 对账</a>
+    </nav>
+
+    <main class="wrap">
+      <!-- ================= 00 总览 ================= -->
+      <section class="section" id="overview">
+        <div class="section-head">
+          <span class="section-no">00</span>
+          <div>
+            <h2>总览：一扇窗，三个层级</h2>
+            <p>
+              主仪恒驻中央，抽屉从右侧进入，仪器坞固定在底部。先把这三个层级分清，后面每一页都只是抽屉里的内容替换。
+            </p>
+          </div>
+        </div>
+        <div class="guide-grid">
+          <figure class="figure">
+            <div class="window-scroll">
+              <div class="app-window" style="--win-h: 600px">
+                <div class="win-caption">
+                  <span class="tag" style="left: 8px; top: 8px">A1</span>
+                  <span class="win-title">加速世界</span>
+                  <span class="win-controls">—　□　×</span>
+                </div>
+                <div class="win-body">
+                  <div class="stage" data-stage></div>
+                  <div class="drawer">
+                    <span class="tag" style="right: 8px; bottom: 6px">D1</span>
+                    <div class="drawer-head">
+                      <span class="tag" style="left: 6px; top: 6px">D2</span>
+                      <span class="drawer-title">倒计时</span>
+                      <span class="close"
+                        ><svg class="ico"><use href="#i-close" /></svg
+                      ></span>
+                    </div>
+                    <div class="drawer-body">
+                      <span class="tag" style="left: 8px; top: -8px">D7</span>
+                      <div class="hero-card">
+                        <div class="kicker">下一个</div>
+                        <div class="hname">春节</div>
+                        <div class="hdate">2027-02-06 00:00</div>
+                        <div class="hremain">100天 19:15</div>
+                      </div>
+                      <div class="meta-line">近期节日 · 元宵节 · 龙抬头</div>
+                      <div class="list-title">其他目标</div>
+                      <div class="target-row">
+                        <div>
+                          <div class="tname">项目发布</div>
+                          <div class="tdate">2026-12-01 09:00</div>
+                        </div>
+                        <div class="tremain">32天 04:12</div>
+                        <span class="trash"
+                          ><svg class="ico"><use href="#i-trash" /></svg
+                        ></span>
+                      </div>
+                      <div class="target-row">
+                        <div>
+                          <div class="tname">生日</div>
+                          <div class="tdate">2026-11-18 00:00</div>
+                        </div>
+                        <div class="tremain">19天 12:40</div>
+                        <span class="trash"
+                          ><svg class="ico"><use href="#i-trash" /></svg
+                        ></span>
+                      </div>
+                      <div class="target-row">
+                        <div>
+                          <div class="tname">旅行</div>
+                          <div class="tdate">2027-01-10 08:00</div>
+                        </div>
+                        <div class="tremain">72天 03:20</div>
+                        <span class="trash"
+                          ><svg class="ico"><use href="#i-trash" /></svg
+                        ></span>
+                      </div>
+                    </div>
+                    <div class="drawer-foot">
+                      <span class="tag" style="left: 8px; top: -8px">D8</span>
+                      <div class="footer-fields">
+                        <div class="field name">
+                          <span class="flabel">名称</span>
+                          <div class="fbox">名称</div>
+                        </div>
+                        <div class="field time">
+                          <span class="flabel">时刻</span>
+                          <div class="fbox">HH:MM</div>
+                        </div>
+                        <div class="btn-primary">添加</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="dock">
+                  <span class="tag" style="right: 8px; top: 3px">C1</span>
+                  <div class="pill">
+                    <span class="tag" style="left: 6px; top: -8px">C2</span>
+                    <span class="dock-item active"
+                      ><svg class="ico"><use href="#i-clock" /></svg>时钟</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-hourglass" /></svg
+                      >倒计时</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-globe" /></svg>世界</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-cloud" /></svg>天气</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-bell" /></svg>闹钟</span
+                    >
+                    <span class="dock-sep"></span>
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-gear" /></svg>设置</span
+                    >
+                  </div>
+                </div>
+              </div>
+            </div>
+            <figcaption>
+              总览图：抽屉打开时的倒计时页。主仪变窄但仍驻留；<code
+                >&lt; 760</code
+              >
+              宽时抽屉全宽、主仪退场。
+            </figcaption>
+          </figure>
+          <aside class="legend-panel">
+            <h3>图上编号</h3>
+            <table class="legend-table">
+              <tr>
+                <td class="id">A1</td>
+                <td class="nm">原生标题栏</td>
+                <td class="ds">Windows caption；不是抽屉页头</td>
+              </tr>
+              <tr>
+                <td class="id">B1</td>
+                <td class="nm">舞台页头</td>
+                <td class="ds">产品标 / 名 / 副题 / 日期</td>
+              </tr>
+              <tr>
+                <td class="id">B3</td>
+                <td class="nm">星盘</td>
+                <td class="ds">刻度 / 双针 / 金弧 / 四正位</td>
+              </tr>
+              <tr>
+                <td class="id">B11</td>
+                <td class="nm">盘下读数</td>
+                <td class="ds">加速值 + 日序号 │ 现实值</td>
+              </tr>
+              <tr>
+                <td class="id">B18</td>
+                <td class="nm">倍率条</td>
+                <td class="ds">6px 轨 + 亮白旋钮；不是滑杆</td>
+              </tr>
+              <tr>
+                <td class="id">B25</td>
+                <td class="nm">农历 meta 行</td>
+                <td class="ds">农历 · 月相 · 财神，一条文本</td>
+              </tr>
+              <tr>
+                <td class="id">C1</td>
+                <td class="nm">坞带</td>
+                <td class="ds">窗口底部 64px 区域</td>
+              </tr>
+              <tr>
+                <td class="id">C2</td>
+                <td class="nm">坞胶囊</td>
+                <td class="ds">五页 + 设置；选中金下划线</td>
+              </tr>
+              <tr>
+                <td class="id">D1</td>
+                <td class="nm">抽屉面板</td>
+                <td class="ds">右侧临时页面；不是浮窗</td>
+              </tr>
+              <tr>
+                <td class="id">D2</td>
+                <td class="nm">抽屉页头</td>
+                <td class="ds">页面标题 + 关闭 ×</td>
+              </tr>
+              <tr>
+                <td class="id">D7</td>
+                <td class="nm">抽屉内容区</td>
+                <td class="ds">页面各自滚动；内边距 20/8/16</td>
+              </tr>
+              <tr>
+                <td class="id">D8</td>
+                <td class="nm">抽屉页脚</td>
+                <td class="ds">仅倒计时 / 世界 / 闹钟有</td>
+              </tr>
+            </table>
+            <h3>先记住三句话</h3>
+            <ul class="checklist">
+              <li>
+                <b>主仪</b>是中央仪表区；<b>时钟页</b>只在讨论页面切换时用。
+              </li>
+              <li><b>抽屉</b>是右侧临时页；设置也是抽屉，不是浮窗。</li>
+              <li><b>仪器坞</b>是底部胶囊；不要叫侧栏、底栏、导航栏。</li>
+            </ul>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ================= 01 时钟 ================= -->
+      <section class="section" id="clock">
+        <div class="section-head">
+          <span class="section-no">01</span>
+          <div>
+            <h2>时钟页 / 主仪</h2>
+            <p>
+              唯一恒驻的页面。星盘是产品签名；读数在盘下，倍率条是 6px
+              短条，农历是一条 meta 行。窗口变矮（可用高 &lt;
+              380）时退化为数字版。
+            </p>
+          </div>
+        </div>
+        <div class="guide-grid">
+          <figure class="figure">
+            <div class="window-scroll">
+              <div class="app-window solo" style="--win-h: 520px">
+                <div class="win-caption">
+                  <span class="tag" style="left: 8px; top: 8px">A1</span>
+                  <span class="win-title">加速世界</span>
+                  <span class="win-controls">—　□　×</span>
+                </div>
+                <div class="win-body">
+                  <div class="stage" data-stage></div>
+                </div>
+                <div class="dock">
+                  <div class="pill">
+                    <span class="tag" style="left: 6px; top: -8px">C2</span>
+                    <span class="dock-item active"
+                      ><svg class="ico"><use href="#i-clock" /></svg>时钟</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-hourglass" /></svg
+                      >倒计时</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-globe" /></svg>世界</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-cloud" /></svg>天气</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-bell" /></svg>闹钟</span
+                    >
+                    <span class="dock-sep"></span>
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-gear" /></svg>设置</span
+                    >
+                  </div>
+                </div>
+              </div>
+            </div>
+            <figcaption>
+              时钟页（960×640 比例的结构示意）。盘心只有毂点，没有
+              ×倍率；倍率值在条右端。
+            </figcaption>
+          </figure>
+          <aside class="legend-panel">
+            <h3>图上编号</h3>
+            <table class="legend-table">
+              <tr>
+                <td class="id">B1</td>
+                <td class="nm">舞台页头</td>
+                <td class="ds">52px（短窗 40）；产品标 / 名 / 副题 / 日期</td>
+              </tr>
+              <tr>
+                <td class="id">B3</td>
+                <td class="nm">星盘</td>
+                <td class="ds">直径 180–560；96 刻度 + 四正位</td>
+              </tr>
+              <tr>
+                <td class="id">B7</td>
+                <td class="nm">加速针 / 金针</td>
+                <td class="ds">3px；指向加速时刻 24h</td>
+              </tr>
+              <tr>
+                <td class="id">B8</td>
+                <td class="nm">现实针 / 灰针</td>
+                <td class="ds">1.8px；长度为金针 62%</td>
+              </tr>
+              <tr>
+                <td class="id">B6</td>
+                <td class="nm">金弧</td>
+                <td class="ds">两针间的较短弧；膨胀差</td>
+              </tr>
+              <tr>
+                <td class="id">B11</td>
+                <td class="nm">盘下读数</td>
+                <td class="ds">加速 56 / 现实 24；限宽 640</td>
+              </tr>
+              <tr>
+                <td class="id">B14</td>
+                <td class="nm">日序号</td>
+                <td class="ds">≥24h 才显示“第 2 天”</td>
+              </tr>
+              <tr>
+                <td class="id">B18</td>
+                <td class="nm">倍率条</td>
+                <td class="ds">宽 220–360，高 62；6px 轨</td>
+              </tr>
+              <tr>
+                <td class="id">B25</td>
+                <td class="nm">农历 meta 行</td>
+                <td class="ds">一条 12px 文本，不是三个盒子</td>
+              </tr>
+              <tr>
+                <td class="id">C2</td>
+                <td class="nm">坞胶囊</td>
+                <td class="ds">底部 560×56；选中金下划线</td>
+              </tr>
+            </table>
+            <h3>目测检查点</h3>
+            <ul class="checklist">
+              <li>金针与灰针在 rate=7.2 时应明显分开；两针重合是旧版缺陷。</li>
+              <li>盘心没有 <code>×7.2</code>；倍率值只在条右端出现一次。</li>
+              <li>“第 2 天”只在加速时间 ≥24h 时出现。</li>
+              <li>农历/月相/财神是一条 meta 行，不应出现三个 chip 盒子。</li>
+            </ul>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ================= 02 倒计时 ================= -->
+      <section class="section" id="countdown">
+        <div class="section-head">
+          <span class="section-no">02</span>
+          <div>
+            <h2>倒计时页</h2>
+            <p>
+              抽屉页。Hero
+              卡只显示“最近的下一个目标”；列表只列其余目标，避免同一数字出现两次；添加表单固定在页脚，目标再多也够得着。
+            </p>
+          </div>
+        </div>
+        <div class="guide-grid">
+          <figure class="figure">
+            <div class="window-scroll">
+              <div class="app-window" style="--win-h: 600px">
+                <div class="win-caption">
+                  <span class="tag" style="left: 8px; top: 8px">A1</span>
+                  <span class="win-title">加速世界</span>
+                  <span class="win-controls">—　□　×</span>
+                </div>
+                <div class="win-body">
+                  <div class="stage" data-stage></div>
+                  <div class="drawer">
+                    <div class="drawer-head">
+                      <span class="tag" style="left: 6px; top: 6px">D2</span>
+                      <span class="drawer-title">倒计时</span>
+                      <span class="close"
+                        ><svg class="ico"><use href="#i-close" /></svg
+                      ></span>
+                    </div>
+                    <div class="drawer-body">
+                      <div class="hero-card">
+                        <span class="tag" style="left: 8px; top: -8px">E2</span>
+                        <div class="kicker">下一个</div>
+                        <span class="tag" style="left: 44px; top: 8px">E3</span>
+                        <div class="hname">春节</div>
+                        <div class="hdate">2027-02-06 00:00</div>
+                        <div class="hremain">100天 19:15</div>
+                      </div>
+                      <div class="meta-line">
+                        <span class="tag" style="right: 8px; top: -8px">E7</span
+                        >近期节日 · 元宵节 · 龙抬头 · 清明
+                      </div>
+                      <div class="list-title">
+                        <span class="tag" style="right: 8px; top: -8px">E8</span
+                        >其他目标
+                      </div>
+                      <div class="target-row">
+                        <span class="tag" style="left: 8px; top: -8px">E9</span>
+                        <div>
+                          <div class="tname">项目发布</div>
+                          <div class="tdate">2026-12-01 09:00</div>
+                        </div>
+                        <div class="tremain">32天 04:12</div>
+                        <span class="trash"
+                          ><span class="tag" style="left: -2px; top: -12px"
+                            >E12</span
+                          ><svg class="ico"><use href="#i-trash" /></svg
+                        ></span>
+                      </div>
+                      <div class="target-row">
+                        <div>
+                          <div class="tname">生日</div>
+                          <div class="tdate">2026-11-18 00:00</div>
+                        </div>
+                        <div class="tremain">19天 12:40</div>
+                        <span class="trash"
+                          ><svg class="ico"><use href="#i-trash" /></svg
+                        ></span>
+                      </div>
+                      <div class="target-row">
+                        <div>
+                          <div class="tname">旅行</div>
+                          <div class="tdate">2027-01-10 08:00</div>
+                        </div>
+                        <div class="tremain">72天 03:20</div>
+                        <span class="trash"
+                          ><svg class="ico"><use href="#i-trash" /></svg
+                        ></span>
+                      </div>
+                    </div>
+                    <div class="drawer-foot">
+                      <span class="tag" style="left: 8px; top: -8px">E15</span>
+                      <div class="footer-fields">
+                        <div class="field name">
+                          <span class="flabel">名称</span>
+                          <div class="fbox">名称</div>
+                        </div>
+                        <div class="field time">
+                          <span class="flabel">时刻</span>
+                          <div class="fbox">HH:MM</div>
+                        </div>
+                        <span
+                          class="tag"
+                          style="left: calc(100% - 44px); top: -12px"
+                          >E18</span
+                        >
+                        <div class="btn-primary">添加</div>
+                      </div>
+                      <div class="err-line"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="dock">
+                  <div class="pill">
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-clock" /></svg>时钟</span
+                    >
+                    <span class="dock-item active"
+                      ><svg class="ico"><use href="#i-hourglass" /></svg
+                      >倒计时</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-globe" /></svg>世界</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-cloud" /></svg>天气</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-bell" /></svg>闹钟</span
+                    >
+                    <span class="dock-sep"></span>
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-gear" /></svg>设置</span
+                    >
+                  </div>
+                </div>
+              </div>
+            </div>
+            <figcaption>
+              倒计时页。主仪编号见总览；本图重点标抽屉内部。页脚错误行恒占
+              16px，避免添加按钮上下跳。
+            </figcaption>
+          </figure>
+          <aside class="legend-panel">
+            <h3>抽屉内部</h3>
+            <table class="legend-table">
+              <tr>
+                <td class="id">D2</td>
+                <td class="nm">抽屉页头</td>
+                <td class="ds">标题“倒计时” + 关闭 ×</td>
+              </tr>
+              <tr>
+                <td class="id">E2</td>
+                <td class="nm">Hero 卡</td>
+                <td class="ds">126px；只显示最近的下一个目标</td>
+              </tr>
+              <tr>
+                <td class="id">E3</td>
+                <td class="nm">“下一个”标签</td>
+                <td class="ds">12/500 金色；不是页面标题</td>
+              </tr>
+              <tr>
+                <td class="id">E7</td>
+                <td class="nm">近期节日 meta 行</td>
+                <td class="ds">一条 12px 文本；不是 chip 盒子</td>
+              </tr>
+              <tr>
+                <td class="id">E8</td>
+                <td class="nm">其他目标区</td>
+                <td class="ds">hero 已排除；列表只列其余</td>
+              </tr>
+              <tr>
+                <td class="id">E9</td>
+                <td class="nm">目标行卡</td>
+                <td class="ds">68px；名称/日期左，剩余右对齐</td>
+              </tr>
+              <tr>
+                <td class="id">E12</td>
+                <td class="nm">目标行删除</td>
+                <td class="ds">Trash；两步武装（Check，4s）</td>
+              </tr>
+              <tr>
+                <td class="id">E15</td>
+                <td class="nm">抽屉页脚</td>
+                <td class="ds">固定；名称 + 时刻 + 添加</td>
+              </tr>
+              <tr>
+                <td class="id">E16</td>
+                <td class="nm">名称字段</td>
+                <td class="ds">Field：label 上置 + 1px 输入边</td>
+              </tr>
+              <tr>
+                <td class="id">E17</td>
+                <td class="nm">时刻字段</td>
+                <td class="ds">HH:MM；格式错误同位红字</td>
+              </tr>
+              <tr>
+                <td class="id">E18</td>
+                <td class="nm">添加按钮</td>
+                <td class="ds">88×32 ink 实底；不是金色</td>
+              </tr>
+            </table>
+            <h3>目测检查点</h3>
+            <ul class="checklist">
+              <li>Hero 里的目标不应再出现在“其他目标”列表里。</li>
+              <li>3 个目标时页脚仍固定可见；内容只在自己的滚动区滚。</li>
+              <li>删除第一次点击变 Check（武装态），第二次才删除。</li>
+              <li>“近期节日”是文字行，不是三个独立 chip。</li>
+            </ul>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ================= 03 世界 ================= -->
+      <section class="section" id="world">
+        <div class="section-head">
+          <span class="section-no">03</span>
+          <div>
+            <h2>世界时钟页</h2>
+            <p>
+              抽屉页。城市行是 60px
+              紧凑行：名称、基准标记、昼夜、右对齐走时、删除。页脚只有一个下拉，选择即添加——没有“添加”按钮。
+            </p>
+          </div>
+        </div>
+        <div class="guide-grid">
+          <figure class="figure">
+            <div class="window-scroll">
+              <div class="app-window" style="--win-h: 540px">
+                <div class="win-caption">
+                  <span class="tag" style="left: 8px; top: 8px">A1</span>
+                  <span class="win-title">加速世界</span>
+                  <span class="win-controls">—　□　×</span>
+                </div>
+                <div class="win-body">
+                  <div class="stage" data-stage></div>
+                  <div class="drawer">
+                    <div class="drawer-head">
+                      <span class="tag" style="left: 6px; top: 6px">D2</span>
+                      <span class="drawer-title">世界时钟</span>
+                      <span class="close"
+                        ><svg class="ico"><use href="#i-close" /></svg
+                      ></span>
+                    </div>
+                    <div class="drawer-body">
+                      <div class="city-row base">
+                        <span class="tag" style="left: 8px; top: -8px">F2</span>
+                        <span class="tag" style="left: 52px; top: -8px"
+                          >F5</span
+                        >
+                        <span class="tag" style="left: 96px; top: -8px"
+                          >F4</span
+                        >
+                        <span class="base-line"></span>
+                        <div>
+                          <div class="cname">北京</div>
+                          <div class="cmeta">
+                            <span class="base-chip"
+                              ><svg class="ico"><use href="#i-pin" /></svg
+                              >基准</span
+                            >
+                          </div>
+                        </div>
+                        <span class="cday"
+                          ><svg class="ico"><use href="#i-sun" /></svg
+                        ></span>
+                        <span class="ctime">10:24:36</span>
+                        <span class="trash"
+                          ><svg class="ico"><use href="#i-trash" /></svg
+                        ></span>
+                      </div>
+                      <div class="city-row">
+                        <div>
+                          <div class="cname">东京</div>
+                          <div
+                            class="cmeta"
+                            style="color: var(--meta); font-size: 9px"
+                          >
+                            点击设为基准
+                          </div>
+                        </div>
+                        <span class="cday"
+                          ><svg class="ico"><use href="#i-sun" /></svg
+                        ></span>
+                        <span class="ctime">11:24:36</span>
+                        <span class="trash"
+                          ><svg class="ico"><use href="#i-trash" /></svg
+                        ></span>
+                      </div>
+                      <div class="city-row">
+                        <div>
+                          <div class="cname">伦敦</div>
+                          <div
+                            class="cmeta"
+                            style="color: var(--meta); font-size: 9px"
+                          >
+                            点击设为基准
+                          </div>
+                        </div>
+                        <span class="cday"
+                          ><svg class="ico"><use href="#i-moon" /></svg
+                        ></span>
+                        <span class="ctime">03:24:36</span>
+                        <span class="trash"
+                          ><svg class="ico"><use href="#i-trash" /></svg
+                        ></span>
+                      </div>
+                      <div class="city-row">
+                        <div>
+                          <div class="cname">纽约</div>
+                          <div
+                            class="cmeta"
+                            style="color: var(--meta); font-size: 9px"
+                          >
+                            点击设为基准
+                          </div>
+                        </div>
+                        <span class="cday"
+                          ><svg class="ico"><use href="#i-moon" /></svg
+                        ></span>
+                        <span class="ctime">22:24:36</span>
+                        <span class="trash"
+                          ><svg class="ico"><use href="#i-trash" /></svg
+                        ></span>
+                      </div>
+                      <div
+                        class="note"
+                        style="
+                          margin: 2px 0 0;
+                          font-size: 9px;
+                          padding: 4px 0 4px 8px;
+                        "
+                      >
+                        内容区可继续滚动；本图只显示 4 行
+                      </div>
+                    </div>
+                    <div class="drawer-foot">
+                      <span class="tag" style="left: 8px; top: -8px">F10</span>
+                      <div class="world-foot">
+                        <span class="flabel">添加城市</span>
+                        <span class="tag" style="left: 62px; top: -12px"
+                          >F11</span
+                        >
+                        <div class="select" style="flex: 1">
+                          选择城市…<svg class="ico">
+                            <use href="#i-chevron-down" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="dock">
+                  <div class="pill">
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-clock" /></svg>时钟</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-hourglass" /></svg
+                      >倒计时</span
+                    >
+                    <span class="dock-item active"
+                      ><svg class="ico"><use href="#i-globe" /></svg>世界</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-cloud" /></svg>天气</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-bell" /></svg>闹钟</span
+                    >
+                    <span class="dock-sep"></span>
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-gear" /></svg>设置</span
+                    >
+                  </div>
+                </div>
+              </div>
+            </div>
+            <figcaption>
+              世界时钟页。基准行的金线 + “基准” chip
+              是双重冗余；“点击设为基准”只在非基准行 hover 时出现。
+            </figcaption>
+          </figure>
+          <aside class="legend-panel">
+            <h3>抽屉内部</h3>
+            <table class="legend-table">
+              <tr>
+                <td class="id">F1</td>
+                <td class="nm">世界时钟页</td>
+                <td class="ds">页头“世界时钟”；坞标签“世界”</td>
+              </tr>
+              <tr>
+                <td class="id">F2</td>
+                <td class="nm">城市行</td>
+                <td class="ds">60px；整行可点，点击设基准</td>
+              </tr>
+              <tr>
+                <td class="id">F4</td>
+                <td class="nm">基准标记</td>
+                <td class="ds">左侧 2px 金线；只做状态标记</td>
+              </tr>
+              <tr>
+                <td class="id">F5</td>
+                <td class="nm">基准 chip</td>
+                <td class="ds">Pin + “基准”；52×18</td>
+              </tr>
+              <tr>
+                <td class="id">F7</td>
+                <td class="nm">昼夜图标</td>
+                <td class="ds">Sun / Moon，14px；行宽 ≤280 跳过</td>
+              </tr>
+              <tr>
+                <td class="id">F8</td>
+                <td class="nm">城市走时</td>
+                <td class="ds">24px digits；基准行更亮</td>
+              </tr>
+              <tr>
+                <td class="id">F9</td>
+                <td class="nm">城市删除</td>
+                <td class="ds">Trash；仅城市数 &gt;1 时显示</td>
+              </tr>
+              <tr>
+                <td class="id">F10</td>
+                <td class="nm">添加城市页脚</td>
+                <td class="ds">标签 + 下拉；没有添加按钮</td>
+              </tr>
+              <tr>
+                <td class="id">F11</td>
+                <td class="nm">城市下拉</td>
+                <td class="ds">Select；候选项排除已添加城市</td>
+              </tr>
+              <tr>
+                <td class="id">F12</td>
+                <td class="nm">世界空态</td>
+                <td class="ds">“还没有城市 / 从下方添加…”</td>
+              </tr>
+            </table>
+            <h3>目测检查点</h3>
+            <ul class="checklist">
+              <li>基准不只靠金色：金线 + Pin + “基准”文字同时存在。</li>
+              <li>删除城市至少保留 1 个；只剩 1 城时 Trash 消失。</li>
+              <li>窄行（≤280 宽）跳过昼夜图标，避免压住走时。</li>
+              <li>下拉选择即添加，不应再找一个“添加”按钮。</li>
+            </ul>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ================= 04 天气 ================= -->
+      <section class="section" id="weather">
+        <div class="section-head">
+          <span class="section-no">04</span>
+          <div>
+            <h2>天气页</h2>
+            <p>
+              抽屉页。整页 ScrollArea，没有固定页脚。头行是城市 +
+              刷新；下面是错误/旧值、Hero
+              聚簇、三列指标、逐小时曲线、七日范围条、数据源。
+            </p>
+          </div>
+        </div>
+        <div class="guide-grid">
+          <figure class="figure">
+            <div class="window-scroll">
+              <div class="app-window" style="--win-h: 800px">
+                <div class="win-caption">
+                  <span class="tag" style="left: 8px; top: 8px">A1</span>
+                  <span class="win-title">加速世界</span>
+                  <span class="win-controls">—　□　×</span>
+                </div>
+                <div class="win-body">
+                  <div class="stage" data-stage></div>
+                  <div class="drawer">
+                    <div class="drawer-head">
+                      <span class="tag" style="left: 6px; top: 6px">D2</span>
+                      <span class="drawer-title">天气</span>
+                      <span class="close"
+                        ><svg class="ico"><use href="#i-close" /></svg
+                      ></span>
+                    </div>
+                    <div class="drawer-body">
+                      <div class="wx-head">
+                        <span class="tag" style="left: 8px; top: -8px">G2</span>
+                        <span class="tag" style="left: 0; top: -8px">G3</span>
+                        <div class="select" style="flex: 1; max-width: 150px">
+                          北京<svg class="ico">
+                            <use href="#i-chevron-down" />
+                          </svg>
+                        </div>
+                        <span class="tag" style="left: 160px; top: -8px"
+                          >G4</span
+                        >
+                        <span class="wx-refresh"
+                          ><svg class="ico"><use href="#i-refresh" /></svg
+                        ></span>
+                      </div>
+
+                      <div class="wx-error">
+                        <span class="tag" style="left: 8px; top: -8px">G6</span>
+                        更新失败：网络超时
+                        <span class="old">· 显示上次数据 18.2°</span>
+                        <span
+                          class="tag"
+                          style="left: calc(100% - 40px); top: -8px"
+                          >G7</span
+                        >
+                        <span class="retry">重试</span>
+                      </div>
+
+                      <div class="wx-hero">
+                        <span class="tag" style="left: 8px; top: -8px">G9</span>
+                        <span class="wx-icon"
+                          ><svg class="ico"><use href="#i-cloud" /></svg
+                        ></span>
+                        <div>
+                          <div class="wx-temp">18.2°</div>
+                          <div class="wx-desc">多云 · 体感偏凉</div>
+                        </div>
+                        <span class="tag" style="left: 44px; top: -8px"
+                          >G10</span
+                        >
+                        <span class="tag" style="left: 95px; top: -8px"
+                          >G11</span
+                        >
+                      </div>
+
+                      <div class="metrics">
+                        <span class="tag" style="left: 8px; top: -8px"
+                          >G13</span
+                        >
+                        <div class="metric">
+                          <div class="mlabel">体感</div>
+                          <div class="mvalue">17.1°C</div>
+                        </div>
+                        <div class="metric">
+                          <div class="mlabel">湿度</div>
+                          <div class="mvalue">62%</div>
+                        </div>
+                        <div class="metric">
+                          <div class="mlabel">风力</div>
+                          <div class="mvalue">12.4km/h</div>
+                        </div>
+                      </div>
+
+                      <div class="wx-section-title" style="margin-top: 2px">
+                        <span class="tag" style="left: 8px; top: -8px">G15</span
+                        >逐小时
+                      </div>
+                      <div class="chart">
+                        <span class="tag" style="left: 8px; top: -8px"
+                          >G16</span
+                        >
+                        <svg
+                          viewBox="0 0 600 132"
+                          preserveAspectRatio="none"
+                          aria-label="逐小时温度曲线"
+                        >
+                          <g
+                            stroke="#9A978A"
+                            stroke-opacity=".22"
+                            stroke-width=".8"
+                          >
+                            <line x1="0" y1="30" x2="600" y2="30" />
+                            <line x1="0" y1="58" x2="600" y2="58" />
+                            <line x1="0" y1="86" x2="600" y2="86" />
+                            <line x1="0" y1="114" x2="600" y2="114" />
+                          </g>
+                          <line
+                            x1="313"
+                            y1="8"
+                            x2="313"
+                            y2="122"
+                            stroke="#9A978A"
+                            stroke-opacity=".45"
+                            stroke-width="1"
+                          />
+                          <polyline
+                            fill="none"
+                            stroke="#E8B544"
+                            stroke-width="2"
+                            stroke-linejoin="round"
+                            stroke-linecap="round"
+                            points="0,75 26,82 52,90 78,97 104,105 130,112 156,120 182,120 208,112 234,97 260,82 287,67 313,52 339,45 365,37 391,37 417,45 443,52 469,60 495,67 521,75 547,82 573,90 600,90"
+                          />
+                          <circle cx="156" cy="120" r="2.4" fill="#E8B544" />
+                          <circle cx="365" cy="37" r="2.4" fill="#E8B544" />
+                          <circle cx="313" cy="52" r="3" fill="#CFCBBD" />
+                          <text
+                            x="156"
+                            y="128"
+                            fill="#9A978A"
+                            font-size="9"
+                            text-anchor="middle"
+                            font-family="system-ui,sans-serif"
+                          >
+                            12°
+                          </text>
+                          <text
+                            x="365"
+                            y="30"
+                            fill="#9A978A"
+                            font-size="9"
+                            text-anchor="middle"
+                            font-family="system-ui,sans-serif"
+                          >
+                            23°
+                          </text>
+                          <text
+                            x="313"
+                            y="10"
+                            fill="#8A8774"
+                            font-size="9"
+                            text-anchor="middle"
+                            font-family="system-ui,sans-serif"
+                          >
+                            现在
+                          </text>
+                        </svg>
+                      </div>
+                      <div class="chart-axis">
+                        <span>10:00</span><span>14:00</span><span>18:00</span
+                        ><span>22:00</span>
+                      </div>
+
+                      <div class="week-head">
+                        <span class="tag" style="left: 8px; top: -8px"
+                          >G19</span
+                        >
+                        <span class="wx-section-title">七日</span>
+                        <span class="week-range"
+                          ><span class="tag" style="left: -34px; top: -8px"
+                            >G20</span
+                          >9° — 23°</span
+                        >
+                      </div>
+                      <div class="week-row">
+                        <span class="wdate">10-29</span
+                        ><span class="wtrack"
+                          ><span
+                            class="wfill"
+                            style="left: 18%; width: 42%"
+                          ></span></span
+                        ><span class="wvalue">12°/21°</span>
+                      </div>
+                      <div class="week-row">
+                        <span class="wdate">10-30</span
+                        ><span class="wtrack"
+                          ><span
+                            class="wfill"
+                            style="left: 12%; width: 38%"
+                          ></span></span
+                        ><span class="wvalue">11°/20°</span>
+                      </div>
+                      <div class="week-row">
+                        <span class="wdate">10-31</span
+                        ><span class="wtrack"
+                          ><span
+                            class="wfill"
+                            style="left: 22%; width: 48%"
+                          ></span></span
+                        ><span class="wvalue">13°/23°</span>
+                      </div>
+                      <div class="week-row">
+                        <span class="wdate">11-01</span
+                        ><span class="wtrack"
+                          ><span
+                            class="wfill"
+                            style="left: 8%; width: 35%"
+                          ></span></span
+                        ><span class="wvalue">10°/19°</span>
+                      </div>
+                      <div class="week-row">
+                        <span class="wdate">11-02</span
+                        ><span class="wtrack"
+                          ><span
+                            class="wfill"
+                            style="left: 5%; width: 30%"
+                          ></span></span
+                        ><span class="wvalue">9°/18°</span>
+                      </div>
+                      <div class="week-row">
+                        <span class="wdate">11-03</span
+                        ><span class="wtrack"
+                          ><span
+                            class="wfill"
+                            style="left: 14%; width: 44%"
+                          ></span></span
+                        ><span class="wvalue">11°/22°</span>
+                      </div>
+                      <div class="week-row">
+                        <span class="wdate">11-04</span
+                        ><span class="wtrack"
+                          ><span
+                            class="wfill"
+                            style="left: 20%; width: 40%"
+                          ></span></span
+                        ><span class="wvalue">12°/21°</span>
+                      </div>
+                      <div class="wx-source">
+                        <span class="tag" style="left: 8px; top: -9px">G26</span
+                        >数据来源 Open-Meteo · 免费接口
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="dock">
+                  <div class="pill">
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-clock" /></svg>时钟</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-hourglass" /></svg
+                      >倒计时</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-globe" /></svg>世界</span
+                    >
+                    <span class="dock-item active"
+                      ><svg class="ico"><use href="#i-cloud" /></svg>天气</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-bell" /></svg>闹钟</span
+                    >
+                    <span class="dock-sep"></span>
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-gear" /></svg>设置</span
+                    >
+                  </div>
+                </div>
+              </div>
+            </div>
+            <figcaption>
+              天气页。错误态与旧值并存；七日值固定在右侧 68px
+              列，不压金色范围条。
+            </figcaption>
+          </figure>
+          <aside class="legend-panel">
+            <h3>抽屉内部</h3>
+            <table class="legend-table">
+              <tr>
+                <td class="id">G2</td>
+                <td class="nm">天气头行</td>
+                <td class="ds">城市 + 刷新/加载</td>
+              </tr>
+              <tr>
+                <td class="id">G3</td>
+                <td class="nm">城市下拉</td>
+                <td class="ds">150px；切换即刷新</td>
+              </tr>
+              <tr>
+                <td class="id">G4</td>
+                <td class="nm">刷新按钮</td>
+                <td class="ds">Refresh 16px；加载时换 Spinner</td>
+              </tr>
+              <tr>
+                <td class="id">G5</td>
+                <td class="nm">加载弧</td>
+                <td class="ds">16px、270°、600ms/圈；替换 G4</td>
+              </tr>
+              <tr>
+                <td class="id">G6</td>
+                <td class="nm">错误行</td>
+                <td class="ds">danger 12px；说明原因</td>
+              </tr>
+              <tr>
+                <td class="id">G7</td>
+                <td class="nm">重试</td>
+                <td class="ds">小按钮；强制刷新</td>
+              </tr>
+              <tr>
+                <td class="id">G8</td>
+                <td class="nm">旧值提示</td>
+                <td class="ds">“显示上次数据 X°”</td>
+              </tr>
+              <tr>
+                <td class="id">G9</td>
+                <td class="nm">Hero 聚簇</td>
+                <td class="ds">图标 + 温度 + 描述</td>
+              </tr>
+              <tr>
+                <td class="id">G10</td>
+                <td class="nm">天气图标</td>
+                <td class="ds">34px；按 WMO code</td>
+              </tr>
+              <tr>
+                <td class="id">G11</td>
+                <td class="nm">温度</td>
+                <td class="ds">44px digits</td>
+              </tr>
+              <tr>
+                <td class="id">G13</td>
+                <td class="nm">三列指标</td>
+                <td class="ds">体感 / 湿度 / 风力</td>
+              </tr>
+              <tr>
+                <td class="id">G15</td>
+                <td class="nm">逐小时区</td>
+                <td class="ds">标题 + 曲线 + 图外时间轴</td>
+              </tr>
+              <tr>
+                <td class="id">G16</td>
+                <td class="nm">温度曲线</td>
+                <td class="ds">132px；无背景/轴；4 条淡线</td>
+              </tr>
+              <tr>
+                <td class="id">G19</td>
+                <td class="nm">七日区</td>
+                <td class="ds">周范围 + 7 行</td>
+              </tr>
+              <tr>
+                <td class="id">G21</td>
+                <td class="nm">七日行</td>
+                <td class="ds">22px；日期 / 条 / 低高</td>
+              </tr>
+              <tr>
+                <td class="id">G25</td>
+                <td class="nm">低/高值</td>
+                <td class="ds">68px 右对齐；在 card_bg 上</td>
+              </tr>
+              <tr>
+                <td class="id">G26</td>
+                <td class="nm">数据源行</td>
+                <td class="ds">Open-Meteo · 免费接口</td>
+              </tr>
+            </table>
+            <h3>目测检查点</h3>
+            <ul class="checklist">
+              <li>七日温度绝不在金色条上；值列固定 68px，右缘不裁。</li>
+              <li>曲线没有矩形背景/边框；只有 4 条横向淡线。</li>
+              <li>失败时旧值仍显示，错误行有“重试”。</li>
+              <li>整页可滚；没有固定页脚，不要找“页脚”。</li>
+            </ul>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ================= 05 闹钟 ================= -->
+      <section class="section" id="alarm">
+        <div class="section-head">
+          <span class="section-no">05</span>
+          <div>
+            <h2>闹钟页</h2>
+            <p>
+              抽屉页。快捷添加是有边界的 chip；闹钟行 64px：开关、24px
+              时刻、标签·重复、删除；添加表单固定在页脚。
+            </p>
+          </div>
+        </div>
+        <div class="guide-grid">
+          <figure class="figure">
+            <div class="window-scroll">
+              <div class="app-window" style="--win-h: 600px">
+                <div class="win-caption">
+                  <span class="tag" style="left: 8px; top: 8px">A1</span>
+                  <span class="win-title">加速世界</span>
+                  <span class="win-controls">—　□　×</span>
+                </div>
+                <div class="win-body">
+                  <div class="stage" data-stage></div>
+                  <div class="drawer">
+                    <div class="drawer-head">
+                      <span class="tag" style="left: 6px; top: 6px">D2</span>
+                      <span class="drawer-title">闹钟</span>
+                      <span class="close"
+                        ><svg class="ico"><use href="#i-close" /></svg
+                      ></span>
+                    </div>
+                    <div class="drawer-body">
+                      <div class="quick-label">
+                        <span class="tag" style="left: 8px; top: -8px">H2</span
+                        >快捷添加
+                      </div>
+                      <div class="quick-row">
+                        <span class="tag" style="left: 8px; top: -8px">H3</span>
+                        <span class="quick-chip">10 分钟后</span>
+                        <span class="quick-chip">30 分钟后</span>
+                        <span class="quick-chip">1 小时后</span>
+                      </div>
+
+                      <div class="alarm-row">
+                        <span class="tag" style="right: 8px; top: -8px"
+                          >H4</span
+                        >
+                        <span class="switch on"
+                          ><span class="tag" style="left: -4px; top: -13px"
+                            >H5</span
+                          ></span
+                        >
+                        <span class="alarm-time">07:00</span>
+                        <span class="alarm-label">起床 · 工作日</span>
+                        <span class="trash"
+                          ><svg class="ico"><use href="#i-trash" /></svg
+                        ></span>
+                      </div>
+                      <div class="alarm-row">
+                        <span class="switch on"></span>
+                        <span class="alarm-time">09:30</span>
+                        <span class="alarm-label">项目会议</span>
+                        <span class="tag" style="left: 140px; top: -8px"
+                          >H7</span
+                        >
+                        <span class="trash"
+                          ><svg class="ico"><use href="#i-trash" /></svg
+                        ></span>
+                      </div>
+                      <div class="alarm-row off">
+                        <span class="switch"></span>
+                        <span class="alarm-time">22:00</span>
+                        <span class="alarm-label">阅读</span>
+                        <span
+                          class="tag"
+                          style="left: calc(100% - 44px); top: -8px"
+                          >H8</span
+                        >
+                        <span class="trash"
+                          ><svg class="ico"><use href="#i-trash" /></svg
+                        ></span>
+                      </div>
+                    </div>
+                    <div class="drawer-foot">
+                      <span class="tag" style="left: 8px; top: -8px">H10</span>
+                      <div class="footer-fields">
+                        <div class="field name">
+                          <span class="flabel">标签</span>
+                          <div class="fbox">标签</div>
+                        </div>
+                        <div class="field time">
+                          <span class="flabel">时间</span>
+                          <div class="fbox">HH:MM</div>
+                        </div>
+                        <span
+                          class="tag"
+                          style="left: calc(100% - 44px); top: -12px"
+                          >H13</span
+                        >
+                        <div class="btn-primary">添加</div>
+                      </div>
+                      <div class="err-line"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="dock">
+                  <div class="pill">
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-clock" /></svg>时钟</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-hourglass" /></svg
+                      >倒计时</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-globe" /></svg>世界</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-cloud" /></svg>天气</span
+                    >
+                    <span class="dock-item active"
+                      ><svg class="ico"><use href="#i-bell" /></svg>闹钟</span
+                    >
+                    <span class="dock-sep"></span>
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-gear" /></svg>设置</span
+                    >
+                  </div>
+                </div>
+              </div>
+            </div>
+            <figcaption>
+              闹钟页。开关位置是主信号，语义绿是辅助；快捷 chip 不是主按钮。
+            </figcaption>
+          </figure>
+          <aside class="legend-panel">
+            <h3>抽屉内部</h3>
+            <table class="legend-table">
+              <tr>
+                <td class="id">H2</td>
+                <td class="nm">快捷添加标签</td>
+                <td class="ds">12/500 muted；不是分区标题</td>
+              </tr>
+              <tr>
+                <td class="id">H3</td>
+                <td class="nm">快捷 chip</td>
+                <td class="ds">30px；有边界；不是通用 chip 组件</td>
+              </tr>
+              <tr>
+                <td class="id">H4</td>
+                <td class="nm">闹钟行</td>
+                <td class="ds">64px；开关/时刻/标签·重复/删除</td>
+              </tr>
+              <tr>
+                <td class="id">H5</td>
+                <td class="nm">闹钟开关</td>
+                <td class="ds">36×20；on=success 绿</td>
+              </tr>
+              <tr>
+                <td class="id">H6</td>
+                <td class="nm">闹钟时刻</td>
+                <td class="ds">24px digits；关闭时降权</td>
+              </tr>
+              <tr>
+                <td class="id">H7</td>
+                <td class="nm">标签 / 重复</td>
+                <td class="ds">14px；超宽省略 + tooltip</td>
+              </tr>
+              <tr>
+                <td class="id">H8</td>
+                <td class="nm">闹钟删除</td>
+                <td class="ds">16px Trash；两步武装</td>
+              </tr>
+              <tr>
+                <td class="id">H10</td>
+                <td class="nm">闹钟页脚</td>
+                <td class="ds">标签 + 时间 + 添加；恒占错误行</td>
+              </tr>
+              <tr>
+                <td class="id">H11</td>
+                <td class="nm">标签字段</td>
+                <td class="ds">Field；label 上置</td>
+              </tr>
+              <tr>
+                <td class="id">H12</td>
+                <td class="nm">时间字段</td>
+                <td class="ds">HH:MM；非法不发送</td>
+              </tr>
+              <tr>
+                <td class="id">H13</td>
+                <td class="nm">添加按钮</td>
+                <td class="ds">88×32 ink 实底</td>
+              </tr>
+            </table>
+            <h3>目测检查点</h3>
+            <ul class="checklist">
+              <li>开关 on 是语义绿，不是品牌金；位置在右才是主信号。</li>
+              <li>快捷 chip 有 1px 边界；不应是裸文本或金底 hover。</li>
+              <li>关闭的闹钟整行降权，但仍可读、可重新开启。</li>
+              <li>删除第一次点击变 Check，第二次才删除。</li>
+            </ul>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ================= 06 设置 ================= -->
+      <section class="section" id="settings">
+        <div class="section-head">
+          <span class="section-no">06</span>
+          <div>
+            <h2>设置页</h2>
+            <p>
+              也是抽屉页，标题“设置”，副标题“外观 · 动效 ·
+              关于”。不是一个右下角浮窗，也不是 modal。
+            </p>
+          </div>
+        </div>
+        <div class="guide-grid">
+          <figure class="figure">
+            <div class="window-scroll">
+              <div class="app-window" style="--win-h: 600px">
+                <div class="win-caption">
+                  <span class="tag" style="left: 8px; top: 8px">A1</span>
+                  <span class="win-title">加速世界</span>
+                  <span class="win-controls">—　□　×</span>
+                </div>
+                <div class="win-body">
+                  <div class="stage" data-stage></div>
+                  <div class="drawer">
+                    <div class="drawer-head">
+                      <span class="tag" style="left: 6px; top: 6px">D2</span>
+                      <span class="drawer-title">设置</span>
+                      <span class="drawer-sub">外观 · 动效 · 关于</span>
+                      <span class="close"
+                        ><svg class="ico"><use href="#i-close" /></svg
+                      ></span>
+                    </div>
+                    <div class="drawer-body">
+                      <div class="settings-section">
+                        <span class="tag" style="left: 8px; top: -8px">I2</span>
+                        <h4>外观</h4>
+                        <p class="sdesc">当前主题</p>
+                        <div class="setting-row">
+                          <span class="tag" style="left: 8px; top: -8px"
+                            >I3</span
+                          >
+                          <span class="slabel">主题</span>
+                          <span class="svalue">子夜星图（深色）</span>
+                        </div>
+                      </div>
+
+                      <div class="settings-section">
+                        <span class="tag" style="left: 8px; top: -8px">I4</span>
+                        <h4>动效</h4>
+                        <p class="sdesc">
+                          关闭抽屉、悬停、按压与闹钟脉冲的过渡
+                        </p>
+                        <div class="setting-row">
+                          <span class="tag" style="left: 8px; top: -8px"
+                            >I5</span
+                          >
+                          <div>
+                            <div class="slabel">减少动效</div>
+                            <div class="sdesc2">直取终态，不做过渡</div>
+                          </div>
+                          <span
+                            class="tag"
+                            style="left: calc(100% - 52px); top: -8px"
+                            >I6</span
+                          >
+                          <span class="switch on"></span>
+                        </div>
+                      </div>
+
+                      <div class="settings-section">
+                        <span class="tag" style="left: 8px; top: -8px">I7</span>
+                        <h4>关于</h4>
+                        <p class="sdesc">版本与数据来源</p>
+                        <div class="setting-row">
+                          <span class="tag" style="left: 8px; top: -8px"
+                            >I8</span
+                          ><span class="slabel">版本</span
+                          ><span class="svalue">0.6.4.1</span>
+                        </div>
+                        <div class="setting-row">
+                          <span class="tag" style="left: 8px; top: -8px"
+                            >I9</span
+                          ><span class="slabel">数据来源</span
+                          ><span class="svalue"
+                            >Open-Meteo（免费天气接口）</span
+                          >
+                        </div>
+                        <div class="setting-row">
+                          <span class="tag" style="left: 8px; top: -8px"
+                            >I10</span
+                          ><span class="slabel">字体</span
+                          ><span class="svalue" style="font-size: 9.5px"
+                            >MiSans / Bahnschrift</span
+                          >
+                        </div>
+                      </div>
+
+                      <div class="settings-sign">
+                        <span class="tag" style="left: 8px; top: -9px">I11</span
+                        >加速世界 · 子夜星图
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="dock">
+                  <div class="pill">
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-clock" /></svg>时钟</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-hourglass" /></svg
+                      >倒计时</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-globe" /></svg>世界</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-cloud" /></svg>天气</span
+                    >
+                    <span class="dock-item"
+                      ><svg class="ico"><use href="#i-bell" /></svg>闹钟</span
+                    >
+                    <span class="dock-sep"></span>
+                    <span class="dock-item active"
+                      ><svg class="ico"><use href="#i-gear" /></svg>设置</span
+                    >
+                  </div>
+                </div>
+              </div>
+            </div>
+            <figcaption>
+              设置页。分区标题 16/600 + 说明 12 muted；只读行右值
+              muted；动效开关与闹钟共用同一组件。
+            </figcaption>
+          </figure>
+          <aside class="legend-panel">
+            <h3>抽屉内部</h3>
+            <table class="legend-table">
+              <tr>
+                <td class="id">I1</td>
+                <td class="nm">设置抽屉</td>
+                <td class="ds">标题“设置” + 副标题；不是浮窗</td>
+              </tr>
+              <tr>
+                <td class="id">I2</td>
+                <td class="nm">外观分区</td>
+                <td class="ds">16/600 + 12 muted + 1px 发丝</td>
+              </tr>
+              <tr>
+                <td class="id">I3</td>
+                <td class="nm">主题行</td>
+                <td class="ds">只读；子夜星图（深色）</td>
+              </tr>
+              <tr>
+                <td class="id">I4</td>
+                <td class="nm">动效分区</td>
+                <td class="ds">说明过渡范围</td>
+              </tr>
+              <tr>
+                <td class="id">I5</td>
+                <td class="nm">减少动效行</td>
+                <td class="ds">左标签 + 说明；右开关</td>
+              </tr>
+              <tr>
+                <td class="id">I6</td>
+                <td class="nm">减少动效开关</td>
+                <td class="ds">36×20；on=success 绿</td>
+              </tr>
+              <tr>
+                <td class="id">I7</td>
+                <td class="nm">关于分区</td>
+                <td class="ds">版本 / 数据来源 / 字体</td>
+              </tr>
+              <tr>
+                <td class="id">I8</td>
+                <td class="nm">版本行</td>
+                <td class="ds">只读；当前 0.6.4.1</td>
+              </tr>
+              <tr>
+                <td class="id">I9</td>
+                <td class="nm">数据来源行</td>
+                <td class="ds">右端 Cloud 14px 轻提示</td>
+              </tr>
+              <tr>
+                <td class="id">I10</td>
+                <td class="nm">字体行</td>
+                <td class="ds">MiSans（小米，免费商用）/ Bahnschrift</td>
+              </tr>
+              <tr>
+                <td class="id">I11</td>
+                <td class="nm">设置页尾签</td>
+                <td class="ds">“加速世界 · 子夜星图”</td>
+              </tr>
+            </table>
+            <h3>目测检查点</h3>
+            <ul class="checklist">
+              <li>设置打开时，抽屉替换当前页内容，不叠在右下角。</li>
+              <li>版本号只在“关于”里，不在窗口标题栏。</li>
+              <li>“减少动效”关掉后，hover/列表脉冲/toast 直取终态。</li>
+              <li>没有“深色主题（实心桌面）”这类实现说明。</li>
+            </ul>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ================= 07 窄窗 ================= -->
+      <section class="section" id="responsive">
+        <div class="section-head">
+          <span class="section-no">07</span>
+          <div>
+            <h2>窄窗变体：两个 compact 不是一回事</h2>
+            <p>
+              全宽抽屉按“页宽 &lt; 760”；时钟数字版按“可用高 &lt;
+              380”。两者可能同时发生，也可能只发生一个。描述时请说清是哪一个。
+            </p>
+          </div>
+        </div>
+        <div class="mini-grid">
+          <div class="mini-card">
+            <h4>全宽抽屉（520×420 结构示意）</h4>
+            <div class="mini-window">
+              <div class="mini-bar">加速世界　—　□　×</div>
+              <div class="mini-body">
+                <span class="tag" style="left: 8px; top: 150px">D10</span>
+                <div class="mini-drawer">
+                  <div class="mini-head">
+                    <span class="tag" style="left: 2px; top: 6px">D2</span
+                    >倒计时<span class="mini-close">×</span>
+                  </div>
+                  <div class="mini-hero">
+                    下一个 · 春节　<span
+                      style="float: right; font-family: var(--font-mono)"
+                      >100天 19:15</span
+                    >
+                  </div>
+                  <div class="mini-row">
+                    项目发布<span class="r">32天</span>
+                  </div>
+                  <div class="mini-row">生日<span class="r">19天</span></div>
+                  <div class="mini-scroll-note">内容区 ScrollArea</div>
+                  <div class="mini-foot">
+                    <span class="f">名称</span><span class="f">时刻</span
+                    ><span class="b">添加</span>
+                  </div>
+                </div>
+              </div>
+              <div class="mini-dock">
+                <div class="mini-pill">
+                  <span class="active">时钟</span><span>倒计时</span
+                  ><span>世界</span><span>天气</span><span>闹钟</span
+                  ><span>设置</span>
+                </div>
+              </div>
+            </div>
+            <p class="note" style="font-size: 0.75rem">
+              主仪退场（stage_w=0），抽屉占满页面区；底坞保留。
+            </p>
+          </div>
+          <div class="mini-card">
+            <h4>时钟数字版（900×420 的页面区）</h4>
+            <div class="mini-window">
+              <div class="mini-bar">加速世界　—　□　×</div>
+              <div class="mini-body">
+                <div class="mini-clock">
+                  <span class="tag" style="left: 8px; top: 8px">B26</span>
+                  <div class="mini-brand">加速世界</div>
+                  <div style="display: flex; align-items: baseline; gap: 10px">
+                    <span style="font-size: 8px; color: var(--gold)">加速</span
+                    ><span
+                      style="
+                        font-family: var(--font-mono);
+                        font-size: 24px;
+                        color: var(--ink);
+                      "
+                      >35:30:48</span
+                    ><span style="font-size: 7.5px; color: var(--meta)"
+                      >第 2 天</span
+                    >
+                  </div>
+                  <div style="font-size: 8px; color: var(--muted)">
+                    现实　<span
+                      style="
+                        font-family: var(--font-mono);
+                        font-size: 11px;
+                        color: var(--body);
+                      "
+                      >04:55:52</span
+                    >
+                  </div>
+                  <div
+                    style="
+                      display: flex;
+                      justify-content: space-between;
+                      font-size: 7.5px;
+                      color: var(--muted);
+                      border-top: 1px solid var(--border);
+                      padding-top: 5px;
+                    "
+                  >
+                    <span>倍率</span
+                    ><span style="color: var(--gold)">×7.2</span>
+                  </div>
+                  <div
+                    style="
+                      height: 4px;
+                      background: var(--strong);
+                      border-radius: 2px;
+                      position: relative;
+                    "
+                  >
+                    <span
+                      style="
+                        position: absolute;
+                        left: 0;
+                        top: 0;
+                        bottom: 0;
+                        width: 33%;
+                        background: var(--gold);
+                        border-radius: 2px;
+                      "
+                    ></span
+                    ><span
+                      style="
+                        position: absolute;
+                        left: 33%;
+                        top: 50%;
+                        width: 9px;
+                        height: 9px;
+                        border-radius: 50%;
+                        background: var(--knob);
+                        transform: translate(-50%, -50%);
+                      "
+                    ></span>
+                  </div>
+                  <div style="font-size: 7.5px; color: var(--meta)">
+                    农历 丙午年九月十九 · 月相 寝待月 · 财神 东北
+                  </div>
+                </div>
+              </div>
+              <div class="mini-dock">
+                <div class="mini-pill">
+                  <span class="active">时钟</span><span>倒计时</span
+                  ><span>世界</span><span>天气</span><span>闹钟</span
+                  ><span>设置</span>
+                </div>
+              </div>
+            </div>
+            <p class="note" style="font-size: 0.75rem">
+              星盘消失，读数/倍率/meta 纵向排列；这是“短窗”，不是“全宽抽屉”。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 08 组件 ================= -->
+      <section class="section" id="components">
+        <div class="section-head">
+          <span class="section-no">08</span>
+          <div>
+            <h2>组件与状态</h2>
+            <p>
+              这些是实现件的“标准长相”。目测时先认组件，再谈具体页面；状态词统一用
+              §09 的那一组。
+            </p>
+          </div>
+        </div>
+        <div class="component-grid">
+          <div class="component-card">
+            <h4>K1 · 字段 Field</h4>
+            <p class="cdesc">label 12/500 + 34px 输入 + 1px 边 + 焦点亮白环</p>
+            <div class="demo-field focus">
+              <span class="flabel">城市名</span>
+              <div class="fbox">上海</div>
+            </div>
+          </div>
+          <div class="component-card">
+            <h4>K2 · 下拉 Select</h4>
+            <p class="cdesc">32px 触发器 + 锚定菜单；键盘可达</p>
+            <div class="select" style="width: 100%">
+              北京<svg class="ico"><use href="#i-chevron-down" /></svg>
+            </div>
+            <div
+              style="
+                margin-top: 6px;
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                background: var(--card);
+                overflow: hidden;
+              "
+            >
+              <div
+                style="
+                  padding: 5px 8px;
+                  font-size: 10px;
+                  background: var(--hover);
+                  color: var(--ink);
+                "
+              >
+                北京
+              </div>
+              <div
+                style="padding: 5px 8px; font-size: 10px; color: var(--muted)"
+              >
+                上海
+              </div>
+              <div
+                style="padding: 5px 8px; font-size: 10px; color: var(--muted)"
+              >
+                广州
+              </div>
+            </div>
+          </div>
+          <div class="component-card">
+            <h4>K3 · 主按钮 PrimaryButton</h4>
+            <p class="cdesc">88×32 ink 实底；金不给按钮</p>
+            <div class="demo-buttons">
+              <span class="demo-btn">常态</span>
+              <span class="demo-btn hover">悬停</span>
+              <span class="demo-btn press">按下</span>
+              <span class="demo-btn focus">聚焦</span>
+            </div>
+          </div>
+          <div class="component-card">
+            <h4>K4 · 开关 Switch</h4>
+            <p class="cdesc">36×20；on=success 绿，位置为主信号</p>
+            <div class="demo-switch">
+              <span class="switch"></span><span class="state">关</span>
+              <span class="switch on"></span><span class="state">开</span>
+            </div>
+          </div>
+          <div class="component-card">
+            <h4>K5 · 空态 EmptyState</h4>
+            <p class="cdesc">虚线框 + 标题 + 一句行动邀请</p>
+            <div class="demo-empty">
+              <span class="t">还没有目标</span>
+              <span class="d">在下方填写名称与时刻</span>
+            </div>
+          </div>
+          <div class="component-card">
+            <h4>K6 · 加载弧 Spinner</h4>
+            <p class="cdesc">16px、270°、600ms/圈；只在加载态</p>
+            <div
+              style="
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                height: 70px;
+              "
+            >
+              <span class="demo-spinner"></span>
+              <span style="font-size: 10px; color: var(--muted)"
+                >天气获取中…</span
+              >
+            </div>
+          </div>
+          <div class="component-card">
+            <h4>J1 · 应用内 toast</h4>
+            <p class="cdesc">右上堆叠；左侧色条 + 标题 + 正文</p>
+            <div class="demo-toast" style="margin-bottom: 6px">
+              <div class="tt">天气城市</div>
+              <div class="tb">已切换至上海</div>
+            </div>
+            <div class="demo-toast error">
+              <div class="tt">北京 天气拉取失败</div>
+              <div class="tb">网络超时——请稍后重试</div>
+            </div>
+          </div>
+          <div class="component-card">
+            <h4>J7 · 武装态 Armed</h4>
+            <p class="cdesc">Trash → Check；4s 超时；再次点击才删除</p>
+            <div class="demo-armed">
+              <span class="trash"
+                ><svg class="ico"><use href="#i-trash" /></svg
+              ></span>
+              <span>常态</span>
+              <span class="check"
+                ><svg class="ico"><use href="#i-check" /></svg
+              ></span>
+              <span>武装（危险色）</span>
+            </div>
+          </div>
+          <div class="component-card">
+            <h4>K7 · Tabler 图标子集</h4>
+            <p class="cdesc">29 变体；24 网格 2px；随字号绘制</p>
+            <div class="demo-icons">
+              <svg class="ico"><use href="#i-clock" /></svg>
+              <svg class="ico"><use href="#i-hourglass" /></svg>
+              <svg class="ico"><use href="#i-globe" /></svg>
+              <svg class="ico"><use href="#i-cloud" /></svg>
+              <svg class="ico"><use href="#i-bell" /></svg>
+              <svg class="ico"><use href="#i-gear" /></svg>
+              <svg class="ico"><use href="#i-trash" /></svg>
+              <svg class="ico"><use href="#i-check" /></svg>
+              <svg class="ico"><use href="#i-pin" /></svg>
+              <svg class="ico"><use href="#i-sun" /></svg>
+              <svg class="ico"><use href="#i-moon" /></svg>
+              <svg class="ico"><use href="#i-refresh" /></svg>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 09 令牌 ================= -->
+      <section class="section" id="tokens">
+        <div class="section-head">
+          <span class="section-no">09</span>
+          <div>
+            <h2>尺寸、颜色、字号、动效</h2>
+            <p>
+              这些值来自 <code>rs/config/static/ui.json</code> 与
+              <code>base.json</code>；图上尺寸是结构示意，精确值以表为准。
+            </p>
+          </div>
+        </div>
+
+        <h3 style="font-size: 0.95rem; margin: 16px 0 8px">颜色 token</h3>
+        <div class="swatches">
+          <div class="swatch">
+            <span class="chip" style="background: #0f1420"></span
+            ><span class="info"
+              ><div class="n">window_bg</div>
+              <div class="h">#0F1420</div></span
+            >
+          </div>
+          <div class="swatch">
+            <span class="chip" style="background: #0b0f19"></span
+            ><span class="info"
+              ><div class="n">sidebar_bg / input_bg</div>
+              <div class="h">#0B0F19</div></span
+            >
+          </div>
+          <div class="swatch">
+            <span class="chip" style="background: #141a29"></span
+            ><span class="info"
+              ><div class="n">card_bg</div>
+              <div class="h">#141A29</div></span
+            >
+          </div>
+          <div class="swatch">
+            <span class="chip" style="background: #1a2135"></span
+            ><span class="info"
+              ><div class="n">hover_bg</div>
+              <div class="h">#1A2135</div></span
+            >
+          </div>
+          <div class="swatch">
+            <span class="chip" style="background: #33406a"></span
+            ><span class="info"
+              ><div class="n">border</div>
+              <div class="h">#33406A</div></span
+            >
+          </div>
+          <div class="swatch">
+            <span class="chip" style="background: #5c6c95"></span
+            ><span class="info"
+              ><div class="n">border_strong</div>
+              <div class="h">#5C6C95</div></span
+            >
+          </div>
+          <div class="swatch">
+            <span class="chip" style="background: #5a6a92"></span
+            ><span class="info"
+              ><div class="n">input_border</div>
+              <div class="h">#5A6A92</div></span
+            >
+          </div>
+          <div class="swatch">
+            <span class="chip" style="background: #303c5e"></span
+            ><span class="info"
+              ><div class="n">track</div>
+              <div class="h">#303C5E</div></span
+            >
+          </div>
+          <div class="swatch">
+            <span class="chip" style="background: #e8b544"></span
+            ><span class="info"
+              ><div class="n">accent（金）</div>
+              <div class="h">#E8B544</div></span
+            >
+          </div>
+          <div class="swatch">
+            <span class="chip" style="background: #5faf8a"></span
+            ><span class="info"
+              ><div class="n">success（开关 on）</div>
+              <div class="h">#5FAF8A</div></span
+            >
+          </div>
+          <div class="swatch">
+            <span class="chip" style="background: #ee7265"></span
+            ><span class="info"
+              ><div class="n">danger</div>
+              <div class="h">#EE7265</div></span
+            >
+          </div>
+          <div class="swatch">
+            <span class="chip" style="background: #2a3552"></span
+            ><span class="info"
+              ><div class="n">star</div>
+              <div class="h">#2A3552</div></span
+            >
+          </div>
+          <div class="swatch">
+            <span class="chip" style="background: #ece8db"></span
+            ><span class="info"
+              ><div class="n">text_strong / knob</div>
+              <div class="h">#ECE8DB / #F2EFE4</div></span
+            >
+          </div>
+          <div class="swatch">
+            <span class="chip" style="background: #cfcbbd"></span
+            ><span class="info"
+              ><div class="n">text_body</div>
+              <div class="h">#CFCBBD</div></span
+            >
+          </div>
+          <div class="swatch">
+            <span class="chip" style="background: #9a978a"></span
+            ><span class="info"
+              ><div class="n">text_muted</div>
+              <div class="h">#9A978A</div></span
+            >
+          </div>
+          <div class="swatch">
+            <span class="chip" style="background: #8a8774"></span
+            ><span class="info"
+              ><div class="n">text_meta</div>
+              <div class="h">#8A8774</div></span
+            >
+          </div>
+        </div>
+
+        <h3 style="font-size: 0.95rem; margin: 24px 0 8px">几何</h3>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>项</th>
+                <th>值</th>
+                <th>来源/说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>窗口默认</td>
+                <td>960×640</td>
+                <td><code>base.json</code> window_width/height</td>
+              </tr>
+              <tr>
+                <td>窗口最小 / 最大</td>
+                <td>520×420 / 1200×820</td>
+                <td><code>base.json</code> min；<code>ui.json</code> max</td>
+              </tr>
+              <tr>
+                <td>坞带 / 坞 pill</td>
+                <td>64 高 / 目标 560×56，窄舞台最低 280 宽</td>
+                <td><code>layout.dock_*</code></td>
+              </tr>
+              <tr>
+                <td>抽屉宽</td>
+                <td>token 320–400；中央至少 420，实际最低 280</td>
+                <td><code>pages/mod.rs</code> / <code>drawer_width</code></td>
+              </tr>
+              <tr>
+                <td>抽屉页头 / 页脚</td>
+                <td>56 / 76（窄窗两行更高）</td>
+                <td><code>layout.page_header/page_footer</code></td>
+              </tr>
+              <tr>
+                <td>星盘</td>
+                <td>180–560</td>
+                <td><code>clock::dial_diameter</code></td>
+              </tr>
+              <tr>
+                <td>盘下读数</td>
+                <td>88（短窗 76）</td>
+                <td><code>draw_readout</code></td>
+              </tr>
+              <tr>
+                <td>倍率条</td>
+                <td>宽 220–360，高 62；轨 6px；旋钮 8→9px</td>
+                <td><code>widgets/rate_strip.rs</code></td>
+              </tr>
+              <tr>
+                <td>倒计时 Hero / 目标行</td>
+                <td>126 / 68</td>
+                <td><code>countdown.rs</code></td>
+              </tr>
+              <tr>
+                <td>世界城市行 / 闹钟行</td>
+                <td>60 / 64</td>
+                <td><code>world.rs</code> / <code>alarm.rs</code></td>
+              </tr>
+              <tr>
+                <td>天气曲线 / 七日行</td>
+                <td>132 / 22</td>
+                <td><code>weather.rs</code></td>
+              </tr>
+              <tr>
+                <td>字段 / 主按钮 / 开关</td>
+                <td>54 / 88×32 / 36×20</td>
+                <td>
+                  <code>field</code> / <code>primary_button</code> /
+                  <code>switch</code>
+                </td>
+              </tr>
+              <tr>
+                <td>toast 宽</td>
+                <td>260；&lt;600 窗口全宽 −32，下限 180</td>
+                <td><code>toast_width</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 style="font-size: 0.95rem; margin: 24px 0 8px">字号角色</h3>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>角色</th>
+                <th>token</th>
+                <th>实际使用</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>hero</td>
+                <td>72</td>
+                <td>读数大数实际 56（短窗 44）；倒计时 Hero 40</td>
+              </tr>
+              <tr>
+                <td>display</td>
+                <td>40</td>
+                <td>倒计时剩余 40；天气温度实际 44</td>
+              </tr>
+              <tr>
+                <td>title</td>
+                <td>24</td>
+                <td>抽屉页头 24/600</td>
+              </tr>
+              <tr>
+                <td>section</td>
+                <td>16</td>
+                <td>设置分区标题 16/600</td>
+              </tr>
+              <tr>
+                <td>body_lg / body</td>
+                <td>16 / 14</td>
+                <td>城市名 16/600；正文 14</td>
+              </tr>
+              <tr>
+                <td>time_md / time_sm</td>
+                <td>24 / 16</td>
+                <td>闹钟/城市走时 24；目标行剩余 16</td>
+              </tr>
+              <tr>
+                <td>meta</td>
+                <td>12</td>
+                <td>标签/日期/说明</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 style="font-size: 0.95rem; margin: 24px 0 8px">动效</h3>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>项</th>
+                <th>值</th>
+                <th>当前是否可见</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>hover / press</td>
+                <td>120 / 60ms</td>
+                <td>是</td>
+              </tr>
+              <tr>
+                <td>卡片 hover / press</td>
+                <td>140 / 90ms</td>
+                <td>是</td>
+              </tr>
+              <tr>
+                <td>坞下划线</td>
+                <td>220ms</td>
+                <td>是</td>
+              </tr>
+              <tr>
+                <td>开关</td>
+                <td>160ms</td>
+                <td>是</td>
+              </tr>
+              <tr>
+                <td>toast 入/出/驻留</td>
+                <td>300 / 150 / 4000ms</td>
+                <td>是</td>
+              </tr>
+              <tr>
+                <td>武装超时</td>
+                <td>4000ms</td>
+                <td>是</td>
+              </tr>
+              <tr>
+                <td>抽屉弹簧</td>
+                <td>4.2Hz / ζ1.0</td>
+                <td><b>否</b>：token 预留，抽屉当前瞬时开合</td>
+              </tr>
+              <tr>
+                <td>闹钟脉冲</td>
+                <td>600ms</td>
+                <td><b>否</b>：bus 起点预留，时钟页尚未消费</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 style="font-size: 0.95rem; margin: 24px 0 8px">状态词</h3>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>状态</th>
+                <th>推荐写法</th>
+                <th>含义</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>常态</td>
+                <td><code>[常态]</code></td>
+                <td>无 hover / focus / press</td>
+              </tr>
+              <tr>
+                <td>悬停</td>
+                <td><code>[悬停]</code></td>
+                <td>指针在命中域内</td>
+              </tr>
+              <tr>
+                <td>聚焦</td>
+                <td><code>[聚焦]</code></td>
+                <td>键盘焦点；亮白 1.5px 环</td>
+              </tr>
+              <tr>
+                <td>按下</td>
+                <td><code>[按下]</code></td>
+                <td>指针按住；主按钮内缩</td>
+              </tr>
+              <tr>
+                <td>选中</td>
+                <td><code>[选中]</code></td>
+                <td>当前页面/当前项；坞金下划线</td>
+              </tr>
+              <tr>
+                <td>开 / 关</td>
+                <td><code>[开]</code> / <code>[关]</code></td>
+                <td>仅开关；不要用“选中”</td>
+              </tr>
+              <tr>
+                <td>武装</td>
+                <td><code>[武装]</code></td>
+                <td>两步删除中间态；Trash→Check</td>
+              </tr>
+              <tr>
+                <td>加载 / 空 / 错误</td>
+                <td>
+                  <code>[加载]</code> / <code>[空]</code> / <code>[错误]</code>
+                </td>
+                <td>状态三态；不要混用</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 style="font-size: 0.95rem; margin: 24px 0 8px">易混淆对照</h3>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>不要叫</th>
+                <th>应该叫</th>
+                <th>原因</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>侧栏 / 底栏 / 导航栏</td>
+                <td>仪器坞（Dock） / 抽屉</td>
+                <td>侧栏已废除；导航在底部胶囊，页面在右侧</td>
+              </tr>
+              <tr>
+                <td>表盘 / 钟面</td>
+                <td>星盘</td>
+                <td>项目身份词；文档统一“星盘”</td>
+              </tr>
+              <tr>
+                <td>标题栏（指抽屉顶部）</td>
+                <td>抽屉页头（PageHeader）</td>
+                <td>标题栏专指 Windows 原生 caption</td>
+              </tr>
+              <tr>
+                <td>页脚（指坞）</td>
+                <td>抽屉页脚（仅三页） / 仪器坞</td>
+                <td>页脚是抽屉内固定表单区；坞在窗口最底</td>
+              </tr>
+              <tr>
+                <td>浮窗 / 弹窗 / modal</td>
+                <td>设置抽屉</td>
+                <td>设置是右侧抽屉页，不遮罩、不居中</td>
+              </tr>
+              <tr>
+                <td>滑杆</td>
+                <td>倍率条（RateStrip）</td>
+                <td>主仪是 6px 轨短条；Slider 是内部旧件</td>
+              </tr>
+              <tr>
+                <td>checkbox</td>
+                <td>开关（Switch）</td>
+                <td>自绘 36×20 胶囊开关</td>
+              </tr>
+              <tr>
+                <td>输入框（指整个字段）</td>
+                <td>字段（Field）</td>
+                <td>字段含 label + 输入框 + 焦点环</td>
+              </tr>
+              <tr>
+                <td>chip（指农历/节日）</td>
+                <td>农历 meta 行 / 近期节日 meta 行</td>
+                <td>农历已从三个盒子改成一条 12px 文本行</td>
+              </tr>
+              <tr>
+                <td>Hero（指主仪大数）</td>
+                <td>加速值 / 盘下读数</td>
+                <td>倒计时页的 Hero 卡才是“Hero 卡”</td>
+              </tr>
+              <tr>
+                <td>图表 / plot</td>
+                <td>逐小时温度曲线</td>
+                <td>UI 文案是“逐小时”；plot 是实现库名</td>
+              </tr>
+              <tr>
+                <td>通知（指右上角）</td>
+                <td>应用内 toast</td>
+                <td>系统通知是 Windows 通知中心那一层</td>
+              </tr>
+              <tr>
+                <td>按钮（指快捷 chip）</td>
+                <td>快捷 chip</td>
+                <td>快捷添加是 30px chip，不是 88×32 主按钮</td>
+              </tr>
+              <tr>
+                <td>数字版（指抽屉全宽）</td>
+                <td>时钟数字版 / 全宽抽屉</td>
+                <td>两个 compact 判断不同：高 &lt;380 vs 宽 &lt;760</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ================= 10 对账 ================= -->
+      <section class="section" id="usage">
+        <div class="section-head">
+          <span class="section-no">10</span>
+          <div>
+            <h2>怎么把这些名字用在对话里</h2>
+            <p>
+              一条对账描述只需要三段：位置、元素、状态，再加现象。位置从大到小，用
+              <code>&gt;</code> 分隔。
+            </p>
+          </div>
+        </div>
+        <pre
+          style="
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px 16px;
+            overflow: auto;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--body);
+            line-height: 1.7;
+            margin: 0;
+          "
+        >
+页面/区域 &gt; 子区域 &gt; 元素 [状态]：现象
+
+时钟页 &gt; 星盘 &gt; 现实针 [常态]：长度只有金针的 62%，看起来像短线
+倒计时页 &gt; 抽屉页脚 &gt; 错误行 [错误]：红字出现时不应把添加按钮挤跳
+天气页 &gt; 七日 &gt; 低/高值 [常态]：值在 card_bg 上，不压金条
+闹钟页 &gt; 闹钟行 &gt; 开关 [开]：绿色 + 旋钮在右；位置是主信号
+设置页 &gt; 动效 &gt; 减少动效 [开]：hover/列表脉冲/toast 直取终态</pre>
+
+        <div class="rule-list">
+          <div class="rule">
+            <b>先认区域，再认元素。</b
+            >说“主仪”就不要再补“时钟页左边”；说“抽屉页脚”就不要说“底栏”。
+          </div>
+          <div class="rule">
+            <b>同一页的两个文案要说明。</b
+            >“世界时钟页（坞项‘世界’）”比单说“世界页”清楚。
+          </div>
+          <div class="rule">
+            <b>状态用方括号。</b
+            ><code>[悬停]</code
+            >、<code>[聚焦]</code>、<code>[武装]</code>，不要用“点亮/高亮/激活”这类模糊词。
+          </div>
+          <div class="rule">
+            <b>视觉缺陷说“现象”，不说“感觉”。</b
+            >“七日低温值被右缘裁掉”比“天气有点挤”可复现。
+          </div>
+          <div class="rule">
+            <b>旧称保留在对照表。</b>旧截图/旧报告里出现“侧栏/底栏/浮窗”时，用
+            §09 的表翻译，不要直接改历史记录。
+          </div>
+          <div class="rule">
+            <b>新元素先登记。</b>新增可见元素先在
+            <code>u.UI_GLOSSARY.md</code>
+            写主称、代码锚点、尺寸/状态，再写代码。
+          </div>
+        </div>
+
+        <div class="note" style="margin-top: 20px">
+          <b>维护规则：</b>改名时同步代码 <code>///</code> 注释、<code
+            >w.study.md</code
+          >
+          3.7 节、README 使用说明、<code>u.UI_GLOSSARY.md</code>
+          与这份指南；不要只改一处。
+          术语表不替代设计评审，它只保证我们指同一个东西。
+        </div>
+      </section>
+    </main>
+
+    <footer class="wrap footer">
+      <span>AccelWorld UI 标注指南 · 基线 V0.6.4.1 / HEAD 5b0b2da</span>
+      <span
+        >配套：<code>u.UI_GLOSSARY.md</code> · 窗口图按 820px
+        宽绘制，仅示意结构，不替代真机截图</span
+      >
+    </footer>
+
+    <script>
+      const stageHTML = `
+    <div class="stars"></div>
+    <div class="stage-head">
+      <span class="tag">B1</span>
+      <span class="dot"></span><span class="brand">加速世界</span><span class="sub">子夜星图</span>
+      <span class="stage-date">2026-10-29 周四</span>
+    </div>
+    <div class="dial-wrap">
+      <span class="tag">B3</span>
+      <div class="dial-svg" data-dial></div>
+    </div>
+    <div class="readout">
+      <span class="tag" style="left:0;top:-8px">B11</span>
+      <div class="col"><div class="rlabel gold">加速</div><div class="rhero">35:30:48</div><div class="rday">第 2 天</div></div>
+      <div class="divider"></div>
+      <div class="col"><div class="rlabel">现实</div><div class="rreal">04:55:52</div></div>
+    </div>
+    <div class="rate">
+      <span class="tag" style="left:0;top:-8px">B18</span>
+      <div class="rate-head"><span>倍率</span><span class="gold">×7.2</span></div>
+      <div class="track"><div class="fill"></div><div class="knob"></div></div>
+    </div>
+    <div class="lunar"><span class="tag" style="left:0;top:-1px">B25</span>农历 丙午年九月十九 · 月相 寝待月 · 财神 东北</div>
+  `;
+
+      document.querySelectorAll("[data-stage]").forEach((el) => {
+        el.innerHTML = stageHTML;
+      });
+
+      const CX = 100,
+        CY = 100;
+      const polar = (r, deg) => {
+        const a = (deg * Math.PI) / 180;
+        return [CX + r * Math.sin(a), CY - r * Math.cos(a)];
+      };
+
+      function buildDial(host) {
+        const ns = "http://www.w3.org/2000/svg";
+        const svg = document.createElementNS(ns, "svg");
+        svg.setAttribute("viewBox", "0 0 200 200");
+        svg.setAttribute("aria-label", "星盘");
+        svg.innerHTML = `
+      <circle cx="100" cy="100" r="86" fill="none" stroke="#33406A" stroke-width="1"/>
+      <g class="ticks"></g>
+      <g fill="#8A8774" font-size="7.5" text-anchor="middle" font-family="system-ui,sans-serif">
+        <text x="100" y="7">00</text><text x="196" y="103">06</text><text x="100" y="199">12</text><text x="4" y="103">18</text>
+      </g>
+      <path class="arc" fill="none" stroke="#E8B544" stroke-width="2" opacity=".55"/>
+      <line class="gold-hand" x1="100" y1="100" x2="100" y2="30" stroke="#E8B544" stroke-width="2.6" stroke-linecap="round"/>
+      <line class="gray-hand" x1="100" y1="100" x2="100" y2="57" stroke="#9A978A" stroke-width="1.6" stroke-linecap="round"/>
+      <circle cx="100" cy="100" r="3.4" fill="#ECE8DB"/>
+    `;
+        const ticks = svg.querySelector(".ticks");
+        for (let i = 0; i < 96; i++) {
+          const a = (i / 96) * 360,
+            major = i % 4 === 0;
+          const [x1, y1] = polar(86, a),
+            [x2, y2] = polar(major ? 74 : 79, a);
+          const l = document.createElementNS(ns, "line");
+          l.setAttribute("x1", x1);
+          l.setAttribute("y1", y1);
+          l.setAttribute("x2", x2);
+          l.setAttribute("y2", y2);
+          l.setAttribute("stroke", major ? "#9A978A" : "#55648A");
+          l.setAttribute("stroke-width", major ? "1.7" : "1");
+          ticks.appendChild(l);
+        }
+        const accel = (((35 % 24) + 30 / 60 + 48 / 3600) / 24) * 360;
+        const real = ((4 + 55 / 60 + 52 / 3600) / 24) * 360;
+        const setHand = (sel, deg, r) => {
+          const [x, y] = polar(r, deg);
+          const el = svg.querySelector(sel);
+          el.setAttribute("x2", x);
+          el.setAttribute("y2", y);
+        };
+        setHand(".gold-hand", accel, 74);
+        setHand(".gray-hand", real, 44);
+        let d = (accel - real + 360) % 360,
+          start = real;
+        if (d > 180) {
+          d = 360 - d;
+          start = accel;
+        }
+        const [ax, ay] = polar(90, start),
+          [bx, by] = polar(90, start + d);
+        svg
+          .querySelector(".arc")
+          .setAttribute("d", `M ${ax} ${ay} A 90 90 0 0 1 ${bx} ${by}`);
+        host.appendChild(svg);
+      }
+
+      document.querySelectorAll("[data-dial]").forEach(buildDial);
+    </script>
+  </body>
+</html>

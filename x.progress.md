@@ -1,7 +1,8 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告 + Rust 重构总纲）
-> 当前版本：0.6.4.0（PL019 收口：Tabler 图标子集、自适应分栏、读数成组、自绘 Select、反馈动效）
+> 当前版本：0.6.4.1（PL019 收口：Tabler 图标子集、自适应分栏、读数成组、自绘 Select、反馈动效；0.6.4.1 为 UI 文档正式化与审核报告清理补丁）
+> 历史 UI 审核报告已于 2026-10-29 移除，原文见 git 历史；下文相关引用按历史记录理解。
 > 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；PL016 已收口提交（0e2252f）；PL017 已实施（0.6.3.1；G4/G8 按用户定案不做，勾选完成）；**PL018 已实施（0.6.3.2：N9 裁决 + #9 退出自愈 + #10 落点校准 + #11 首帧门控）**；**PL019 已立项（目标 V0.6.4.0：图标系统 + 读数成组 + 反馈动效，待开工）**
 > 更新（2026-10-17）：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow——UIR 定案 wgpu 废弃）；Python 版全量归档 `.archived/`（git 忽略），本文件自 PL011 起记录 RS 任务
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
@@ -634,7 +635,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] UIR4.6.1 表盘语法重写 —— 双环（形异义同）废；单环双针：金长针=加速此刻（配重尾）、灰细针=现实此刻、轴毂；刻度环退纯量尺（整点刻长刻亮）；含义唯一原则（刻度=尺/指针=数据，废除同义重复的已过段填金）；验证：编译 + 帧渲染 + 既有几何单测绿
 - [x] UIR4.6.2 收尾 —— 四关卡 ALL_GREEN + 测试 198 + 截图六帧 + bump 0.6.1.8 + 文档连带（README/w.study/AGENTS 双环→单环双针 + m.milestone 0.6.1.8 条目）+ 重新拉起真窗走查；验证：pwsh rs/ci.ps1 ALL_GREEN
 
-### PL016: UI 审核精修——全部 15 条落实 [plan#PL016]（2026-10-27，依据根目录 UI审核意见.md §五（首轮@7083456）；版本 0.6.2.0，初拟 0.7.0.0 提交前定案改号）
+### PL016: UI 审核精修——全部 15 条落实 [plan#PL016]（2026-10-27，依据历史 UI 审核报告 §五（首轮@7083456）；版本 0.6.2.0，初拟 0.7.0.0 提交前定案改号）
 
 - [x] PL016.01【P0】金针角度修复（审核 #1） —— 采纳方案 a：金针改 day_progress(expanded_hours, remaining) 加速日进度归一（金针一圈=一个加速日，与灰针同构可比，两针速差=倍率）；day_fraction 限定 24h 制钟面源（现实标准时）；补测 gold_hand_fraction_survives_over_24h_days（rate=2 日中 0.5 / 三位数小时 / 日末 1.0 / 异常钳 0）；验证：测试绿
 - [x] PL016.02 最小窗口复核（审核 #5） —— 取证在位：base.json window_min 520×420 + with_min_inner_size（window.rs:702）+ clamped_restore_geometry（FIX009）+ dial_diameter 钳 200 下限——审核项已由 FIX008/009 覆盖，关单附证据
@@ -693,7 +694,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] FIX012.11 [P3] 倒计时红字布局（A012 #11，随 01 一并） —— countdown.rs 红字移出 horizontal 行外独立行（全宽不裁切）；验证：探针帧布局正常 + 窄抽屉最小窗手测留用户（2026-10-28 完成）
 - [x] FIX012.12 收尾 —— 四关卡 ALL_GREEN + cargo test --workspace 结果行全量 213（app 75+bin 1+core 117+parity 20，较 0.6.2.1 增 4）+ 截图探针六帧 exit 0 哈希全异（01 帧视觉实证 .01）+ token 对账双绿 + 反向验收（.temp/verify_fix012_accept.md）+ bump 0.6.2.2（五处同步）+ 文档连带（z.plan A012 状态翻转/本组整行翻转/m.milestone 条目）+ commit 草案；验证：pwsh rs/ci.ps1 ALL_GREEN（2026-10-28 完成）
 
-### PL017: UI 结构重排——从「空场」到「仪表」 [plan#PL017]（2026-10-28 立项/实施，依据根目录 UI审核意见.md 合并稿 §四；目标 V0.6.3.0 → 补收口 0.6.3.1，已收口）
+### PL017: UI 结构重排——从「空场」到「仪表」 [plan#PL017]（2026-10-28 立项/实施，依据历史 UI 审核报告合并稿 §四；目标 V0.6.3.0 → 补收口 0.6.3.1，已收口）
 
 > 方案：`z.plan.md` 附录 PL017（壳层/主仪/抽屉/字体/颜色/图标/动效/响应式/验收门 G1–G8）。
 > 执行纪律：每个 P0 先写失败单测或探针（TDD），再实现；每任务单独过 G1；截图矩阵固定窗口，不读用户存档；AI 不执行 git 写操作；版本 bump 由用户在提交前定夺。
@@ -733,23 +734,23 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 
 - [x] PL018.01 [P1] 探针卫生与基线观测 —— 已完成（2026-10-28）：新增 `ACCELWORLD_TEST_NO_SAVE` / `ACCELWORLD_EXPECT_POS` / `ACCELWORLD_TEST_POS` / `ACCELWORLD_EARLY_SHOT_MS` 四个探针开关（正常模式零影响；`parse_expect_pos` 单测入册）。基线（`.temp/pl018_baseline.md`）：**#9 30/30 exit 0**（P95 2790ms，零残留，未复现）；**#10 125% 缩放界内 0 偏差**（700,400 的 −88/−84 是工作区夹取，非定位错误）；**#11 复现 1/20（5%）**，强杀后立即重启 150ms 早帧纯黑。裁决：.05 降级为登记+回归守卫，.04 仍加自愈兜底，.06 用同脚本做 0/20 对比。验证：G1（212 测试）+ 基线数据落盘。
 - [x] PL018.02 [P1] N9 PoC（隔离，不接页面） —— 已完成（2026-10-28）：workspace 临时接入 `egui_flex 0.9.0`（依赖 egui 0.37，MIT）；headless 两帧用例通过——400px 容器内值右缘贴边（±0.5px）、连续两帧零漂移；测试期仅 `cfg(test)` 编译，不进生产二进制。验证：`cargo test flex_row` 通过。
-- [x] PL018.03 [P1] N9 定点接入或否决 —— **裁决：不采用**（2026-10-28）。试接两处（设置 `row_static`、天气七日页头）后：520×420 抽屉像素一致，**900×500 抽屉差异 7102px**（值列右移，`w_full` 吃掉滚动条宽度）、净增 14 行（settings +9 / weather +5），四道门均未过；七日范围条为纯 painter 绘制，flex 只会加层。已移除依赖、还原两处并删除 PoC 用例，复采抽屉与基线 **0 差异**。裁决写入 `UI审核意见.md` N9。验证：G6（测试+截图+行数证据）。
+- [x] PL018.03 [P1] N9 定点接入或否决 —— **裁决：不采用**（2026-10-28）。试接两处（设置 `row_static`、天气七日页头）后：520×420 抽屉像素一致，**900×500 抽屉差异 7102px**（值列右移，`w_full` 吃掉滚动条宽度）、净增 14 行（settings +9 / weather +5），四道门均未过；七日范围条为纯 painter 绘制，flex 只会加层。已移除依赖、还原两处并删除 PoC 用例，复采抽屉与基线 **0 差异**。裁决写入 UI 审核报告 N9。验证：G6（测试+截图+行数证据）。
 - [x] PL018.04 [P1] #9 退出自愈 —— 已完成（2026-10-28）：新增 `close_step(elapsed, attempt)` 状态机（1s 重发 → 2s 显示后重发 → 3s 硬退出；早到不越级）+ `send_close` 测试钩子 `ACCELWORLD_TEST_CLOSE_LOSS=n`。实测：丢弃 1 次 Close → 1.03s 后重发生效；丢弃 3 次 → 3.1s 兜底退出；10× 正常退出全 0（avg 2776ms，较基线 +31ms）。验证：G3 + 单测 + 升级日志。
 - [x] PL018.05 [P2] #10 落点校准 —— **关闭为“登记 + 回归守卫”（2026-10-28）**：基线在 125% 缩放、界内 (80,80)/(400,200)/(612,316) 实测偏差全为 0；越界 (700,400)→(612,316) 是工作区夹取的**正确行为**，非定位错误。按计划不引入无依据的二次重发；保留 `EXPECT_POS`/`TEST_POS` 探针作回归工具。y.problems#10 于 .08 改写为“已由 PL017.01 夹取覆盖、未复现”。验证：G4（0 偏差）。
 - [x] PL018.06 [P2] #11 首帧门控 —— 已完成（2026-10-28）：窗口 `with_visible(false)` 创建；完成 1 帧（`frames_seen>=1`）或 250ms 看门狗线程（持 `egui::Context` 克隆，防隐藏态不派发首帧）后显示。验证：20× 强杀重启全部 `frames=1` 时显示（无看门狗抢跑）、400ms 早帧 0/20 黑（亮度 25.4–25.9）；六页截图矩阵正常（均值 24.9–29.6，无黑帧）。结论按口径写“已加门控，黑窗未再出现（原 5% 复现率）”，不宣称永久根治。
-- [x] PL018.07 [P3] N8 归档为未来项目 —— 已完成（2026-10-28）：`UI审核意见.md` N8 改“未来项目（不排期）”，删除“GA 前补”承诺；`m.milestone.md` 后续版本登记“无障碍与高 DPI（N8）”，并把 #9–#11 从待排查区移入已处置。验证：G7 文档 diff。
+- [x] PL018.07 [P3] N8 归档为未来项目 —— 已完成（2026-10-28）：UI 审核报告 N8 改“未来项目（不排期）”，删除“GA 前补”承诺；`m.milestone.md` 后续版本登记“无障碍与高 DPI（N8）”，并把 #9–#11 从待排查区移入已处置。验证：G7 文档 diff。
 - [x] PL018.08 [P1] 文档/版本/收尾 —— 已完成（2026-10-28）：`y.problems` #9/#10/#11 状态与证据；`AGENTS` 探针 env 清单 + 首帧门控操作注意 + 版本 0.6.3.2；README 徽章；`m.milestone` V0.6.3.2 条目；`base.json` → 0.6.3.2；反向验收 `.temp/verify_pl018_accept.md`；四档 24 张截图无黑帧。验证：G1 ALL_GREEN + 测试 213（app 75 + bin 1 + core 117 + parity 20）。
 
 > PL018 完成记录（2026-10-28，V0.6.3.2）：8/8 收口。基线：`.temp/pl018_baseline.md`；反向验收：`.temp/verify_pl018_accept.md`；截图：`.temp/pl018_shots/final/{520x420,760x520,900x500,1200x720}`。结果：#9 退出自愈（30× 基线 30/30；模拟丢 1/3 次分别 1.03s/3.1s 收口）；#10 125% 界内 0 偏差（未复现，探针留作守卫）；#11 门控（原 5% 黑帧 → 0/20，全部 `frames=1` 显示）；N9 **不采用**（900 抽屉 7102px 位移、净增 14 行，依赖已移除）。偏差：`ACCELWORLD_TEST_CLOSE_LOSS` 为验证自愈新增的测试钩子；.06 采用 1 帧而非计划中的 2 帧（1 帧已证明 present，且启动时延更小）。
 
 ### PL019: UI 表现力迭代——图标系统、读数成组与反馈动效 [audit#§六]（2026-10-28 立项，目标 V0.6.4.0，待开工）
 
-> 方案：`z.plan.md` 附录 PL019；审核依据：`UI审核意见.md` §六（2026-10-28 表现力复审）。
+> 方案：`z.plan.md` 附录 PL019；审核依据：UI 审核报告 §六（2026-10-28 表现力复审）。
 > 用户定案：Tabler 字体子集 / A 克制仪表 / 限定范围（主仪读数 + 抽屉一致性 + 图标 + 反馈动效，不重排五页结构）/ V0.6.4.0；先落文档、**暂不开工**。
 > 执行纪律：应用界面只做反馈动效，不做入场编排；不引玻璃/渐变/粒子；动效只动 transform/opacity 且空闲不新增重绘；AI 不执行 git。
 > 本组状态：已收口（14/14；2026-10-29，V0.6.4.0）。
 
-- [x] PL019.01 [P3] 文档落位 —— 已完成（2026-10-28）：`UI审核意见.md` §六（七问复核 / 12 项缺陷 / 美学 / 动效 / 图标 / 资源结论）、`z.plan.md` 附录 PL019、本节任务表。零代码。验证：文档 diff。
+- [x] PL019.01 [P3] 文档落位 —— 已完成（2026-10-28）：UI 审核报告 §六（七问复核 / 12 项缺陷 / 美学 / 动效 / 图标 / 资源结论）、`z.plan.md` 附录 PL019、本节任务表。零代码。验证：文档 diff。
 - [x] PL019.02 [P1] 图标资产（Tabler 子集与许可）
   - **做法**：①`npm pack @tabler/icons-webfont@3.50.0` 解包到 `.temp/pl019_icons/`，取 `dist/fonts/tabler-icons.ttf` 与 `dist/tabler-icons.css`；②从 CSS 抽取 30–40 个 `.ti-<name>:before{content:"\fXXXX"}` 到码点清单（导航：clock/hourglass/world/cloud/bell/settings；操作：plus/minus/trash/x/check/pin/refresh/chevron-down/calendar/search；天气：sun/moon/cloud-rain/cloud-snow/cloud-fog/cloud-storm/wind/droplet/thermometer；声音：volume/volume-off）；③`pyftsubset tabler-icons.ttf --unicodes=... --no-hinting --output-file=rs/assets/fonts/TablerIcons-sub.ttf`；④`rs/assets/fonts/README.md` 记来源、版本、MIT、子集命令与字形数。
   - **验收**：TTF 体积 20–30KB；`fontTools.ttLib.TTFont` 列出的字形数等于清单数；`cargo build` 可 `include_bytes!`；许可段落存在。
