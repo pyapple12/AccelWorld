@@ -8,9 +8,13 @@ pub mod empty;
 pub mod field;
 pub mod icon_button;
 pub mod icons;
+pub mod motion;
 pub mod page_header;
+pub mod primary_button;
 pub mod rate_strip;
+pub mod select;
 pub mod slider;
+pub mod spinner;
 pub mod switch;
 pub mod toast;
 

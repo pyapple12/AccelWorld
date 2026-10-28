@@ -59,20 +59,20 @@ impl crate::pages::Page for crate::pages::WorldPage {
                     .font(crate::theme::font_medium(crate::theme::font_size("meta")))
                     .color(ink.muted),
             );
-            let candidates: Vec<&'static str> = accel_core::data::world_cities::all_names()
+            let candidates: Vec<String> = accel_core::data::world_cities::all_names()
                 .into_iter()
                 .filter(|n| !pins.iter().any(|p| p == n))
+                .map(str::to_string)
                 .collect();
-            egui::ComboBox::from_id_salt("world_add_combo")
-                .selected_text("选择城市…")
-                .width(combo_w)
-                .show_ui(ui, |ui| {
-                    for c in candidates {
-                        if ui.selectable_label(false, c).clicked() {
-                            bus.send(FrontendCommand::AddWorldCity(c.to_string()));
-                        }
-                    }
-                });
+            if let Some(picked) = crate::widgets::select::show(
+                ui,
+                egui::Id::unique("world_add_select"),
+                "选择城市…",
+                &candidates,
+                combo_w,
+            ) {
+                bus.send(FrontendCommand::AddWorldCity(picked));
+            }
         });
     }
 }
@@ -97,20 +97,34 @@ fn draw_city_row(
         .and_then(|tz| now_in_tz(utc_now, tz))
         .unwrap_or_else(|| ("--:--:--".to_string(), true));
 
+    let hover_t = crate::widgets::motion::hover_t(
+        ui.ctx(),
+        egui::Id::unique(("world_row", name)),
+        hit.hovered() || hit.has_focus(),
+        crate::theme::motion_ms("card_hover_ms"),
+    );
     ui.painter().rect_filled(
         rect,
         egui::epaint::CornerRadius::same(crate::theme::radius_px("md") as u8),
-        crate::theme::card_bg(),
+        crate::widgets::motion::lerp_color(
+            crate::theme::card_bg(),
+            crate::theme::hover_bg(),
+            hover_t,
+        ),
     );
     ui.painter().rect_stroke(
         rect,
         egui::epaint::CornerRadius::same(crate::theme::radius_px("md") as u8),
         egui::Stroke::new(
-            if is_base { 1.4 } else { 1.0 },
+            1.0,
             if is_base {
-                crate::theme::accent_color()
+                crate::theme::border_strong_color()
             } else {
-                crate::theme::border_color()
+                crate::widgets::motion::lerp_color(
+                    crate::theme::border_color(),
+                    crate::theme::border_strong_color(),
+                    hover_t,
+                )
             },
         ),
         egui::StrokeKind::Inside,
@@ -124,14 +138,39 @@ fn draw_city_row(
         ink.strong,
     );
     if is_base {
-        ui.painter().text(
-            egui::pos2(rect.left() + 14.0, rect.bottom() - 9.0),
-            egui::Align2::LEFT_BOTTOM,
-            "基准",
-            crate::theme::font_medium(11.0),
+        // 基准：左侧 2px 金线 + 中性 chip（Pin + 文字），金色只做状态标记
+        ui.painter().rect_filled(
+            egui::Rect::from_min_size(
+                egui::pos2(rect.left() + 1.0, rect.center().y - 14.0),
+                egui::vec2(2.0, 28.0),
+            ),
+            egui::epaint::CornerRadius::same(1),
             crate::theme::accent_color(),
         );
-    } else if rect.width() > 300.0 {
+        let chip = egui::Rect::from_min_size(
+            egui::pos2(rect.left() + 14.0, rect.bottom() - 24.0),
+            egui::vec2(52.0, 18.0),
+        );
+        ui.painter().rect_filled(
+            chip,
+            egui::epaint::CornerRadius::same(6),
+            crate::theme::hover_bg(),
+        );
+        icons::draw(
+            ui.painter(),
+            egui::pos2(chip.left() + 9.0, chip.center().y),
+            11.0,
+            icons::Icon::Pin,
+            crate::theme::accent_color(),
+        );
+        ui.painter().text(
+            egui::pos2(chip.left() + 18.0, chip.center().y),
+            egui::Align2::LEFT_CENTER,
+            "基准",
+            crate::theme::font_regular(11.0),
+            ink.muted,
+        );
+    } else if hit.hovered() || hit.has_focus() {
         ui.painter().text(
             egui::pos2(rect.left() + 14.0, rect.bottom() - 9.0),
             egui::Align2::LEFT_BOTTOM,

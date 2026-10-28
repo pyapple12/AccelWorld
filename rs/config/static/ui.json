@@ -9,7 +9,12 @@
     "toast_ttl_ms": 4000,
     "toast_in_ms": 300,
     "toast_out_ms": 150,
-    "armed_timeout_ms": 4000
+    "armed_timeout_ms": 4000,
+    "dock_underline_ms": 220,
+    "card_hover_ms": 140,
+    "card_press_ms": 90,
+    "switch_ms": 160,
+    "slider_hover_ms": 120
   },
   "font_family": "MiSans",
   "font_family_digits": "Bahnschrift",
@@ -17,9 +22,9 @@
     "hero": 72,
     "display": 40,
     "title": 24,
-    "section": 18,
-    "time_md": 22,
-    "time_sm": 18,
+    "section": 16,
+    "time_md": 24,
+    "time_sm": 16,
     "body_lg": 16,
     "body": 14,
     "meta": 12

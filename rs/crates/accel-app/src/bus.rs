@@ -66,6 +66,8 @@ pub struct UiState {
     /// 倒计时加号草稿（页面临时输入态）
     pub countdown_draft_name: String,
     pub countdown_draft_at: String,
+    /// PL019：空态 CTA 请求把焦点放到名称输入框（footer 消费后复位）
+    pub focus_countdown_name: bool,
     /// 世界时钟常驻城市（ConfigSaved 后由 drain 重拉）
     pub world_pins: Vec<String>,
     /// 选中基准时区（IANA）
@@ -122,6 +124,7 @@ impl Default for UiState {
             countdown_targets: Vec::new(),
             countdown_draft_name: String::new(),
             countdown_draft_at: String::new(),
+            focus_countdown_name: false,
             world_pins: Vec::new(),
             base_timezone: None,
             alarm_draft_label: String::new(),

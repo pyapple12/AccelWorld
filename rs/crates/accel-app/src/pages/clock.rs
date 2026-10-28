@@ -99,7 +99,7 @@ impl crate::pages::Page for crate::pages::ClockPage {
                     .color(ink.body),
             );
             ui.add_space(8.0);
-            draw_readout(ui, &info, state.rate, true);
+            draw_readout(ui, &info, true);
             ui.add_space(8.0);
             draw_rate(ui, state, bus);
             ui.add_space(4.0);
@@ -107,55 +107,77 @@ impl crate::pages::Page for crate::pages::ClockPage {
             return;
         }
 
-        let reserved = 82.0 + 62.0 + 40.0 + 24.0;
-        let show_header = ui.available_height() >= 560.0;
-        let avail_h = ui.available_height() - if show_header { 52.0 } else { 0.0 };
-        if show_header {
-            draw_stage_header(ui, &info);
-        }
+        let show_meta = ui.available_height() >= 560.0;
+        let reserved = 88.0 + 62.0 + if show_meta { 40.0 + 24.0 } else { 0.0 };
+        let header_h = if ui.available_height() >= 560.0 {
+            52.0
+        } else {
+            40.0
+        };
+        let avail_h = ui.available_height() - header_h;
+        draw_stage_header(ui, &info, header_h < 52.0);
         let dial_d = dial_diameter(ui.available_width(), avail_h, reserved);
-        let total = dial_d + 8.0 + 82.0 + 8.0 + 62.0 + 8.0 + 40.0;
+        let dial_d =
+            crate::widgets::motion::anim(ui.ctx(), egui::Id::unique("clock_dial_d"), dial_d, 220.0);
+        let total = dial_d + 8.0 + 88.0 + 8.0 + 62.0 + if show_meta { 8.0 + 40.0 } else { 0.0 };
         let top_pad = ((avail_h - total) / 2.0).max(0.0);
         ui.add_space(top_pad);
         let center_x = ui.max_rect().center().x;
         let center_y = ui.cursor().top() + dial_d / 2.0;
         draw_dial(ui, egui::pos2(center_x, center_y), dial_d, accel, real);
         ui.allocate_space(egui::vec2(0.0, dial_d + 8.0));
-        draw_readout(ui, &info, state.rate, false);
+        draw_readout(ui, &info, false);
         ui.add_space(8.0);
         draw_rate(ui, state, bus);
-        ui.add_space(8.0);
-        draw_meta(ui, &info);
+        if show_meta {
+            ui.add_space(8.0);
+            draw_meta(ui, &info);
+        }
     }
 }
 
-/// 舞台页头（PL017 N5）：产品标/名 + 中文日期；只在可用高 ≥560 时占 52px，
-/// 短窗不抢星盘空间（compact 另有 wordmark）。
-fn draw_stage_header(ui: &mut egui::Ui, info: &accel_core::types::TimeInfo) {
+/// 舞台页头（PL019）：产品标/名 + 中文日期；≥560 高用 52px，短窗用 40px 紧凑版
+/// （只留 wordmark + 日期），任何高度都有产品身份。
+fn draw_stage_header(ui: &mut egui::Ui, info: &accel_core::types::TimeInfo, compact: bool) {
     let ink = crate::theme::ink();
+    let h = if compact { 40.0 } else { 52.0 };
     let (rect, _) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), 52.0), egui::Sense::hover());
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), h), egui::Sense::hover());
+    let dot_y = if compact {
+        rect.center().y
+    } else {
+        rect.center().y - 7.0
+    };
     ui.painter().circle_filled(
-        egui::pos2(rect.left() + 6.0, rect.center().y - 7.0),
+        egui::pos2(rect.left() + 6.0, dot_y),
         3.5,
         crate::theme::accent_color(),
     );
     ui.painter().text(
-        egui::pos2(rect.left() + 18.0, rect.center().y - 12.0),
+        egui::pos2(
+            rect.left() + 18.0,
+            if compact {
+                rect.center().y
+            } else {
+                rect.center().y - 12.0
+            },
+        ),
         egui::Align2::LEFT_CENTER,
         "加速世界",
-        crate::theme::font_semibold(14.0),
+        crate::theme::font_semibold(if compact { 13.0 } else { 14.0 }),
         ink.strong,
     );
+    if !compact {
+        ui.painter().text(
+            egui::pos2(rect.left() + 18.0, rect.center().y + 9.0),
+            egui::Align2::LEFT_CENTER,
+            "子夜星图",
+            crate::theme::font_regular(11.0),
+            ink.meta,
+        );
+    }
     ui.painter().text(
-        egui::pos2(rect.left() + 18.0, rect.center().y + 9.0),
-        egui::Align2::LEFT_CENTER,
-        "子夜星图",
-        crate::theme::font_regular(11.0),
-        ink.meta,
-    );
-    ui.painter().text(
-        egui::pos2(rect.right(), rect.center().y - 2.0),
+        egui::pos2(rect.right(), rect.center().y),
         egui::Align2::RIGHT_CENTER,
         &info.chinese_date,
         crate::theme::font_regular(crate::theme::font_size("meta")),
@@ -269,44 +291,51 @@ fn draw_dial(ui: &egui::Ui, center: egui::Pos2, dial_d: f32, accel: f32, real: f
     ui.painter().circle_filled(center, 4.0, ink.strong);
 }
 
-/// 盘下读数：左加速（hero）+ 日序号，右现实 + 倍率；1px 分隔
-fn draw_readout(ui: &mut egui::Ui, info: &accel_core::types::TimeInfo, rate: f64, compact: bool) {
+/// 读数布局（纯函数，测试用）：返回（面积宽 ≤640、左列宽、hero 高）。
+fn readout_metrics(avail_w: f32, compact: bool) -> (f32, f32, f32) {
+    let area_w = avail_w.min(640.0);
+    let left_w = (area_w * 0.62).min(400.0);
+    let hero_h = if compact { 44.0 } else { 56.0 };
+    (area_w, left_w, hero_h)
+}
+
+/// 盘下读数（PL019 成组）：限宽 640 居中；左列 `加速` 标签 + hero + 日序号，
+/// 右列 `现实` 标签 + 24px 时间；倍率归倍率条，不再重复在这里。
+fn draw_readout(ui: &mut egui::Ui, info: &accel_core::types::TimeInfo, compact: bool) {
     let ink = crate::theme::ink();
-    let (rect, _) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), if compact { 76.0 } else { 82.0 }),
-        egui::Sense::hover(),
-    );
-    let half = rect.width() / 2.0;
-    let left = egui::Rect::from_min_size(rect.left_top(), egui::vec2(half, rect.height()));
-    let right = egui::Rect::from_min_size(
-        egui::pos2(rect.left() + half, rect.top()),
-        egui::vec2(half, rect.height()),
-    );
-    ui.painter().line_segment(
-        [
-            egui::pos2(rect.left() + half, rect.top() + 12.0),
-            egui::pos2(rect.left() + half, rect.bottom() - 12.0),
-        ],
-        egui::Stroke::new(1.0, crate::theme::border_color()),
-    );
+    let h = if compact { 76.0 } else { 88.0 };
+    let (rect, _) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), h), egui::Sense::hover());
+    let (area_w, left_w, hero_h) = readout_metrics(rect.width(), compact);
+    let area = egui::Rect::from_center_size(rect.center(), egui::vec2(area_w, h));
+    let divider_x = area.left() + left_w;
 
     let label_font = crate::theme::font_medium(crate::theme::font_size("meta"));
     let accent = crate::theme::accent_color();
     ui.painter().text(
-        egui::pos2(left.left() + 12.0, left.top() + 4.0),
+        egui::pos2(area.left(), area.top()),
         egui::Align2::LEFT_TOP,
         "加速",
         label_font.clone(),
         accent,
     );
-    let base = if compact { 48.0 } else { 64.0 };
+    ui.painter().text(
+        egui::pos2(divider_x + 16.0, area.top()),
+        egui::Align2::LEFT_TOP,
+        "现实",
+        label_font,
+        ink.muted,
+    );
+
+    let base = if compact { 44.0 } else { 56.0 };
+    let hero_center_y = area.top() + 22.0 + hero_h / 2.0;
     let measure = digits::digit_font(base);
     let measured = digits::text_width(ui.painter(), &info.custom_time, &measure);
-    let scale = hero_fit_scale(measured, half - 28.0);
+    let scale = hero_fit_scale(measured, left_w - 48.0);
     let hero_font = digits::digit_font(base * scale);
     digits::draw_centered(
         ui.painter(),
-        egui::pos2(left.center().x, left.center().y + 4.0),
+        egui::pos2(area.left() + left_w / 2.0, hero_center_y),
         &info.custom_time,
         &hero_font,
         ink.strong,
@@ -314,34 +343,28 @@ fn draw_readout(ui: &mut egui::Ui, info: &accel_core::types::TimeInfo, rate: f64
     let day = custom_day(&info.custom_time);
     if day > 1 {
         ui.painter().text(
-            egui::pos2(left.right() - 12.0, left.bottom() - 6.0),
-            egui::Align2::RIGHT_BOTTOM,
+            egui::pos2(area.left() + 8.0, area.bottom() - 2.0),
+            egui::Align2::LEFT_BOTTOM,
             format!("第 {day} 天"),
             crate::theme::font_regular(crate::theme::font_size("meta")),
             ink.meta,
         );
     }
-    ui.painter().text(
-        egui::pos2(right.left() + 12.0, right.top() + 4.0),
-        egui::Align2::LEFT_TOP,
-        "现实",
-        label_font,
-        ink.muted,
-    );
     let real_font = digits::digit_font(if compact { 20.0 } else { 24.0 });
+    let real_center_x = divider_x + (area.right() - divider_x) / 2.0;
     digits::draw_centered(
         ui.painter(),
-        egui::pos2(right.center().x, right.center().y + 2.0),
+        egui::pos2(real_center_x, hero_center_y),
         time_part(&info.standard_datetime),
         &real_font,
         ink.body,
     );
-    ui.painter().text(
-        egui::pos2(right.right() - 12.0, right.bottom() - 6.0),
-        egui::Align2::RIGHT_BOTTOM,
-        format!("×{rate:.1} 倍率"),
-        crate::theme::font_medium(crate::theme::font_size("meta")),
-        accent,
+    ui.painter().line_segment(
+        [
+            egui::pos2(divider_x, area.top() + 22.0),
+            egui::pos2(divider_x, area.bottom() - 10.0),
+        ],
+        egui::Stroke::new(1.0, crate::theme::border_color()),
     );
 }
 
@@ -446,5 +469,24 @@ mod tests {
         assert_eq!(hero_fit_scale(300.0, 340.0), 1.0);
         assert!((hero_fit_scale(400.0, 340.0) - 0.85).abs() < 1e-6);
         assert_eq!(hero_fit_scale(500.0, 100.0), 0.5);
+    }
+
+    #[test]
+    fn readout_is_grouped_at_all_widths() {
+        // PL019：读数面积 ≤640；左列占比 0.62 且 ≤400；标签行 + hero 不越出读数高度
+        for w in [520.0, 760.0, 900.0, 1200.0] {
+            for compact in [false, true] {
+                let (area_w, left_w, hero_h) = readout_metrics(w, compact);
+                let h = if compact { 76.0 } else { 88.0 };
+                assert!(area_w <= 640.0 + 0.1, "面积宽 {area_w} 超 640");
+                assert!(left_w >= area_w * 0.5, "左列 {left_w} 过窄");
+                assert!(left_w <= 400.0 + 0.1, "左列 {left_w} 超 400");
+                assert!(
+                    22.0 + hero_h <= h,
+                    "标签 + hero {} 超出读数高 {h}",
+                    22.0 + hero_h
+                );
+            }
+        }
     }
 }

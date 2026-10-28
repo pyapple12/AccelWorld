@@ -3,7 +3,7 @@
 //! 添加表单常驻页脚，目标再多也够得着。纯逻辑（校验/最近目标/派生）保持可测。
 
 use crate::tools::countdown::format_remaining;
-use crate::widgets::{digits, field, icon_button, icons};
+use crate::widgets::{digits, field, icons};
 use accel_core::types::FrontendCommand;
 use chrono::{Duration, NaiveDate, NaiveDateTime, TimeZone};
 
@@ -134,7 +134,7 @@ impl crate::pages::Page for crate::pages::CountdownPage {
         let hero_name = hero.as_ref().map(|(n, _)| n.clone());
 
         // 页脚固定；滚动只发生在内容区
-        let footer_h = crate::theme::page_footer_height();
+        let footer_h = footer_height(ui.available_width());
         let body_h = (ui.available_height() - footer_h - 8.0).max(0.0);
         ui.allocate_ui(egui::vec2(ui.available_width(), body_h), |ui| {
             egui::ScrollArea::vertical()
@@ -157,29 +157,38 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                     if !chips.is_empty() {
                         ui.add_space(crate::theme::spacing("md"));
                         ui.horizontal_wrapped(|ui| {
-                            ui.label(
-                                egui::RichText::new("近期节日")
-                                    .font(crate::theme::font_regular(crate::theme::font_size(
-                                        "meta",
-                                    )))
-                                    .color(ink.muted),
-                            );
-                            for (i, (_, fest)) in chips.iter().take(6).enumerate() {
-                                if i > 0 {
-                                    ui.label(
-                                        egui::RichText::new("·")
-                                            .font(crate::theme::font_regular(
-                                                crate::theme::font_size("meta"),
-                                            ))
-                                            .color(ink.meta),
-                                    );
-                                }
-                                ui.label(
-                                    egui::RichText::new(fest)
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new("近期节日")
                                         .font(crate::theme::font_regular(crate::theme::font_size(
                                             "meta",
                                         )))
-                                        .color(ink.body),
+                                        .color(ink.muted),
+                                )
+                                .wrap_mode(egui::TextWrapMode::Extend),
+                            );
+                            for (i, (_, fest)) in chips.iter().take(6).enumerate() {
+                                if i > 0 {
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new("·")
+                                                .font(crate::theme::font_regular(
+                                                    crate::theme::font_size("meta"),
+                                                ))
+                                                .color(ink.meta),
+                                        )
+                                        .wrap_mode(egui::TextWrapMode::Extend),
+                                    );
+                                }
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(fest)
+                                            .font(crate::theme::font_regular(
+                                                crate::theme::font_size("meta"),
+                                            ))
+                                            .color(ink.body),
+                                    )
+                                    .wrap_mode(egui::TextWrapMode::Extend),
                                 );
                             }
                         });
@@ -205,11 +214,42 @@ impl crate::pages::Page for crate::pages::CountdownPage {
 
                     if targets.is_empty() {
                         ui.add_space(crate::theme::spacing("sm"));
-                        ui.label(
-                            egui::RichText::new("还没有自定义目标——用下方表单添加")
-                                .font(crate::theme::font_regular(crate::theme::font_size("meta")))
-                                .color(ink.meta),
-                        );
+                        let avail = ui.available_height();
+                        if avail >= 150.0 {
+                            // CTA 先画（不滚动也可见），空态卡填剩余空间
+                            let (cta, resp) = ui.allocate_exact_size(
+                                egui::vec2(ui.available_width(), 28.0),
+                                egui::Sense::click(),
+                            );
+                            ui.painter().text(
+                                egui::pos2(cta.center().x, cta.center().y),
+                                egui::Align2::CENTER_CENTER,
+                                "添加第一个目标",
+                                crate::theme::font_medium(crate::theme::font_size("body")),
+                                crate::theme::accent_color(),
+                            );
+                            if resp
+                                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                .clicked()
+                            {
+                                state.focus_countdown_name = true;
+                            }
+                            let card_h = ui.available_height().clamp(96.0, 240.0);
+                            crate::widgets::empty::card(
+                                ui,
+                                "还没有自定义目标",
+                                "在下方填写名称与时刻，或点上方节日快速开始",
+                                card_h,
+                            );
+                        } else {
+                            ui.label(
+                                egui::RichText::new("还没有目标——在下方填写名称与时刻")
+                                    .font(crate::theme::font_regular(crate::theme::font_size(
+                                        "meta",
+                                    )))
+                                    .color(ink.meta),
+                            );
+                        }
                     }
                 });
         });
@@ -291,17 +331,34 @@ fn draw_target_row(
     now: NaiveDateTime,
     ink: &crate::theme::Ink,
 ) {
-    let (rect, _) =
+    let (rect, resp) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), 68.0), egui::Sense::hover());
+    let hover_t = crate::widgets::motion::hover_t(
+        ui.ctx(),
+        egui::Id::unique(("countdown_row", name)),
+        resp.hovered(),
+        crate::theme::motion_ms("card_hover_ms"),
+    );
     ui.painter().rect_filled(
         rect,
         egui::epaint::CornerRadius::same(crate::theme::radius_px("md") as u8),
-        crate::theme::card_bg(),
+        crate::widgets::motion::lerp_color(
+            crate::theme::card_bg(),
+            crate::theme::hover_bg(),
+            hover_t,
+        ),
     );
     ui.painter().rect_stroke(
         rect,
         egui::epaint::CornerRadius::same(crate::theme::radius_px("md") as u8),
-        egui::Stroke::new(1.0, crate::theme::border_color()),
+        egui::Stroke::new(
+            1.0,
+            crate::widgets::motion::lerp_color(
+                crate::theme::border_color(),
+                crate::theme::border_strong_color(),
+                hover_t,
+            ),
+        ),
         egui::StrokeKind::Inside,
     );
     ui.painter().text(
@@ -380,7 +437,16 @@ fn draw_target_row(
     }
 }
 
-/// 页脚：名称 + 时刻 + 添加；错误行恒占位（不跳版）
+/// 页脚高度：窄抽屉（内容 <340）用两行表单，否则单行
+fn footer_height(avail: f32) -> f32 {
+    if avail < 340.0 {
+        118.0
+    } else {
+        crate::theme::page_footer_height()
+    }
+}
+
+/// 页脚：名称 + 时刻 + 添加；窄宽两行（字段一行、主按钮一行）；错误行恒占位
 fn draw_footer(
     ui: &mut egui::Ui,
     state: &mut crate::bus::UiState,
@@ -390,8 +456,15 @@ fn draw_footer(
 ) {
     let ink = crate::theme::ink();
     let avail = ui.available_width();
-    let name_w = (avail * 0.36).clamp(100.0, 150.0);
-    let at_w = (avail * 0.40).clamp(120.0, 190.0);
+    let button_w = 88.0;
+    let narrow = avail < 340.0;
+    let (name_w, at_w) = if narrow {
+        let w = ((avail - 8.0) / 2.0).max(80.0);
+        (w, w)
+    } else {
+        let at = (avail * 0.38).clamp(120.0, 180.0);
+        ((avail - at - button_w - 16.0).clamp(96.0, 220.0), at)
+    };
     let draft_at_empty = state.countdown_draft_at.is_empty();
     let draft_name_empty = state.countdown_draft_name.is_empty();
     let (err_msg, local_at) = {
@@ -415,35 +488,70 @@ fn draw_footer(
             ),
         }
     };
-    ui.horizontal(|ui| {
-        field::show(
-            ui,
-            "目标名称",
-            "例如 项目发布",
-            &mut state.countdown_draft_name,
-            name_w,
-        );
-        ui.add_space(8.0);
-        field::show(
-            ui,
-            "目标时刻",
-            "YYYY-MM-DD HH:MM",
-            &mut state.countdown_draft_at,
-            at_w,
-        );
-        ui.add_space(8.0);
-        let add = icon_button::show(ui, icons::Icon::Plus, 18.0, false);
-        if add.on_hover_text("添加目标").clicked()
-            && let Some(local) = local_at
-        {
-            bus.send(FrontendCommand::AddCountdownTarget {
-                name: state.countdown_draft_name.clone(),
-                at: local,
+    let mut do_add = false;
+    let mut name_resp: Option<egui::Response> = None;
+    if narrow {
+        ui.horizontal(|ui| {
+            name_resp = Some(field::show(
+                ui,
+                "目标名称",
+                "例如 项目发布",
+                &mut state.countdown_draft_name,
+                name_w,
+            ));
+            ui.add_space(8.0);
+            field::show(
+                ui,
+                "目标时刻",
+                "YYYY-MM-DD HH:MM",
+                &mut state.countdown_draft_at,
+                at_w,
+            );
+        });
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            ui.add_space((avail - button_w).max(0.0));
+            do_add = crate::widgets::primary_button::show(ui, "添加", button_w).clicked();
+        });
+    } else {
+        ui.horizontal(|ui| {
+            name_resp = Some(field::show(
+                ui,
+                "目标名称",
+                "例如 项目发布",
+                &mut state.countdown_draft_name,
+                name_w,
+            ));
+            ui.add_space(8.0);
+            field::show(
+                ui,
+                "目标时刻",
+                "YYYY-MM-DD HH:MM",
+                &mut state.countdown_draft_at,
+                at_w,
+            );
+            ui.add_space(8.0);
+            ui.vertical(|ui| {
+                // 与输入框底边对齐（字段 54：标签 16 + 4 + 输入 34）
+                ui.add_space(field::field_height() - 32.0);
+                do_add = crate::widgets::primary_button::show(ui, "添加", button_w).clicked();
             });
-            state.countdown_draft_name.clear();
-            state.countdown_draft_at.clear();
-        }
-    });
+        });
+    }
+    if let Some(resp) = name_resp
+        && state.focus_countdown_name
+    {
+        resp.request_focus();
+        state.focus_countdown_name = false;
+    }
+    if do_add && let Some(local) = local_at {
+        bus.send(FrontendCommand::AddCountdownTarget {
+            name: state.countdown_draft_name.clone(),
+            at: local,
+        });
+        state.countdown_draft_name.clear();
+        state.countdown_draft_at.clear();
+    }
     let (hint_rect, _) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), 16.0), egui::Sense::hover());
     if !err_msg.is_empty() {

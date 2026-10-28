@@ -2,7 +2,7 @@
 //! 行卡 64px（开关/24px 时刻/标签·重复/Trash），开关走语义绿。纯函数可测。
 
 use crate::tools::alarm_text::format_repeat_display;
-use crate::widgets::{digits, field, icon_button, icons, switch};
+use crate::widgets::{digits, field, icons, switch};
 use accel_core::alarm::{default_sound_type, default_sound_value, quick_target};
 use accel_core::types::FrontendCommand;
 use chrono::Local;
@@ -43,7 +43,7 @@ impl crate::pages::Page for crate::pages::AlarmPage {
         let ink = crate::theme::ink();
         state.armed_delete_tick();
 
-        let footer_h = crate::theme::page_footer_height();
+        let footer_h = footer_height(ui.available_width());
         let body_h = (ui.available_height() - footer_h - 8.0).max(0.0);
         ui.allocate_ui(egui::vec2(ui.available_width(), body_h), |ui| {
             egui::ScrollArea::vertical()
@@ -307,37 +307,76 @@ fn truncate_to_width(ui: &egui::Ui, text: &str, font: &egui::FontId, width: f32)
     "…".to_string()
 }
 
-/// 页脚：标签 + HH:MM + 添加；错误恒占位 16px
+/// 页脚高度：窄抽屉（内容 <340）用两行表单，否则单行
+fn footer_height(avail: f32) -> f32 {
+    if avail < 340.0 {
+        118.0
+    } else {
+        crate::theme::page_footer_height()
+    }
+}
+
+/// 页脚：标签 + HH:MM + 添加；窄宽两行；错误恒占位 16px
 fn draw_footer(ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
     let ink = crate::theme::ink();
     let avail = ui.available_width();
-    let label_w = (avail * 0.42).clamp(100.0, 160.0);
-    let time_w = (avail * 0.28).clamp(80.0, 120.0);
-    ui.horizontal(|ui| {
-        field::show(
-            ui,
-            "标签",
-            "例如 起床",
-            &mut state.alarm_draft_label,
-            label_w,
-        );
-        ui.add_space(8.0);
-        field::show(ui, "时间", "HH:MM", &mut state.alarm_draft_time, time_w);
-        ui.add_space(8.0);
-        let add = icon_button::show(ui, icons::Icon::Plus, 18.0, false);
-        if add.on_hover_text("添加闹钟").clicked() && valid_hhmm(&state.alarm_draft_time) {
-            bus.send(FrontendCommand::AddAlarm(accel_core::alarm::AlarmDraft {
-                label: state.alarm_draft_label.clone(),
-                time: state.alarm_draft_time.clone(),
-                sound_type: default_sound_type(),
-                sound_value: default_sound_value(),
-                repeat_days: Vec::new(),
-                enabled: true,
-            }));
-            state.alarm_draft_label.clear();
-            state.alarm_draft_time.clear();
-        }
-    });
+    let button_w = 88.0;
+    let narrow = avail < 340.0;
+    let (label_w, time_w) = if narrow {
+        let w = ((avail - 8.0) / 2.0).max(80.0);
+        (w, w)
+    } else {
+        let time = (avail * 0.26).clamp(80.0, 120.0);
+        ((avail - time - button_w - 16.0).clamp(100.0, 200.0), time)
+    };
+    let mut do_add = false;
+    if narrow {
+        ui.horizontal(|ui| {
+            field::show(
+                ui,
+                "标签",
+                "例如 起床",
+                &mut state.alarm_draft_label,
+                label_w,
+            );
+            ui.add_space(8.0);
+            field::show(ui, "时间", "HH:MM", &mut state.alarm_draft_time, time_w);
+        });
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            ui.add_space((avail - button_w).max(0.0));
+            do_add = crate::widgets::primary_button::show(ui, "添加", button_w).clicked();
+        });
+    } else {
+        ui.horizontal(|ui| {
+            field::show(
+                ui,
+                "标签",
+                "例如 起床",
+                &mut state.alarm_draft_label,
+                label_w,
+            );
+            ui.add_space(8.0);
+            field::show(ui, "时间", "HH:MM", &mut state.alarm_draft_time, time_w);
+            ui.add_space(8.0);
+            ui.vertical(|ui| {
+                ui.add_space(field::field_height() - 32.0);
+                do_add = crate::widgets::primary_button::show(ui, "添加", button_w).clicked();
+            });
+        });
+    }
+    if do_add && valid_hhmm(&state.alarm_draft_time) {
+        bus.send(FrontendCommand::AddAlarm(accel_core::alarm::AlarmDraft {
+            label: state.alarm_draft_label.clone(),
+            time: state.alarm_draft_time.clone(),
+            sound_type: default_sound_type(),
+            sound_value: default_sound_value(),
+            repeat_days: Vec::new(),
+            enabled: true,
+        }));
+        state.alarm_draft_label.clear();
+        state.alarm_draft_time.clear();
+    }
     let (hint_rect, _) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), 16.0), egui::Sense::hover());
     if !state.alarm_draft_time.is_empty() && !valid_hhmm(&state.alarm_draft_time) {

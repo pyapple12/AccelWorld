@@ -3,11 +3,16 @@
 
 use egui::{Align2, Sense, Stroke};
 
-/// 绘制 96px 空态框；返回整块 Response（调用方可叠加按钮）。
+/// 绘制空态框（默认 96px）；返回整块 Response（调用方可叠加按钮）。
 pub fn show(ui: &mut egui::Ui, title: &str, body: &str) -> egui::Response {
+    card(ui, title, body, 96.0)
+}
+
+/// 可变高空态框（PL019：倒计时列表区用 160–240 填满空白）；虚线仅用于空槽
+pub fn card(ui: &mut egui::Ui, title: &str, body: &str, height: f32) -> egui::Response {
     let ink = crate::theme::ink();
-    let (rect, resp) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), 96.0), Sense::hover());
+    let h = height.max(72.0);
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), h), Sense::hover());
     // 虚线框：四条边用 dashed_line（egui 自带 dash 采样）
     let stroke = Stroke::new(1.0, crate::theme::border_color());
     let corners = [

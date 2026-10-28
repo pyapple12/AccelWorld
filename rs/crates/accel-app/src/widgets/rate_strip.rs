@@ -96,11 +96,22 @@ pub fn show(
         egui::epaint::CornerRadius::same(3),
         crate::theme::accent_color(),
     );
+    let knob_t = crate::widgets::motion::anim(
+        ui.ctx(),
+        egui::Id::unique("rate_knob_hover"),
+        if resp.hovered() || resp.dragged() {
+            1.0
+        } else {
+            0.0
+        },
+        crate::theme::motion_ms("slider_hover_ms"),
+    );
+    let knob_r = 8.0 + knob_t;
     ui.painter()
-        .circle_filled(egui::pos2(knob_x, track.center().y), 8.0, ink.knob);
+        .circle_filled(egui::pos2(knob_x, track.center().y), knob_r, ink.knob);
     ui.painter().circle_stroke(
         egui::pos2(knob_x, track.center().y),
-        8.0,
+        knob_r,
         Stroke::new(1.0, ink.meta),
     );
     if resp.has_focus() {

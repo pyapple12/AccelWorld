@@ -18,12 +18,19 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, items: &[DockItem]) {
     let ink = crate::theme::ink();
     let avail = ui.max_rect();
     let compact = avail.width() < 760.0;
+    // 抽屉打开时，坞居中于「舞台」而不是整窗（避免压在抽屉上；900 下可点设置）
+    let drawer_open = state.current_page != PageId::Clock || state.settings_open;
+    let stage_w = if drawer_open && avail.width() >= 760.0 {
+        (avail.width() - crate::theme::drawer_width(avail.width())).max(280.0)
+    } else {
+        avail.width()
+    };
     let pill_w = (crate::theme::layout_f32("dock_pill_width"))
-        .min(avail.width() - 24.0)
+        .min(stage_w - 24.0)
         .max(280.0);
     let pill_h = crate::theme::layout_f32("dock_pill_height");
     let pill = Rect::from_center_size(
-        egui::pos2(avail.center().x, avail.center().y),
+        egui::pos2(avail.left() + stage_w / 2.0, avail.center().y),
         egui::vec2(pill_w, pill_h),
     );
     ui.painter().rect_filled(
@@ -135,6 +142,30 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, items: &[DockItem]) {
     if toggle_settings {
         state.settings_open = !state.settings_open;
     }
+    // 选中下划线：在项间滑动（220ms）；页面内容仍瞬时切换
+    let active_x = if state.settings_open {
+        gear_rect.center().x
+    } else {
+        let idx = items
+            .iter()
+            .position(|it| it.page == state.current_page)
+            .unwrap_or(0);
+        inner_left + (idx as f32 + 0.5) * item_w
+    };
+    let x = crate::widgets::motion::anim(
+        ui.ctx(),
+        egui::Id::unique("dock_underline_x"),
+        active_x,
+        crate::theme::motion_ms("dock_underline_ms"),
+    );
+    ui.painter().rect_filled(
+        Rect::from_min_size(
+            egui::pos2(x - 12.0, pill.bottom() - 4.0),
+            egui::vec2(24.0, 2.0),
+        ),
+        egui::epaint::CornerRadius::same(1),
+        crate::theme::accent_color(),
+    );
     ui.allocate_space(egui::vec2(avail.width(), avail.height()));
 }
 
@@ -178,16 +209,6 @@ fn draw_item(
             label,
             crate::theme::font_medium(11.0),
             color,
-        );
-    }
-    if active {
-        ui.painter().rect_filled(
-            Rect::from_min_size(
-                egui::pos2(rect.center().x - 12.0, rect.bottom() - 4.0),
-                egui::vec2(24.0, 2.0),
-            ),
-            egui::epaint::CornerRadius::same(1),
-            crate::theme::accent_color(),
         );
     }
 }

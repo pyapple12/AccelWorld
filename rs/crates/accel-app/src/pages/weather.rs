@@ -28,29 +28,29 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                 // 头行：城市下拉 + 刷新（图标按钮）
                 ui.horizontal(|ui| {
                     let city_names = accel_core::interface::AppInterface::get_city_names();
-                    egui::ComboBox::from_id_salt("weather_city")
-                        .selected_text(city.as_str())
-                        .width(150.0)
-                        .show_ui(ui, |ui| {
-                            for name in &city_names {
-                                if ui.selectable_label(name == &city, name).clicked()
-                                    && name != &city
-                                {
-                                    bus.send(FrontendCommand::SetWeatherCity(name.clone()));
-                                    bus.send(FrontendCommand::RefreshWeather {
-                                        city: name.clone(),
-                                        force: false,
-                                    });
-                                    state.weather_loading.insert(name.clone());
-                                    state.prefs.last_city = name.clone();
-                                    state.toasts.push(crate::bus::Toast::info(
-                                        "天气城市",
-                                        &format!("已切换至 {name}"),
-                                    ));
-                                }
-                            }
+                    if let Some(name) = crate::widgets::select::show(
+                        ui,
+                        egui::Id::unique("weather_city"),
+                        &city,
+                        &city_names,
+                        150.0,
+                    ) && name != city
+                    {
+                        bus.send(FrontendCommand::SetWeatherCity(name.clone()));
+                        bus.send(FrontendCommand::RefreshWeather {
+                            city: name.clone(),
+                            force: false,
                         });
-                    if icon_button::show(ui, icons::Icon::Refresh, 16.0, false)
+                        state.weather_loading.insert(name.clone());
+                        state.prefs.last_city = name.clone();
+                        state.toasts.push(crate::bus::Toast::info(
+                            "天气城市",
+                            &format!("已切换至 {name}"),
+                        ));
+                    }
+                    if state.weather_loading.contains(&city) {
+                        crate::widgets::spinner::show(ui, 16.0, ink.muted);
+                    } else if icon_button::show(ui, icons::Icon::Refresh, 16.0, false)
                         .on_hover_text("刷新天气")
                         .clicked()
                     {
@@ -59,13 +59,6 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                             force: true,
                         });
                         state.weather_loading.insert(city.clone());
-                    }
-                    if state.weather_loading.contains(&city) {
-                        ui.label(
-                            egui::RichText::new("更新中…")
-                                .font(crate::theme::font_regular(crate::theme::font_size("meta")))
-                                .color(ink.muted),
-                        );
                     }
                 });
                 ui.add_space(6.0);
@@ -216,13 +209,9 @@ fn draw_hourly(ui: &mut egui::Ui, hourly: &[HourlyPoint], ink: &crate::theme::In
         )
     });
     let label_idx: Vec<usize> = {
-        let mut v = vec![min_i, max_i];
-        for i in [0, n / 2, n - 1] {
-            if !v.contains(&i) {
-                v.push(i);
-            }
-        }
+        let mut v = vec![min_i, max_i, n / 2];
         v.sort_unstable();
+        v.dedup();
         v
     };
 
@@ -267,7 +256,13 @@ fn draw_hourly(ui: &mut egui::Ui, hourly: &[HourlyPoint], ink: &crate::theme::In
                             .font(meta_font.clone())
                             .color(ink.strong),
                     )
-                    .anchor(egui::Align2::CENTER_BOTTOM),
+                    .anchor(if i == 0 {
+                        egui::Align2::LEFT_BOTTOM
+                    } else if i + 1 == n {
+                        egui::Align2::RIGHT_BOTTOM
+                    } else {
+                        egui::Align2::CENTER_BOTTOM
+                    }),
                 );
             }
         });

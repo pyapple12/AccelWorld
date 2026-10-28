@@ -1085,7 +1085,21 @@ pub fn install_fonts(ctx: &Context) {
     }
     install_digit_family(&mut fonts, digit_family);
     install_weight_families(&mut fonts);
+    install_icon_family(&mut fonts);
     ctx.set_fonts(fonts);
+}
+
+/// 图标族装载（PL019）：Tabler Icons 3.50 子集——独立族名，避免混入正文回退链；
+/// 调用点为 `widgets::icons::draw`（字体绘制，24 网格）
+fn install_icon_family(fonts: &mut egui::FontDefinitions) {
+    fonts.font_data.insert(
+        "icons".into(),
+        egui::FontData::from_static(crate::widgets::icons::ICON_FONT).into(),
+    );
+    fonts
+        .families
+        .insert(egui::FontFamily::Name("icons".into()), vec!["icons".into()]);
+    tracing::info!("图标字体加载: Tabler Icons 3.50 子集（29 字形）");
 }
 
 /// 中文字重族装载（PL017）：Medium 500 / Semibold 600 与 Regular 同源子集；

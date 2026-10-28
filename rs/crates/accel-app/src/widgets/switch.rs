@@ -15,8 +15,11 @@ pub fn show(ui: &mut egui::Ui, id: egui::Id, on: bool) -> bool {
     let anim = if reduce {
         if on { 1.0 } else { 0.0 }
     } else {
-        ui.ctx()
-            .animate_value_with_time(id, if on { 1.0 } else { 0.0 }, 0.1)
+        ui.ctx().animate_value_with_time(
+            id,
+            if on { 1.0 } else { 0.0 },
+            (crate::theme::motion_ms("switch_ms") / 1000.0).max(0.001),
+        )
     };
     let track = if on {
         crate::theme::success_color()

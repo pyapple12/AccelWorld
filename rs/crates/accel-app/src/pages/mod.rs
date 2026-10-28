@@ -61,82 +61,85 @@ impl Pages {
         }
         let drawer_open = self.current != PageId::Clock || state.settings_open;
 
-        // 抽屉开合弹簧（0=收起 → 1=全开；reduce 直取；ζ=1 无过冲）
-        let target = if drawer_open { 1.0 } else { 0.0 };
-        let reduce = crate::theme::reduce_motion(ui.ctx());
-        if reduce {
-            state.drawer_spring.value = target;
-            state.drawer_spring.velocity = 0.0;
-        } else {
-            let dt = ui.ctx().input(|i| i.stable_dt);
-            let (f, z) = crate::theme::drawer_spring_params();
-            if state.drawer_spring.step(target, dt, f, z) {
-                ui.ctx()
-                    .request_repaint_after(std::time::Duration::from_secs_f32(0.016));
-            }
-        }
-        let spring_v = state.drawer_spring.value.clamp(0.0, 1.0);
-        let compact = ui.available_width() < 760.0;
-
-        if spring_v > 0.005 && drawer_open {
-            let full_w = if compact {
-                ui.available_width()
+        // 自适应分栏（PL019）：页面区 = 窗口高 − 底部坞；宽度按断点显式分配，
+        // 主仪与抽屉并排（不再依赖嵌套 Panel 的宽度同步）
+        let page_h = ui.available_height().max(0.0);
+        let page_w = ui.available_width();
+        let compact = page_w < 760.0;
+        let drawer_w = if drawer_open {
+            if compact {
+                page_w
             } else {
-                crate::theme::drawer_width(ui.available_width())
-            };
-            egui::Panel::right("page_drawer")
-                .exact_size(full_w * spring_v)
-                .frame(
-                    egui::Frame::new()
-                        .fill(crate::theme::card_bg())
-                        .stroke(egui::Stroke::new(1.0, crate::theme::border_color())),
-                )
-                .show(ui, |inner| {
-                    let (title, subtitle) = if state.settings_open {
-                        ("设置", Some("外观 · 动效 · 关于"))
-                    } else {
-                        (page_title(self.current), None)
-                    };
-                    if crate::widgets::page_header::show(inner, title, subtitle) {
-                        if state.settings_open {
-                            state.settings_open = false;
-                        } else {
-                            state.current_page = PageId::Clock;
-                        }
-                    }
-                    let content = egui::Frame::new().inner_margin(egui::Margin {
-                        left: 20,
-                        right: 20,
-                        top: 8,
-                        bottom: 16,
-                    });
-                    content.show(inner, |body| {
-                        if state.settings_open {
-                            settings::ui(body, state);
-                        } else {
-                            let page: &mut dyn Page = match self.current {
-                                PageId::Clock => &mut self.clock,
-                                PageId::Countdown => &mut self.countdown,
-                                PageId::World => &mut self.world,
-                                PageId::Weather => &mut self.weather,
-                                PageId::Alarm => &mut self.alarm,
-                            };
-                            page.ui(body, state, bus);
-                        }
-                    });
-                });
-        }
+                crate::theme::drawer_width(page_w).min((page_w - 420.0).max(280.0))
+            }
+        } else {
+            0.0
+        };
+        let stage_w = (page_w - drawer_w).max(0.0);
 
-        // 星盘主仪（时钟页恒驻 home；compact 抽屉全宽时中央宽度为 0，自然隐藏）
-        egui::CentralPanel::default()
-            .frame(
-                egui::Frame::new()
-                    .fill(crate::theme::window_bg())
-                    .inner_margin(egui::Margin::same(20)),
-            )
-            .show(ui, |inner| {
-                self.clock.ui(inner, state, bus);
-            });
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            if stage_w > 1.0 {
+                ui.allocate_ui_with_layout(
+                    egui::vec2(stage_w, page_h),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |stage| {
+                        egui::Frame::new()
+                            .fill(crate::theme::window_bg())
+                            .inner_margin(egui::Margin::same(20))
+                            .show(stage, |inner| {
+                                self.clock.ui(inner, state, bus);
+                            });
+                    },
+                );
+            }
+            if drawer_open && drawer_w > 1.0 {
+                ui.allocate_ui_with_layout(
+                    egui::vec2(drawer_w, page_h),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |area| {
+                        let rect = area.max_rect();
+                        area.painter().rect_filled(rect, 0, crate::theme::card_bg());
+                        area.painter().line_segment(
+                            [rect.left_top(), rect.left_bottom()],
+                            egui::Stroke::new(1.0, crate::theme::border_color()),
+                        );
+                        let (title, subtitle) = if state.settings_open {
+                            ("设置", Some("外观 · 动效 · 关于"))
+                        } else {
+                            (page_title(self.current), None)
+                        };
+                        if crate::widgets::page_header::show(area, title, subtitle) {
+                            if state.settings_open {
+                                state.settings_open = false;
+                            } else {
+                                state.current_page = PageId::Clock;
+                            }
+                        }
+                        let content = egui::Frame::new().inner_margin(egui::Margin {
+                            left: 20,
+                            right: 20,
+                            top: 8,
+                            bottom: 16,
+                        });
+                        content.show(area, |body| {
+                            if state.settings_open {
+                                settings::ui(body, state);
+                            } else {
+                                let page: &mut dyn Page = match self.current {
+                                    PageId::Clock => &mut self.clock,
+                                    PageId::Countdown => &mut self.countdown,
+                                    PageId::World => &mut self.world,
+                                    PageId::Weather => &mut self.weather,
+                                    PageId::Alarm => &mut self.alarm,
+                                };
+                                page.ui(body, state, bus);
+                            }
+                        });
+                    },
+                );
+            }
+        });
     }
 }
 

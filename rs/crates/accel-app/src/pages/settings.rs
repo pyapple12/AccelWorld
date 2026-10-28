@@ -12,7 +12,7 @@ pub fn ui(ui: &mut egui::Ui, state: &mut UiState) {
         .show(ui, |ui| {
             section(ui, "外观", "当前主题");
             row_static(ui, "主题", "子夜星图（深色）");
-            ui.add_space(crate::theme::spacing("xl"));
+            ui.add_space(crate::theme::spacing("lg"));
 
             section(ui, "动效", "关闭抽屉、悬停、按压与闹钟脉冲的过渡");
             let clicked = ui
@@ -42,7 +42,7 @@ pub fn ui(ui: &mut egui::Ui, state: &mut UiState) {
             if clicked {
                 state.reduce_motion = !state.reduce_motion;
             }
-            ui.add_space(crate::theme::spacing("xl"));
+            ui.add_space(crate::theme::spacing("lg"));
 
             section(ui, "关于", "版本与数据来源");
             row_static(
@@ -108,11 +108,15 @@ fn row_static(ui: &mut egui::Ui, label: &str, value: &str) {
                 );
                 ui.add_space(22.0);
             }
-            ui.label(
-                egui::RichText::new(value)
-                    .font(crate::theme::font_regular(crate::theme::font_size("body")))
-                    .color(ink.muted),
-            );
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(value)
+                        .font(crate::theme::font_regular(crate::theme::font_size("body")))
+                        .color(ink.muted),
+                )
+                .truncate(),
+            )
+            .on_hover_text(value);
         });
     });
 }
