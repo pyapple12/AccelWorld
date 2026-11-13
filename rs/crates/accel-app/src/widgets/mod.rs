@@ -12,10 +12,12 @@ pub mod motion;
 pub mod page_header;
 pub mod primary_button;
 pub mod rate_strip;
+pub mod ring_glow;
 pub mod select;
 pub mod slider;
 pub mod spinner;
 pub mod switch;
+pub mod text_ink;
 pub mod toast;
 
 // ===== src/widgets/mod.rs 说明区 =====

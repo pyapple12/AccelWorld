@@ -3,13 +3,10 @@
 
 use egui::{Rect, Sense, Vec2};
 
-/// 滑杆值映射（纯函数）：轨道内指针比例 → 倍率值（0.1 步进四舍五入，域钳制）
-/// Python 语义：int(round(rate×10)) 反向映射同式
+/// 滑杆值映射（纯函数）：轨道内指针比例 → 倍率值（整数四舍五入，域钳制）
 pub fn ratio_to_rate(ratio: f64, min: f64, max: f64) -> f64 {
     let clamped = ratio.clamp(0.0, 1.0);
-    let raw = min + clamped * (max - min);
-    // 0.1 步进：×10 四舍五入 /10（f64 稳定表示由 0.1 步进表保证）
-    ((raw * 10.0).round()) / 10.0
+    (min + clamped * (max - min)).round().clamp(min, max)
 }
 
 /// 倍率 → 轨道内比例（渲染用；反向同式）
@@ -67,22 +64,21 @@ pub fn show(
             dragged_rate = Some(new_rate);
         }
     }
-    // PL016.05（审核 #4）：键盘步进——聚焦后 ←→ 各 0.1，400ms 无按键自动落盘
+    // PL020：键盘步进——聚焦后 ←→ 各 1 档，400ms 无按键自动落盘
     //（对齐拖动语义：连续调值只发 SetRate，停手恰一次 ApplyRate）
     let mut key_stepped = false;
     if resp.has_focus() {
         let step = ui.ctx().input(|i| {
             if i.key_pressed(egui::Key::ArrowLeft) {
-                Some(-0.1)
+                Some(-1.0)
             } else if i.key_pressed(egui::Key::ArrowRight) {
-                Some(0.1)
+                Some(1.0)
             } else {
                 None
             }
         });
         if let Some(d) = step {
-            let new_rate =
-                ratio_to_rate(rate_to_ratio(*rate, min, max) + d / (max - min), min, max);
+            let new_rate = (*rate + d).clamp(min, max);
             if (new_rate - *rate).abs() > f64::EPSILON {
                 *rate = new_rate;
                 key_stepped = true;
@@ -175,7 +171,7 @@ fn draw(painter: &egui::Painter, track: Rect, track_h: f32, ratio: f32) {
 
 // ===== src/widgets/slider.rs 说明区 =====
 // 输入：min/max/当前倍率 + change/commit 回调；输出：三层几何绘制 + 值映射
-// 逻辑步骤：ratio_to_rate（0.1 步进）→ 拖动期 on_change 每变化帧一发 →
+// 逻辑步骤：ratio_to_rate（整数档）→ 拖动期 on_change 每变化帧一发 →
 //   松手/点击 on_commit 恰一发；绘制底轨/填充（零进度整圆定案）/旋钮浮点居中
 // 设计理由：Python CapsuleSlider 三纪律平移——零进度保留整圆（用户定案）、
 //   TRACK_PAD 边距（fill/cap 内缩 12 起点防触裁剪界）、旋钮圆心=轨垂直中心
@@ -193,10 +189,10 @@ mod tests {
 
     #[test]
     fn ratio_rate_mapping_step_and_clamp() {
-        // .04 验收：0.1 步进四舍五入 + 域钳制
+        // PL020：整数档四舍五入 + 域钳制
         assert_eq!(ratio_to_rate(0.0, 1.0, 20.0), 1.0);
         assert_eq!(ratio_to_rate(1.0, 1.0, 20.0), 20.0);
-        assert_eq!(ratio_to_rate(0.5, 1.0, 20.0), 10.5, "半程 → 10.5 步进");
+        assert_eq!(ratio_to_rate(0.5, 1.0, 20.0), 11.0, "半程 → 10.5 取整 11");
         assert_eq!(ratio_to_rate(2.0, 1.0, 20.0), 20.0, "越界钳满");
         assert_eq!(ratio_to_rate(-1.0, 1.0, 20.0), 1.0, "越界钳最小");
         assert_eq!(
@@ -204,9 +200,9 @@ mod tests {
             4.5 / 19.0,
             "比例=(rate-min)/(max-min)"
         );
-        // 往返一致性（步进内）
+        // 往返一致性（整数档）
         let r = ratio_to_rate(rate_to_ratio(7.3, 1.0, 20.0), 1.0, 20.0);
-        assert_eq!(r, 7.3);
+        assert_eq!(r, 7.0);
     }
 
     #[test]

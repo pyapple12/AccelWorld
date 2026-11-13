@@ -86,7 +86,7 @@ impl Pages {
                     |stage| {
                         egui::Frame::new()
                             .fill(crate::theme::window_bg())
-                            .inner_margin(egui::Margin::same(20))
+                            .inner_margin(egui::Margin::same(0))
                             .show(stage, |inner| {
                                 self.clock.ui(inner, state, bus);
                             });

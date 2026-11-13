@@ -180,14 +180,35 @@ impl eframe::App for AppHandle {
             },
         ];
         // 页面区 / 底部坞显式分带（PL019）：页面先画、坞后画，互不覆盖
-        let full = ui.max_rect();
-        let dock_h = crate::theme::layout_f32("dock_height");
-        let page_rect = egui::Rect::from_min_max(
-            full.min,
-            egui::pos2(full.right(), (full.bottom() - dock_h).max(full.top())),
+        // 200ms 边距规范：整体内容距客户区上下左右 10px；先铺满窗底，避免边距露黑
+        let full = {
+            let size = ui.ctx().input(|i| {
+                i.viewport()
+                    .inner_rect
+                    .map_or(ui.max_rect().size(), |r| r.size())
+            });
+            egui::Rect::from_min_size(ui.max_rect().min, size)
+        };
+        ui.painter().rect_filled(full, 0, crate::theme::window_bg());
+        let content = full.shrink(10.0);
+        // C2 坞高度两级跌落：≥560 用 56，以下用 44（44 时隐藏文字）
+        let dock_h = if full.height() >= 560.0 { 56.0 } else { 44.0 };
+        // 盒子模型（PL020）：C2 盒 = dock_h，B18 与 C2 之间统一 20px
+        let box_gap = 20.0;
+        let dock_rect = egui::Rect::from_min_max(
+            egui::pos2(
+                content.left(),
+                (content.bottom() - dock_h).max(content.top()),
+            ),
+            content.max,
         );
-        let dock_rect =
-            egui::Rect::from_min_max(egui::pos2(full.left(), page_rect.bottom()), full.max);
+        let page_rect = egui::Rect::from_min_max(
+            content.min,
+            egui::pos2(
+                content.right(),
+                (dock_rect.top() - box_gap).max(content.top()),
+            ),
+        );
         ui.scope_builder(egui::UiBuilder::new().max_rect(page_rect), |page_ui| {
             self.pages.ui(page_ui, &mut self.state, &self.bus);
         });
@@ -474,7 +495,7 @@ impl AppHandle {
         }
         self.last_status = std::time::Instant::now();
         let tooltip = match &self.state.time {
-            Some(t) => format!("加速世界 - {} @ {:.1}x", t.custom_time, self.state.rate),
+            Some(t) => format!("加速世界 - {} @ {:.0}x", t.custom_time, self.state.rate),
             None => format!(
                 "加速世界 - {}",
                 accel_core::static_config::Static::get().version()
@@ -486,7 +507,7 @@ impl AppHandle {
     /// 探针状态指纹（隐藏/恢复两侧同源打印——"隐藏→显示状态保持"断言数据源）
     fn probe_fingerprint(&self) -> String {
         format!(
-            "rate={:.1} page={:?} settings_open={}",
+            "rate={:.0} page={:?} settings_open={}",
             self.state.rate, self.state.current_page, self.state.settings_open
         )
     }
@@ -936,6 +957,7 @@ pub fn run_with_counter(
         viewport = viewport.with_icon(icon);
     }
     let options = eframe::NativeOptions {
+        multisampling: 4,
         viewport,
         ..Default::default()
     };

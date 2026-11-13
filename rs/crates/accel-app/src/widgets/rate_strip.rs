@@ -1,45 +1,55 @@
-//! 短倍率条（PL017）：360px 居中、6px 轨、1×/20× 端标；绝对几何绘制，
-//! 不依赖嵌套布局（原 slider 在全宽/右对齐混排下把旋钮推到端部）。
-//! 拖动 SetRate、松手/点击 ApplyRate 恰一次；方向键 ±0.1 即时落盘。
+//! 短倍率条（PL020）：360px 居中、6px 轨、1×/365× 端标、整数 1–365 档；
+//! 轨道下附「现实 1 天 = 加速 N 天」量化行。
+//! 拖动 SetRate、松手/点击 ApplyRate 恰一次；方向键 ±1 即时落盘。
 
 use egui::{Align2, Rect, Sense, Stroke};
 
 use super::slider::{rate_to_ratio, ratio_to_rate};
+use super::text_ink::{self, InkKind};
 
-/// 绘制倍率条并写回 rate；回调语义与 slider 一致
+/// 绘制倍率条并写回 rate；高度按断点传入，内部按比例排布
 pub fn show(
     ui: &mut egui::Ui,
     min: f64,
     max: f64,
     rate: &mut f64,
+    height: f32,
     mut on_change: impl FnMut(f64),
     mut on_commit: impl FnMut(f64),
 ) {
     let ink = crate::theme::ink();
     let width = ui.available_width().clamp(220.0, 360.0);
-    let (outer, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 62.0), Sense::hover());
-    let inner = Rect::from_center_size(
-        egui::pos2(outer.center().x, outer.center().y + 3.0),
-        egui::vec2(width, 44.0),
+    // B18 盒 = 可见内容 bbox：盒顶即「倍率」文字顶，盒底即量化行底
+    let s = ((height + 12.0) / 78.0).clamp(0.82, 1.0);
+    let (outer, _) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), height), Sense::hover());
+    let inner_h = height.max(40.0);
+    let inner = Rect::from_min_size(
+        egui::pos2(outer.center().x - width / 2.0, outer.top()),
+        egui::vec2(width, inner_h),
     );
+    let track_y = inner.top() + inner_h * 0.36;
+    let ticks_y = inner.top() + inner_h * 0.60;
+    let label_font = crate::theme::font_medium(crate::theme::font_size("meta") * s);
+    let label_ink = text_ink::measure(ui, "倍率", &label_font, InkKind::Cjk);
     ui.painter().text(
-        egui::pos2(inner.left(), inner.top()),
+        egui::pos2(inner.left(), inner.top() - label_ink.top_pad),
         Align2::LEFT_TOP,
         "倍率",
-        crate::theme::font_medium(crate::theme::font_size("meta")),
+        label_font,
         ink.muted,
     );
     ui.painter().text(
         egui::pos2(inner.right(), inner.top()),
         Align2::RIGHT_TOP,
-        format!("×{rate:.1}"),
-        crate::theme::font_medium(crate::theme::font_size("body")),
+        format!("×{rate:.0}"),
+        crate::theme::font_medium(crate::theme::font_size("body") * s),
         crate::theme::accent_color(),
     );
 
     let track = Rect::from_min_max(
-        egui::pos2(inner.left(), inner.top() + 24.0),
-        egui::pos2(inner.right(), inner.top() + 30.0),
+        egui::pos2(inner.left(), track_y),
+        egui::pos2(inner.right(), track_y + 6.0),
     );
     let hit = track.expand2(egui::vec2(0.0, 10.0));
     let resp = ui.interact(hit, egui::Id::unique("rate_strip"), Sense::click_and_drag());
@@ -57,16 +67,15 @@ pub fn show(
     if resp.has_focus() {
         let step = ui.input(|i| {
             if i.key_pressed(egui::Key::ArrowLeft) {
-                Some(-0.1)
+                Some(-1.0)
             } else if i.key_pressed(egui::Key::ArrowRight) {
-                Some(0.1)
+                Some(1.0)
             } else {
                 None
             }
         });
         if let Some(d) = step {
-            let new_rate =
-                ratio_to_rate(rate_to_ratio(*rate, min, max) + d / (max - min), min, max);
+            let new_rate = (*rate + d).clamp(min, max);
             if (new_rate - *rate).abs() > f64::EPSILON {
                 *rate = new_rate;
                 changed = Some(new_rate);
@@ -123,27 +132,42 @@ pub fn show(
         );
     }
     ui.painter().text(
-        egui::pos2(inner.left(), inner.bottom()),
-        Align2::LEFT_BOTTOM,
+        egui::pos2(inner.left(), ticks_y),
+        Align2::LEFT_TOP,
         "1×",
-        crate::theme::font_regular(11.0),
+        crate::theme::font_regular(11.0 * s),
         ink.meta,
     );
     ui.painter().text(
-        egui::pos2(inner.right(), inner.bottom()),
-        Align2::RIGHT_BOTTOM,
-        "20×",
-        crate::theme::font_regular(11.0),
+        egui::pos2(inner.right(), ticks_y),
+        Align2::RIGHT_TOP,
+        format!("{max:.0}×"),
+        crate::theme::font_regular(11.0 * s),
         ink.meta,
+    );
+    let quant_font = crate::theme::font_regular(11.0 * s);
+    let quant_ink = text_ink::measure(ui, "现实", &quant_font, InkKind::Cjk);
+    let year_days = accel_core::static_config::Static::get().base_f64("days_per_year");
+    let quant_text = if (*rate - year_days).abs() < 0.5 {
+        "现实 1 天 = 加速 1 年".to_string()
+    } else {
+        format!("现实 1 天 = 加速 {rate:.0} 天")
+    };
+    ui.painter().text(
+        egui::pos2(inner.center().x, inner.bottom() + quant_ink.bottom_pad),
+        Align2::CENTER_BOTTOM,
+        quant_text,
+        quant_font,
+        ink.muted,
     );
 }
 
 // ===== src/widgets/rate_strip.rs 说明区 =====
 // 输入：Ui + min/max/rate + change/commit 回调；输出：倍率条（拖拽/点击/方向键）
-// 逻辑步骤：固定 360px 居中 → 标签行（倍率/×当前）→ 6px 轨（muted）→ 交互
-//   （ratio→rate 0.1 步进，拖动 on_change/松手 on_commit）→ 金色 fill/16px 旋钮
-//   → 1×/20× 端标 → 焦点环
-// 设计理由（PL017）：原全宽 24px 滑杆是第二视觉体且无端点/说明；嵌套布局在
-//   900×500 下把旋钮推至端部。本组件用绝对 Rect 绘制，几何可测、位置确定
+// 逻辑步骤：固定 360px 居中 → 标签行（倍率/×N）→ 6px 轨（muted）→ 交互
+//   （比例→整数档，拖动 on_change/松手 on_commit）→ 金色 fill/旋钮
+//   → 1×/365× 端标 → 「现实 1 天 = 加速 N 天 / 1 年」量化行 → 焦点环
+// 设计理由（PL020）：倍率收敛为 1–365 整数，滑杆只出整数档；量化行把倍率翻译成
+//   「现实 1 天 = 加速 N 天」，让 365× 的「天上 1 年」语义可直接读
 // 异常处理：max<=min 时 rate_to_ratio 返回 0；键步长即时落盘
 // 关联依赖：slider(rate_to_ratio/ratio_to_rate)/theme；消费方：pages/clock

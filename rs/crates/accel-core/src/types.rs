@@ -20,6 +20,18 @@ pub struct TimeInfo {
     /// 农历展示文本（拼装契约见 chinese_calendar，PL012 扩入，标准秒缓存）
     #[serde(default)]
     pub lunar_info: String,
+    /// 今日宜（黄历，PL020 扩入；旧夹具缺省为空表）
+    #[serde(default)]
+    pub lunar_yi: Vec<String>,
+    /// 今日忌（黄历，PL020 扩入；旧夹具缺省为空表）
+    #[serde(default)]
+    pub lunar_ji: Vec<String>,
+    /// 今日节气（无则空串，页头日期 tooltip 用）
+    #[serde(default)]
+    pub lunar_jieqi: String,
+    /// 今日节日（无则空串，页头日期 tooltip 用）
+    #[serde(default)]
+    pub lunar_festival: String,
     /// 时间膨胀倍率百分比（rate × 100）
     pub dilation_percentage: f64,
     /// 膨胀后一天的小时数（与钟面回绕同口径的整数日长，浮点呈现）

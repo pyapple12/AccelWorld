@@ -144,7 +144,7 @@ mod tests {
         // 真实 token 抽样：倍率域/时钟 tick/天气参数/默认偏好
         let s = Static::get();
         assert_eq!(s.base_f64("rate_min"), 1.0);
-        assert_eq!(s.base_f64("rate_max"), 20.0);
+        assert_eq!(s.base_f64("rate_max"), 365.0);
         assert_eq!(s.base_f64("default_rate"), 2.0);
         assert_eq!(s.base_i64("clock_tick_ms"), 100);
         assert_eq!(s.base_i64("weather_cache_ttl"), 1800);

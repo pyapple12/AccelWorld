@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use chrono::{DateTime, Datelike, Local, Timelike};
 use thiserror::Error;
 
-use crate::chinese_calendar::{get_chinese_date, get_lunar_info};
+use crate::chinese_calendar::{get_chinese_date, get_lunar_bundle_full};
 use crate::static_config::Static;
 use crate::types::TimeInfo;
 
@@ -17,21 +17,33 @@ pub enum RateError {
     BelowMin { min: f64 },
     #[error("时间膨胀倍率必须小于或等于{max:?}！")]
     AboveMax { max: f64 },
+    #[error("时间膨胀倍率必须是整数！")]
+    NotInteger,
 }
 
-// 标准秒缓存键：(年, 月, 日, 时, 分, 秒)——农历/中文日期昂贵计算的同秒复用键
-type SecondKey = (i32, u32, u32, u32, u32, u32);
+// 日期缓存键：展示数据按日复用，绝不进每秒 tick
+type DateKey = (i32, u32, u32);
 
 /// 时间膨胀核心（Python AcceleratedWorld 镜像）
 /// 时间全参数化注入（PL011 层面无 Clock 依赖，可测性优先）；
-/// 农历/中文日期按标准秒缓存（Python _lunar_cache 对等，PL012 扩入）
+/// 农历/中文日期按日/小时缓存（宜忌按日、农历串按小时；PL020 修正每秒重算导致 tick 冻结）
 #[derive(Debug)]
 pub struct TimeDilation {
     rate: f64,
     /// 整数日长 int(24×rate)——钟面回绕模数与日长显示同口径（FIX003.4）
     day_hours: i64,
-    /// (标准秒键, 中文日期, 农历信息) 缓存——同标准秒内直接复用
-    lunar_cache: Mutex<Option<(SecondKey, String, String)>>,
+    /// 当日缓存：(日期键, 中文日期, 农历串, 今日宜, 今日忌) —— 一天只算一次并落盘
+    day_cache: Mutex<
+        Option<(
+            DateKey,
+            String,
+            String,
+            Vec<String>,
+            Vec<String>,
+            String,
+            String,
+        )>,
+    >,
 }
 
 impl PartialEq for TimeDilation {
@@ -53,13 +65,17 @@ impl TimeDilation {
         if rate > max {
             return Err(RateError::AboveMax { max });
         }
+        // PL020：倍率只接受整数档（1×..365×），小数视为非法；持久化旧值由装载侧四舍五入
+        if (rate - rate.round()).abs() > 1e-9 {
+            return Err(RateError::NotInteger);
+        }
         // A005 #29：日长下钳 1——rem_euclid(day_hours) 在 day_hours=0 时会 panic
         //（rate_min 被误配到 <1/24 的域外情形，属 token 表损坏的防御路径）
         let day_hours = ((24.0 * rate) as i64).max(1);
         Ok(TimeDilation {
             rate,
             day_hours,
-            lunar_cache: Mutex::new(None),
+            day_cache: Mutex::new(None),
         })
     }
 
@@ -92,26 +108,60 @@ impl TimeDilation {
     /// 时= floor(custom_total/3600) mod day_hours、分秒各自取模取整 →
     /// 剩余 = max(0, day_hours×3600 − custom_total)/3600
     pub fn time_info(&self, now: DateTime<Local>) -> TimeInfo {
-        // 农历/中文日期按标准秒缓存（同秒直接复用，跨秒现算——Python 同语义）
-        let second_key: SecondKey = (
-            now.year(),
-            now.month(),
-            now.day(),
-            now.hour(),
-            now.minute(),
-            now.second(),
-        );
-        let mut cache = self.lunar_cache.lock().expect("lunar 缓存锁中毒");
-        let (chinese_date, lunar_info) = match &*cache {
-            Some((key, cd, li)) if *key == second_key => (cd.clone(), li.clone()),
-            _ => {
-                let cd = get_chinese_date(now);
-                let li = get_lunar_info(now);
-                *cache = Some((second_key, cd.clone(), li.clone()));
-                (cd, li)
+        // PL020：展示数据按日缓存并落盘；tick 每秒只做时间算术。
+        // 宜忌由 lunar-rust 克隆大表生成，绝不能进每秒路径；同一天反复启动也只算一次。
+        let day_key: DateKey = (now.year(), now.month(), now.day());
+        let (chinese_date, lunar_info, lunar_yi, lunar_ji, lunar_jieqi, lunar_festival) = {
+            let mut cache = self.day_cache.lock().expect("day 缓存锁中毒");
+            match &*cache {
+                Some((key, cd, li, yi, ji, jq, fe)) if *key == day_key => (
+                    cd.clone(),
+                    li.clone(),
+                    yi.clone(),
+                    ji.clone(),
+                    jq.clone(),
+                    fe.clone(),
+                ),
+                _ => {
+                    let from_disk = crate::day_cache::load(day_key.0, day_key.1, day_key.2);
+                    let (cd, li, yi, ji, jq, fe) = match from_disk {
+                        Some(r) => (
+                            r.chinese_date,
+                            r.lunar_info,
+                            r.yi,
+                            r.ji,
+                            r.jieqi,
+                            r.festival,
+                        ),
+                        None => {
+                            let cd = get_chinese_date(now);
+                            let (li, yi, ji, jq, fe) = get_lunar_bundle_full(now);
+                            crate::day_cache::save(&crate::day_cache::DayCache {
+                                version: crate::day_cache::CACHE_VERSION,
+                                date: format!("{:04}-{:02}-{:02}", day_key.0, day_key.1, day_key.2),
+                                chinese_date: cd.clone(),
+                                lunar_info: li.clone(),
+                                yi: yi.clone(),
+                                ji: ji.clone(),
+                                jieqi: jq.clone(),
+                                festival: fe.clone(),
+                            });
+                            (cd, li, yi, ji, jq, fe)
+                        }
+                    };
+                    *cache = Some((
+                        day_key,
+                        cd.clone(),
+                        li.clone(),
+                        yi.clone(),
+                        ji.clone(),
+                        jq.clone(),
+                        fe.clone(),
+                    ));
+                    (cd, li, yi, ji, jq, fe)
+                }
             }
         };
-        drop(cache);
 
         let micro = now.nanosecond() / 1_000;
         let total_seconds =
@@ -129,6 +179,10 @@ impl TimeDilation {
             custom_time,
             chinese_date,
             lunar_info,
+            lunar_yi,
+            lunar_ji,
+            lunar_jieqi,
+            lunar_festival,
             dilation_percentage: self.rate * 100.0,
             expanded_hours_per_day: self.day_hours as f64,
             remaining_hours: remaining_seconds / 3600.0,
@@ -173,29 +227,32 @@ mod tests {
         // 边界内接受/边界值接受/越界拒绝（含文案）
         assert!(TimeDilation::new(1.0).is_ok());
         assert!(TimeDilation::new(20.0).is_ok());
+        assert!(TimeDilation::new(365.0).is_ok());
         assert_eq!(
             TimeDilation::new(0.9),
             Err(RateError::BelowMin { min: 1.0 })
         );
         assert_eq!(
-            TimeDilation::new(20.1),
-            Err(RateError::AboveMax { max: 20.0 })
+            TimeDilation::new(365.1),
+            Err(RateError::AboveMax { max: 365.0 })
         );
+        // PL020：整数档，小数倍率拒绝
+        assert_eq!(TimeDilation::new(1.5), Err(RateError::NotInteger));
+        assert_eq!(TimeDilation::new(7.2), Err(RateError::NotInteger));
         assert_eq!(
             TimeDilation::new(0.0).unwrap_err().to_string(),
             "时间膨胀倍率必须大于或等于1.0！"
         );
         assert_eq!(
-            TimeDilation::new(100.0).unwrap_err().to_string(),
-            "时间膨胀倍率必须小于或等于20.0！"
+            TimeDilation::new(366.0).unwrap_err().to_string(),
+            "时间膨胀倍率必须小于或等于365.0！"
         );
     }
 
     #[test]
     fn integer_day_hours_dual_gauge() {
-        // 整数日长口径：1.1 → 26（26.4 截断，FIX003.4 双口径回归位）
+        // PL020：整数倍率下日长恒为 24×rate
         assert_eq!(TimeDilation::new(1.0).unwrap().day_hours(), 24);
-        assert_eq!(TimeDilation::new(1.1).unwrap().day_hours(), 26);
         assert_eq!(TimeDilation::new(2.0).unwrap().day_hours(), 48);
         assert_eq!(TimeDilation::new(20.0).unwrap().day_hours(), 480);
     }
@@ -204,21 +261,21 @@ mod tests {
     fn tick_follows_rate() {
         // tick = min(clock_tick_ms=100, int(1000/rate))：低速钳 100、高速 50
         assert_eq!(TimeDilation::new(1.0).unwrap().tick_interval_ms(), 100);
-        assert_eq!(TimeDilation::new(1.1).unwrap().tick_interval_ms(), 100);
+        assert_eq!(TimeDilation::new(2.0).unwrap().tick_interval_ms(), 100);
         assert_eq!(TimeDilation::new(10.0).unwrap().tick_interval_ms(), 100);
         assert_eq!(TimeDilation::new(20.0).unwrap().tick_interval_ms(), 50);
     }
 
     #[test]
-    fn wraparound_at_rate_1_1_late_night() {
-        // rate=1.1 深夜：23:00 → 25:18:00，剩余 0.7h（FIX003.4 回归锚点）
-        let td = TimeDilation::new(1.1).unwrap();
+    fn wraparound_at_rate_2_late_night() {
+        // rate=2 深夜：23:00 → 46:00:00，剩余 2h（整数档回归锚点）
+        let td = TimeDilation::new(2.0).unwrap();
         let info = td.time_info(local_of(2026, 9, 23, 23, 0, 0, 0));
-        assert_eq!(info.custom_time, "25:18:00");
-        assert_eq!(info.day_hours, 26);
-        assert_eq!(info.expanded_hours_per_day, 26.0);
-        assert_eq!(info.dilation_percentage, 110.00000000000001);
-        assert_eq!(info.remaining_hours, 0.699999999999996);
+        assert_eq!(info.custom_time, "46:00:00");
+        assert_eq!(info.day_hours, 48);
+        assert_eq!(info.expanded_hours_per_day, 48.0);
+        assert_eq!(info.dilation_percentage, 200.0);
+        assert_eq!(info.remaining_hours, 2.0);
         assert_eq!(info.standard_datetime, "2026-09-23 23:00:00");
     }
 

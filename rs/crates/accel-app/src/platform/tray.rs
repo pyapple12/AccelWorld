@@ -59,7 +59,7 @@ impl TrayHandles {
         let default_rate = accel_core::static_config::Static::get().base_f64("default_rate");
         let rate = MenuItem::with_id(
             MenuId::new(ID_RATE),
-            format!("当前倍率: {default_rate:.1}x"),
+            format!("当前倍率: {default_rate:.0}x"),
             false,
             None,
         );
@@ -89,7 +89,7 @@ impl TrayHandles {
     /// 倍率菜单文本 + 悬停文本更新（window 每秒节流推送；文本未变化时跳过防重绘）
     pub fn set_status(&self, rate: f64, tooltip: &str) {
         // A008 #18：倍率文本未变化跳过（镜像 tooltip 同款语义，不再每秒 set_text）
-        let rate_text = format!("当前倍率: {rate:.1}x");
+        let rate_text = format!("当前倍率: {rate:.0}x");
         if self.last_rate_text.borrow().as_str() != rate_text {
             self.last_rate_text.replace(rate_text.clone());
             self.rate_item.set_text(rate_text);

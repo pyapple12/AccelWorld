@@ -6,6 +6,7 @@ pub mod alarm;
 pub mod audio;
 pub mod chinese_calendar;
 pub mod data;
+pub mod day_cache;
 pub mod interface;
 pub mod settings;
 pub mod static_config;

@@ -24,7 +24,7 @@ pub fn init() {
     let logs_dir = accel_core::util::paths::exe_dir().join(base.base_str("logs_dir"));
     let _ = std::fs::create_dir_all(&logs_dir);
 
-    // 每日滚动文件（logs/accel-YYYY-MM-DD.log，对齐 Python 每日独立文件约定）
+    // 每日滚动文件（.logs/accel-YYYY-MM-DD.log，对齐 Python 每日独立文件约定）
     let file_appender = tracing_appender::rolling::daily(&logs_dir, "accel-.log");
     let (file_writer, guard) = tracing_appender::non_blocking(file_appender);
     if LOG_GUARD_FILE.set(guard).is_err() {
@@ -67,7 +67,7 @@ pub fn install_panic_hook() {
     }));
 }
 
-/// crash 日志路径（测试注入用重定向钩子：默认 exe 同目录 logs/crash-YYYY-MM-DD.log；
+/// crash 日志路径（测试注入用重定向钩子：默认 exe 同目录 .logs/crash-YYYY-MM-DD.log；
 /// FIX007.15 基准统一）
 pub fn crash_log_path() -> PathBuf {
     PANIC_LOG_PATH.get().cloned().unwrap_or_else(|| {

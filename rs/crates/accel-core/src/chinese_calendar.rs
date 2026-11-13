@@ -97,6 +97,10 @@ pub struct LunarInfo {
     pub cai_shen_dir: String,
     /// 八卦方位
     pub position: String,
+    /// 今日宜（黄历，lunar-rust get_day_yi）
+    pub day_yi: Vec<String>,
+    /// 今日忌（黄历，lunar-rust get_day_ji）
+    pub day_ji: Vec<String>,
 }
 
 // holidays.json 结构：{"2026": {"01-01": "元旦", ...}}
@@ -279,7 +283,15 @@ pub fn get_chinese_lunar_calendar(year: i32, month: u32, day: u32, hour: u32) ->
         public_holiday,
         cai_shen_dir: cai_shen_dir.to_string(),
         position: position.to_string(),
+        day_yi: lunar.get_day_yi(None),
+        day_ji: lunar.get_day_ji(None),
     }
+}
+
+/// 今日宜忌（黄历，lunar-rust get_day_yi/get_day_ji 直取；无则空表）
+pub fn get_lunar_extras(now: DateTime<Local>) -> (Vec<String>, Vec<String>) {
+    let (_, yi, ji) = get_lunar_bundle(now);
+    (yi, ji)
 }
 
 /// 中文日期字符串（Python get_chinese_date 对等："YYYY年MM月DD日 星期X"）
@@ -292,8 +304,21 @@ pub fn get_chinese_date(now: DateTime<Local>) -> String {
 /// `{年}（{生肖}年）{月}{日}{时辰} 月相：{X} 财神：{Y}方向（{Z}）`
 /// 节气/节日不入串（FIX003.5 定案延续）；值段不含拆分标记字样（FIX004.3）
 pub fn get_lunar_info(now: DateTime<Local>) -> String {
+    get_lunar_bundle(now).0
+}
+
+/// 农历展示文本 + 今日宜忌（一次构造 Lunar，供 tick 日/时缓存复用）
+pub fn get_lunar_bundle(now: DateTime<Local>) -> (String, Vec<String>, Vec<String>) {
+    let (text, yi, ji, _, _) = get_lunar_bundle_full(now);
+    (text, yi, ji)
+}
+
+/// 农历全量（文本 / 宜 / 忌 / 节气 / 节日）：日缓存与页头 tooltip 用
+pub fn get_lunar_bundle_full(
+    now: DateTime<Local>,
+) -> (String, Vec<String>, Vec<String>, String, String) {
     let info = get_chinese_lunar_calendar(now.year(), now.month(), now.day(), now.hour());
-    format!(
+    let text = format!(
         "{}（{}年）{}{}{} 月相：{} 财神：{}方向（{}）",
         info.lunar_year,
         info.shengxiao,
@@ -303,6 +328,13 @@ pub fn get_lunar_info(now: DateTime<Local>) -> String {
         info.yue_phase,
         info.cai_shen_dir,
         info.position
+    );
+    (
+        text,
+        info.day_yi,
+        info.day_ji,
+        info.jieqi,
+        info.public_holiday,
     )
 }
 

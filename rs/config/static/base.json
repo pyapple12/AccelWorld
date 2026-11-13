@@ -1,7 +1,9 @@
 {
-  "version": "0.6.4.1",
+  "version": "0.6.5.0",
   "rate_min": 1.0,
-  "rate_max": 20.0,
+  "rate_max": 365.0,
+  "rate_step": 1.0,
+  "days_per_year": 365,
   "default_rate": 2.0,
   "default_alarm_sound_type": "preset",
   "default_alarm_sound_value": "classic",
@@ -41,5 +43,5 @@
   "weather_forecast_hours": 24,
   "log_level": "INFO",
   "user_config": "config/user_config.json",
-  "logs_dir": "logs"
+  "logs_dir": ".logs"
 }

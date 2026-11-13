@@ -57,7 +57,7 @@ rs/                              # cargo workspace 根
     src/tools/                   # 展示运算纯函数（clock/countdown/alarm_text）
     src/platform/                # 系统集成（tray/notify/hotkey，非 Windows 桩化）
   assets/                        # 托盘图标等内嵌资源
-  logs/                          # 运行日志（每日独立文件，gitignore）
+  .logs/                         # 运行日志（每日独立文件，gitignore）
 ```
 
 架构一句话：`accel-core（纯业务 + interface 契约 + 命令/事件总线）← accel-app（egui 前端）`，依赖单向；app 不直碰业务（一切经 interface 命令/事件），core 不感知 egui（CI 关卡 4 机器强制）；`main.rs` 只做装配与运行时挂载。
@@ -128,7 +128,7 @@ pub async fn fetch(&self, city: &str, force: bool) -> Result<WeatherData, Weathe
 
 - `window.rs`：`AppHandle`（logic：drain/探针/退出序列（Close 丢失自愈） + ui：首帧窗口几何夹取 → 首帧门控显示 → 悬浮仪器坞 → 页总装 → toast）；设置不再是浮窗，而是抽屉页；标题去版本号、窗口用托盘图标
 - `pages/mod.rs`：总装配——页面区/底部坞显式分带；舞台与抽屉按宽度定宽并排（<760 全宽抽屉；≥760 舞台 ≥420、抽屉 280..400）；ESC 关设置/回时钟
-- `clock.rs`：单环双针表盘（24h 刻度环纯量尺 + 金针=加速时刻 24h 取模 + 灰针=现实 24h + 两针间金弧；盘下 readout 限宽 640 成组；360px 短倍率条）；页头 52/40；短窗（<380 高）退化为数字版
+- `clock.rs`：单环 12h 四针表盘（60 刻度 + 12/3/6/9 内侧；时/分/秒走现实，黄针走加速 12h；AM/PM 胶囊；金圈=加速日进度色谱）；盘下 readout 铺满页面宽、竖线居中；整数 1–365 倍率条 + 量化行（365 档显示 1 年）；页头盒子模型（高 560 分行数 / 宽 560 分文本）；星盘常驻 120–560
 - `theme.rs`：ui.json `colors.*` 深色实心单板（仅深色定案）→ egui Visuals + 语义色（strong/body/muted/meta/success 五层，对比度全矩阵 ≥4.5:1 实测）/input_border/border_strong/字号/间距/圆角访问器；MiSans Regular/Medium/Semibold 三档字重 + Tabler 图标族
 - `widgets/`：digits（等宽数字位）/ icons（Tabler 子集字体绘制）/ icon_button / dock（悬浮带标签）/ page_header / field / switch / empty / rate_strip / slider / chip / toast / select / primary_button / spinner / motion
 - 高 DPI 纪律：面/文本坐标一律逻辑点；标题栏底色经 DWMWA_CAPTION_COLOR 恒钉深色；窗口几何按当前显示器工作区夹取（max 1200×820）
@@ -138,7 +138,7 @@ pub async fn fetch(&self, city: &str, force: bool) -> Result<WeatherData, Weathe
 ### 3.8 日志 — 每日滚动 + 崩溃栈
 
 - `tracing_subscriber` + `tracing_appender::rolling::daily("logs","accel")`（对齐 Python 每日独立文件）
-- panic hook → `logs/crash-YYYY-MM-DD.log`（含 location + backtrace）
+- panic hook → `.logs/crash-YYYY-MM-DD.log`（含 location + backtrace）
 - 级别读 base.json `log_level` token；后台任务 spawn 统一 join 监控（panic 记 error 不静默）
 
 ## 4. 代码风格观察

@@ -75,6 +75,47 @@ pub fn on_accent_color() -> Color32 {
     color32_at("on_accent", 0x22)
 }
 
+/// 分针色（colors.hand_minute——星紫，与时针/秒针/黄针区分）
+pub fn hand_minute_color() -> Color32 {
+    color32_at("hand_minute", 0x9B)
+}
+
+/// 秒针色（colors.hand_second——朱红，四针中唯一暖红）
+pub fn hand_second_color() -> Color32 {
+    color32_at("hand_second", 0xE0)
+}
+
+/// 半日 AM 标签色（colors.half_am——橙红胶囊）
+pub fn half_am_color() -> Color32 {
+    color32_at("half_am", 0xE8)
+}
+
+/// 半日 PM 标签色（colors.half_pm——淡蓝胶囊）
+pub fn half_pm_color() -> Color32 {
+    color32_at("half_pm", 0x8F)
+}
+
+/// 金圈色谱锚点（colors.ring_start/06/12/18/end——0/6/12/18/24 点）
+pub fn ring_spectrum() -> [Color32; 5] {
+    [
+        color32_at("ring_start", 0xC9),
+        color32_at("ring_06", 0xE8),
+        color32_at("ring_12", 0x5F),
+        color32_at("ring_18", 0x6E),
+        color32_at("ring_end", 0x9B),
+    ]
+}
+
+/// 夜光主色（colors.lume——整点长刻度与四正位）
+pub fn lume_color() -> Color32 {
+    color32_at("lume", 0x9D)
+}
+
+/// 夜光暗色（colors.lume_dim——分钟短刻度）
+pub fn lume_dim_color() -> Color32 {
+    color32_at("lume_dim", 0x4E)
+}
+
 /// 语义色等级（UIR2 五层：strong=主文 body=正文/卡文 muted=次级
 /// meta=刻度/元信息 danger=朱砂 knob=滑钮亮白——soft/card/dim 三层已并）
 #[derive(Debug, Clone, Copy)]

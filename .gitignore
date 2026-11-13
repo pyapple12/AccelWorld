@@ -12,7 +12,6 @@ env.bak/
 venv.bak/
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo
@@ -34,39 +33,25 @@ dist/
 # pytest cache
 .pytest_cache/
 
-# Temporary scripts
-.temp/
-
 # Log files
 *.log
-# 运行时日志目录整忽略（tracing_appender 命名 accel-.log.日期 逃逸 *.log 规则）
-logs/
+
+# 所有以 . 开头的目录整体忽略（保留 .github：CI 工作流必须入库）
+.*/
+!.github/
+
+# 运行期日志目录与 OpenChamber 面板目录（显式登记，便于检索）
+.logs/
+.openchamber/
 
 # Claude Code
-.claude/
 CLAUDE.md
 
 # openspec
 openspec/
 
-# Archived
-archived/
-
-# Python 版归档（PL011.14，2026-10-16：Rust 重构接替，归档保持可运行供夹具再生）
-.archived/
-
 # Rust 构建产物
 rs/target/
 
-# opencode 项目级配置（机器绑定解释器路径）
-.opencode/
-
-# agents 项目级技能（.agents/skills/，仅本地使用，不同步仓库）
-.agents/
-
 # My Own WorkingBoard
 # workingboard/
-
-#Local History
-.history/
-.mimosa/

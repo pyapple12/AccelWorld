@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AccelWorld UI 标注指南 · V0.6.4.1</title>
+    <title>AccelWorld UI 标注指南 · V0.6.4.2</title>
     <style>
       :root {
         --bg: #0b0f19;
@@ -413,14 +413,14 @@
       .dial-wrap {
         position: relative;
         align-self: center;
-        width: 206px;
-        height: 206px;
+        width: 300px;
+        height: 240px;
         margin: 4px 0 0;
         flex: 0 0 auto;
       }
       .app-window.solo .dial-wrap {
-        width: 242px;
-        height: 242px;
+        width: 380px;
+        height: 300px;
         margin-top: 8px;
       }
       .app-window .stage > .dial-wrap {
@@ -438,21 +438,36 @@
         display: flex;
         align-items: stretch;
         justify-content: center;
+        width: 100%;
         min-height: 64px;
         margin-top: 2px;
       }
       .readout .col {
         min-width: 0;
       }
-      .readout .col:first-child {
-        flex: 0 0 58%;
-        text-align: center;
-        padding-right: 8px;
-      }
-      .readout .col:last-child {
+      .readout .col:first-of-type {
         flex: 1;
-        text-align: center;
-        padding-left: 10px;
+        display: flex;
+        justify-content: flex-end;
+        padding-right: 20px;
+      }
+      .readout .col:last-of-type {
+        flex: 1;
+        text-align: left;
+        padding-left: 20px;
+      }
+      .rwrap {
+        display: inline-block;
+        text-align: left;
+      }
+      .rrow {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        justify-content: flex-end;
+      }
+      .readout .col:last-of-type .rrow {
+        justify-content: flex-start;
       }
       .readout .divider {
         width: 1px;
@@ -480,9 +495,12 @@
         white-space: nowrap;
       }
       .rday {
-        font-size: 9.5px;
-        color: var(--meta);
-        margin-top: -1px;
+        font-size: 11px;
+        color: var(--ink);
+        white-space: nowrap;
+      }
+      .rday .gold {
+        color: var(--gold);
       }
       .rreal {
         font-family: var(--font-mono);
@@ -1795,7 +1813,7 @@
         token。目标只有一个：你指着屏幕说“这里”，我们指的是同一个东西。
       </p>
       <div class="meta-row">
-        <span class="badge gold">基线 V0.6.4.1</span>
+        <span class="badge gold">基线 V0.6.5.0</span>
         <span class="badge">HEAD 5b0b2da</span>
         <span class="badge">窗口 960×640 · min 520×420 · max 1200×820</span>
         <span>配套：<code>u.UI_GLOSSARY.md</code></span>
@@ -1951,27 +1969,27 @@
               <tr>
                 <td class="id">B1</td>
                 <td class="nm">舞台页头</td>
-                <td class="ds">产品标 / 名 / 副题 / 日期</td>
+                <td class="ds">左日期 + 右农历；盒 = 内容墨迹 + 10px</td>
               </tr>
               <tr>
                 <td class="id">B3</td>
                 <td class="nm">星盘</td>
-                <td class="ds">刻度 / 双针 / 金弧 / 四正位</td>
+                <td class="ds">12h 刻度 / 四针 / 金圈 / 半日胶囊</td>
               </tr>
               <tr>
                 <td class="id">B11</td>
                 <td class="nm">盘下读数</td>
-                <td class="ds">加速值 + 日序号 │ 现实值</td>
+                <td class="ds">加速值 + 第 NNN 天 │ 现实值</td>
               </tr>
               <tr>
                 <td class="id">B18</td>
                 <td class="nm">倍率条</td>
-                <td class="ds">6px 轨 + 亮白旋钮；不是滑杆</td>
+                <td class="ds">6px 轨 + 亮白旋钮；整数 1–365</td>
               </tr>
               <tr>
                 <td class="id">B25</td>
                 <td class="nm">农历 meta 行</td>
-                <td class="ds">农历 · 月相 · 财神，一条文本</td>
+                <td class="ds">已移除；农历在页头右栏</td>
               </tr>
               <tr>
                 <td class="id">C1</td>
@@ -2023,16 +2041,16 @@
           <div>
             <h2>时钟页 / 主仪</h2>
             <p>
-              唯一恒驻的页面。星盘是产品签名；读数在盘下，倍率条是 6px
-              短条，农历是一条 meta 行。窗口变矮（可用高 &lt;
-              380）时退化为数字版。
+              唯一恒驻的页面。星盘是产品签名且任何高度都保留（最小
+              120）；读数在盘下，倍率条是 6px
+              短条，农历在页头右栏。窗口变矮时先压星盘，再按 560 界缩页头。
             </p>
           </div>
         </div>
         <div class="guide-grid">
           <figure class="figure">
             <div class="window-scroll">
-              <div class="app-window solo" style="--win-h: 520px">
+              <div class="app-window solo" style="--win-h: 560px">
                 <div class="win-caption">
                   <span class="tag" style="left: 8px; top: 8px">A1</span>
                   <span class="win-title">加速世界</span>
@@ -2079,60 +2097,90 @@
               <tr>
                 <td class="id">B1</td>
                 <td class="nm">舞台页头</td>
-                <td class="ds">52px（短窗 40）；产品标 / 名 / 副题 / 日期</td>
+                <td class="ds">
+                  盒 = 内容墨迹 + 10px；高 560 分两行/一行，宽 560 分完整/精简
+                </td>
               </tr>
               <tr>
                 <td class="id">B3</td>
                 <td class="nm">星盘</td>
-                <td class="ds">直径 180–560；96 刻度 + 四正位</td>
+                <td class="ds">12h：60 刻度 + 12/3/6/9 内侧</td>
               </tr>
               <tr>
                 <td class="id">B7</td>
-                <td class="nm">加速针 / 金针</td>
-                <td class="ds">3px；指向加速时刻 24h</td>
+                <td class="nm">加速针 / 黄针</td>
+                <td class="ds">3.2px；指向加速时刻 12h</td>
               </tr>
               <tr>
                 <td class="id">B8</td>
-                <td class="nm">现实针 / 灰针</td>
-                <td class="ds">1.8px；长度为金针 62%</td>
+                <td class="nm">现实三针</td>
+                <td class="ds">时米白 / 分星紫 / 秒朱红</td>
               </tr>
               <tr>
                 <td class="id">B6</td>
-                <td class="nm">金弧</td>
-                <td class="ds">两针间的较短弧；膨胀差</td>
+                <td class="nm">金圈</td>
+                <td class="ds">加速日进度；CPU 实环 + GPU bloom</td>
               </tr>
               <tr>
                 <td class="id">B11</td>
                 <td class="nm">盘下读数</td>
-                <td class="ds">加速 56 / 现实 24；限宽 640</td>
+                <td class="ds">第 NNN 天 + 当天时间；现实 36px</td>
               </tr>
               <tr>
                 <td class="id">B14</td>
                 <td class="nm">日序号</td>
-                <td class="ds">≥24h 才显示“第 2 天”</td>
+                <td class="ds">与时间同行；001 补零、固定三槽宽</td>
               </tr>
               <tr>
                 <td class="id">B18</td>
                 <td class="nm">倍率条</td>
-                <td class="ds">宽 220–360，高 62；6px 轨</td>
+                <td class="ds">宽 220–360，高 66；6px 轨 + 量化行；1–365</td>
               </tr>
               <tr>
                 <td class="id">B25</td>
                 <td class="nm">农历 meta 行</td>
-                <td class="ds">一条 12px 文本，不是三个盒子</td>
+                <td class="ds">已移除；农历在页头右栏</td>
               </tr>
               <tr>
                 <td class="id">C2</td>
                 <td class="nm">坞胶囊</td>
-                <td class="ds">底部 560×56；选中金下划线</td>
+                <td class="ds">底部 56/44 两级；选中金下划线</td>
               </tr>
             </table>
             <h3>目测检查点</h3>
             <ul class="checklist">
-              <li>金针与灰针在 rate=7.2 时应明显分开；两针重合是旧版缺陷。</li>
-              <li>盘心没有 <code>×7.2</code>；倍率值只在条右端出现一次。</li>
-              <li>“第 2 天”只在加速时间 ≥24h 时出现。</li>
-              <li>农历/月相/财神是一条 meta 行，不应出现三个 chip 盒子。</li>
+              <li>
+                三针走现实 12h；黄针走加速 12h，rate=2
+                时应与时针明显分开，rate=1 时重合。
+              </li>
+              <li>
+                AM/PM 胶囊在盘左右、与 3/9 点中线对齐；当前半日亮起（AM 橙红 /
+                PM 淡蓝）。
+              </li>
+              <li>
+                金圈 0 点不可见，随加速日增厚到实环 7px，颜色走色谱，外发光由
+                GPU shader 画。
+              </li>
+              <li>
+                盘心没有
+                <code>×N</code>；倍率值只在条右端出现一次，且只有 1–365 整数档。
+              </li>
+              <li>
+                倍率条下方一行「现实 1 天 = 加速 N 天」，与当前倍率一致；拖到
+                365 档显示「加速 1 年」。
+              </li>
+              <li>
+                页头左是日期（14/600 白色），右是农历/月相/财神；窗口高 ≥560
+                两行（第二行宜忌），&lt;560 一行。
+              </li>
+              <li>
+                hover 日期弹周数/节日/节气；hover 右侧农历弹全部宜忌（每 5
+                条一行，位置固定）。
+              </li>
+              <li>
+                「第 NNN 天」与当天时间同行：001 起补零，三位宽度固定不变。
+              </li>
+              <li>盘下没有农历 meta 行。</li>
             </ul>
           </aside>
         </div>
@@ -3248,7 +3296,7 @@
                           <span class="tag" style="left: 8px; top: -8px"
                             >I8</span
                           ><span class="slabel">版本</span
-                          ><span class="svalue">0.6.4.1</span>
+                          ><span class="svalue">0.6.4.2</span>
                         </div>
                         <div class="setting-row">
                           <span class="tag" style="left: 8px; top: -8px"
@@ -3347,7 +3395,7 @@
               <tr>
                 <td class="id">I8</td>
                 <td class="nm">版本行</td>
-                <td class="ds">只读；当前 0.6.4.1</td>
+                <td class="ds">只读；当前 0.6.4.2</td>
               </tr>
               <tr>
                 <td class="id">I9</td>
@@ -3381,10 +3429,11 @@
         <div class="section-head">
           <span class="section-no">07</span>
           <div>
-            <h2>窄窗变体：两个 compact 不是一回事</h2>
+            <h2>窄窗变体：抽屉全宽 / 时钟盒断点</h2>
             <p>
-              全宽抽屉按“页宽 &lt; 760”；时钟数字版按“可用高 &lt;
-              380”。两者可能同时发生，也可能只发生一个。描述时请说清是哪一个。
+              全宽抽屉按“页宽 &lt; 760”；时钟页不再有数字版，星盘常驻（最小
+              120）。页头行数按窗口高 560 两级，文案按页头可用宽 560 两级；C2
+              坞高 56/44 两级。
             </p>
           </div>
         </div>
@@ -3430,12 +3479,11 @@
             </p>
           </div>
           <div class="mini-card">
-            <h4>时钟数字版（900×420 的页面区）</h4>
+            <h4>小窗时钟页（星盘常驻）</h4>
             <div class="mini-window">
               <div class="mini-bar">加速世界　—　□　×</div>
               <div class="mini-body">
                 <div class="mini-clock">
-                  <span class="tag" style="left: 8px; top: 8px">B26</span>
                   <div class="mini-brand">加速世界</div>
                   <div style="display: flex; align-items: baseline; gap: 10px">
                     <span style="font-size: 8px; color: var(--gold)">加速</span
@@ -3445,9 +3493,9 @@
                         font-size: 24px;
                         color: var(--ink);
                       "
-                      >35:30:48</span
+                      >11:30:48</span
                     ><span style="font-size: 7.5px; color: var(--meta)"
-                      >第 2 天</span
+                      >第 002 天</span
                     >
                   </div>
                   <div style="font-size: 8px; color: var(--muted)">
@@ -3471,7 +3519,7 @@
                     "
                   >
                     <span>倍率</span
-                    ><span style="color: var(--gold)">×7.2</span>
+                    ><span style="color: var(--gold)">×365</span>
                   </div>
                   <div
                     style="
@@ -3519,7 +3567,8 @@
               </div>
             </div>
             <p class="note" style="font-size: 0.75rem">
-              星盘消失，读数/倍率/meta 纵向排列；这是“短窗”，不是“全宽抽屉”。
+              星盘始终保留（最小 120，图中省略）；页头按高 560 / 宽 560
+              跌落，坞高 56/44 两级。这是“短窗”，不是“全宽抽屉”。
             </p>
           </div>
         </div>
@@ -3840,17 +3889,17 @@
               </tr>
               <tr>
                 <td>星盘</td>
-                <td>180–560</td>
+                <td>120–560（常驻，无数字版）</td>
                 <td><code>clock::dial_diameter</code></td>
               </tr>
               <tr>
                 <td>盘下读数</td>
-                <td>88（短窗 76）</td>
+                <td>27 + 0.62×hero（盒 = 墨迹 bbox）</td>
                 <td><code>draw_readout</code></td>
               </tr>
               <tr>
                 <td>倍率条</td>
-                <td>宽 220–360，高 62；轨 6px；旋钮 8→9px</td>
+                <td>宽 220–360，高 66；轨 6px；旋钮 8→9px；1–365</td>
                 <td><code>widgets/rate_strip.rs</code></td>
               </tr>
               <tr>
@@ -4124,9 +4173,9 @@
                 <td>快捷添加是 30px chip，不是 88×32 主按钮</td>
               </tr>
               <tr>
-                <td>数字版（指抽屉全宽）</td>
-                <td>时钟数字版 / 全宽抽屉</td>
-                <td>两个 compact 判断不同：高 &lt;380 vs 宽 &lt;760</td>
+                <td>数字版（旧词）</td>
+                <td>已废除</td>
+                <td>时钟页不再有数字版，星盘常驻；抽屉全宽仍按页宽 &lt;760</td>
               </tr>
             </tbody>
           </table>
@@ -4208,7 +4257,7 @@
     </main>
 
     <footer class="wrap footer">
-      <span>AccelWorld UI 标注指南 · 基线 V0.6.4.1 / HEAD 5b0b2da</span>
+      <span>AccelWorld UI 标注指南 · 基线 V0.6.4.2 / HEAD aec817e</span>
       <span
         >配套：<code>u.UI_GLOSSARY.md</code> · 窗口图按 820px
         宽绘制，仅示意结构，不替代真机截图</span
@@ -4220,8 +4269,8 @@
     <div class="stars"></div>
     <div class="stage-head">
       <span class="tag">B1</span>
-      <span class="dot"></span><span class="brand">加速世界</span><span class="sub">子夜星图</span>
-      <span class="stage-date">2026-10-29 周四</span>
+      <span class="dot"></span><span class="stage-date" style="margin-left:0">2026年11月13日 星期五</span>
+      <span class="stage-date" style="margin-left:auto">农历 丙午年（马年）十月初五</span>
     </div>
     <div class="dial-wrap">
       <span class="tag">B3</span>
@@ -4229,81 +4278,106 @@
     </div>
     <div class="readout">
       <span class="tag" style="left:0;top:-8px">B11</span>
-      <div class="col"><div class="rlabel gold">加速</div><div class="rhero">35:30:48</div><div class="rday">第 2 天</div></div>
+      <div class="col"><div class="rwrap"><div class="rlabel gold">加速</div><div class="rrow"><div class="rday"><span class="gold">第</span> 002 <span class="gold">天</span></div><div class="rhero">11:30:48</div></div></div></div>
       <div class="divider"></div>
-      <div class="col"><div class="rlabel">现实</div><div class="rreal">04:55:52</div></div>
+      <div class="col"><div class="rlabel">现实</div><div class="rrow"><div class="rreal">04:55:52</div></div></div>
     </div>
     <div class="rate">
       <span class="tag" style="left:0;top:-8px">B18</span>
-      <div class="rate-head"><span>倍率</span><span class="gold">×7.2</span></div>
+      <div class="rate-head"><span>倍率</span><span class="gold">×365</span></div>
       <div class="track"><div class="fill"></div><div class="knob"></div></div>
+      <div style="text-align:center;font-size:7px;color:var(--muted);margin-top:3px">现实 1 天 = 加速 1 年</div>
     </div>
-    <div class="lunar"><span class="tag" style="left:0;top:-1px">B25</span>农历 丙午年九月十九 · 月相 寝待月 · 财神 东北</div>
   `;
 
       document.querySelectorAll("[data-stage]").forEach((el) => {
         el.innerHTML = stageHTML;
       });
 
-      const CX = 100,
-        CY = 100;
+      const CX = 180,
+        CY = 120,
+        R = 95;
       const polar = (r, deg) => {
         const a = (deg * Math.PI) / 180;
         return [CX + r * Math.sin(a), CY - r * Math.cos(a)];
+      };
+      const mixHex = (a, b, t) => {
+        const pa = a.match(/\w\w/g).map((h) => parseInt(h, 16));
+        const pb = b.match(/\w\w/g).map((h) => parseInt(h, 16));
+        const p = pa.map((v, i) => Math.round(v + (pb[i] - v) * t));
+        return `rgb(${p.join(",")})`;
+      };
+      const spectrum = (t) => {
+        const stops = ["C94F4F", "E8B544", "5FAF8A", "6E8FD6", "9B8FD1"];
+        const pos = Math.max(0, Math.min(1, t)) * 4;
+        const seg = Math.min(4, Math.floor(pos));
+        if (seg >= 4) return `#${stops[4]}`;
+        return mixHex(stops[seg], stops[seg + 1], pos - seg);
       };
 
       function buildDial(host) {
         const ns = "http://www.w3.org/2000/svg";
         const svg = document.createElementNS(ns, "svg");
-        svg.setAttribute("viewBox", "0 0 200 200");
-        svg.setAttribute("aria-label", "星盘");
+        svg.setAttribute("viewBox", "0 0 360 240");
+        svg.setAttribute("aria-label", "12 小时四针星盘");
         svg.innerHTML = `
-      <circle cx="100" cy="100" r="86" fill="none" stroke="#33406A" stroke-width="1"/>
+      <circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="#33406A" stroke-width="1"/>
       <g class="ticks"></g>
-      <g fill="#8A8774" font-size="7.5" text-anchor="middle" font-family="system-ui,sans-serif">
-        <text x="100" y="7">00</text><text x="196" y="103">06</text><text x="100" y="199">12</text><text x="4" y="103">18</text>
+      <g fill="#8A8774" font-size="9" text-anchor="middle" font-family="system-ui,sans-serif">
+        <text x="${CX}" y="${CY - 74}">12</text>
+        <text x="${CX + 74}" y="${CY + 3}">3</text>
+        <text x="${CX}" y="${CY + 80}">6</text>
+        <text x="${CX - 74}" y="${CY + 3}">9</text>
       </g>
-      <path class="arc" fill="none" stroke="#E8B544" stroke-width="2" opacity=".55"/>
-      <line class="gold-hand" x1="100" y1="100" x2="100" y2="30" stroke="#E8B544" stroke-width="2.6" stroke-linecap="round"/>
-      <line class="gray-hand" x1="100" y1="100" x2="100" y2="57" stroke="#9A978A" stroke-width="1.6" stroke-linecap="round"/>
-      <circle cx="100" cy="100" r="3.4" fill="#ECE8DB"/>
+      <circle class="ring" cx="${CX}" cy="${CY}" r="${R + 8}" fill="none" stroke="#E8B544" stroke-width="0" opacity=".9"/>
+      <line class="hour-hand" x1="${CX}" y1="${CY}" x2="${CX}" y2="${CY - 46}" stroke="#ECE8DB" stroke-width="4.4" stroke-linecap="round"/>
+      <line class="min-hand" x1="${CX}" y1="${CY}" x2="${CX}" y2="${CY - 68}" stroke="#9B8FD1" stroke-width="2.8" stroke-linecap="round"/>
+      <line class="sec-hand" x1="${CX}" y1="${CY + 10}" x2="${CX}" y2="${CY - 78}" stroke="#E06A5E" stroke-width="1.2" stroke-linecap="round"/>
+      <line class="gold-hand" x1="${CX}" y1="${CY + 8}" x2="${CX}" y2="${CY - 76}" stroke="#E8B544" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="${CX}" cy="${CY}" r="3.2" fill="#ECE8DB"/>
+      <g font-size="8" font-family="system-ui,sans-serif" text-anchor="middle">
+        <rect x="${CX - 177}" y="${CY - 14}" width="52" height="22" rx="11" fill="#E8794F"/>
+        <text x="${CX - 151}" y="${CY + 2}" fill="#141A29" font-weight="600">AM</text>
+        <rect x="${CX + 125}" y="${CY - 14}" width="52" height="22" rx="11" fill="none" stroke="#33406A"/>
+        <text x="${CX + 151}" y="${CY + 2}" fill="#8A8774">PM</text>
+      </g>
     `;
         const ticks = svg.querySelector(".ticks");
-        for (let i = 0; i < 96; i++) {
-          const a = (i / 96) * 360,
-            major = i % 4 === 0;
-          const [x1, y1] = polar(86, a),
-            [x2, y2] = polar(major ? 74 : 79, a);
+        for (let i = 0; i < 60; i++) {
+          const a = (i / 60) * 360,
+            major = i % 5 === 0;
+          const [x1, y1] = polar(R, a),
+            [x2, y2] = polar(major ? R - 7 : R - 4, a);
           const l = document.createElementNS(ns, "line");
           l.setAttribute("x1", x1);
           l.setAttribute("y1", y1);
           l.setAttribute("x2", x2);
           l.setAttribute("y2", y2);
           l.setAttribute("stroke", major ? "#9A978A" : "#55648A");
-          l.setAttribute("stroke-width", major ? "1.7" : "1");
+          l.setAttribute("stroke-width", major ? "1.5" : "0.8");
           ticks.appendChild(l);
         }
-        const accel = (((35 % 24) + 30 / 60 + 48 / 3600) / 24) * 360;
-        const real = ((4 + 55 / 60 + 52 / 3600) / 24) * 360;
+        const accel = (((35 % 12) + 30 / 60 + 48 / 3600) / 12) * 360;
+        const hour = ((4 + 55 / 60 + 52 / 3600) / 12) * 360;
+        const minute = ((55 + 52 / 60) / 60) * 360;
+        const second = (52 / 60) * 360;
         const setHand = (sel, deg, r) => {
           const [x, y] = polar(r, deg);
           const el = svg.querySelector(sel);
           el.setAttribute("x2", x);
           el.setAttribute("y2", y);
         };
-        setHand(".gold-hand", accel, 74);
-        setHand(".gray-hand", real, 44);
-        let d = (accel - real + 360) % 360,
-          start = real;
-        if (d > 180) {
-          d = 360 - d;
-          start = accel;
-        }
-        const [ax, ay] = polar(90, start),
-          [bx, by] = polar(90, start + d);
-        svg
-          .querySelector(".arc")
-          .setAttribute("d", `M ${ax} ${ay} A 90 90 0 0 1 ${bx} ${by}`);
+        setHand(".hour-hand", hour, 46);
+        setHand(".min-hand", minute, 68);
+        setHand(".sec-hand", second, 78);
+        setHand(".gold-hand", accel, 76);
+        const progress = ((35 % 24) + 30 / 60 + 48 / 3600) / 24;
+        const ring = svg.querySelector(".ring");
+        ring.setAttribute(
+          "stroke-width",
+          Math.max(0.6, progress * 9).toFixed(2),
+        );
+        ring.setAttribute("stroke", spectrum(progress));
         host.appendChild(svg);
       }
 

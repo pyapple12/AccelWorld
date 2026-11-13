@@ -9,13 +9,13 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - 全量测试：`cargo test --workspace`（core 单测 + 夹具 parity 集成 + app 单测）
 - GUI 冒烟（真窗出血，会弹窗）：`cargo run -p accel-app`；UI 截图探针（逐页 PNG 后自动退出）：`$env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app`
 - 探针环境变量（正常模式零影响）：`ACCELWORLD_FPS_PROBE=<秒>` 静置测帧；`ACCELWORLD_UI_SHOT_GEOMETRY=WxH` 固定测试几何；`ACCELWORLD_TEST_NO_SAVE=1` 退出不写窗口存档；`ACCELWORLD_TEST_POS="x,y"` + `ACCELWORLD_EXPECT_POS="x,y"` 落点对照；`ACCELWORLD_EARLY_SHOT_MS=<ms>` 早期帧；`ACCELWORLD_TEST_CLOSE_LOSS=n` 丢弃前 n 次 Close（验证退出自愈）
-- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.4.1`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
+- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.5.0`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
 - **版本体系**：四段式纯数字 `X.Y.Z.P`（无 `ver ` 前缀）；`feat`/`fix`/`refactor`/`perf` 提交前 bump patch 位；历史存量 `ver 0.4x` 三段式仅存于历史文档与提交记录，不回溯改写
 
 ## 环境陷阱
 
 - 工作区为 Windows + MSVC 工具链（`stable-x86_64-pc-windows-msvc`）；首次配置需 VS Build Tools 的 `cl`/`link`
-- `.venv` 与 `config/user_config.json`（Python 版）已随 Python 归档，不再作为验证通道；现役用户配置与日志均在 **exe 同目录**（FIX007.15 基准统一：配置 `config/user_config.json`、日志 `logs/`，基准取 `core::util::paths::exe_dir`——`cargo run` 下落 `rs/target/debug/`，打包产物即 exe 旁自包含）
+- `.venv` 与 `config/user_config.json`（Python 版）已随 Python 归档，不再作为验证通道；现役用户配置与日志均在 **exe 同目录**（FIX007.15 基准统一：配置 `config/user_config.json`、日志 `.logs/`，基准取 `core::util::paths::exe_dir`——`cargo run` 下落 `rs/target/debug/`，打包产物即 exe 旁自包含）
 - `rs/target/` 为构建缓存（体积可达数十 GB），可随时 `cargo clean` 清除；勿将其纳入版本控制
 - pwsh 会话带 `-NoProfile`；输出中文前先 `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;`；搜索统一 `rg`
 
@@ -25,7 +25,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
   - `rs/crates/accel-core`：纯业务（时间膨胀 / 农历干支节气 / 天气 / 闹钟 / 配置 / 数据表 / 通用工具 / 接口契约），零 GUI 依赖
   - `rs/crates/accel-app`：egui 前端（实心主题窗口装配 / 星盘主仪 + 悬浮仪器坞 + 抽屉页（PageHeader/Scroll/Footer）+ 设置抽屉 / 自绘控件（含 Select）/ Tabler 图标字族 / 反馈动效 / 系统集成 / 首帧门控显示）
 - **分层与镜像**（Python → Rust，完整对应见 z.plan 镜像映射表）：`interface.rs` 七域契约 + `FrontendCommand`/`BackendEvent` 命令事件总线是 UI **写操作**后端的唯一入口（UI 不直改业务状态）；app 经 `bus.rs` 每帧 drain 事件、按需发命令，core 不感知 egui。**契约边界（A005 #12 明确）**：只读访问允许直取——`static_config::Static`（渲染 token）、`types` 与纯常量 DTO（`alarm::PresetSound`、`settings::CountdownTarget`）、`data::{cities,world_cities}` 只读检索、`audio`（平台侧播放封装）；判定口径：**改变后端状态**才必须走总线，纯读取再经 interface 转一层属无价值间接
-- **代码零硬编码**：业务参数（倍率范围/默认值/周期/窗口几何/颜色/日志路径等）全部从 `rs/config/static/*.json` 读取（`static_config.rs` 单例经 `include_str!` 编译期嵌入）；运行期文件一律 exe 同目录相对（FIX007.15）：用户配置 `config/user_config.json`、日志 `logs/`（每日独立文件）
+- **代码零硬编码**：业务参数（倍率范围/默认值/周期/窗口几何/颜色/日志路径等）全部从 `rs/config/static/*.json` 读取（`static_config.rs` 单例经 `include_str!` 编译期嵌入）；运行期文件一律 exe 同目录相对（FIX007.15）：用户配置 `config/user_config.json`、日志 `.logs/`（每日独立文件）
 - **注释房规**：`///` 中文文档注释（函数/方法，1-3 行，说明用途与核心逻辑）；模块头 `//!` 一行职责；每个 `.rs` 文件末尾保留 `// ===== 说明区 =====`（输入输出 / 逻辑步骤 / 设计理由 / 异常处理 / 关联配置）
 - **视觉走查门**：UI 观感改动经 `ACCELWORLD_UI_SHOT` 截图探针（真窗逐页 PNG）自检再进用户桌面走查——功能探针抓不住纯视觉缺陷（UIR 前的玻璃时代为 render_probe 离屏断言，管线已废）
 - **平台集成降级纪律**：托盘 / 全局热键 / 通知等系统能力构造失败一律降级日志不崩（行为无损），非 Windows 平台编译期桩化
@@ -110,7 +110,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 
 ## Git 注意
 
-- `.gitignore` 忽略 `CLAUDE.md`、`openspec/`、`.vscode/`、`.venv`、`archived/`、`.archived/`、`.opencode/`、`.agents/`、`.temp/`、`.history/`、`.mimosa/`、`rs/target/`、`logs/` —— 对这些文件的修改不会出现在 `git status` 中；`AGENTS.md`、工作流文档（w/x/y/z/m/t）与 UI 正式文档（`u.UI_GLOSSARY.md` / `u.UI_MAP.html`）已纳入版本控制
+- `.gitignore` 忽略所有以 `.` 开头的目录（`.*/`，唯一例外 `.github/` 保留 CI）、`CLAUDE.md`、`openspec/`、`rs/target/` —— 对这些文件的修改不会出现在 `git status` 中；`AGENTS.md`、工作流文档（w/x/y/z/m/t）与 UI 正式文档（`u.UI_GLOSSARY.md` / `u.UI_MAP.html`）已纳入版本控制
 - ~~`rs/config/user_config.json` 每次提交必须入库~~（FIX007.15 作废：运行期文件基准统一为 exe 同目录后，dev 落点在 `rs/target/debug/config/`——属 gitignore 的 `rs/target/`，不再入库；打包产物 exe 旁自包含，无库内副本诉求）
 
 ## 操作注意

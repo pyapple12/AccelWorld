@@ -1,7 +1,7 @@
 # egui 前端 crate（Python ui/ 层的 Rust 等价物；UIR 后渲染器 eframe glow 实心装配）
 [package]
 name = "accel-app"
-version = "0.6.3"
+version = "0.6.5"
 edition = "2024"
 description = "AccelWorld egui 前端：窗口/实心桌面 UI 五页导航 + 设置浮窗/系统集成"
 # 单 bin（render_probe 已随 UIR 玻璃拆除删除）；default-run 保留为无害冗余

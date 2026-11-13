@@ -17,7 +17,7 @@ pub fn notify_alarm(label: &str, time: &str) -> bool {
 
 /// 配置保存失败通知
 pub fn notify_save_failed() -> bool {
-    show("配置保存失败", "设置未能写入磁盘，请查阅 logs/ 日志")
+    show("配置保存失败", "设置未能写入磁盘，请查阅 .logs/ 日志")
 }
 
 /// WinRT toast 发送（静音——铃声由 rodio 独立负责，避免双声）

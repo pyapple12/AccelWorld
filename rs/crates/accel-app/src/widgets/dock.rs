@@ -17,7 +17,8 @@ pub struct DockItem {
 pub fn show(ui: &mut egui::Ui, state: &mut UiState, items: &[DockItem]) {
     let ink = crate::theme::ink();
     let avail = ui.max_rect();
-    let compact = avail.width() < 760.0;
+    // 文字是否保留只看坞高：56 保留图标+文字，44 只留图标
+    let compact = avail.height() < 56.0;
     // 抽屉打开时，坞居中于「舞台」而不是整窗（避免压在抽屉上；900 下可点设置）
     let drawer_open = state.current_page != PageId::Clock || state.settings_open;
     let stage_w = if drawer_open && avail.width() >= 760.0 {
@@ -28,7 +29,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, items: &[DockItem]) {
     let pill_w = (crate::theme::layout_f32("dock_pill_width"))
         .min(stage_w - 24.0)
         .max(280.0);
-    let pill_h = crate::theme::layout_f32("dock_pill_height");
+    let pill_h = avail.height().max(40.0);
+    let pill_w = (pill_w * (pill_h / 56.0)).max(280.0);
     let pill = Rect::from_center_size(
         egui::pos2(avail.left() + stage_w / 2.0, avail.center().y),
         egui::vec2(pill_w, pill_h),
@@ -190,10 +192,11 @@ fn draw_item(
         );
     }
     let color = if active { strong } else { muted };
+    // 图标与文字间距固定 5px（不随坞高变化）：图标 20px 居中于 center-8，文字顶 center+3
     let icon_cy = if compact {
         rect.center().y
     } else {
-        rect.center().y - 7.0
+        rect.center().y - 8.0
     };
     icons::draw(
         ui.painter(),
@@ -204,8 +207,8 @@ fn draw_item(
     );
     if !compact {
         ui.painter().text(
-            egui::pos2(rect.center().x, rect.bottom() - 6.0),
-            Align2::CENTER_BOTTOM,
+            egui::pos2(rect.center().x, rect.center().y + 3.0),
+            Align2::CENTER_TOP,
             label,
             crate::theme::font_medium(11.0),
             color,

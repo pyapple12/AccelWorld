@@ -49,7 +49,13 @@ impl AppInterface {
     pub fn with_config_path(config_path: PathBuf) -> Self {
         // A005 #18：单次 load 复用（原实现对同一路径 load 两遍——重复磁盘 IO）
         let config = settings::load(&config_path);
-        let world = match TimeDilation::new(config.time_dilation_rate) {
+        // PL020：旧配置可能存小数倍率，装载时四舍五入到整数档再校验
+        let stored_rate = config.time_dilation_rate;
+        let rate = stored_rate.round();
+        if (rate - stored_rate).abs() > 1e-9 {
+            tracing::warn!("持久化倍率非整数，已归一: {stored_rate} → {rate}");
+        }
+        let world = match TimeDilation::new(rate) {
             Ok(w) => w,
             Err(e) => {
                 tracing::warn!(
@@ -834,7 +840,7 @@ mod tests {
         assert!(info.custom_time.contains(':'), "加速时间应为 HH:MM:SS 形态");
         assert_eq!(info.day_hours, 48, "默认倍率 2.0 → 48 时日长");
         assert_eq!(itf.get_rate(), 2.0);
-        assert_eq!(AppInterface::get_rate_bounds(), (1.0, 20.0));
+        assert_eq!(AppInterface::get_rate_bounds(), (1.0, 365.0));
         // 版本经 base.json 单源转出（四段式形态；值本体不在代码内）
         let version = AppInterface::get_version();
         assert_eq!(
@@ -850,12 +856,15 @@ mod tests {
         let sandbox = SandboxDir::new("rate");
         let path = sandbox.path();
         let itf = iface(&path);
-        assert!(itf.set_rate(5.5));
-        assert_eq!(itf.get_rate(), 5.5);
+        assert!(itf.set_rate(5.0));
+        assert_eq!(itf.get_rate(), 5.0);
         assert_eq!(itf.get_tick_interval_ms(), 100);
+        // PL020：非整数倍率拒绝（状态不变）
+        assert!(!itf.set_rate(5.5));
+        assert_eq!(itf.get_rate(), 5.0);
         // 越界拒绝：状态不变
-        assert!(!itf.set_rate(99.0));
-        assert_eq!(itf.get_rate(), 5.5);
+        assert!(!itf.set_rate(366.0));
+        assert_eq!(itf.get_rate(), 5.0);
         // 未 apply 前不落盘
         assert_eq!(settings::load(&path).time_dilation_rate, 2.0);
         assert!(itf.apply_rate(3.0));
@@ -894,7 +903,7 @@ mod tests {
         let sandbox = SandboxDir::new("dirty");
         let path = sandbox.path();
         let config = UserConfig {
-            time_dilation_rate: 99.0,
+            time_dilation_rate: 366.0,
             ..UserConfig::default()
         };
         settings::save(&path, &config);
@@ -936,6 +945,8 @@ mod tests {
         let sandbox = SandboxDir::new("bustick");
         let path = sandbox.path();
         let itf = Arc::new(iface(&path));
+        // 预热农历日缓存：首个 Tick 不背 lunar-rust 初始化耗时（版本门换缓存后尤其重要）
+        let _ = itf.get_time_info();
         let (_cmd_tx, mut evt_rx) = AppInterface::spawn(itf);
         let mut ticks = 0;
         let deadline = std::time::Instant::now() + Duration::from_secs(2);
