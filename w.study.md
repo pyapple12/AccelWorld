@@ -28,7 +28,7 @@ cargo workspace 双 crate 桌面应用：基于加速倍率的时间膨胀时钟
 ```
 rs/                              # cargo workspace 根
   ci.ps1                         # 四关卡本地 CI（fmt / clippy / test / 依赖树零 egui）
-  fixtures/                      # golden 夹具（Python 0.6.0.0 行为快照，parity 基准）
+  fixtures/                      # （已移除：不再维护 Python 对照夹具）
   config/static/                 # 应用静态配置（零硬编码）
     base.json                    # 应用参数 + version（版本单一来源）
     ui.json                      # 字体/布局 tokens/颜色
@@ -98,7 +98,7 @@ pub fn time_info(&self, now: DateTime<Local>) -> TimeInfo {
 
 - `now` 全参数化（无内部时钟）：测试可注入固定时刻，消除时间依赖
 - 农历/中文日期按标准秒级缓存，标准/加速时间每次现算（对齐 Python 0.4.7.1 修复语义）
-- 47 条 time 向量夹具位级全等（含 110.00000000000001 类 ULP 值——启用 `serde_json` `float_roundtrip` 特性）
+- 47 条 time 向量（含 110.00000000000001 类 ULP 值——启用 `serde_json` `float_roundtrip` 特性）
 
 ### 3.4 闹钟服务 — 去重键 + 状态机 + Clock 抽象
 
@@ -153,7 +153,7 @@ pub async fn fetch(&self, city: &str, force: bool) -> Result<WeatherData, Weathe
 | 配置格式 | JSON；静态 `config/static/*.json`（include_str 嵌入）+ 用户配置 serde 反序列化    |
 | 路径处理 | 强制 `std::path::Path`/`PathBuf`                                                  |
 | 格式化   | `cargo fmt`（4 空格、行宽 100）；`cargo clippy -D warnings` 零警告                |
-| 测试     | core 内联 `#[cfg(test)]` 就近单测 + `crates/accel-core/tests/` 夹具 parity 集成   |
+| 测试     | core 内联 `#[cfg(test)]` 就近单测 + app 单测就近放置                              |
 | 临时文件 | `.temp/`（gitignore）                                                             |
 
 ## 5. 与 DeepTransHub 对比
@@ -171,8 +171,4 @@ pub async fn fetch(&self, city: &str, force: bool) -> Result<WeatherData, Weathe
 | 代码规范   | AGENTS.md 成文（`///`+`//!`+说明区房规）                 | AGENTS.md 成文（同源，DeepTransHub 更早） |
 | 工作流体系 | 2026-09-10 接入（本文档交接）                            | w/x/y/z 四件套 + skills + 审计流程        |
 
-## 6. 与 Python 版的 parity 基准
-
-- Python 版（0.6.0.0）冻结为 golden 基准：`rs/fixtures/*.json` 为行为快照（time/config/weather/lunar/alarm 五类），core 行为断言一律对夹具
-- 夹具可由 `.archived/` 内 Python 副本再生（`export_fixtures.py`，sha256 与入库值一致）
 - 镜像映射表（Python → Rust）见 `z.plan.md`「总纲修订一」；执行偏移与豁免清单见 z.plan 各 PL 完成记录节

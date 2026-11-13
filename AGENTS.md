@@ -6,10 +6,10 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 
 - 全部命令在 `rs/` 目录（cargo workspace 根）下执行；工具链见 `rs/rust-toolchain.toml`（channel = stable）
 - **统一入口四关卡**：`pwsh rs/ci.ps1`（fmt --check → clippy `-D warnings` → `cargo test --workspace` → core 依赖树零 egui/eframe）；`.github/workflows/rs-ci.yml` 复用同一命令集
-- 全量测试：`cargo test --workspace`（core 单测 + 夹具 parity 集成 + app 单测）
+- 全量测试：`cargo test --workspace`（core 单测 + app 单测）
 - GUI 冒烟（真窗出血，会弹窗）：`cargo run -p accel-app`；UI 截图探针（逐页 PNG 后自动退出）：`$env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app`
 - 探针环境变量（正常模式零影响）：`ACCELWORLD_FPS_PROBE=<秒>` 静置测帧；`ACCELWORLD_UI_SHOT_GEOMETRY=WxH` 固定测试几何；`ACCELWORLD_TEST_NO_SAVE=1` 退出不写窗口存档；`ACCELWORLD_TEST_POS="x,y"` + `ACCELWORLD_EXPECT_POS="x,y"` 落点对照；`ACCELWORLD_EARLY_SHOT_MS=<ms>` 早期帧；`ACCELWORLD_TEST_CLOSE_LOSS=n` 丢弃前 n 次 Close（验证退出自愈）
-- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.5.0`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
+- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.5.1`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
 - **版本体系**：四段式纯数字 `X.Y.Z.P`（无 `ver ` 前缀）；`feat`/`fix`/`refactor`/`perf` 提交前 bump patch 位；历史存量 `ver 0.4x` 三段式仅存于历史文档与提交记录，不回溯改写
 
 ## 环境陷阱
@@ -92,7 +92,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - 集合构建：优先 iterator 与 `collect` 而非手写可变循环
 - 布尔/空值判断：用 `if x` / `if !x` / `if let Some(v)` / `x.is_none()`，避免 `== true` 之类比较
 - 路径处理：强制 `std::path::Path`/`PathBuf`，禁止字符串拼接路径
-- 测试：core 各模块内联 `#[cfg(test)]` 就近单测，夹具驱动集成测试放 `rs/crates/accel-core/tests/`；app 单测就近放置
+- 测试：core 各模块内联 `#[cfg(test)]` 就近单测；app 单测就近放置
 - 临时文件：所有临时生成的脚本/文件/截图必须写入项目根 `.temp/`（gitignore）；**禁止写入用户目录**（`%TEMP%`、`C:/Users/<用户>/AppData/Local/Temp/opencode/` 等）；`.temp/` 探针脚本不受「必须用 edit」限制
 - **文件修改必须用 edit 工具**：修改既有 `.rs`/`.md`/`.json` 一律用 edit 的精确 oldString/newString 替换，禁止用脚本做内容替换
 - **版本单一来源**：见「运行与验证」节

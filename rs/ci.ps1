@@ -12,7 +12,7 @@ Write-Host "== 关卡 2/4 clippy（警告即红）=="
 cargo clippy --workspace --all-targets -- -D warnings
 if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: clippy"; exit 1 }
 
-Write-Host "== 关卡 3/4 test（全量单测 + 集成）=="
+Write-Host "== 关卡 3/4 test（全量单测）=="
 cargo test --workspace
 if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: test"; exit 1 }
 

@@ -29,12 +29,18 @@ pub fn is_write_allowed(path: &Path) -> bool {
         .any(|root| resolved.starts_with(canonicalish(root)))
 }
 
-/// 规范化路径（存在则 canonicalize——Windows 返回 \\?\ 前缀须剥离与词法形态统一，
-/// 不存在则保留词法形态；白名单判定两形态一致可用）
+/// 规范化路径（存在则 canonicalize——Windows 返回 \\?\ 前缀须剥离与词法形态统一；
+/// 不存在则规范化父目录（已存在）再拼文件名，避免 8.3 短名与长名形态不一致）
 fn canonicalish(path: &Path) -> PathBuf {
-    path.canonicalize()
-        .map(strip_verbatim)
-        .unwrap_or_else(|_| normalize_lexical(path))
+    if let Ok(p) = path.canonicalize() {
+        return strip_verbatim(p);
+    }
+    if let (Some(parent), Some(name)) = (path.parent(), path.file_name())
+        && let Ok(p) = parent.canonicalize()
+    {
+        return strip_verbatim(p).join(name);
+    }
+    normalize_lexical(path)
 }
 
 /// 剥离 Windows verbatim 前缀（\\?\C:\… → C:\…；\\?\UNC\server\… → \\server\…）
@@ -95,20 +101,26 @@ pub fn write_json(path: &Path, data: &Value) -> Result<(), WriteError> {
 }
 
 /// 原子写文本：同目录进程号中间文件 + rename 替换（防中途崩溃半截文件）
+/// Windows AV 可能瞬时占用刚写入的 tmp：rename 失败重试 3 次（10/20/30ms），仍失败才报错
 pub fn write_text_atomic(path: &Path, text: &str) -> Result<(), WriteError> {
     let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
     fs::write(&tmp, text.as_bytes())?;
-    match fs::rename(&tmp, path) {
-        Ok(()) => Ok(()),
-        Err(e) => {
-            // 中间文件清理失败不掩盖原错误（Windows AV 瞬时占用场景）
-            let _ = fs::remove_file(&tmp);
-            Err(WriteError::Io(e))
+    let mut last = None;
+    for attempt in 0..3u64 {
+        match fs::rename(&tmp, path) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                last = Some(e);
+                std::thread::sleep(std::time::Duration::from_millis(10 * (attempt + 1)));
+            }
         }
     }
+    // 中间文件清理失败不掩盖原错误（Windows AV 瞬时占用场景）
+    let _ = fs::remove_file(&tmp);
+    Err(WriteError::Io(last.expect("rename 至少尝试一次")))
 }
 
 /// 损坏配置转存辅助（Python _backup_corrupted_config 对等）

@@ -41,7 +41,7 @@ jobs:
       - name: 关卡 2/4 clippy（警告即红）
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: 关卡 3/4 test（全量单测 + 集成）
+      - name: 关卡 3/4 test（全量单测）
         run: cargo test --workspace
 
       - name: 关卡 4/4 core 依赖树零 egui/eframe（单向分层机器强制）

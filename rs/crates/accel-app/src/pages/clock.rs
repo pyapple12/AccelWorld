@@ -147,9 +147,8 @@ impl crate::pages::Page for crate::pages::ClockPage {
         let pm = is_pm(real_time);
 
         // 盒子堆叠器：显式 y 游标，盒子只在自己的 rect 内绘制
-        let box_rect = |y: f32, h: f32| {
-            egui::Rect::from_min_size(egui::pos2(left, y), egui::vec2(page_w, h))
-        };
+        let box_rect =
+            |y: f32, h: f32| egui::Rect::from_min_size(egui::pos2(left, y), egui::vec2(page_w, h));
 
         let mut y = page_rect.top();
         draw_stage_header(ui, &info, &header, box_rect(y, header_h));
@@ -229,9 +228,11 @@ fn header_layout(ui: &egui::Ui, info: &accel_core::types::TimeInfo, page_w: f32)
         .next()
         .unwrap_or(&god)
         .trim_end_matches("方向");
-    let viewport_h = ui
-        .ctx()
-        .input(|i| i.viewport().inner_rect.map_or(f32::INFINITY, |r| r.height()));
+    let viewport_h = ui.ctx().input(|i| {
+        i.viewport()
+            .inner_rect
+            .map_or(f32::INFINITY, |r| r.height())
+    });
     // 行数按高度两级（与 C2 同界 560）；文本长度按页头可用宽两级
     let two_line = viewport_h >= 560.0;
     let full_text = page_w >= 560.0;
@@ -242,12 +243,7 @@ fn header_layout(ui: &egui::Ui, info: &accel_core::types::TimeInfo, page_w: f32)
     };
     let meta = text_ink::measure(ui, &line1, &meta_font, InkKind::Cjk);
     let line_gap = 2.0;
-    let b2_h = meta.h
-        + if two_line {
-            line_gap + meta.h
-        } else {
-            0.0
-        };
+    let b2_h = meta.h + if two_line { line_gap + meta.h } else { 0.0 };
     HeaderLayout {
         label_size,
         meta_font,
@@ -343,7 +339,13 @@ fn draw_stage_header(
         egui::Sense::hover(),
     );
     if resp.hovered() && (!info.lunar_yi.is_empty() || !info.lunar_ji.is_empty()) {
-        draw_lunar_tooltip(ui, rect.right(), rect.bottom() + 6.0, info, &layout.meta_font);
+        draw_lunar_tooltip(
+            ui,
+            rect.right(),
+            rect.bottom() + 6.0,
+            info,
+            &layout.meta_font,
+        );
     }
     ui.painter().line_segment(
         [
@@ -434,16 +436,8 @@ fn draw_lunar_tooltip(
     let w_yi_label = measure("宜 ", success);
     let w_ji_label = measure("忌 ", danger);
     // 每 5 条一行；高度按行数自适应
-    let yi_lines: Vec<String> = info
-        .lunar_yi
-        .chunks(5)
-        .map(|c| c.join(" · "))
-        .collect();
-    let ji_lines: Vec<String> = info
-        .lunar_ji
-        .chunks(5)
-        .map(|c| c.join(" · "))
-        .collect();
+    let yi_lines: Vec<String> = info.lunar_yi.chunks(5).map(|c| c.join(" · ")).collect();
+    let ji_lines: Vec<String> = info.lunar_ji.chunks(5).map(|c| c.join(" · ")).collect();
     let label_w = w_yi_label.max(w_ji_label);
     let max_line_w = yi_lines
         .iter()

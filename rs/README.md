@@ -51,8 +51,6 @@ pub fn time_info(&self, now: DateTime<Local>) -> TimeInfo {
   `ACCELWORLD_VERSION`），代码中不得出现版本字符串
 - 零硬编码：业务参数全部走 `rs/config/static/*.json` token（`include_str` 嵌入，
   `static_config.rs` 单例访问）
-- 夹具 parity：`rs/fixtures/*.json` 为 Python 0.6.0.0 行为快照（golden），
-  core 行为断言一律对夹具（`.archived/` 可再生）
 - 平台集成降级：托盘/热键/通知构造失败一律降级日志不崩；非 Windows 平台编译期桩化
 - 视觉走查：UI 观感改动经 `ACCELWORLD_UI_SHOT` 截图探针自检 + 用户真机目测终审
   （视觉设计不得向测试环境妥协；玻璃管线已废弃——UIR 定案）

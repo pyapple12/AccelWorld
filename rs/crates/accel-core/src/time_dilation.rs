@@ -24,6 +24,17 @@ pub enum RateError {
 // 日期缓存键：展示数据按日复用，绝不进每秒 tick
 type DateKey = (i32, u32, u32);
 
+/// 当日展示缓存：(日期键, 中文日期, 农历串, 宜, 忌, 节气, 节日)
+type DayCacheEntry = (
+    DateKey,
+    String,
+    String,
+    Vec<String>,
+    Vec<String>,
+    String,
+    String,
+);
+
 /// 时间膨胀核心（Python AcceleratedWorld 镜像）
 /// 时间全参数化注入（PL011 层面无 Clock 依赖，可测性优先）；
 /// 农历/中文日期按日/小时缓存（宜忌按日、农历串按小时；PL020 修正每秒重算导致 tick 冻结）
@@ -33,17 +44,7 @@ pub struct TimeDilation {
     /// 整数日长 int(24×rate)——钟面回绕模数与日长显示同口径（FIX003.4）
     day_hours: i64,
     /// 当日缓存：(日期键, 中文日期, 农历串, 今日宜, 今日忌) —— 一天只算一次并落盘
-    day_cache: Mutex<
-        Option<(
-            DateKey,
-            String,
-            String,
-            Vec<String>,
-            Vec<String>,
-            String,
-            String,
-        )>,
-    >,
+    day_cache: Mutex<Option<DayCacheEntry>>,
 }
 
 impl PartialEq for TimeDilation {

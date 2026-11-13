@@ -7,8 +7,7 @@ members = ["crates/*"]
 # 统一依赖版本（2026-10-16 crates.io 核验最新稳定，PL011 只装 core 所需 + app 占位）
 [workspace.dependencies]
 serde = { version = "1.0.229", features = ["derive"] }
-# float_roundtrip：正确舍入浮点解析（默认实现可差 1 ULP——夹具 parity 位级断言的硬前提，
-# PL011.10 实证：110.00000000000001 默认解析为 110.0）
+# float_roundtrip：正确舍入浮点解析（默认实现可差 1 ULP；保留该特性保证 JSON 浮点精确往返）
 serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros", "time", "sync"] }
 # reqwest 0.13 特性更名：rustls-tls → rustls（关 default-features + rustls：纯 Rust TLS 栈，不链系统 OpenSSL）

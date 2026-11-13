@@ -1332,7 +1332,14 @@ mod tests {
                 let _ = std::fs::remove_dir_all(&self.0);
             }
         }
-        let dir = std::env::temp_dir().join(format!("accel_startup_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "accel_startup_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
         let _cleanup = RemoveOnDrop(dir.clone());
         std::fs::create_dir_all(&dir).expect("临时目录创建失败");
         let path = dir.join("user_config.json");
@@ -1349,7 +1356,16 @@ mod tests {
             }],
             ..accel_core::settings::UserConfig::default()
         };
-        assert!(accel_core::settings::save(&path, &cfg), "配置应落盘");
+        assert!(
+            accel_core::util::file_io::is_write_allowed(&path),
+            "测试临时目录应在写白名单内: {}",
+            path.display()
+        );
+        assert!(
+            accel_core::settings::save(&path, &cfg),
+            "配置应落盘: {}",
+            path.display()
+        );
         let iface = AppInterface::with_config_path(path);
         let mut state = UiState {
             prefs: iface.get_ui_preferences(),

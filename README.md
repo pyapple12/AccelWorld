@@ -1,6 +1,6 @@
 # AccelWorld —— 加速世界世界钟
 
-[![Version](https://img.shields.io/badge/Version-0.6.5.0-blue.svg)](rs/config/static/base.json)
+[![Version](https://img.shields.io/badge/Version-0.6.5.1-blue.svg)](rs/config/static/base.json)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](rs/rust-toolchain.toml)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
@@ -98,7 +98,6 @@ rs/ # cargo workspace 根（全部命令在此执行）
 ├── rust-toolchain.toml / rustfmt.toml / clippy.toml
 ├── ci.ps1 # 四关卡本地 CI（fmt / clippy / test / 依赖树）
 ├── README.md # Rust 工程房规与结构说明
-├── fixtures/ # golden 夹具（Python 0.6.0.0 行为快照，parity 基准）
 ├── config/static/ # 应用静态配置（零硬编码 token）
 │ ├── base.json # 应用参数 + version（版本单一来源）
 │ ├── ui.json # 字体/布局 tokens/颜色

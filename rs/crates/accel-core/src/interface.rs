@@ -801,8 +801,7 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    /// 测试沙箱目录（RAII：drop 即整目录清理——A008 #15，与 parity.rs 同款模式，
-    /// 断言失败不再残留 %TEMP%/accel_iface_*）
+    /// 测试沙箱目录（RAII：drop 即整目录清理——A008 #15；断言失败不再残留 %TEMP%/accel_iface_*）
     struct SandboxDir(PathBuf);
 
     impl SandboxDir {
