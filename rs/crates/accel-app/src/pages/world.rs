@@ -33,11 +33,18 @@ impl crate::pages::Page for crate::pages::WorldPage {
 
         // 固定页脚盒高 44；body 与页脚间距 10
         let avail = ui.max_rect();
-        let footer_h = 44.0;
-        let body_h = (avail.height() - footer_h - 10.0).max(0.0);
+        let footer_h =
+            crate::widgets::select::height(ui).max(crate::widgets::text_metrics::line_height(
+                ui.ctx(),
+                &crate::theme::font_medium(crate::theme::font_size("meta")),
+            )) + crate::theme::spacing_f32("sm");
+        let body_h = (avail.height() - footer_h - crate::theme::layout_f32("footer_gap")).max(0.0);
         let body_rect = egui::Rect::from_min_size(avail.min, egui::vec2(avail.width(), body_h));
         let footer_rect = egui::Rect::from_min_size(
-            egui::pos2(avail.left(), body_rect.bottom() + 10.0),
+            egui::pos2(
+                avail.left(),
+                body_rect.bottom() + crate::theme::layout_f32("footer_gap"),
+            ),
             egui::vec2(avail.width(), footer_h),
         );
 
@@ -62,23 +69,29 @@ impl crate::pages::Page for crate::pages::WorldPage {
                     let sub_font = crate::theme::font_regular(crate::theme::font_size("meta"));
                     let walk_font = digits::digit_font(24.0);
                     for (i, name) in pins.iter().enumerate() {
-                        // 行盒高 = max(名称墨迹 + 6 + 副行墨迹, 走时墨迹) + 上下 12
-                        let name_ink =
-                            crate::widgets::text_ink::measure(ui, name, &name_font, InkKind::Cjk);
-                        let sub_ink = crate::widgets::text_ink::measure(
-                            ui,
-                            "点击设为基准",
-                            &sub_font,
+                        // 行盒高 = max(固定名称行高 + 6 + 副行/基准 chip 高, 走时行高) + 上下 12
+                        let name_h = crate::widgets::text_metrics::height(
+                            ui.ctx(),
+                            &name_font,
                             InkKind::Cjk,
                         );
-                        let walk_ink = crate::widgets::text_ink::measure(
-                            ui,
-                            "00:00:00",
+                        let sub_h =
+                            crate::widgets::text_metrics::height(ui.ctx(), &sub_font, InkKind::Cjk);
+                        let walk_h = crate::widgets::text_metrics::height(
+                            ui.ctx(),
                             &walk_font,
                             InkKind::Digits,
                         );
-                        let row_h = (name_ink.h + 6.0 + sub_ink.h).max(walk_ink.h) + 24.0;
-                        let rect = stack.slot(row_h);
+                        // 基准行用 18px chip，普通行用副行行高；两者与绘制端同一分块
+                        let sub_block_h = if accel_core::data::world_cities::tz_of(name)
+                            .is_some_and(|tz| base_tz.as_deref() == Some(tz))
+                        {
+                            18.0
+                        } else {
+                            sub_h
+                        };
+                        let row_h = (name_h + 6.0 + sub_block_h).max(walk_h) + 24.0;
+                        let rect = stack.next(ui, row_h);
                         ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
                             if i == last && pulse < 1.0 {
                                 ui.set_opacity(0.55 + 0.45 * pulse);
@@ -177,15 +190,23 @@ fn draw_city_row(
         egui::StrokeKind::Inside,
     );
     let name_font = crate::theme::font_semibold(crate::theme::font_size("body_lg"));
-    let name_ink = crate::widgets::text_ink::measure(ui, name, &name_font, InkKind::Cjk);
-    let name_top = rect.top() + 12.0;
+    let sub_font = crate::theme::font_regular(crate::theme::font_size("meta"));
+    let name_h = crate::widgets::text_metrics::height(ui.ctx(), &name_font, InkKind::Cjk);
+    let sub_h = crate::widgets::text_metrics::height(ui.ctx(), &sub_font, InkKind::Cjk);
+    let chip_h = 18.0;
+    let sub_block_h = if is_base { chip_h } else { sub_h };
+    let name_box = egui::Rect::from_min_size(
+        egui::pos2(rect.left() + 14.0, rect.top() + 12.0),
+        egui::vec2(rect.width() - 28.0, name_h),
+    );
     ui.painter().text(
-        egui::pos2(rect.left() + 14.0, name_top - name_ink.top_pad),
-        egui::Align2::LEFT_TOP,
+        name_box.left_center(),
+        egui::Align2::LEFT_CENTER,
         name,
         name_font.clone(),
         ink.strong,
     );
+    let sub_top = name_box.bottom() + 6.0;
     if is_base {
         // 基准：左侧 2px 金线 + 中性 chip（Pin + 文字），金色只做状态标记
         ui.painter().rect_filled(
@@ -197,8 +218,8 @@ fn draw_city_row(
             crate::theme::accent_color(),
         );
         let chip = egui::Rect::from_min_size(
-            egui::pos2(rect.left() + 14.0, name_top + name_ink.h + 6.0),
-            egui::vec2(52.0, 18.0),
+            egui::pos2(rect.left() + 14.0, sub_top),
+            egui::vec2(52.0, chip_h),
         );
         ui.painter().rect_filled(
             chip,
@@ -220,9 +241,13 @@ fn draw_city_row(
             ink.muted,
         );
     } else if hit.hovered() || hit.has_focus() {
+        let hint_box = egui::Rect::from_min_size(
+            egui::pos2(rect.left() + 14.0, sub_top),
+            egui::vec2(rect.width() - 28.0, sub_block_h),
+        );
         ui.painter().text(
-            egui::pos2(rect.left() + 14.0, name_top + name_ink.h + 6.0),
-            egui::Align2::LEFT_TOP,
+            hint_box.left_center(),
+            egui::Align2::LEFT_CENTER,
             "点击设为基准",
             crate::theme::font_regular(11.0),
             ink.meta,
@@ -231,9 +256,11 @@ fn draw_city_row(
 
     let walk_font = digits::digit_font(24.0);
     let walk_w = digits::text_width(ui.painter(), &walk, &walk_font);
-    digits::draw_centered(
+    let walk_h = crate::widgets::text_metrics::height(ui.ctx(), &walk_font, InkKind::Digits);
+    let walk_center = rect.bottom() - 12.0 - walk_h / 2.0;
+    digits::draw_centered_ink(
         ui.painter(),
-        egui::pos2(rect.right() - 48.0 - walk_w / 2.0, rect.center().y),
+        egui::pos2(rect.right() - 48.0 - walk_w / 2.0, walk_center),
         &walk,
         &walk_font,
         if is_base { ink.strong } else { ink.body },

@@ -499,9 +499,9 @@ impl AppHandle {
         }
         self.last_status = std::time::Instant::now();
         let tooltip = match &self.state.time {
-            Some(t) => format!("加速世界 - {} @ {:.0}x", t.custom_time, self.state.rate),
+            Some(t) => format!("天宫时计 - {} @ {:.0}x", t.custom_time, self.state.rate),
             None => format!(
-                "加速世界 - {}",
+                "天宫时计 - {}",
                 accel_core::static_config::Static::get().version()
             ),
         };
@@ -965,7 +965,7 @@ pub fn run_with_counter(
         .with_max_inner_size(crate::theme::window_max_size())
         // PL018.06：隐藏创建，首帧门控后再显示（防 GPU 热释放后的首帧黑窗）
         .with_visible(false)
-        .with_title("加速世界");
+        .with_title("天宫时计 · ACCELWORLD Clock");
     if let Ok(icon) =
         eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/accelworld-tray.png"))
     {

@@ -1,22 +1,35 @@
-//! 空态区块（PL017）：保留区块框 + 标题 + 一句行动邀请；不把空态做成一行孤字。
+//! 空态区块（PL017）：虚线框 + 两行文字；两行各自固定盒高，整块垂直居中。
 //! 虚线仅用于空槽（app-screens §11）；正文 ≥4.5:1。
 
-use egui::{Align2, Sense, Stroke};
+use egui::{Align2, Stroke};
 
-/// 绘制空态框（默认 96px）；返回整块 Response（调用方可叠加按钮）。
-pub fn show(ui: &mut egui::Ui, title: &str, body: &str) -> egui::Response {
-    card(ui, title, body, 96.0)
+/// 标题盒高（16px 字号 + 防抖余量）
+fn title_box_h(ui: &egui::Ui) -> f32 {
+    crate::widgets::text_metrics::height(
+        ui.ctx(),
+        &crate::theme::font_semibold(crate::theme::font_size("body_lg")),
+        crate::widgets::text_ink::InkKind::Cjk,
+    )
 }
 
-/// 可变高空态框（PL019：倒计时列表区用 160–240 填满空白）；虚线仅用于空槽
-pub fn card(ui: &mut egui::Ui, title: &str, body: &str, height: f32) -> egui::Response {
-    let h = height.max(72.0);
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), h), Sense::hover());
-    card_at(ui, rect, title, body);
-    resp
+/// 正文盒高（12px 字号 + 防抖余量）
+fn body_box_h(ui: &egui::Ui) -> f32 {
+    crate::widgets::text_metrics::height(
+        ui.ctx(),
+        &crate::theme::font_regular(crate::theme::font_size("meta")),
+        crate::widgets::text_ink::InkKind::Cjk,
+    )
 }
 
-/// 在指定矩形内画空态框（PL021 盒布局：盒 rect 由调用方给，不再自己 allocate）
+/// 空态最小高度：标题盒 + 行间距 + 正文盒 + 上下各 empty_card_pad
+pub fn min_height(ui: &egui::Ui) -> f32 {
+    title_box_h(ui)
+        + body_box_h(ui)
+        + crate::theme::layout_f32("empty_line_gap")
+        + 2.0 * crate::theme::layout_f32("empty_card_pad")
+}
+
+/// 在指定矩形内画空态框；两行盒子作为整体对准虚线框中心
 pub fn card_at(ui: &egui::Ui, rect: egui::Rect, title: &str, body: &str) {
     let ink = crate::theme::ink();
     // 虚线框：四条边用 dashed_line（egui 自带 dash 采样）
@@ -36,26 +49,53 @@ pub fn card_at(ui: &egui::Ui, rect: egui::Rect, title: &str, body: &str) {
             4.0,
         ));
     }
-    ui.painter().text(
-        egui::pos2(rect.center().x, rect.center().y - 12.0),
-        Align2::CENTER_CENTER,
+
+    let title_font = crate::theme::font_semibold(crate::theme::font_size("body_lg"));
+    let body_font = crate::theme::font_regular(crate::theme::font_size("meta"));
+    let title_ink = crate::widgets::text_ink::measure(
+        ui,
         title,
-        crate::theme::font_semibold(crate::theme::font_size("body_lg")),
+        &title_font,
+        crate::widgets::text_ink::InkKind::Cjk,
+    );
+    let body_ink = crate::widgets::text_ink::measure(
+        ui,
+        body,
+        &body_font,
+        crate::widgets::text_ink::InkKind::Cjk,
+    );
+
+    let title_h = title_box_h(ui);
+    let body_h = body_box_h(ui);
+    let gap = crate::theme::layout_f32("empty_line_gap");
+    let block_h = title_h + gap + body_h;
+    let block_top = rect.center().y - block_h / 2.0;
+
+    let title_y = block_top + (title_h - title_ink.h) / 2.0 - title_ink.top_pad;
+    let body_top = block_top + title_h + gap;
+    let body_y = body_top + (body_h - body_ink.h) / 2.0 - body_ink.top_pad;
+
+    ui.painter().text(
+        egui::pos2(rect.center().x, title_y),
+        Align2::CENTER_TOP,
+        title,
+        title_font,
         ink.body,
     );
     ui.painter().text(
-        egui::pos2(rect.center().x, rect.center().y + 14.0),
-        Align2::CENTER_CENTER,
+        egui::pos2(rect.center().x, body_y),
+        Align2::CENTER_TOP,
         body,
-        crate::theme::font_regular(crate::theme::font_size("meta")),
+        body_font,
         ink.muted,
     );
 }
 
 // ===== src/widgets/empty.rs 说明区 =====
-// 输入：Ui + 标题/说明；输出：整块 Response
-// 逻辑步骤：96px 区块 → 虚线四边 → 标题 16/600 + 说明 12 muted 居中
-// 设计理由（PL017）：空态保留“这块地方还在”的结构（app-screens §11），而不是
-//   把一句话丢在页面顶部；虚线允许用于空槽，不用于常规卡
+// 输入：Ui + 标题/说明；输出：虚线框与两行文字
+// 逻辑步骤：标题盒 + empty_line_gap + 正文盒 = 内容块；块中心对准虚线框中心；
+//   每行文字在各自固定盒内按墨迹中心摆放
+// 设计理由（PL021 盒模型）：虚线框高度由页面剩余空间决定，文字盒位置只由盒高与
+//   间距计算，不再用两行墨迹中心反推
 // 异常处理：无 panic 面
-// 关联依赖：theme/border/ink；消费方：倒计时/世界/闹钟
+// 关联依赖：theme/border/ink、text_metrics/text_ink；消费方：倒计时/世界/闹钟

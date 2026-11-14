@@ -229,22 +229,20 @@ pub fn layout_f32(key: &str) -> f32 {
     layout_i64(key) as f32
 }
 
+/// 间距 token → f32（spacing.{key}；组件高度公式统一取这里）
+pub fn spacing_f32(key: &str) -> f32 {
+    static C: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();
+    cached(&C, key, || {
+        Static::get().ui_nested_i64("spacing", key) as f32
+    })
+}
+
 /// 窗口最大内尺寸（layout.window_max_*）
 pub fn window_max_size() -> egui::Vec2 {
     egui::vec2(
         layout_f32("window_max_width"),
         layout_f32("window_max_height"),
     )
-}
-
-/// 页面头部高度（layout.page_header）
-pub fn page_header_height() -> f32 {
-    layout_f32("page_header")
-}
-
-/// 页面页脚高度（layout.page_footer）
-pub fn page_footer_height() -> f32 {
-    layout_f32("page_footer")
 }
 
 /// sRGB 相对亮度（WCAG；对比度测试用）
@@ -354,7 +352,8 @@ fn dark_visuals() -> Visuals {
     v.override_text_color = Some(ink().strong);
     // 输入框占位等弱文本对齐 muted 层（egui dark 默认 3.06:1 不达标——UIR2 二轮实测）
     v.weak_text_color = Some(ink().muted);
-    v.selection.stroke.color = color32_at("selection", 42);
+    v.selection.bg_fill = color32_at("selection", 42);
+    v.selection.stroke.color = ink().strong;
     v.widgets.noninteractive.bg_fill = card_bg();
     v.widgets.inactive.bg_fill = card_bg();
     v.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, input_border_color());

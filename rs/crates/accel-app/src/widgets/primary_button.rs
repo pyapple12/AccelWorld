@@ -3,10 +3,17 @@
 
 use egui::{Align2, Response, Sense, Stroke};
 
+/// 按钮高度：文字行高 + 上下 padding token
+pub fn height(ui: &egui::Ui) -> f32 {
+    let font = crate::theme::font_semibold(crate::theme::font_size("body"));
+    crate::widgets::text_metrics::line_height(ui.ctx(), &font)
+        + 2.0 * crate::theme::layout_f32("button_pad_y")
+}
+
 /// 绘制主操作按钮并返回 Response（点击/键盘由调用方处理）
 pub fn show(ui: &mut egui::Ui, label: &str, width: f32) -> Response {
     let ink = crate::theme::ink();
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 32.0), Sense::click());
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, height(ui)), Sense::click());
     let pressed = resp.is_pointer_button_down_on();
     let hover_t = crate::widgets::motion::hover_t(
         ui.ctx(),
@@ -30,11 +37,21 @@ pub fn show(ui: &mut egui::Ui, label: &str, width: f32) -> Response {
             crate::theme::accent_color(),
         );
     }
-    ui.painter().text(
-        rect.center(),
-        Align2::CENTER_CENTER,
+    let label_font = crate::theme::font_semibold(crate::theme::font_size("body"));
+    let label_ink = crate::widgets::text_ink::measure(
+        ui,
         label,
-        crate::theme::font_semibold(crate::theme::font_size("body")),
+        &label_font,
+        crate::widgets::text_ink::InkKind::Cjk,
+    );
+    ui.painter().text(
+        egui::pos2(
+            rect.center().x,
+            label_ink.top_for_center(rect.center().y, label_font.size),
+        ),
+        Align2::CENTER_TOP,
+        label,
+        label_font,
         crate::theme::window_bg(),
     );
     if resp.has_focus() {

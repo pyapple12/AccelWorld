@@ -1,31 +1,84 @@
 //! 倒计时展示运算（ui/tools/countdown_tools.py 的 Rust 对等物）
-//! 目标文本解析（19/16/10 位三格式）+ 剩余时间拆解——纯函数
+//! 目标文本解析（年 / 年月 / 年月日 / 月日 / 完整时刻）+ 剩余时间拆解——纯函数
 
-use chrono::{NaiveDateTime, TimeDelta};
+use chrono::{Datelike, NaiveDate, NaiveDateTime, TimeDelta};
 
-/// 目标文本解析（Python parse_target_text 对等）：
-/// 19 位 "YYYY-MM-DD HH:MM:SS" / 16 位 "YYYY-MM-DD HH:MM" / 10 位 "YYYY-MM-DD"
-/// （10 位补当日 23:59:59）；非法返回 None
-pub fn parse_target_text(text: &str) -> Option<NaiveDateTime> {
-    const FMT_FULL: &str = "%Y-%m-%d %H:%M:%S";
-    const FMT_MIN: &str = "%Y-%m-%d %H:%M";
-    const FMT_DATE: &str = "%Y-%m-%d";
-    match text.len() {
-        19 => NaiveDateTime::parse_from_str(text, FMT_FULL).ok(),
-        16 => NaiveDateTime::parse_from_str(text, FMT_MIN).ok(),
-        10 => NaiveDatePart::parse_date_end_of_day(text, FMT_DATE),
-        _ => None,
+/// 目标文本解析（盒模型倒计时输入）：
+/// "YYYY" / "YYYY-M" / "YYYY-M-D" / "M-D" / "YYYY-M-D HH:MM[:SS]"
+/// 纯日期补 00:00；M-D 取下一次发生；非法返回 None
+pub fn parse_target_text(text: &str, now: NaiveDateTime) -> Option<NaiveDateTime> {
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
     }
+    let mut tokens = text.split_whitespace();
+    let date_text = tokens.next()?;
+    let time_text = tokens.next();
+    if tokens.next().is_some() {
+        return None;
+    }
+
+    let date_parts: Vec<&str> = date_text.split('-').collect();
+    if date_parts.is_empty() || date_parts.len() > 3 {
+        return None;
+    }
+    let nums: Vec<u32> = date_parts
+        .iter()
+        .map(|p| p.parse::<u32>().ok())
+        .collect::<Option<Vec<_>>>()?;
+
+    let (year, month, day) = match (nums.len(), time_text.is_some()) {
+        (1, false) if date_parts[0].len() == 4 => (nums[0], 1, 1),
+        (2, false) if date_parts[0].len() == 4 => (nums[0], nums[1], 1),
+        (2, false) => {
+            let year = next_occurrence_year(now, nums[0], nums[1])?;
+            (year, nums[0], nums[1])
+        }
+        (3, _) if date_parts[0].len() == 4 => (nums[0], nums[1], nums[2]),
+        _ => return None,
+    };
+    if !(1..=9999).contains(&year) {
+        return None;
+    }
+    let date = NaiveDate::from_ymd_opt(year as i32, month, day)?;
+    let (hour, minute, second) = match time_text {
+        Some(t) => parse_time(t)?,
+        None => (0, 0, 0),
+    };
+    date.and_hms_opt(hour, minute, second)
 }
 
-// 10 位日期格式的当日 23:59:59 补齐（独立小助手便于测试）
-struct NaiveDatePart;
-
-impl NaiveDatePart {
-    fn parse_date_end_of_day(text: &str, fmt: &str) -> Option<NaiveDateTime> {
-        let d = chrono::NaiveDate::parse_from_str(text, fmt).ok()?;
-        d.and_hms_opt(23, 59, 59)
+/// "HH:MM" / "HH:MM:SS"（1–2 位时分秒）→ (时, 分, 秒)
+fn parse_time(text: &str) -> Option<(u32, u32, u32)> {
+    let parts: Vec<&str> = text.split(':').collect();
+    if !(2..=3).contains(&parts.len()) {
+        return None;
     }
+    let hour = parts[0].parse::<u32>().ok()?;
+    let minute = parts[1].parse::<u32>().ok()?;
+    let second = parts
+        .get(2)
+        .map(|s| s.parse::<u32>().ok())
+        .unwrap_or(Some(0))?;
+    if hour > 23 || minute > 59 || second > 59 {
+        return None;
+    }
+    Some((hour, minute, second))
+}
+
+/// 不带年的 M-D：取下一次该日期（今年已过则明年；2-29 找到下一个闰年）
+fn next_occurrence_year(now: NaiveDateTime, month: u32, day: u32) -> Option<u32> {
+    let start = now.year().max(1) as u32;
+    for offset in 0..=8 {
+        let year = start + offset;
+        if let Some(date) = NaiveDate::from_ymd_opt(year as i32, month, day)
+            && let Some(at) = date.and_hms_opt(0, 0, 0)
+            && at > now
+        {
+            return Some(year);
+        }
+    }
+    None
 }
 
 /// 剩余时间拆解（Python format_remaining 对等）：
@@ -49,40 +102,66 @@ pub fn format_remaining(target: NaiveDateTime, now: NaiveDateTime) -> (String, b
 
 // ===== src/tools/countdown.rs 说明区 =====
 // 输入：目标文本 / 目标时刻与当前时刻；输出：解析结果 / (展示文本, 结束态)
-// 逻辑步骤：按字节长度分发三格式（10 位补 23:59:59）→ timedelta 拆解
-// 设计理由：解析规则单一来源（设置与启动恢复路径共用，FIX001.10 延续）；
-//   纯函数零面板依赖（plan#UI2.0 铁律 1 的 Rust 对等）
-// 已知偏移：len() 按 UTF-8 字节计（Python 同为 str 长度语义，数字/横线均 ASCII 等价）
-// 异常处理：非法格式/越界值 parse 失败返 None，不 panic
-// 关联配置：无（纯函数）；消费方：pages/countdown.rs（PL014.08）
+// 逻辑步骤：拆日期段（年/年月/年月日/月日）→ 月日无年取下一次 → 校验月日
+//   → 纯日期补 00:00；带时间解析 HH:MM[:SS] → timedelta 拆解
+// 设计理由：解析规则单一来源（页面输入路径）；纯函数零面板依赖
+// 已知偏移：月日无年依赖传入 now 选下一次；显式过去的日期由页面校验拒绝
+// 异常处理：非法格式/越界值/非法月日 parse 失败返 None，不 panic
+// 关联配置：无（纯函数）；消费方：pages/countdown.rs
 #[cfg(test)]
 mod tests {
     use super::*;
     use chrono::NaiveDate;
 
     #[test]
-    fn parse_three_formats() {
-        // Python 语义：19/16/10 位三格式 + 10 位补当日 23:59:59
-        let full = parse_target_text("2027-02-06 08:00:00").expect("19 位应解析");
-        assert_eq!(full.to_string(), "2027-02-06 08:00:00");
-        let min = parse_target_text("2027-02-06 08:00").expect("16 位应解析");
-        assert_eq!(min.to_string(), "2027-02-06 08:00:00");
-        let date = parse_target_text("2027-02-06").expect("10 位应解析");
-        assert_eq!(date.to_string(), "2027-02-06 23:59:59");
-        // 非法：长度不符 / 越界值
-        assert!(parse_target_text("2027-02-06 8:00").is_none());
-        assert!(parse_target_text("2027-13-40").is_none());
-        assert!(parse_target_text("").is_none());
-    }
-
-    #[test]
-    fn page_parse_contract_keeps_time_of_day() {
-        // A005 #11 回归：页面改用本函数后，带时分的输入必须保留时分
-        //（原页内 parse::<NaiveDate> 只收 10 位并把输入强填 23:59:59）
-        let t = parse_target_text("2027-02-06 08:30").expect("16 位应解析");
-        assert_eq!(t.to_string(), "2027-02-06 08:30:00", "不得改写为 23:59:59");
-        let d = parse_target_text("2027-02-06").expect("10 位应解析");
-        assert_eq!(d.to_string(), "2027-02-06 23:59:59", "10 位仍补当日末");
+    fn parse_partial_formats() {
+        let now = NaiveDate::from_ymd_opt(2026, 11, 14)
+            .expect("日期合法")
+            .and_hms_opt(12, 0, 0)
+            .expect("时刻合法");
+        assert_eq!(
+            parse_target_text("2027", now)
+                .expect("年应解析")
+                .to_string(),
+            "2027-01-01 00:00:00"
+        );
+        assert_eq!(
+            parse_target_text("2027-2", now)
+                .expect("年月应解析")
+                .to_string(),
+            "2027-02-01 00:00:00"
+        );
+        assert_eq!(
+            parse_target_text("2027-2-3", now)
+                .expect("年月日应解析")
+                .to_string(),
+            "2027-02-03 00:00:00"
+        );
+        // M-D：今年已过 → 明年
+        assert_eq!(
+            parse_target_text("3-3", now)
+                .expect("月日应解析")
+                .to_string(),
+            "2027-03-03 00:00:00"
+        );
+        // M-D：今年未过 → 今年
+        assert_eq!(
+            parse_target_text("12-1", now)
+                .expect("月日应解析")
+                .to_string(),
+            "2026-12-01 00:00:00"
+        );
+        // 完整格式保留时分
+        assert_eq!(
+            parse_target_text("2027-2-6 8:30", now)
+                .expect("完整时刻应解析")
+                .to_string(),
+            "2027-02-06 08:30:00"
+        );
+        assert!(parse_target_text("2027-13", now).is_none());
+        assert!(parse_target_text("2027-2-30", now).is_none());
+        assert!(parse_target_text("2-30", now).is_none());
+        assert!(parse_target_text("", now).is_none());
     }
 
     #[test]

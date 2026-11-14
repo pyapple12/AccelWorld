@@ -44,35 +44,36 @@ impl crate::pages::Page for crate::pages::AlarmPage {
         state.armed_delete_tick();
 
         let avail = ui.max_rect();
-        let footer_h = footer_height(avail.width());
-        let body_h = (avail.height() - footer_h - 10.0).max(0.0);
+        let footer_h = footer_height(ui);
+        let body_h = (avail.height() - footer_h - crate::theme::layout_f32("footer_gap")).max(0.0);
         let body_rect = egui::Rect::from_min_size(avail.min, egui::vec2(avail.width(), body_h));
         let footer_rect = egui::Rect::from_min_size(
             egui::pos2(avail.left(), body_rect.bottom() + 10.0),
             egui::vec2(avail.width(), footer_h),
         );
         let quick_h = {
-            let meta_font = crate::theme::font_regular(crate::theme::font_size("meta"));
-            let title_ink = crate::widgets::text_ink::measure(
-                ui,
-                "快捷添加",
+            let meta_font = crate::theme::font_medium(crate::theme::font_size("meta"));
+            let label_h = crate::widgets::text_metrics::height(
+                ui.ctx(),
                 &meta_font,
                 crate::widgets::text_ink::InkKind::Cjk,
             );
+            let chip_h = quick_chip_height(ui);
+            let gap = crate::theme::spacing_f32("xs");
+            let pad = crate::theme::spacing_f32("lg");
             if avail.width() > 380.0 {
-                title_ink.h + 6.0 + 30.0 + 16.0
+                label_h + gap + chip_h + pad
             } else {
-                title_ink.h + 6.0 + 30.0 + 6.0 + 30.0 + 16.0
+                label_h + gap + chip_h + gap + chip_h + pad
             }
         };
         let row_h = {
-            let time_ink = crate::widgets::text_ink::measure(
-                ui,
-                "00:00",
+            let time_h = crate::widgets::text_metrics::height(
+                ui.ctx(),
                 &digits::digit_font(24.0),
                 crate::widgets::text_ink::InkKind::Digits,
             );
-            time_ink.h.max(switch::SWITCH_H).max(12.0) + 24.0
+            time_h.max(switch::height()) + crate::theme::spacing_f32("xl")
         };
 
         ui.scope_builder(egui::UiBuilder::new().max_rect(body_rect), |ui| {
@@ -84,12 +85,20 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                     // 快捷添加盒
                     let quick = stack.next(ui, quick_h);
                     ui.scope_builder(egui::UiBuilder::new().max_rect(quick), |ui| {
-                        ui.label(
-                            egui::RichText::new("快捷添加")
-                                .font(crate::theme::font_medium(crate::theme::font_size("meta")))
-                                .color(ink.muted),
+                        let label_font = crate::theme::font_medium(crate::theme::font_size("meta"));
+                        let label_h = crate::widgets::text_metrics::height(
+                            ui.ctx(),
+                            &label_font,
+                            crate::widgets::text_ink::InkKind::Cjk,
                         );
-                        ui.add_space(6.0);
+                        ui.painter().text(
+                            egui::pos2(quick.left(), quick.top() + label_h / 2.0),
+                            egui::Align2::LEFT_CENTER,
+                            "快捷添加",
+                            label_font,
+                            ink.muted,
+                        );
+                        ui.add_space(label_h + 6.0);
                         if ui.available_width() > 380.0 {
                             ui.horizontal_wrapped(|ui| {
                                 for &minutes in crate::pages::quick_alarm_minutes() {
@@ -136,7 +145,7 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                     let pulse = crate::widgets::motion::list_pulse(state, "alarm");
                     let last = alarms.len().saturating_sub(1);
                     for (i, alarm) in alarms.iter().enumerate() {
-                        let rect = stack.slot(row_h);
+                        let rect = stack.next(ui, row_h);
                         ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
                             if i == last && pulse < 1.0 {
                                 ui.set_opacity(0.55 + 0.45 * pulse);
@@ -153,7 +162,14 @@ impl crate::pages::Page for crate::pages::AlarmPage {
     }
 }
 
-/// 快捷 chip：30px 有边界控件（hover 亮边，不填金）；返回点击
+/// 快捷 chip 高度：文字盒高 + 上下 padding
+fn quick_chip_height(ui: &egui::Ui) -> f32 {
+    let font = crate::theme::font_medium(crate::theme::font_size("body"));
+    crate::widgets::text_metrics::height(ui.ctx(), &font, crate::widgets::text_ink::InkKind::Cjk)
+        + 2.0 * crate::theme::layout_f32("chip_pad_y")
+}
+
+/// 快捷 chip：有边界控件（hover 亮边，不填金）；返回点击
 fn quick_chip(ui: &mut egui::Ui, text: &str) -> bool {
     let ink = crate::theme::ink();
     let font = crate::theme::font_medium(crate::theme::font_size("body"));
@@ -162,8 +178,9 @@ fn quick_chip(ui: &mut egui::Ui, text: &str) -> bool {
         .layout_no_wrap(text.to_string(), font.clone(), ink.body)
         .rect
         .width()
-        + 24.0;
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 30.0), egui::Sense::click());
+        + 2.0 * crate::theme::spacing_f32("md");
+    let (rect, resp) =
+        ui.allocate_exact_size(egui::vec2(w, quick_chip_height(ui)), egui::Sense::click());
     let hover = resp.hovered() || resp.has_focus();
     ui.painter().rect_filled(
         rect,
@@ -191,7 +208,7 @@ fn quick_chip(ui: &mut egui::Ui, text: &str) -> bool {
         rect.center(),
         egui::Align2::CENTER_CENTER,
         text,
-        font,
+        font.clone(),
         if hover { ink.strong } else { ink.body },
     );
     if resp.has_focus() {
@@ -237,7 +254,7 @@ fn draw_alarm_row(
 
     let sw_rect = egui::Rect::from_center_size(
         egui::pos2(rect.left() + 32.0, rect.center().y),
-        egui::vec2(switch::SWITCH_W, switch::SWITCH_H),
+        egui::vec2(switch::width(), switch::height()),
     );
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(sw_rect));
     let sw = switch::show(
@@ -250,9 +267,15 @@ fn draw_alarm_row(
     }
 
     let time_font = digits::digit_font(24.0);
-    digits::draw_centered(
+    let time_h = crate::widgets::text_metrics::height(
+        ui.ctx(),
+        &time_font,
+        crate::widgets::text_ink::InkKind::Digits,
+    );
+    let time_center = rect.top() + 12.0 + time_h / 2.0;
+    digits::draw_centered_ink(
         ui.painter(),
-        egui::pos2(rect.left() + 82.0, rect.center().y),
+        egui::pos2(rect.left() + 82.0, time_center),
         &alarm.time,
         &time_font,
         if alarm.enabled { ink.strong } else { ink.meta },
@@ -268,8 +291,14 @@ fn draw_alarm_row(
     let label_x = rect.left() + 140.0;
     let avail = (rect.right() - 44.0 - label_x).max(0.0);
     let shown = truncate_to_width(ui, &full_label, &label_font, avail);
+    let label_h = crate::widgets::text_metrics::height(
+        ui.ctx(),
+        &label_font,
+        crate::widgets::text_ink::InkKind::Cjk,
+    );
+    let label_center = rect.bottom() - 12.0 - label_h / 2.0;
     ui.painter().text(
-        egui::pos2(label_x, rect.center().y),
+        egui::pos2(label_x, label_center),
         egui::Align2::LEFT_CENTER,
         &shown,
         label_font,
@@ -359,24 +388,26 @@ fn truncate_to_width(ui: &egui::Ui, text: &str, font: &egui::FontId, width: f32)
     "…".to_string()
 }
 
-/// 页脚高度：字段 54 + 10 + 按钮 32 + 10 + 错误行 16（统一）
-fn footer_height(_avail: f32) -> f32 {
-    122.0
+/// 页脚高度：字段固定盒 + footer_gap + 按钮 + footer_bottom
+fn footer_height(ui: &egui::Ui) -> f32 {
+    crate::widgets::field::fixed_height(ui)
+        + crate::theme::layout_f32("footer_gap")
+        + crate::widgets::primary_button::height(ui)
+        + crate::theme::layout_f32("footer_bottom")
 }
 
-/// 页脚：标签 + HH:MM + 添加；窄宽两行；错误恒占位 16px
+/// 页脚：标签 + HH:MM + 添加；固定盒布局
 fn draw_footer(ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
-    let ink = crate::theme::ink();
     let avail = ui.available_width();
-    let gap = 10.0;
-    let button_w = 88.0;
+    let gap = crate::theme::layout_f32("footer_gap");
+    let button_w = crate::theme::layout_f32("button_width");
     let label_w = ((avail - gap) * 0.4).max(80.0);
     let time_w = ((avail - gap) * 0.6).max(80.0);
     ui.spacing_mut().item_spacing.y = 0.0;
     let mut do_add = false;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 0.0;
-        field::show(
+        field::show_fixed(
             ui,
             "标签",
             "例如 起床",
@@ -384,7 +415,7 @@ fn draw_footer(ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::
             label_w,
         );
         ui.add_space(gap);
-        field::show(ui, "时间", "HH:MM", &mut state.alarm_draft_time, time_w);
+        field::show_fixed(ui, "时间", "HH:MM", &mut state.alarm_draft_time, time_w);
     });
     ui.add_space(gap);
     ui.horizontal(|ui| {
@@ -405,16 +436,8 @@ fn draw_footer(ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::
         state.alarm_draft_label.clear();
         state.alarm_draft_time.clear();
     }
-    let (hint_rect, _) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), 16.0), egui::Sense::hover());
-    if !state.alarm_draft_time.is_empty() && !valid_hhmm(&state.alarm_draft_time) {
-        ui.painter().text(
-            egui::pos2(hint_rect.left(), hint_rect.center().y),
-            egui::Align2::LEFT_CENTER,
-            "时间格式应为 HH:MM（如 07:30）",
-            crate::theme::font_regular(crate::theme::font_size("meta")),
-            ink.danger,
-        );
+    if do_add && !valid_hhmm(&state.alarm_draft_time) {
+        tracing::warn!("闹钟添加失败（静默）: 时间格式应为 HH:MM");
     }
 }
 

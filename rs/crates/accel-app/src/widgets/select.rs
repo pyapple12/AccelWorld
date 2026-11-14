@@ -4,11 +4,19 @@
 use egui::{Align2, Color32, Id, Rect, Sense, Stroke};
 
 use super::icons::{self, Icon};
+use super::text_ink::{self, InkKind};
 
 #[derive(Clone, Copy, Default)]
 struct State {
     open: bool,
     cursor: usize,
+}
+
+/// 下拉触发器高度：文字行高 + 上下 padding token
+pub fn height(ui: &egui::Ui) -> f32 {
+    let font = crate::theme::font_regular(crate::theme::font_size("body"));
+    crate::widgets::text_metrics::line_height(ui.ctx(), &font)
+        + 2.0 * crate::theme::layout_f32("select_pad_y")
 }
 
 /// 绘制下拉；返回本次选中的项（点击/回车）。`current` 为显示文本，
@@ -27,7 +35,7 @@ pub fn show(
         .unwrap_or_default();
     let was_open = st.open;
 
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 32.0), Sense::click());
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, height(ui)), Sense::click());
     let hovered = resp.hovered();
     ui.painter().rect_filled(
         rect,
@@ -47,11 +55,16 @@ pub fn show(
         ),
         egui::StrokeKind::Inside,
     );
+    let trigger_font = crate::theme::font_regular(crate::theme::font_size("body"));
+    let trigger_ink = text_ink::measure(ui, current, &trigger_font, InkKind::Cjk);
     ui.painter().text(
-        egui::pos2(rect.left() + 12.0, rect.center().y),
-        Align2::LEFT_CENTER,
+        egui::pos2(
+            rect.left() + 12.0,
+            trigger_ink.top_for_center(rect.center().y, trigger_font.size),
+        ),
+        Align2::LEFT_TOP,
         current,
-        crate::theme::font_regular(crate::theme::font_size("body")),
+        trigger_font,
         ink.body,
     );
     icons::draw(
@@ -156,11 +169,18 @@ pub fn show(
                                             crate::theme::hover_bg(),
                                         );
                                     }
+                                    let opt_font =
+                                        crate::theme::font_regular(crate::theme::font_size("body"));
+                                    let opt_ink =
+                                        text_ink::measure(ui, opt, &opt_font, InkKind::Cjk);
                                     ui.painter().text(
-                                        egui::pos2(row.left() + 8.0, row.center().y),
-                                        Align2::LEFT_CENTER,
+                                        egui::pos2(
+                                            row.left() + 8.0,
+                                            opt_ink.top_for_center(row.center().y, opt_font.size),
+                                        ),
+                                        Align2::LEFT_TOP,
                                         opt,
-                                        crate::theme::font_regular(crate::theme::font_size("body")),
+                                        opt_font,
                                         if selected { ink.strong } else { ink.body },
                                     );
                                     if selected {

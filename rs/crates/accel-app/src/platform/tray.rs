@@ -69,7 +69,7 @@ impl TrayHandles {
         let tray = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
             .with_tooltip(format!(
-                "加速世界 - {}",
+                "天宫时计 - {}",
                 accel_core::static_config::Static::get().version()
             ))
             .with_icon(icon)
@@ -171,8 +171,8 @@ mod tests {
         // headless 托盘构造/销毁 smoke：交互会话应成功；受限环境允许失败但不 panic
         match TrayHandles::new() {
             Ok(tray) => {
-                tray.set_status(3.5, "加速世界 - 2:00:00 @ 3.5x");
-                tray.set_status(3.5, "加速世界 - 2:00:00 @ 3.5x"); // 未变化跳过路径
+                tray.set_status(3.5, "天宫时计 - 2:00:00 @ 3.5x");
+                tray.set_status(3.5, "天宫时计 - 2:00:00 @ 3.5x"); // 未变化跳过路径
             }
             Err(e) => tracing::warn!("托盘构造失败（受限环境允许）: {e}"),
         }

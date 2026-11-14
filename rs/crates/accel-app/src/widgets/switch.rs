@@ -4,13 +4,21 @@
 use egui::{Sense, Stroke};
 
 /// 开关本体尺寸（36×20，命中域同尺寸；桌面鼠标足够）
-pub const SWITCH_W: f32 = 36.0;
-pub const SWITCH_H: f32 = 20.0;
+/// 开关宽（layout.switch_w）
+pub fn width() -> f32 {
+    crate::theme::layout_f32("switch_w")
+}
+
+/// 开关高（layout.switch_h）
+pub fn height() -> f32 {
+    crate::theme::layout_f32("switch_h")
+}
 
 /// 绘制开关；返回是否被激活（指针点击或键盘 Enter/Space）。
 pub fn show(ui: &mut egui::Ui, id: egui::Id, on: bool) -> bool {
     let ink = crate::theme::ink();
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(SWITCH_W, SWITCH_H), Sense::click());
+    let (w, h) = (width(), height());
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, h), Sense::click());
     let reduce = crate::theme::reduce_motion(ui.ctx());
     let anim = if reduce {
         if on { 1.0 } else { 0.0 }
@@ -28,17 +36,17 @@ pub fn show(ui: &mut egui::Ui, id: egui::Id, on: bool) -> bool {
     };
     ui.painter().rect_filled(
         rect,
-        egui::epaint::CornerRadius::same((SWITCH_H / 2.0) as u8),
+        egui::epaint::CornerRadius::same((h / 2.0) as u8),
         track,
     );
-    let knob_r = SWITCH_H / 2.0 - 2.0;
-    let knob_x = rect.left() + 2.0 + knob_r + anim * (SWITCH_W - 4.0 - knob_r * 2.0);
+    let knob_r = h / 2.0 - 2.0;
+    let knob_x = rect.left() + 2.0 + knob_r + anim * (w - 4.0 - knob_r * 2.0);
     ui.painter()
         .circle_filled(egui::pos2(knob_x, rect.center().y), knob_r, ink.knob);
     if resp.has_focus() {
         ui.painter().rect_stroke(
             rect.expand(2.0),
-            egui::epaint::CornerRadius::same((SWITCH_H / 2.0) as u8 + 2),
+            egui::epaint::CornerRadius::same((h / 2.0) as u8 + 2),
             Stroke::new(1.5, ink.knob),
             egui::StrokeKind::Inside,
         );

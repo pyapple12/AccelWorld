@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AccelWorld UI 标注指南 · V0.6.4.2</title>
+    <title>ACCELWORLD Clock UI 标注指南 · V0.6.5.3</title>
     <style>
       :root {
         --bg: #0b0f19;
@@ -1806,15 +1806,15 @@
     </svg>
 
     <header class="wrap hero">
-      <div class="eyebrow">AccelWorld · UI Field Guide</div>
+      <div class="eyebrow">ACCELWORLD Clock · UI Field Guide</div>
       <h1>UI 标注指南：把每一页拆成可以对账的名字</h1>
       <p class="lede">
         六页标注图 + 术语索引 + 状态词 + 尺寸/颜色
         token。目标只有一个：你指着屏幕说“这里”，我们指的是同一个东西。
       </p>
       <div class="meta-row">
-        <span class="badge gold">基线 V0.6.5.1</span>
-        <span class="badge">HEAD 5b0b2da</span>
+        <span class="badge gold">基线 V0.6.5.3</span>
+        <span class="badge">V0.6.5.3</span>
         <span class="badge">窗口 960×640 · min 520×420 · max 1200×820</span>
         <span>配套：<code>u.UI_GLOSSARY.md</code></span>
       </div>
@@ -1852,7 +1852,7 @@
               <div class="app-window" style="--win-h: 600px">
                 <div class="win-caption">
                   <span class="tag" style="left: 8px; top: 8px">A1</span>
-                  <span class="win-title">加速世界</span>
+                  <span class="win-title">天宫时计</span>
                   <span class="win-controls">—　□　×</span>
                 </div>
                 <div class="win-body">
@@ -1869,13 +1869,14 @@
                     <div class="drawer-body">
                       <span class="tag" style="left: 8px; top: -8px">D7</span>
                       <div class="hero-card">
-                        <div class="kicker">下一个</div>
+                        <div class="kicker">下一个节日</div>
                         <div class="hname">春节</div>
-                        <div class="hdate">2027-02-06 00:00</div>
-                        <div class="hremain">100天 19:15</div>
+                        <div class="hdate">到期日：2027-02-06 00:00</div>
+                        <div class="hremain">还剩 83天 09:30:41</div>
                       </div>
-                      <div class="meta-line">近期节日 · 元宵节 · 龙抬头</div>
-                      <div class="list-title">其他目标</div>
+                      <div class="meta-line">
+                        近期节日 腊八节 除夕 春节 元宵节 清明节
+                      </div>
                       <div class="target-row">
                         <div>
                           <div class="tname">项目发布</div>
@@ -1969,7 +1970,9 @@
               <tr>
                 <td class="id">B1</td>
                 <td class="nm">舞台页头</td>
-                <td class="ds">左日期 + 右农历；盒 = 内容墨迹 + 10px</td>
+                <td class="ds">
+                  左日期 + 右农历；盒高 = 固定行高 + 10px 到分隔线
+                </td>
               </tr>
               <tr>
                 <td class="id">B3</td>
@@ -2009,7 +2012,7 @@
               <tr>
                 <td class="id">D2</td>
                 <td class="nm">抽屉页头</td>
-                <td class="ds">页面标题 + 关闭 ×</td>
+                <td class="ds">页面标题 + 关闭 ×；高 54.3（20 + 24.3 + 10）</td>
               </tr>
               <tr>
                 <td class="id">D7</td>
@@ -2053,7 +2056,7 @@
               <div class="app-window solo" style="--win-h: 560px">
                 <div class="win-caption">
                   <span class="tag" style="left: 8px; top: 8px">A1</span>
-                  <span class="win-title">加速世界</span>
+                  <span class="win-title">天宫时计</span>
                   <span class="win-controls">—　□　×</span>
                 </div>
                 <div class="win-body">
@@ -2098,7 +2101,8 @@
                 <td class="id">B1</td>
                 <td class="nm">舞台页头</td>
                 <td class="ds">
-                  盒 = 内容墨迹 + 10px；高 560 分两行/一行，宽 560 分完整/精简
+                  盒高 = 固定行高 + 10px 到分隔线；高 560 分两行/一行，宽 560
+                  分完整/精简
                 </td>
               </tr>
               <tr>
@@ -2194,7 +2198,7 @@
             <h2>倒计时页</h2>
             <p>
               抽屉页。Hero
-              卡只显示“最近的下一个目标”；列表只列其余目标，避免同一数字出现两次；添加表单固定在页脚，目标再多也够得着。
+              卡默认春节或用户点选的近期节日；用户自定义目标全部在下方列表；添加表单固定在页脚，目标再多也够得着。
             </p>
           </div>
         </div>
@@ -2204,7 +2208,7 @@
               <div class="app-window" style="--win-h: 600px">
                 <div class="win-caption">
                   <span class="tag" style="left: 8px; top: 8px">A1</span>
-                  <span class="win-title">加速世界</span>
+                  <span class="win-title">天宫时计</span>
                   <span class="win-controls">—　□　×</span>
                 </div>
                 <div class="win-body">
@@ -2220,19 +2224,15 @@
                     <div class="drawer-body">
                       <div class="hero-card">
                         <span class="tag" style="left: 8px; top: -8px">E2</span>
-                        <div class="kicker">下一个</div>
+                        <div class="kicker">下一个节日</div>
                         <span class="tag" style="left: 44px; top: 8px">E3</span>
                         <div class="hname">春节</div>
-                        <div class="hdate">2027-02-06 00:00</div>
-                        <div class="hremain">100天 19:15</div>
+                        <div class="hdate">到期日：2027-02-06 00:00</div>
+                        <div class="hremain">还剩 83天 09:30:41</div>
                       </div>
                       <div class="meta-line">
                         <span class="tag" style="right: 8px; top: -8px">E7</span
-                        >近期节日 · 元宵节 · 龙抬头 · 清明
-                      </div>
-                      <div class="list-title">
-                        <span class="tag" style="right: 8px; top: -8px">E8</span
-                        >其他目标
+                        >近期节日 腊八节 除夕 春节 元宵节 清明节
                       </div>
                       <div class="target-row">
                         <span class="tag" style="left: 8px; top: -8px">E9</span>
@@ -2272,12 +2272,12 @@
                       <span class="tag" style="left: 8px; top: -8px">E15</span>
                       <div class="footer-fields">
                         <div class="field name">
-                          <span class="flabel">名称</span>
-                          <div class="fbox">名称</div>
+                          <span class="flabel">目标名称</span>
+                          <div class="fbox">例如 项目发布</div>
                         </div>
                         <div class="field time">
-                          <span class="flabel">时刻</span>
-                          <div class="fbox">HH:MM</div>
+                          <span class="flabel">目标时刻</span>
+                          <div class="fbox">YYYY-MM-DD HH:MM</div>
                         </div>
                         <span
                           class="tag"
@@ -2317,8 +2317,8 @@
               </div>
             </div>
             <figcaption>
-              倒计时页。主仪编号见总览；本图重点标抽屉内部。页脚错误行恒占
-              16px，避免添加按钮上下跳。
+              倒计时页。主仪编号见总览；本图重点标抽屉内部。页脚错误内联在
+              「目标时刻」标签行右端，按钮位置不变。
             </figcaption>
           </figure>
           <aside class="legend-panel">
@@ -2332,60 +2332,67 @@
               <tr>
                 <td class="id">E2</td>
                 <td class="nm">Hero 卡</td>
-                <td class="ds">126px；只显示最近的下一个目标</td>
+                <td class="ds">90.9px；默认春节，或用户点选的近期节日</td>
               </tr>
               <tr>
                 <td class="id">E3</td>
                 <td class="nm">“下一个”标签</td>
-                <td class="ds">12/500 金色；不是页面标题</td>
+                <td class="ds">10/500 金色；不是页面标题</td>
               </tr>
               <tr>
                 <td class="id">E7</td>
-                <td class="nm">近期节日 meta 行</td>
-                <td class="ds">一条 12px 文本；不是 chip 盒子</td>
-              </tr>
-              <tr>
-                <td class="id">E8</td>
-                <td class="nm">其他目标区</td>
-                <td class="ds">hero 已排除；列表只列其余</td>
+                <td class="nm">近期节日行</td>
+                <td class="ds">
+                  12.3px 行盒；未来 5 个节日，金色可点，行盒底 +2px 画 2px 金线
+                </td>
               </tr>
               <tr>
                 <td class="id">E9</td>
                 <td class="nm">目标行卡</td>
-                <td class="ds">68px；名称/日期左，剩余右对齐</td>
+                <td class="ds">
+                  55.6px；10 + 名称 14.3 + 5 + 第二行 16.3 + 10
+                </td>
               </tr>
               <tr>
                 <td class="id">E12</td>
                 <td class="nm">目标行删除</td>
-                <td class="ds">Trash；两步武装（Check，4s）</td>
+                <td class="ds">
+                  贴右、垂直中心对卡中心；两步武装（Check，4s）
+                </td>
               </tr>
               <tr>
                 <td class="id">E15</td>
                 <td class="nm">抽屉页脚</td>
-                <td class="ds">固定；名称 + 时刻 + 添加</td>
+                <td class="ds">
+                  固定 101.6；标签 12.3 + 5 + 输入 20 + 10 + 按钮 34.3 + 20
+                </td>
               </tr>
               <tr>
                 <td class="id">E16</td>
                 <td class="nm">名称字段</td>
-                <td class="ds">Field：label 上置 + 1px 输入边</td>
+                <td class="ds">
+                  固定盒：label 12.3 + 5 + 输入 20；12px 文字上下各 4px
+                </td>
               </tr>
               <tr>
                 <td class="id">E17</td>
                 <td class="nm">时刻字段</td>
-                <td class="ds">HH:MM；格式错误同位红字</td>
+                <td class="ds">
+                  YYYY / YYYY-M / YYYY-M-D / M-D / 完整时分；错误在标签行右端
+                </td>
               </tr>
               <tr>
                 <td class="id">E18</td>
                 <td class="nm">添加按钮</td>
-                <td class="ds">88×32 ink 实底；不是金色</td>
+                <td class="ds">宽 88；高 34.3；ink 实底；不是金色</td>
               </tr>
             </table>
             <h3>目测检查点</h3>
             <ul class="checklist">
-              <li>Hero 里的目标不应再出现在“其他目标”列表里。</li>
+              <li>Hero 默认春节或点选节日；用户目标全部在下方列表。</li>
               <li>3 个目标时页脚仍固定可见；内容只在自己的滚动区滚。</li>
               <li>删除第一次点击变 Check（武装态），第二次才删除。</li>
-              <li>“近期节日”是文字行，不是三个独立 chip。</li>
+              <li>“近期节日”是 5 个金色可点项，点击替换 Hero。</li>
             </ul>
           </aside>
         </div>
@@ -2409,7 +2416,7 @@
               <div class="app-window" style="--win-h: 540px">
                 <div class="win-caption">
                   <span class="tag" style="left: 8px; top: 8px">A1</span>
-                  <span class="win-title">加速世界</span>
+                  <span class="win-title">天宫时计</span>
                   <span class="win-controls">—　□　×</span>
                 </div>
                 <div class="win-body">
@@ -2645,7 +2652,7 @@
               <div class="app-window" style="--win-h: 800px">
                 <div class="win-caption">
                   <span class="tag" style="left: 8px; top: 8px">A1</span>
-                  <span class="win-title">加速世界</span>
+                  <span class="win-title">天宫时计</span>
                   <span class="win-controls">—　□　×</span>
                 </div>
                 <div class="win-body">
@@ -3021,7 +3028,8 @@
           <div>
             <h2>闹钟页</h2>
             <p>
-              抽屉页。快捷添加是有边界的 chip；闹钟行 64px：开关、24px
+              抽屉页。快捷添加是有边界的
+              chip；闹钟行按时刻/开关行高计算：开关、24px
               时刻、标签·重复、删除；添加表单固定在页脚。
             </p>
           </div>
@@ -3032,7 +3040,7 @@
               <div class="app-window" style="--win-h: 600px">
                 <div class="win-caption">
                   <span class="tag" style="left: 8px; top: 8px">A1</span>
-                  <span class="win-title">加速世界</span>
+                  <span class="win-title">天宫时计</span>
                   <span class="win-controls">—　□　×</span>
                 </div>
                 <div class="win-body">
@@ -3170,7 +3178,7 @@
               <tr>
                 <td class="id">H5</td>
                 <td class="nm">闹钟开关</td>
-                <td class="ds">36×20；on=success 绿</td>
+                <td class="ds">layout.switch_w/h；on=success 绿</td>
               </tr>
               <tr>
                 <td class="id">H6</td>
@@ -3190,7 +3198,7 @@
               <tr>
                 <td class="id">H10</td>
                 <td class="nm">闹钟页脚</td>
-                <td class="ds">标签 + 时间 + 添加；恒占错误行</td>
+                <td class="ds">标签 + 时间 + 添加；无错误行</td>
               </tr>
               <tr>
                 <td class="id">H11</td>
@@ -3205,7 +3213,7 @@
               <tr>
                 <td class="id">H13</td>
                 <td class="nm">添加按钮</td>
-                <td class="ds">88×32 ink 实底</td>
+                <td class="ds">宽度 token / 高度计算 ink 实底</td>
               </tr>
             </table>
             <h3>目测检查点</h3>
@@ -3226,8 +3234,8 @@
           <div>
             <h2>设置页</h2>
             <p>
-              也是抽屉页，标题“设置”，副标题“外观 · 动效 ·
-              关于”。不是一个右下角浮窗，也不是 modal。
+              也是抽屉页，标题“设置”，无副标题。不是一个右下角浮窗，也不是
+              modal。
             </p>
           </div>
         </div>
@@ -3237,7 +3245,7 @@
               <div class="app-window" style="--win-h: 600px">
                 <div class="win-caption">
                   <span class="tag" style="left: 8px; top: 8px">A1</span>
-                  <span class="win-title">加速世界</span>
+                  <span class="win-title">天宫时计</span>
                   <span class="win-controls">—　□　×</span>
                 </div>
                 <div class="win-body">
@@ -3318,7 +3326,7 @@
 
                       <div class="settings-sign">
                         <span class="tag" style="left: 8px; top: -9px">I11</span
-                        >加速世界 · 子夜星图
+                        >天宫时计 · 子夜星图
                       </div>
                     </div>
                   </div>
@@ -3360,7 +3368,7 @@
               <tr>
                 <td class="id">I1</td>
                 <td class="nm">设置抽屉</td>
-                <td class="ds">标题“设置” + 副标题；不是浮窗</td>
+                <td class="ds">标题“设置”；无副标题；不是浮窗</td>
               </tr>
               <tr>
                 <td class="id">I2</td>
@@ -3385,7 +3393,7 @@
               <tr>
                 <td class="id">I6</td>
                 <td class="nm">减少动效开关</td>
-                <td class="ds">36×20；on=success 绿</td>
+                <td class="ds">layout.switch_w/h；on=success 绿</td>
               </tr>
               <tr>
                 <td class="id">I7</td>
@@ -3410,7 +3418,7 @@
               <tr>
                 <td class="id">I11</td>
                 <td class="nm">设置页尾签</td>
-                <td class="ds">“加速世界 · 子夜星图”</td>
+                <td class="ds">“天宫时计 · 子夜星图”</td>
               </tr>
             </table>
             <h3>目测检查点</h3>
@@ -3441,7 +3449,7 @@
           <div class="mini-card">
             <h4>全宽抽屉（520×420 结构示意）</h4>
             <div class="mini-window">
-              <div class="mini-bar">加速世界　—　□　×</div>
+              <div class="mini-bar">天宫时计　—　□　×</div>
               <div class="mini-body">
                 <span class="tag" style="left: 8px; top: 150px">D10</span>
                 <div class="mini-drawer">
@@ -3481,10 +3489,10 @@
           <div class="mini-card">
             <h4>小窗时钟页（星盘常驻）</h4>
             <div class="mini-window">
-              <div class="mini-bar">加速世界　—　□　×</div>
+              <div class="mini-bar">天宫时计　—　□　×</div>
               <div class="mini-body">
                 <div class="mini-clock">
-                  <div class="mini-brand">加速世界</div>
+                  <div class="mini-brand">天宫时计</div>
                   <div style="display: flex; align-items: baseline; gap: 10px">
                     <span style="font-size: 8px; color: var(--gold)">加速</span
                     ><span
@@ -3589,7 +3597,10 @@
         <div class="component-grid">
           <div class="component-card">
             <h4>K1 · 字段 Field</h4>
-            <p class="cdesc">label 12/500 + 34px 输入 + 1px 边 + 焦点亮白环</p>
+            <p class="cdesc">
+              label 12/500 + 20px 输入（12px 文字上下各 4px）+ 1px 边 +
+              焦点亮白环
+            </p>
             <div class="demo-field focus">
               <span class="flabel">城市名</span>
               <div class="fbox">上海</div>
@@ -3634,7 +3645,9 @@
           </div>
           <div class="component-card">
             <h4>K3 · 主按钮 PrimaryButton</h4>
-            <p class="cdesc">88×32 ink 实底；金不给按钮</p>
+            <p class="cdesc">
+              宽 88；高 34.3（10 + 14.3 + 10）；ink 实底；金不给按钮
+            </p>
             <div class="demo-buttons">
               <span class="demo-btn">常态</span>
               <span class="demo-btn hover">悬停</span>
@@ -3644,7 +3657,7 @@
           </div>
           <div class="component-card">
             <h4>K4 · 开关 Switch</h4>
-            <p class="cdesc">36×20；on=success 绿，位置为主信号</p>
+            <p class="cdesc">layout.switch_w/h；on=success 绿，位置为主信号</p>
             <div class="demo-switch">
               <span class="switch"></span><span class="state">关</span>
               <span class="switch on"></span><span class="state">开</span>
@@ -3652,7 +3665,9 @@
           </div>
           <div class="component-card">
             <h4>K5 · 空态 EmptyState</h4>
-            <p class="cdesc">虚线框 + 标题 + 一句行动邀请</p>
+            <p class="cdesc">
+              虚线框 + 标题盒 16.3 + 5 + 正文盒 12.3，整体居中；最小 53.6
+            </p>
             <div class="demo-empty">
               <span class="t">还没有目标</span>
               <span class="d">在下方填写名称与时刻</span>
@@ -3884,8 +3899,10 @@
               </tr>
               <tr>
                 <td>抽屉页头 / 页脚</td>
-                <td>56 / 76（窄窗两行更高）</td>
-                <td><code>layout.page_header/page_footer</code></td>
+                <td>
+                  页头 54.3（20+24.3+10）；页脚倒计时/闹钟 101.6，世界 select+8
+                </td>
+                <td><code>page_header::show / footer_height</code></td>
               </tr>
               <tr>
                 <td>星盘</td>
@@ -3894,7 +3911,7 @@
               </tr>
               <tr>
                 <td>盘下读数</td>
-                <td>27 + 0.62×hero（盒 = 墨迹 bbox）</td>
+                <td>27 + 0.62×hero（固定读数盒）</td>
                 <td><code>draw_readout</code></td>
               </tr>
               <tr>
@@ -3904,22 +3921,22 @@
               </tr>
               <tr>
                 <td>倒计时 Hero / 目标行</td>
-                <td>126 / 68</td>
+                <td>90.9 / 55.6</td>
                 <td><code>countdown.rs</code></td>
               </tr>
               <tr>
                 <td>世界城市行 / 闹钟行</td>
-                <td>60 / 64</td>
+                <td>58.6 / 64.3 / 48.3</td>
                 <td><code>world.rs</code> / <code>alarm.rs</code></td>
               </tr>
               <tr>
                 <td>天气曲线 / 七日行</td>
-                <td>132 / 22</td>
+                <td>132 / 22.3</td>
                 <td><code>weather.rs</code></td>
               </tr>
               <tr>
                 <td>字段 / 主按钮 / 开关</td>
-                <td>54 / 88×32 / 36×20</td>
+                <td>字段 12.3+5+20 / 按钮 34.3 / 开关 layout token</td>
                 <td>
                   <code>field</code> / <code>primary_button</code> /
                   <code>switch</code>
@@ -3948,12 +3965,12 @@
               <tr>
                 <td>hero</td>
                 <td>72</td>
-                <td>读数大数实际 56（短窗 44）；倒计时 Hero 40</td>
+                <td>读数大数实际 56（短窗 44）；倒计时剩余 28</td>
               </tr>
               <tr>
                 <td>display</td>
                 <td>40</td>
-                <td>倒计时剩余 40；天气温度实际 44</td>
+                <td>倒计时剩余 28；天气温度实际 44</td>
               </tr>
               <tr>
                 <td>title</td>
@@ -4140,7 +4157,7 @@
               <tr>
                 <td>checkbox</td>
                 <td>开关（Switch）</td>
-                <td>自绘 36×20 胶囊开关</td>
+                <td>自绘 layout.switch_w/h 胶囊开关</td>
               </tr>
               <tr>
                 <td>输入框（指整个字段）</td>
@@ -4149,8 +4166,8 @@
               </tr>
               <tr>
                 <td>chip（指农历/节日）</td>
-                <td>农历 meta 行 / 近期节日 meta 行</td>
-                <td>农历已从三个盒子改成一条 12px 文本行</td>
+                <td>农历 meta 行 / 近期节日行</td>
+                <td>农历是一条 12px 行；近期节日是 5 个金色可点项</td>
               </tr>
               <tr>
                 <td>Hero（指主仪大数）</td>
@@ -4170,7 +4187,7 @@
               <tr>
                 <td>按钮（指快捷 chip）</td>
                 <td>快捷 chip</td>
-                <td>快捷添加是 30px chip，不是 88×32 主按钮</td>
+                <td>快捷添加是 chip 计算高，不是主按钮</td>
               </tr>
               <tr>
                 <td>数字版（旧词）</td>
@@ -4211,7 +4228,7 @@
 页面/区域 &gt; 子区域 &gt; 元素 [状态]：现象
 
 时钟页 &gt; 星盘 &gt; 现实针 [常态]：长度只有金针的 62%，看起来像短线
-倒计时页 &gt; 抽屉页脚 &gt; 错误行 [错误]：红字出现时不应把添加按钮挤跳
+倒计时页 &gt; 抽屉页脚 &gt; 添加失败 [错误]：在「目标时刻」标签行右端显示「输入错误！」，按钮位置不变
 天气页 &gt; 七日 &gt; 低/高值 [常态]：值在 card_bg 上，不压金条
 闹钟页 &gt; 闹钟行 &gt; 开关 [开]：绿色 + 旋钮在右；位置是主信号
 设置页 &gt; 动效 &gt; 减少动效 [开]：hover/列表脉冲/toast 直取终态</pre>
@@ -4257,7 +4274,7 @@
     </main>
 
     <footer class="wrap footer">
-      <span>AccelWorld UI 标注指南 · 基线 V0.6.4.2 / HEAD aec817e</span>
+      <span>ACCELWORLD Clock UI 标注指南 · 基线 V0.6.5.3</span>
       <span
         >配套：<code>u.UI_GLOSSARY.md</code> · 窗口图按 820px
         宽绘制，仅示意结构，不替代真机截图</span

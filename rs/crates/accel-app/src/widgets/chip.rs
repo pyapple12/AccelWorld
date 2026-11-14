@@ -3,9 +3,15 @@
 
 use egui::{Sense, Vec2};
 
-/// chip 高度（layout.chip_height token——UIR2 单行化后 32）
-pub fn chip_height() -> f32 {
-    crate::theme::layout_i64("chip_height") as f32
+use super::text_ink::{self, InkKind};
+
+/// chip 高度：label/value 行高较大者 + 上下 padding token
+pub fn chip_height(ui: &egui::Ui) -> f32 {
+    let label_font = egui::FontId::proportional(crate::theme::font_size("meta"));
+    let value_font = egui::FontId::proportional(crate::theme::font_size("body"));
+    let label_h = crate::widgets::text_metrics::line_height(ui.ctx(), &label_font);
+    let value_h = crate::widgets::text_metrics::line_height(ui.ctx(), &value_font);
+    label_h.max(value_h) + 2.0 * crate::theme::layout_f32("chip_pad_y")
 }
 
 /// 自适应宽度（纯函数可测）：label + 分隔 + value 行宽 + 内边距 26，钳 [56, 240]
@@ -30,7 +36,7 @@ pub fn show(ui: &mut egui::Ui, label: &str, value: &str) -> egui::Response {
         .layout_no_wrap(value.to_string(), value_font.clone(), ink.body)
         .rect
         .width();
-    let size = Vec2::new(chip_width(label_w, value_w), chip_height());
+    let size = Vec2::new(chip_width(label_w, value_w), chip_height(ui));
     let (rect, resp) = ui.allocate_exact_size(size, Sense::hover());
     let radius = crate::theme::radius_px("sm") as u8;
     ui.painter().rect_filled(
@@ -70,16 +76,23 @@ pub fn show(ui: &mut egui::Ui, label: &str, value: &str) -> egui::Response {
         );
     }
     let center_y = rect.center().y;
+    let label_ink = text_ink::measure(ui, label, &label_font, InkKind::Cjk);
+    let value_ink = text_ink::measure(ui, value, &value_font, InkKind::Cjk);
+    let max_size = label_font.size.max(value_font.size);
+    let baseline = center_y + (max_size - crate::widgets::text_metrics::RESERVE) * 0.5;
     ui.painter().text(
-        egui::pos2(rect.left() + 12.0, center_y),
-        egui::Align2::LEFT_CENTER,
+        egui::pos2(rect.left() + 12.0, label_ink.top_for_baseline(baseline)),
+        egui::Align2::LEFT_TOP,
         label,
         label_font,
         ink.muted,
     );
     ui.painter().text(
-        egui::pos2(rect.left() + 12.0 + label_w + 10.0, center_y),
-        egui::Align2::LEFT_CENTER,
+        egui::pos2(
+            rect.left() + 12.0 + label_w + 10.0,
+            value_ink.top_for_baseline(baseline),
+        ),
+        egui::Align2::LEFT_TOP,
         value,
         value_font,
         ink.body,
@@ -105,11 +118,5 @@ mod tests {
         assert_eq!(chip_width(10.0, 20.0), 56.0);
         assert_eq!(chip_width(100.0, 90.0), 216.0);
         assert_eq!(chip_width(500.0, 90.0), 240.0);
-    }
-
-    #[test]
-    fn chip_height_token() {
-        // 高度取 layout.chip_height token（UIR2 单行化定值 32）
-        assert_eq!(chip_height(), 32.0);
     }
 }

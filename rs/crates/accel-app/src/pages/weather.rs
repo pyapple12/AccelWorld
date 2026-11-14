@@ -39,7 +39,8 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                 let mut stack = crate::widgets::box_stack::BoxStack::new(ui);
 
                 // 城市/刷新盒
-                let header = stack.next(ui, 34.0);
+                let header_h = crate::widgets::select::height(ui) + crate::theme::spacing_f32("xs");
+                let header = stack.next(ui, header_h);
                 ui.scope_builder(egui::UiBuilder::new().max_rect(header), |ui| {
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                         let city_names = accel_core::interface::AppInterface::get_city_names();
@@ -80,24 +81,30 @@ impl crate::pages::Page for crate::pages::WeatherPage {
 
                 let error = state.weather_errors.get(&city).cloned();
                 let data = state.weather.get(&city).cloned();
-                // 盒高全部按文字墨迹 / 控件高计算（不是行框）
+                // 盒高全部查启动指标表（角色最大墨迹高，不是当前字符串）
                 let meta_font = crate::theme::font_regular(crate::theme::font_size("meta"));
                 let body_font = crate::theme::font_regular(crate::theme::font_size("body"));
-                let meta_ink =
-                    crate::widgets::text_ink::measure(ui, "近期", &meta_font, InkKind::Cjk);
-                let body_ink =
-                    crate::widgets::text_ink::measure(ui, "体感", &body_font, InkKind::Cjk);
-                let temp_ink = crate::widgets::text_ink::measure(
-                    ui,
-                    "00.0°",
+                let meta_h =
+                    crate::widgets::text_metrics::height(ui.ctx(), &meta_font, InkKind::Cjk);
+                let body_h =
+                    crate::widgets::text_metrics::height(ui.ctx(), &body_font, InkKind::Cjk);
+                let temp_h = crate::widgets::text_metrics::height(
+                    ui.ctx(),
                     &digits::digit_font(44.0),
                     InkKind::Digits,
                 );
-                let error_h = meta_ink.h + 14.0;
-                let hero_h = temp_ink.h + 6.0 + body_ink.h + 32.0;
-                let metric_h = meta_ink.h + 4.0 + body_ink.h + 16.0;
-                let hourly_h = meta_ink.h * 2.0 + 132.0 + 24.0;
-                let week_h = meta_ink.h + 4.0 + 7.0 * 22.0 + 8.0;
+                let error_h = meta_h + 14.0;
+                let hero_h = temp_h + 6.0 + body_h + 32.0;
+                let metric_h = meta_h + 4.0 + body_h + 16.0;
+                let hourly_label_h = meta_h;
+                let hourly_h = hourly_label_h
+                    + crate::theme::layout_f32("weather_plot_h")
+                    + crate::theme::spacing_f32("xl");
+                let week_row_h = body_h + crate::theme::spacing_f32("sm");
+                let week_h = meta_h
+                    + crate::theme::spacing_f32("xs")
+                    + 7.0 * week_row_h
+                    + crate::theme::spacing_f32("sm");
                 if let Some(err) = &error {
                     let rect = stack.next(ui, error_h);
                     ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
@@ -174,11 +181,16 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                 if !w.hourly.is_empty() {
                     let rect = stack.next(ui, hourly_h);
                     ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
-                        ui.label(
-                            egui::RichText::new("逐小时")
-                                .font(crate::theme::font_medium(crate::theme::font_size("meta")))
-                                .color(ink.muted),
+                        let label_box =
+                            egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), meta_h));
+                        ui.painter().text(
+                            label_box.left_center(),
+                            egui::Align2::LEFT_CENTER,
+                            "逐小时",
+                            crate::theme::font_medium(crate::theme::font_size("meta")),
+                            ink.muted,
                         );
+                        ui.add_space(meta_h);
                         draw_hourly(ui, &w.hourly, &ink);
                     });
                 }
@@ -192,12 +204,22 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                 }
 
                 // 数据来源盒
-                let source = stack.next(ui, meta_ink.h + 8.0);
+                let source_font = crate::theme::font_regular(11.0);
+                let source_h = crate::widgets::text_metrics::line_height(ui.ctx(), &source_font)
+                    + crate::theme::spacing_f32("sm");
+                let source = stack.next(ui, source_h);
+                let source_box = egui::Rect::from_min_size(
+                    egui::pos2(
+                        source.left(),
+                        source.top() + crate::theme::spacing_f32("xs"),
+                    ),
+                    egui::vec2(source.width(), source_h - crate::theme::spacing_f32("xs")),
+                );
                 ui.painter().text(
-                    egui::pos2(source.left(), source.center().y),
+                    source_box.left_center(),
                     egui::Align2::LEFT_CENTER,
                     "数据来源 Open-Meteo · 免费接口",
-                    crate::theme::font_regular(11.0),
+                    source_font,
                     ink.meta,
                 );
             });
@@ -222,31 +244,26 @@ fn draw_weather_hero(
     let temp_font = digits::digit_font(44.0);
     let temp = format!("{:.1}°", w.temperature);
     let temp_w = digits::text_width(painter, &temp, &temp_font);
-    let temp_ink = crate::widgets::text_ink::measure(
-        ui,
-        "00.0°",
+    let temp_h = crate::widgets::text_metrics::height(
+        ui.ctx(),
         &temp_font,
         crate::widgets::text_ink::InkKind::Digits,
     );
     let desc_font = crate::theme::font_regular(crate::theme::font_size("body"));
-    let desc_ink = crate::widgets::text_ink::measure(ui, &w.description, &desc_font, InkKind::Cjk);
+    let desc_h = crate::widgets::text_metrics::height(ui.ctx(), &desc_font, InkKind::Cjk);
     let temp_top = rect.top() + 16.0;
-    digits::draw_centered(
+    let temp_center = temp_top + temp_h / 2.0;
+    digits::draw_centered_ink(
         painter,
-        egui::pos2(
-            rect.left() + 62.0 + temp_w / 2.0,
-            temp_top + temp_ink.h / 2.0,
-        ),
+        egui::pos2(rect.left() + 62.0 + temp_w / 2.0, temp_center),
         &temp,
         &temp_font,
         ink.strong,
     );
+    let desc_center = temp_top + temp_h + 6.0 + desc_h / 2.0;
     painter.text(
-        egui::pos2(
-            rect.left() + 62.0,
-            temp_top + temp_ink.h + 6.0 - desc_ink.top_pad,
-        ),
-        egui::Align2::LEFT_TOP,
+        egui::pos2(rect.left() + 62.0, desc_center),
+        egui::Align2::LEFT_CENTER,
         &w.description,
         desc_font,
         ink.muted,
@@ -259,29 +276,20 @@ fn metric(ui: &mut egui::Ui, label: &str, value: &str) {
     let rect = ui.max_rect();
     let label_font = crate::theme::font_regular(11.0);
     let value_font = crate::theme::font_medium(crate::theme::font_size("body"));
-    let label_ink = crate::widgets::text_ink::measure(
-        ui,
-        label,
-        &label_font,
-        crate::widgets::text_ink::InkKind::Cjk,
-    );
-    let value_ink = crate::widgets::text_ink::measure(
-        ui,
-        value,
-        &value_font,
-        crate::widgets::text_ink::InkKind::Cjk,
-    );
-    let top = rect.top() + 8.0;
+    let label_h = crate::widgets::text_metrics::height(ui.ctx(), &label_font, InkKind::Cjk);
+    let value_h = crate::widgets::text_metrics::height(ui.ctx(), &value_font, InkKind::Cjk);
+    let label_center = rect.top() + 8.0 + label_h / 2.0;
     ui.painter().text(
-        egui::pos2(rect.left(), top - label_ink.top_pad),
-        egui::Align2::LEFT_TOP,
+        egui::pos2(rect.left(), label_center),
+        egui::Align2::LEFT_CENTER,
         label,
         label_font,
         ink.muted,
     );
+    let value_center = rect.top() + 8.0 + label_h + 4.0 + value_h / 2.0;
     ui.painter().text(
-        egui::pos2(rect.left(), top + label_ink.h + 4.0 - value_ink.top_pad),
-        egui::Align2::LEFT_TOP,
+        egui::pos2(rect.left(), value_center),
+        egui::Align2::LEFT_CENTER,
         value,
         value_font,
         ink.body,
@@ -318,7 +326,7 @@ fn draw_hourly(ui: &mut egui::Ui, hourly: &[HourlyPoint], ink: &crate::theme::In
     };
 
     egui_plot::Plot::new("hourly_temp")
-        .height(132.0)
+        .height(crate::theme::layout_f32("weather_plot_h"))
         .show_axes(false)
         .show_grid(false)
         .show_background(false)
@@ -431,34 +439,44 @@ fn draw_week(ui: &mut egui::Ui, daily: &[accel_core::types::DailyPoint], ink: &c
         .map(|d| d.t_max)
         .fold(f64::NEG_INFINITY, f64::max);
     let span = (week_max - week_min).max(0.001);
-
-    ui.horizontal(|ui| {
-        ui.label(
-            egui::RichText::new("七日")
-                .font(crate::theme::font_medium(crate::theme::font_size("meta")))
-                .color(ink.muted),
-        );
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(
-                egui::RichText::new(format!("{week_min:.0}° — {week_max:.0}°"))
-                    .font(crate::theme::font_regular(11.0))
-                    .color(ink.meta),
-            );
-        });
-    });
-    ui.add_space(4.0);
+    let meta_font = crate::theme::font_medium(crate::theme::font_size("meta"));
+    let body_font = egui::FontId::proportional(crate::theme::font_size("body"));
+    let label_h = crate::widgets::text_metrics::height(ui.ctx(), &meta_font, InkKind::Cjk);
+    let row_h = crate::widgets::text_metrics::height(ui.ctx(), &body_font, InkKind::Cjk)
+        + crate::theme::spacing_f32("sm");
+    let rect = ui.max_rect();
+    let label_center = rect.top() + label_h / 2.0;
+    ui.painter().text(
+        egui::pos2(rect.left(), label_center),
+        egui::Align2::LEFT_CENTER,
+        "七日",
+        meta_font,
+        ink.muted,
+    );
+    ui.painter().text(
+        egui::pos2(rect.right(), label_center),
+        egui::Align2::RIGHT_CENTER,
+        format!("{week_min:.0}° — {week_max:.0}°"),
+        crate::theme::font_regular(11.0),
+        ink.meta,
+    );
+    ui.add_space(label_h + crate::theme::spacing_f32("xs"));
+    let text_center_off = row_h / 2.0;
     for d in &days {
-        let (rect, _) =
-            ui.allocate_exact_size(egui::vec2(ui.available_width(), 22.0), egui::Sense::hover());
+        let (rect, _) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), row_h),
+            egui::Sense::hover(),
+        );
         let date_w = 44.0;
         let value_w = 68.0;
         let bar_x = rect.left() + date_w;
         let bar_w = (rect.width() - date_w - value_w - 12.0).max(24.0);
+        let day_text = d.date.get(5..10).unwrap_or(&d.date);
         ui.painter().text(
-            egui::pos2(rect.left(), rect.center().y),
+            egui::pos2(rect.left(), rect.top() + text_center_off),
             egui::Align2::LEFT_CENTER,
-            d.date.get(5..10).unwrap_or(&d.date),
-            egui::FontId::proportional(crate::theme::font_size("body")),
+            day_text,
+            body_font.clone(),
             ink.muted,
         );
         let track = egui::Rect::from_min_size(
@@ -485,11 +503,12 @@ fn draw_week(ui: &mut egui::Ui, daily: &[accel_core::types::DailyPoint], ink: &c
             crate::theme::accent_color(),
         );
         // 数值固定在条右侧的 value 列，绝不压在 fill 上
+        let value_text = format!("{:.0}°/{:.0}°", d.t_min, d.t_max);
         ui.painter().text(
-            egui::pos2(rect.right(), rect.center().y),
+            egui::pos2(rect.right(), rect.top() + text_center_off),
             egui::Align2::RIGHT_CENTER,
-            format!("{:.0}°/{:.0}°", d.t_min, d.t_max),
-            egui::FontId::proportional(crate::theme::font_size("body")),
+            value_text,
+            body_font.clone(),
             ink.strong,
         );
     }

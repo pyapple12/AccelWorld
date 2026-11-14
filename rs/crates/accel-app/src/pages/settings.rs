@@ -7,32 +7,34 @@ use crate::widgets::{icons, switch};
 /// 设置页正文（页头由 pages::Pages 统一绘制）
 pub fn ui(ui: &mut egui::Ui, state: &mut UiState) {
     let ink = crate::theme::ink();
-    // 盒高按文字墨迹计算（不是行框）
+    // 盒高查启动指标表（角色最大墨迹高，不是当前字符串）
     let section_font = crate::theme::font_semibold(crate::theme::font_size("section"));
     let meta_font = crate::theme::font_regular(crate::theme::font_size("meta"));
     let body_font = crate::theme::font_regular(crate::theme::font_size("body"));
-    let section_ink = crate::widgets::text_ink::measure(
-        ui,
-        "外观",
+    let section_h = crate::widgets::text_metrics::height(
+        ui.ctx(),
         &section_font,
         crate::widgets::text_ink::InkKind::Cjk,
     );
-    let meta_ink = crate::widgets::text_ink::measure(
-        ui,
-        "当前",
+    let meta_h = crate::widgets::text_metrics::height(
+        ui.ctx(),
         &meta_font,
         crate::widgets::text_ink::InkKind::Cjk,
     );
-    let body_ink = crate::widgets::text_ink::measure(
-        ui,
-        "主题",
+    let body_h = crate::widgets::text_metrics::height(
+        ui.ctx(),
         &body_font,
         crate::widgets::text_ink::InkKind::Cjk,
     );
-    let section_h = section_ink.h + 8.0 + meta_ink.h + 8.0 + 1.0;
-    let row_h = body_ink.h + 16.0;
-    let switch_h = body_ink.h + 4.0 + meta_ink.h + 16.0;
-    let brand_h = meta_ink.h + 8.0;
+    let section_h = section_h
+        + crate::theme::spacing_f32("sm")
+        + meta_h
+        + crate::theme::spacing_f32("sm")
+        + crate::theme::layout_f32("field_border");
+    let row_h = body_h + crate::theme::spacing_f32("lg");
+    let switch_h =
+        body_h + crate::theme::spacing_f32("xs") + meta_h + crate::theme::spacing_f32("lg");
+    let brand_h = meta_h + crate::theme::spacing_f32("sm");
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
@@ -53,7 +55,7 @@ pub fn ui(ui: &mut egui::Ui, state: &mut UiState) {
                 "关闭抽屉、悬停、按压与闹钟脉冲的过渡",
                 &ink,
             );
-            let rect = stack.slot(switch_h);
+            let rect = stack.next(ui, switch_h);
             let clicked = ui
                 .scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
                     switch_box(ui, rect, state, &ink)
@@ -87,43 +89,49 @@ pub fn ui(ui: &mut egui::Ui, state: &mut UiState) {
             }
 
             let rect = stack.next(ui, brand_h);
+            let brand_box = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), meta_h));
             ui.painter().text(
-                egui::pos2(rect.left(), rect.center().y),
+                brand_box.left_center(),
                 egui::Align2::LEFT_CENTER,
-                "加速世界 · 子夜星图",
+                "天宫时计 · 子夜星图",
                 meta_font,
                 ink.meta,
             );
         });
 }
 
-/// 分区盒：标题 + 说明 + 底部发丝（按墨迹定位）
+/// 分区盒：标题盒 + 8 + 说明盒 + 8 + 发丝
 fn section_box(ui: &egui::Ui, rect: egui::Rect, title: &str, desc: &str, ink: &crate::theme::Ink) {
     let section_font = crate::theme::font_semibold(crate::theme::font_size("section"));
     let desc_font = crate::theme::font_regular(crate::theme::font_size("meta"));
-    let section_ink = crate::widgets::text_ink::measure(
-        ui,
-        title,
+    let section_h = crate::widgets::text_metrics::height(
+        ui.ctx(),
         &section_font,
         crate::widgets::text_ink::InkKind::Cjk,
     );
-    let desc_ink = crate::widgets::text_ink::measure(
-        ui,
-        desc,
+    let desc_h = crate::widgets::text_metrics::height(
+        ui.ctx(),
         &desc_font,
         crate::widgets::text_ink::InkKind::Cjk,
     );
+    let title_box = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), section_h));
     ui.painter().text(
-        egui::pos2(rect.left(), rect.top() - section_ink.top_pad),
-        egui::Align2::LEFT_TOP,
+        title_box.left_center(),
+        egui::Align2::LEFT_CENTER,
         title,
         section_font,
         ink.strong,
     );
-    let desc_top = rect.top() + section_ink.h + 8.0;
+    let desc_box = egui::Rect::from_min_size(
+        egui::pos2(
+            rect.left(),
+            rect.top() + section_h + crate::theme::spacing_f32("sm"),
+        ),
+        egui::vec2(rect.width(), desc_h),
+    );
     ui.painter().text(
-        egui::pos2(rect.left(), desc_top - desc_ink.top_pad),
-        egui::Align2::LEFT_TOP,
+        desc_box.left_center(),
+        egui::Align2::LEFT_CENTER,
         desc,
         desc_font,
         ink.muted,
@@ -147,11 +155,12 @@ fn row_box(
     cloud: bool,
 ) {
     let painter = ui.painter().with_clip_rect(rect);
+    let font = crate::theme::font_regular(crate::theme::font_size("body"));
     painter.text(
-        egui::pos2(rect.left(), rect.center().y),
+        rect.left_center(),
         egui::Align2::LEFT_CENTER,
         label,
-        crate::theme::font_regular(crate::theme::font_size("body")),
+        font.clone(),
         ink.body,
     );
     let mut right = rect.right();
@@ -169,7 +178,7 @@ fn row_box(
         egui::pos2(right, rect.center().y),
         egui::Align2::RIGHT_CENTER,
         value,
-        crate::theme::font_regular(crate::theme::font_size("body")),
+        font,
         ink.muted,
     );
 }
@@ -183,37 +192,44 @@ fn switch_box(
 ) -> bool {
     let title_font = crate::theme::font_medium(crate::theme::font_size("body"));
     let desc_font = crate::theme::font_regular(crate::theme::font_size("meta"));
-    let title_ink = crate::widgets::text_ink::measure(
-        ui,
-        "减少动效",
+    let title_h = crate::widgets::text_metrics::height(
+        ui.ctx(),
         &title_font,
         crate::widgets::text_ink::InkKind::Cjk,
     );
-    let desc_ink = crate::widgets::text_ink::measure(
-        ui,
-        "直取终态，不做过渡",
+    let desc_h = crate::widgets::text_metrics::height(
+        ui.ctx(),
         &desc_font,
         crate::widgets::text_ink::InkKind::Cjk,
     );
-    let title_top = rect.top() + 8.0;
+    let title_box = egui::Rect::from_min_size(
+        egui::pos2(rect.left(), rect.top() + crate::theme::spacing_f32("sm")),
+        egui::vec2(rect.width(), title_h),
+    );
     ui.painter().text(
-        egui::pos2(rect.left(), title_top - title_ink.top_pad),
-        egui::Align2::LEFT_TOP,
+        title_box.left_center(),
+        egui::Align2::LEFT_CENTER,
         "减少动效",
         title_font,
         ink.body,
     );
-    let desc_top = title_top + title_ink.h + 4.0;
+    let desc_box = egui::Rect::from_min_size(
+        egui::pos2(
+            rect.left(),
+            title_box.bottom() + crate::theme::spacing_f32("xs"),
+        ),
+        egui::vec2(rect.width(), desc_h),
+    );
     ui.painter().text(
-        egui::pos2(rect.left(), desc_top - desc_ink.top_pad),
-        egui::Align2::LEFT_TOP,
+        desc_box.left_center(),
+        egui::Align2::LEFT_CENTER,
         "直取终态，不做过渡",
         desc_font,
         ink.muted,
     );
     let sw_rect = egui::Rect::from_center_size(
         egui::pos2(rect.right() - 36.0, rect.center().y),
-        egui::vec2(switch::SWITCH_W, switch::SWITCH_H),
+        egui::vec2(switch::width(), switch::height()),
     );
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(sw_rect));
     switch::show(

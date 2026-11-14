@@ -181,7 +181,9 @@ struct HeaderLayout {
     label_size: f32,
     meta_font: egui::FontId,
     b1: text_ink::Ink,
+    b1_h: f32,
     meta: text_ink::Ink,
+    meta_h: f32,
     b2_h: f32,
     line_gap: f32,
     two_line: bool,
@@ -190,9 +192,9 @@ struct HeaderLayout {
 }
 
 impl HeaderLayout {
-    /// 内容墨迹区高（不含到分隔线的固定间距）
+    /// 内容墨迹区高（固定角色行高，不含到分隔线的固定间距）
     fn content_h(&self) -> f32 {
-        self.b1.h.max(self.b2_h)
+        self.b1_h.max(self.b2_h)
     }
 
     /// 页头盒高 = 内容墨迹区 + 到分隔线的 20px
@@ -242,13 +244,17 @@ fn header_layout(ui: &egui::Ui, info: &accel_core::types::TimeInfo, page_w: f32)
         format!("农历 {lunar_short}")
     };
     let meta = text_ink::measure(ui, &line1, &meta_font, InkKind::Cjk);
+    let b1_h = crate::widgets::text_metrics::height(ui.ctx(), &label_font, InkKind::Cjk);
+    let meta_h = crate::widgets::text_metrics::height(ui.ctx(), &meta_font, InkKind::Cjk);
     let line_gap = 2.0;
-    let b2_h = meta.h + if two_line { line_gap + meta.h } else { 0.0 };
+    let b2_h = meta_h + if two_line { line_gap + meta_h } else { 0.0 };
     HeaderLayout {
         label_size,
         meta_font,
         b1,
+        b1_h,
         meta,
+        meta_h,
         b2_h,
         line_gap,
         two_line,
@@ -266,15 +272,15 @@ fn draw_stage_header(
 ) {
     let ink = crate::theme::ink();
     let top = rect.top();
-    let content_h = layout.content_h();
-    let b1_top = top + (content_h - layout.b1.h) / 2.0;
+    let content_bottom = top + layout.content_h();
+    let b1_center = content_bottom - layout.b1_h / 2.0;
     ui.painter().circle_filled(
-        egui::pos2(rect.left() + 6.0, b1_top + layout.b1.h / 2.0),
+        egui::pos2(rect.left() + 6.0, b1_center),
         3.5,
         crate::theme::accent_color(),
     );
     ui.painter().text(
-        egui::pos2(rect.left() + 18.0, b1_top - layout.b1.top_pad),
+        egui::pos2(rect.left() + 18.0, layout.b1.top_for_bottom(content_bottom)),
         egui::Align2::LEFT_TOP,
         &info.chinese_date,
         crate::theme::font_semibold(layout.label_size),
@@ -301,27 +307,27 @@ fn draw_stage_header(
     }
 
     let right = rect.right() - 6.0;
-    let b2_top = top + (content_h - layout.b2_h) / 2.0;
     if layout.two_line {
-        let line2_top = b2_top + layout.meta.h + layout.line_gap;
+        let line2_bottom = content_bottom;
+        let line1_bottom = line2_bottom - layout.meta_h - layout.line_gap;
         ui.painter().text(
-            egui::pos2(right, b2_top - layout.meta.top_pad),
+            egui::pos2(right, layout.meta.top_for_bottom(line1_bottom)),
             egui::Align2::RIGHT_TOP,
             &layout.line1,
             layout.meta_font.clone(),
             ink.muted,
         );
-        let line2_center = line2_top + layout.meta.h / 2.0;
+        let line2_center = line2_bottom - layout.meta_h / 2.0;
         draw_yi_ji(
             ui,
-            egui::pos2(right, line2_center - layout.meta.center_offset),
+            egui::pos2(right, line2_center),
             &info.lunar_yi,
             &info.lunar_ji,
             &layout.meta_font,
         );
     } else {
         ui.painter().text(
-            egui::pos2(right, b2_top - layout.meta.top_pad),
+            egui::pos2(right, layout.meta.top_for_bottom(content_bottom)),
             egui::Align2::RIGHT_TOP,
             &layout.line1,
             layout.meta_font.clone(),
@@ -554,11 +560,12 @@ fn draw_yi_ji(
     let gap = 16.0;
     let total = w_yi + w_yi_text + gap + w_ji + w_ji_text;
     let mut x = right_center.x - total;
-    let y = right_center.y;
+    let yi_ink = text_ink::measure(ui, "宜", font, InkKind::Cjk);
+    let y = yi_ink.top_for_center(right_center.y, font.size);
     if !yi_text.is_empty() {
         ui.painter().text(
             egui::pos2(x, y),
-            egui::Align2::LEFT_CENTER,
+            egui::Align2::LEFT_TOP,
             "宜 ",
             font.clone(),
             success,
@@ -566,7 +573,7 @@ fn draw_yi_ji(
         x += w_yi;
         ui.painter().text(
             egui::pos2(x, y),
-            egui::Align2::LEFT_CENTER,
+            egui::Align2::LEFT_TOP,
             &yi_text,
             font.clone(),
             ink.muted,
@@ -577,7 +584,7 @@ fn draw_yi_ji(
     if !ji_text.is_empty() {
         ui.painter().text(
             egui::pos2(x, y),
-            egui::Align2::LEFT_CENTER,
+            egui::Align2::LEFT_TOP,
             "忌 ",
             font.clone(),
             danger,
@@ -585,7 +592,7 @@ fn draw_yi_ji(
         x += w_ji;
         ui.painter().text(
             egui::pos2(x, y),
-            egui::Align2::LEFT_CENTER,
+            egui::Align2::LEFT_TOP,
             &ji_text,
             font.clone(),
             ink.muted,
@@ -875,7 +882,6 @@ fn draw_readout(
     // 墨迹 bbox：盒顶 = 标签墨迹顶，盒底 = 时间字形底
     let label_ink = text_ink::measure(ui, "加速", &label_font, InkKind::Cjk);
     let cn_ink = text_ink::measure(ui, "天", &day_font, InkKind::Cjk);
-    let num_ink = text_ink::measure(ui, &day_num_text, &day_num_font, InkKind::Digits);
     let digit_bottom = area.bottom();
 
     // 左区右对齐到 center-20；右区左对齐到 center+20
@@ -885,12 +891,13 @@ fn draw_readout(
     let scale = hero_fit_scale(measured, left_avail);
     let hero_font = digits::digit_font(base * scale);
     let hero_w = measured * scale;
-    let hero_ink = text_ink::measure(ui, "0", &hero_font, InkKind::Digits);
-    let hero_y = area.bottom() - hero_ink.h / 2.0 - hero_ink.center_offset;
+    let hero_center =
+        area.bottom() - (hero_font.size + crate::widgets::text_metrics::RESERVE) * 0.5;
     let left_time_x = center_x - 20.0 - hero_w;
     let day_left = left_time_x - 12.0 - day_w;
 
-    let label_y = area.top() - label_ink.top_pad;
+    let label_h = crate::widgets::text_metrics::height(ui.ctx(), &label_font, InkKind::Cjk);
+    let label_y = label_ink.top_for_bottom(area.top() + label_h);
     ui.painter().text(
         egui::pos2(day_left, label_y),
         egui::Align2::LEFT_TOP,
@@ -908,20 +915,20 @@ fn draw_readout(
 
     digits::draw_centered(
         ui.painter(),
-        egui::pos2(left_time_x + hero_w / 2.0, hero_y),
+        egui::pos2(left_time_x + hero_w / 2.0, hero_center),
         &day_text,
         &hero_font,
         ink.strong,
     );
 
     let mut x = day_left;
-    // 「第 N 天」墨迹底 = 盒底；块内「第 / N / 天」三者墨迹中心对齐
-    let cn_center = area.bottom() - cn_ink.h / 2.0;
-    let cn_cy = cn_center - cn_ink.center_offset;
-    let num_cy = cn_center - num_ink.center_offset;
+    // 「第 N 天」共用行盒中心线，三种字号按同一基线绘制
+    let day_h = crate::widgets::text_metrics::height(ui.ctx(), &day_font, InkKind::Cjk);
+    let cn_center = area.bottom() - day_h / 2.0;
+    let cn_y = cn_ink.top_for_center(cn_center, day_font.size);
     ui.painter().text(
-        egui::pos2(x, cn_cy),
-        egui::Align2::LEFT_CENTER,
+        egui::pos2(x, cn_y),
+        egui::Align2::LEFT_TOP,
         "第",
         day_font.clone(),
         accent,
@@ -929,15 +936,15 @@ fn draw_readout(
     x += w_di + day_gap;
     digits::draw_centered(
         ui.painter(),
-        egui::pos2(x + w_num / 2.0, num_cy),
+        egui::pos2(x + w_num / 2.0, cn_center),
         &day_num_text,
         &day_num_font,
         ink.strong,
     );
     x += w_num + day_gap;
     ui.painter().text(
-        egui::pos2(x, cn_cy),
-        egui::Align2::LEFT_CENTER,
+        egui::pos2(x, cn_y),
+        egui::Align2::LEFT_TOP,
         "天",
         day_font,
         accent,
@@ -951,11 +958,11 @@ fn draw_readout(
     let real_avail = (area.right() - real_time_x).max(40.0);
     let real_scale = hero_fit_scale(real_w, real_avail);
     let real_font = digits::digit_font(m.real * real_scale);
-    let real_ink = text_ink::measure(ui, "0", &real_font, InkKind::Digits);
-    let real_y = area.bottom() - real_ink.h / 2.0 - real_ink.center_offset;
+    let real_center =
+        area.bottom() - (real_font.size + crate::widgets::text_metrics::RESERVE) * 0.5;
     digits::draw_centered(
         ui.painter(),
-        egui::pos2(real_time_x + real_w * real_scale / 2.0, real_y),
+        egui::pos2(real_time_x + real_w * real_scale / 2.0, real_center),
         real_text,
         &real_font,
         ink.body,

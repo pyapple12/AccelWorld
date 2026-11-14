@@ -5,17 +5,25 @@ use egui::{Align2, Sense, Stroke};
 
 use super::icons::{self, Icon};
 
-/// 绘制页头；`subtitle` 为空时标题垂直居中。返回 close 是否被激活。
+/// 绘制页头；标题/副标题按固定底线排版。返回 close 是否被激活。
 pub fn show(ui: &mut egui::Ui, title: &str, subtitle: Option<&str>) -> bool {
     let ink = crate::theme::ink();
-    let height = crate::theme::page_header_height();
+    let title_font = crate::theme::font_semibold(crate::theme::font_size("title"));
+    let sub_font = crate::theme::font_regular(crate::theme::font_size("meta"));
+    let gap = crate::theme::spacing_f32("xs");
+    let top_pad = crate::theme::layout_f32("page_header_top");
+    let bottom_pad = crate::theme::layout_f32("page_header_bottom");
+    let title_h = super::text_metrics::height(ui.ctx(), &title_font, super::text_ink::InkKind::Cjk);
+    let sub_h = super::text_metrics::height(ui.ctx(), &sub_font, super::text_ink::InkKind::Cjk);
+    // 标题盒高固定；盒底到横线固定 bottom_pad
+    let height =
+        top_pad + title_h + if subtitle.is_some() { gap + sub_h } else { 0.0 } + bottom_pad;
     let width = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), Sense::hover());
 
-    // PL021：标题按墨迹排版——墨迹顶距抽屉顶固定 10px，不再用行框中心硬调
-    let title_font = crate::theme::font_semibold(crate::theme::font_size("title"));
+    // 标题在盒内按墨迹顶锚定，盒子位置不参与反推
     let title_ink = super::text_ink::measure(ui, title, &title_font, super::text_ink::InkKind::Cjk);
-    let title_top = rect.top() + 20.0;
+    let title_top = rect.top() + top_pad;
     ui.painter().text(
         egui::pos2(rect.left() + 20.0, title_top - title_ink.top_pad),
         Align2::LEFT_TOP,
@@ -24,9 +32,8 @@ pub fn show(ui: &mut egui::Ui, title: &str, subtitle: Option<&str>) -> bool {
         ink.strong,
     );
     if let Some(sub) = subtitle {
-        let sub_font = crate::theme::font_regular(crate::theme::font_size("meta"));
         let sub_ink = super::text_ink::measure(ui, sub, &sub_font, super::text_ink::InkKind::Cjk);
-        let sub_top = title_top + title_ink.h + 4.0;
+        let sub_top = title_top + title_h + gap;
         ui.painter().text(
             egui::pos2(rect.left() + 20.0, sub_top - sub_ink.top_pad),
             Align2::LEFT_TOP,

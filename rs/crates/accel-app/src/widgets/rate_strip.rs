@@ -32,18 +32,26 @@ pub fn show(
     let ticks_y = inner.top() + inner_h * 0.60;
     let label_font = crate::theme::font_medium(crate::theme::font_size("meta") * s);
     let label_ink = text_ink::measure(ui, "倍率", &label_font, InkKind::Cjk);
+    let label_h = crate::widgets::text_metrics::height(ui.ctx(), &label_font, InkKind::Cjk);
     ui.painter().text(
-        egui::pos2(inner.left(), inner.top() - label_ink.top_pad),
+        egui::pos2(
+            inner.left(),
+            label_ink.top_for_bottom(inner.top() + label_h),
+        ),
         Align2::LEFT_TOP,
         "倍率",
         label_font,
         ink.muted,
     );
+    let rate_font = crate::theme::font_medium(crate::theme::font_size("body") * s);
+    let rate_text = format!("×{rate:.0}");
+    let rate_ink = text_ink::measure(ui, &rate_text, &rate_font, InkKind::Cjk);
+    let rate_h = crate::widgets::text_metrics::height(ui.ctx(), &rate_font, InkKind::Cjk);
     ui.painter().text(
-        egui::pos2(inner.right(), inner.top()),
+        egui::pos2(inner.right(), rate_ink.top_for_bottom(inner.top() + rate_h)),
         Align2::RIGHT_TOP,
-        format!("×{rate:.0}"),
-        crate::theme::font_medium(crate::theme::font_size("body") * s),
+        rate_text,
+        rate_font,
         crate::theme::accent_color(),
     );
 
@@ -131,18 +139,24 @@ pub fn show(
             egui::StrokeKind::Inside,
         );
     }
+    let tick_font = crate::theme::font_regular(11.0 * s);
+    let tick_h = crate::widgets::text_metrics::height(ui.ctx(), &tick_font, InkKind::Cjk);
+    let tick_bottom = ticks_y + tick_h;
+    let tick1_ink = text_ink::measure(ui, "1×", &tick_font, InkKind::Cjk);
     ui.painter().text(
-        egui::pos2(inner.left(), ticks_y),
+        egui::pos2(inner.left(), tick1_ink.top_for_bottom(tick_bottom)),
         Align2::LEFT_TOP,
         "1×",
-        crate::theme::font_regular(11.0 * s),
+        tick_font.clone(),
         ink.meta,
     );
+    let tick_max_text = format!("{max:.0}×");
+    let tick_max_ink = text_ink::measure(ui, &tick_max_text, &tick_font, InkKind::Cjk);
     ui.painter().text(
-        egui::pos2(inner.right(), ticks_y),
+        egui::pos2(inner.right(), tick_max_ink.top_for_bottom(tick_bottom)),
         Align2::RIGHT_TOP,
-        format!("{max:.0}×"),
-        crate::theme::font_regular(11.0 * s),
+        tick_max_text,
+        tick_font,
         ink.meta,
     );
     let quant_font = crate::theme::font_regular(11.0 * s);
@@ -154,8 +168,8 @@ pub fn show(
         format!("现实 1 天 = 加速 {rate:.0} 天")
     };
     ui.painter().text(
-        egui::pos2(inner.center().x, inner.bottom() + quant_ink.bottom_pad),
-        Align2::CENTER_BOTTOM,
+        egui::pos2(inner.center().x, quant_ink.top_for_bottom(inner.bottom())),
+        Align2::CENTER_TOP,
         quant_text,
         quant_font,
         ink.muted,

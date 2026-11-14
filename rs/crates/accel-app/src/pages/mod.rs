@@ -160,7 +160,7 @@ impl Pages {
                             egui::StrokeKind::Inside,
                         );
                         let (title, subtitle) = if self.drawer_settings {
-                            ("设置", Some("外观 · 动效 · 关于"))
+                            ("设置", None)
                         } else {
                             (page_title(self.drawer_page), None)
                         };
@@ -235,6 +235,8 @@ pub struct ClockPage;
 pub struct CountdownPage {
     /// 近期节日选中项（会话级；跨日或点 hero 中国结恢复默认春节）
     pub selected_festival: Option<(chrono::NaiveDate, String)>,
+    /// 目标时刻输入错误标记（点添加失败后显示，输入变化清除）
+    pub time_error: bool,
 }
 
 /// 世界时钟页（impl 在 pages/world.rs——抽屉页）

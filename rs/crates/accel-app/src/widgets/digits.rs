@@ -1,6 +1,6 @@
 //! 等宽数字位渲染（UIR 重塑新增，消化 y.problems#12）：逐字符固定槽宽绘制
 //! Bahnschrift 为可变字体、数字 advance 不等——时钟走秒抖动的根因；
-//! 本控件不依赖字体等宽性：以「0」字形宽为满槽，冒号/点占窄槽，逐字符居中绘制
+//! 本控件不依赖字体等宽性：槽宽取 0–9 最大 advance，冒号/点占窄槽，逐字符居中绘制
 
 use egui::{Align2, Color32, FontId, Painter, Rect, Vec2};
 
@@ -18,11 +18,10 @@ fn slot_ratio(c: char) -> f32 {
     }
 }
 
-/// 槽宽基准（纯函数可测）：取「0」字形宽（数字最稳的宽度锚点），
-/// 下限 = 字号×0.5（字体缺失回退 egui 内置时仍保有表盘间距）
+/// 槽宽基准：查启动指标表（0–9 最大字形宽），不随当前数字变化；
+/// 表缺失时现场补测，下限 = 字号×0.5
 pub fn cell_width(painter: &Painter, font: &FontId) -> f32 {
-    let galley = painter.layout_no_wrap("0".to_string(), font.clone(), Color32::WHITE);
-    galley.rect.width().max(font.size * 0.5)
+    super::text_metrics::digit_cell(painter.ctx(), font)
 }
 
 /// 总占用宽度（纯函数）：Σ(槽宽×系数)——页面布局据此预留
@@ -32,7 +31,40 @@ pub fn text_width(painter: &Painter, text: &str, font: &FontId) -> f32 {
 }
 
 /// 居中绘制等宽数字串（时钟/倒计时/走时表盘共用）；返回占用矩形
+/// center.y 是行盒中心；基线 = 行盒中心 + (字号 − RESERVE) / 2
 pub fn draw_centered(
+    painter: &Painter,
+    center: egui::Pos2,
+    text: &str,
+    font: &FontId,
+    color: Color32,
+) -> Rect {
+    let cell = cell_width(painter, font);
+    let total: f32 = text.chars().map(|c| cell * slot_ratio(c)).sum();
+    let baseline = center.y + (font.size - super::text_metrics::RESERVE) * 0.5;
+    let probe = painter.layout_no_wrap("0".to_owned(), font.clone(), color);
+    let ink = super::text_ink::ink_from_galley(&probe, font, super::text_ink::InkKind::Digits);
+    let y = ink.top_for_baseline(baseline);
+    let mut cursor = center.x - total / 2.0;
+    for c in text.chars() {
+        let w = cell * slot_ratio(c);
+        painter.text(
+            egui::pos2(cursor + w / 2.0, y),
+            Align2::CENTER_TOP,
+            c.to_string(),
+            font.clone(),
+            color,
+        );
+        cursor += w;
+    }
+    Rect::from_min_size(
+        egui::pos2(center.x - total / 2.0, baseline - font.size * 0.86),
+        Vec2::new(total, font.size * 1.24),
+    )
+}
+
+/// 按墨迹中心绘制数字串（固定盒内居中；不参与跨行基线）
+pub fn draw_centered_ink(
     painter: &Painter,
     center: egui::Pos2,
     text: &str,
