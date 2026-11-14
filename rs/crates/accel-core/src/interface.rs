@@ -102,6 +102,20 @@ impl AppInterface {
 
     // ===== 时钟域 =====
 
+    /// 近期节日快照（未来 count 个，剔除今天及以前；前端只取 DTO）
+    pub fn get_upcoming_festivals(
+        &self,
+        today: chrono::NaiveDate,
+        count: usize,
+    ) -> Vec<(chrono::NaiveDate, String)> {
+        crate::chinese_calendar::upcoming_festivals(today, count)
+    }
+
+    /// 下一个春节（默认 hero；后端农历域计算）
+    pub fn get_next_spring_festival(&self, today: chrono::NaiveDate) -> chrono::NaiveDate {
+        crate::chinese_calendar::next_spring_festival(today)
+    }
+
     /// 标准/加速时间信息快照（真实时钟；测试用 world 直注 TimeDilation::time_info）
     pub fn get_time_info(&self) -> TimeInfo {
         self.world

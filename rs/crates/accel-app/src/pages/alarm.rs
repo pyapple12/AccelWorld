@@ -43,74 +43,113 @@ impl crate::pages::Page for crate::pages::AlarmPage {
         let ink = crate::theme::ink();
         state.armed_delete_tick();
 
-        let footer_h = footer_height(ui.available_width());
-        let body_h = (ui.available_height() - footer_h - 8.0).max(0.0);
-        ui.allocate_ui(egui::vec2(ui.available_width(), body_h), |ui| {
+        let avail = ui.max_rect();
+        let footer_h = footer_height(avail.width());
+        let body_h = (avail.height() - footer_h - 10.0).max(0.0);
+        let body_rect = egui::Rect::from_min_size(avail.min, egui::vec2(avail.width(), body_h));
+        let footer_rect = egui::Rect::from_min_size(
+            egui::pos2(avail.left(), body_rect.bottom() + 10.0),
+            egui::vec2(avail.width(), footer_h),
+        );
+        let quick_h = {
+            let meta_font = crate::theme::font_regular(crate::theme::font_size("meta"));
+            let title_ink = crate::widgets::text_ink::measure(
+                ui,
+                "快捷添加",
+                &meta_font,
+                crate::widgets::text_ink::InkKind::Cjk,
+            );
+            if avail.width() > 380.0 {
+                title_ink.h + 6.0 + 30.0 + 16.0
+            } else {
+                title_ink.h + 6.0 + 30.0 + 6.0 + 30.0 + 16.0
+            }
+        };
+        let row_h = {
+            let time_ink = crate::widgets::text_ink::measure(
+                ui,
+                "00:00",
+                &digits::digit_font(24.0),
+                crate::widgets::text_ink::InkKind::Digits,
+            );
+            time_ink.h.max(switch::SWITCH_H).max(12.0) + 24.0
+        };
+
+        ui.scope_builder(egui::UiBuilder::new().max_rect(body_rect), |ui| {
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    ui.label(
-                        egui::RichText::new("快捷添加")
-                            .font(crate::theme::font_medium(crate::theme::font_size("meta")))
-                            .color(ink.muted),
-                    );
-                    ui.add_space(6.0);
-                    if ui.available_width() > 380.0 {
-                        ui.horizontal_wrapped(|ui| {
-                            for &minutes in crate::pages::quick_alarm_minutes() {
-                                if quick_chip(ui, &quick_label(minutes)) {
-                                    let draft = quick_target(minutes, Local::now());
-                                    bus.send(FrontendCommand::AddAlarm(draft));
-                                }
-                                ui.add_space(6.0);
-                            }
-                        });
-                    } else {
-                        egui::Grid::new("quick_alarm_grid")
-                            .num_columns(2)
-                            .spacing([6.0, 6.0])
-                            .show(ui, |ui| {
-                                for (i, &minutes) in
-                                    crate::pages::quick_alarm_minutes().iter().enumerate()
-                                {
+                    let mut stack = crate::widgets::box_stack::BoxStack::new(ui);
+
+                    // 快捷添加盒
+                    let quick = stack.next(ui, quick_h);
+                    ui.scope_builder(egui::UiBuilder::new().max_rect(quick), |ui| {
+                        ui.label(
+                            egui::RichText::new("快捷添加")
+                                .font(crate::theme::font_medium(crate::theme::font_size("meta")))
+                                .color(ink.muted),
+                        );
+                        ui.add_space(6.0);
+                        if ui.available_width() > 380.0 {
+                            ui.horizontal_wrapped(|ui| {
+                                for &minutes in crate::pages::quick_alarm_minutes() {
                                     if quick_chip(ui, &quick_label(minutes)) {
                                         let draft = quick_target(minutes, Local::now());
                                         bus.send(FrontendCommand::AddAlarm(draft));
                                     }
-                                    if i % 2 == 1 {
-                                        ui.end_row();
-                                    }
+                                    ui.add_space(6.0);
                                 }
                             });
-                    }
-                    ui.add_space(crate::theme::spacing("lg"));
+                        } else {
+                            egui::Grid::new("quick_alarm_grid")
+                                .num_columns(2)
+                                .spacing([6.0, 6.0])
+                                .show(ui, |ui| {
+                                    for (i, &minutes) in
+                                        crate::pages::quick_alarm_minutes().iter().enumerate()
+                                    {
+                                        if quick_chip(ui, &quick_label(minutes)) {
+                                            let draft = quick_target(minutes, Local::now());
+                                            bus.send(FrontendCommand::AddAlarm(draft));
+                                        }
+                                        if i % 2 == 1 {
+                                            ui.end_row();
+                                        }
+                                    }
+                                });
+                        }
+                    });
 
+                    // 空态盒
                     if state.alarms.is_empty() {
-                        crate::widgets::empty::show(
+                        let rect = stack.next(ui, 96.0);
+                        crate::widgets::empty::card_at(
                             ui,
+                            rect,
                             "还没有闹钟",
                             "用下方表单新建，或点上方快捷添加",
                         );
                     }
+
+                    // 行卡盒
                     let alarms = state.alarms.clone();
                     let pulse = crate::widgets::motion::list_pulse(state, "alarm");
                     let last = alarms.len().saturating_sub(1);
                     for (i, alarm) in alarms.iter().enumerate() {
-                        if i == last && pulse < 1.0 {
-                            ui.scope(|ui| {
+                        let rect = stack.slot(row_h);
+                        ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+                            if i == last && pulse < 1.0 {
                                 ui.set_opacity(0.55 + 0.45 * pulse);
-                                draw_alarm_row(ui, state, bus, alarm, &ink);
-                            });
-                        } else {
-                            draw_alarm_row(ui, state, bus, alarm, &ink);
-                        }
-                        ui.add_space(6.0);
+                            }
+                            draw_alarm_row(ui, rect, state, bus, alarm, &ink);
+                        });
                     }
                 });
         });
 
-        ui.add_space(8.0);
-        draw_footer(ui, state, bus);
+        ui.scope_builder(egui::UiBuilder::new().max_rect(footer_rect), |ui| {
+            draw_footer(ui, state, bus);
+        });
     }
 }
 
@@ -173,13 +212,17 @@ fn quick_chip(ui: &mut egui::Ui, text: &str) -> bool {
 /// 闹钟行：开关 + 时刻 + 标签/重复 + Trash
 fn draw_alarm_row(
     ui: &mut egui::Ui,
+    rect: egui::Rect,
     state: &mut crate::bus::UiState,
     bus: &crate::bus::Bus,
     alarm: &accel_core::alarm::Alarm,
     ink: &crate::theme::Ink,
 ) {
-    let (rect, row) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), 64.0), egui::Sense::hover());
+    let row = ui.interact(
+        rect,
+        egui::Id::unique(("alarm_row", &alarm.id)),
+        egui::Sense::hover(),
+    );
     ui.painter().rect_filled(
         rect,
         egui::epaint::CornerRadius::same(crate::theme::radius_px("md") as u8),
@@ -316,64 +359,39 @@ fn truncate_to_width(ui: &egui::Ui, text: &str, font: &egui::FontId, width: f32)
     "…".to_string()
 }
 
-/// 页脚高度：窄抽屉（内容 <340）用两行表单，否则单行
-fn footer_height(avail: f32) -> f32 {
-    if avail < 340.0 {
-        118.0
-    } else {
-        crate::theme::page_footer_height()
-    }
+/// 页脚高度：字段 54 + 10 + 按钮 32 + 10 + 错误行 16（统一）
+fn footer_height(_avail: f32) -> f32 {
+    122.0
 }
 
 /// 页脚：标签 + HH:MM + 添加；窄宽两行；错误恒占位 16px
 fn draw_footer(ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
     let ink = crate::theme::ink();
     let avail = ui.available_width();
+    let gap = 10.0;
     let button_w = 88.0;
-    let narrow = avail < 340.0;
-    let (label_w, time_w) = if narrow {
-        let w = ((avail - 8.0) / 2.0).max(80.0);
-        (w, w)
-    } else {
-        let time = (avail * 0.26).clamp(80.0, 120.0);
-        ((avail - time - button_w - 16.0).clamp(100.0, 200.0), time)
-    };
+    let label_w = ((avail - gap) * 0.4).max(80.0);
+    let time_w = ((avail - gap) * 0.6).max(80.0);
+    ui.spacing_mut().item_spacing.y = 0.0;
     let mut do_add = false;
-    if narrow {
-        ui.horizontal(|ui| {
-            field::show(
-                ui,
-                "标签",
-                "例如 起床",
-                &mut state.alarm_draft_label,
-                label_w,
-            );
-            ui.add_space(8.0);
-            field::show(ui, "时间", "HH:MM", &mut state.alarm_draft_time, time_w);
-        });
-        ui.add_space(6.0);
-        ui.horizontal(|ui| {
-            ui.add_space((avail - button_w).max(0.0));
-            do_add = crate::widgets::primary_button::show(ui, "添加", button_w).clicked();
-        });
-    } else {
-        ui.horizontal(|ui| {
-            field::show(
-                ui,
-                "标签",
-                "例如 起床",
-                &mut state.alarm_draft_label,
-                label_w,
-            );
-            ui.add_space(8.0);
-            field::show(ui, "时间", "HH:MM", &mut state.alarm_draft_time, time_w);
-            ui.add_space(8.0);
-            ui.vertical(|ui| {
-                ui.add_space(field::field_height() - 32.0);
-                do_add = crate::widgets::primary_button::show(ui, "添加", button_w).clicked();
-            });
-        });
-    }
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        field::show(
+            ui,
+            "标签",
+            "例如 起床",
+            &mut state.alarm_draft_label,
+            label_w,
+        );
+        ui.add_space(gap);
+        field::show(ui, "时间", "HH:MM", &mut state.alarm_draft_time, time_w);
+    });
+    ui.add_space(gap);
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        ui.add_space((avail - button_w).max(0.0));
+        do_add = crate::widgets::primary_button::show(ui, "添加", button_w).clicked();
+    });
     if do_add && valid_hhmm(&state.alarm_draft_time) {
         bus.send(FrontendCommand::AddAlarm(accel_core::alarm::AlarmDraft {
             label: state.alarm_draft_label.clone(),

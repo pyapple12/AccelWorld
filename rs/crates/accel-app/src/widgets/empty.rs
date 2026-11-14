@@ -10,9 +10,15 @@ pub fn show(ui: &mut egui::Ui, title: &str, body: &str) -> egui::Response {
 
 /// 可变高空态框（PL019：倒计时列表区用 160–240 填满空白）；虚线仅用于空槽
 pub fn card(ui: &mut egui::Ui, title: &str, body: &str, height: f32) -> egui::Response {
-    let ink = crate::theme::ink();
     let h = height.max(72.0);
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), h), Sense::hover());
+    card_at(ui, rect, title, body);
+    resp
+}
+
+/// 在指定矩形内画空态框（PL021 盒布局：盒 rect 由调用方给，不再自己 allocate）
+pub fn card_at(ui: &egui::Ui, rect: egui::Rect, title: &str, body: &str) {
+    let ink = crate::theme::ink();
     // 虚线框：四条边用 dashed_line（egui 自带 dash 采样）
     let stroke = Stroke::new(1.0, crate::theme::border_color());
     let corners = [
@@ -44,7 +50,6 @@ pub fn card(ui: &mut egui::Ui, title: &str, body: &str, height: f32) -> egui::Re
         crate::theme::font_regular(crate::theme::font_size("meta")),
         ink.muted,
     );
-    resp
 }
 
 // ===== src/widgets/empty.rs 说明区 =====

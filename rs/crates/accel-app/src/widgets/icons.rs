@@ -7,7 +7,7 @@ use egui::{Color32, FontFamily, FontId, Painter, Pos2};
 /// 子集字体（29 个字形，约 9KB；fonttools 子集，见 `rs/assets/fonts/README.md`）
 pub const ICON_FONT: &[u8] = include_bytes!("../../../../assets/fonts/TablerIcons-sub.ttf");
 
-/// 图标集（导航五页 + 通用操作 + 天气/昼夜 + 表单；29 变体）
+/// 图标集（导航五页 + 通用操作 + 天气/昼夜 + 表单；29 字体字形 + 1 自绘中国结）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Icon {
     /// 时钟（时钟页）

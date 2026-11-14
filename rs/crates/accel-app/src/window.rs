@@ -44,6 +44,8 @@ pub struct AppHandle {
     pub bus: Bus,
     pub state: UiState,
     pub pages: Pages,
+    /// 后端接口（节日等只读快照的刷新源）
+    iface: std::sync::Arc<accel_core::interface::AppInterface>,
     start_time: std::time::Instant,
     /// 探针自动退窗秒数（None=正常模式；到时走退出序列——fps/矩阵探针）
     probe_close_secs: Option<u64>,
@@ -101,6 +103,8 @@ impl eframe::App for AppHandle {
     /// 隐藏期不重绘但 logic 仍驱动：托盘恢复、退出序列、探针时序均须在此（.01 教训）
     fn logic(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         self.bus.drain(&mut self.state);
+        // 节日快照：启动/跨日从后端拉取，前端只读
+        refresh_festivals(&self.iface, &mut self.state);
         // 托盘/热键事件轮询（命令可能触发 viewport 命令，经 ctx 队列）
         self.poll_platform(ctx);
         // 探针时序（隐藏/显示/退出）+ 退出序列/关闭驻留 + 托盘状态推送
@@ -707,6 +711,17 @@ fn fill_startup_snapshot(iface: &AppInterface, state: &mut UiState) {
     state.world_pins = iface.get_world_pins();
     state.countdown_targets = iface.get_countdown_targets();
     state.base_timezone = Some(state.prefs.last_timezone.clone());
+    refresh_festivals(iface, state);
+}
+
+/// 节日快照刷新（PL021 严格边界）：后端算，前端只取；跨日重拉
+fn refresh_festivals(iface: &AppInterface, state: &mut UiState) {
+    let today = chrono::Local::now().date_naive();
+    if state.festivals_date != Some(today) {
+        state.festivals = iface.get_upcoming_festivals(today, 5);
+        state.spring_festival = Some(iface.get_next_spring_festival(today));
+        state.festivals_date = Some(today);
+    }
 }
 
 /// 平台事件归一后的动作（纯数据；单测可断言 tray/hotkey → 动作映射）
@@ -1021,6 +1036,7 @@ pub fn run_with_counter(
                 bus,
                 state,
                 pages: Pages::new(),
+                iface: Arc::clone(&iface),
                 start_time: std::time::Instant::now(),
                 probe_close_secs,
                 probe_hide_secs,

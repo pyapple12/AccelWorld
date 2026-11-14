@@ -12,25 +12,26 @@ pub fn show(ui: &mut egui::Ui, title: &str, subtitle: Option<&str>) -> bool {
     let width = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), Sense::hover());
 
+    // PL021：标题按墨迹排版——墨迹顶距抽屉顶固定 10px，不再用行框中心硬调
     let title_font = crate::theme::font_semibold(crate::theme::font_size("title"));
-    let title_y = if subtitle.is_some() {
-        rect.top() + 10.0
-    } else {
-        rect.center().y - 10.0
-    };
+    let title_ink = super::text_ink::measure(ui, title, &title_font, super::text_ink::InkKind::Cjk);
+    let title_top = rect.top() + 20.0;
     ui.painter().text(
-        egui::pos2(rect.left() + 20.0, title_y),
+        egui::pos2(rect.left() + 20.0, title_top - title_ink.top_pad),
         Align2::LEFT_TOP,
         title,
         title_font,
         ink.strong,
     );
     if let Some(sub) = subtitle {
+        let sub_font = crate::theme::font_regular(crate::theme::font_size("meta"));
+        let sub_ink = super::text_ink::measure(ui, sub, &sub_font, super::text_ink::InkKind::Cjk);
+        let sub_top = title_top + title_ink.h + 4.0;
         ui.painter().text(
-            egui::pos2(rect.left() + 20.0, rect.top() + 37.0),
+            egui::pos2(rect.left() + 20.0, sub_top - sub_ink.top_pad),
             Align2::LEFT_TOP,
             sub,
-            crate::theme::font_regular(crate::theme::font_size("meta")),
+            sub_font,
             ink.muted,
         );
     }

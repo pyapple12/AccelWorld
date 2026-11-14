@@ -1,14 +1,14 @@
 # AccelWorld —— 加速世界世界钟
 
-[![Version](https://img.shields.io/badge/Version-0.6.5.1-blue.svg)](rs/config/static/base.json)
+[![Version](https://img.shields.io/badge/Version-0.6.5.2-blue.svg)](rs/config/static/base.json)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](rs/rust-toolchain.toml)
-[![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
 ## 项目简介
 
-基于时间膨胀倍率的自定义小时制时钟应用。根据设定的加速倍率（1.0x - 20.0x），实时显示加速后的时间，同时保留标准时间对照。灵感来自《加速世界》，界面以中文为主，提供农历、生肖、节气等中华传统文化元素。
+基于时间膨胀倍率的自定义小时制时钟应用。根据设定的加速倍率（1x - 365x），实时显示加速后的时间，同时保留标准时间对照。灵感来自《加速世界》，界面以中文为主，提供农历、生肖、节气等中华传统文化元素。
 
 > 当前技术栈：**Rust**（egui + eframe/glow 实心桌面 UI）。0.6.0.0 为原 Python（PyQt6 + Fluent Widgets）版本的定版，本仓库已在同版本号段内完成引擎重构（PL011–PL015）与 UI 推倒重塑（UIR，玻璃管线整体废弃），Python 版归档于 `.archived/`（git 忽略，仅供 golden 夹具再生）。
 > 任务清单见 `x.progress.md`，已知问题见 `y.problems.md`，版本路线见 `m.milestone.md`，方案与审计见 `z.plan.md`。
@@ -146,7 +146,7 @@ rs/ # cargo workspace 根（全部命令在此执行）
 
 ### Q1：加速倍率设置为多少最合适？
 
-A：默认值为 2.0x，可在 1.0x 到 20.0x 之间调节。例如 2.0x 表示加速世界的一天等于现实 12 小时。建议从默认值开始逐步调整。
+A：默认值为 2x，可在 1x 到 365x 之间调节。例如 2x 表示加速世界的一天等于现实 12 小时，365x 表示现实 1 天等于加速 1 年。建议从默认值开始逐步调整。
 
 ### Q2：关闭程序后设置会丢失吗？
 
@@ -175,8 +175,4 @@ A：不会。星盘常驻，最小 120px；窗口变矮时先压星盘，再按 
 
 ## 许可证
 
-本项目基于 [GNU GPL v3 许可证](./LICENSE) 开源，允许自由使用、修改及分发，但必须保留源代码并以相同许可证发布。
-
-```
-
-```
+本项目基于 [MIT 许可证](./LICENSE) 开源，允许自由使用、修改、分发与再许可，只需保留版权声明与许可声明。

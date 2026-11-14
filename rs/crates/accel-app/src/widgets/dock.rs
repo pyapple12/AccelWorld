@@ -19,22 +19,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut UiState, items: &[DockItem]) {
     let avail = ui.max_rect();
     // 文字是否保留只看坞高：56 保留图标+文字，44 只留图标
     let compact = avail.height() < 56.0;
-    // 抽屉打开时，坞居中于「舞台」而不是整窗（避免压在抽屉上；900 下可点设置）
-    let drawer_open = state.current_page != PageId::Clock || state.settings_open;
-    let stage_w = if drawer_open && avail.width() >= 760.0 {
-        (avail.width() - crate::theme::drawer_width(avail.width())).max(280.0)
-    } else {
-        avail.width()
-    };
+    // C2 固定在全窗居中，不随抽屉开合移动；抽屉只影响 B1–B18 页面内容
     let pill_w = (crate::theme::layout_f32("dock_pill_width"))
-        .min(stage_w - 24.0)
+        .min(avail.width() - 24.0)
         .max(280.0);
     let pill_h = avail.height().max(40.0);
     let pill_w = (pill_w * (pill_h / 56.0)).max(280.0);
-    let pill = Rect::from_center_size(
-        egui::pos2(avail.left() + stage_w / 2.0, avail.center().y),
-        egui::vec2(pill_w, pill_h),
-    );
+    let pill = Rect::from_center_size(avail.center(), egui::vec2(pill_w, pill_h));
     ui.painter().rect_filled(
         pill,
         egui::epaint::CornerRadius::same(16),

@@ -1,5 +1,5 @@
 {
-  "version": "0.6.5.1",
+  "version": "0.6.5.2",
   "rate_min": 1.0,
   "rate_max": 365.0,
   "rate_step": 1.0,

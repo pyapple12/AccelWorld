@@ -22,6 +22,10 @@ pub trait Page {
 /// 页面容器（current + 五页 struct）
 pub struct Pages {
     pub current: PageId,
+    /// 抽屉当前/最后绘制的内容（关闭动画期间保留，避免切页瞬间重复绘制时钟页）
+    pub drawer_page: PageId,
+    /// 抽屉最后绘制的是否为设置页（同上，关闭动画期间保留）
+    pub drawer_settings: bool,
     pub clock: ClockPage,
     pub countdown: CountdownPage,
     pub world: WorldPage,
@@ -39,8 +43,10 @@ impl Pages {
     pub fn new() -> Pages {
         Pages {
             current: PageId::Clock,
+            drawer_page: PageId::Clock,
+            drawer_settings: false,
             clock: ClockPage,
-            countdown: CountdownPage,
+            countdown: CountdownPage::default(),
             world: WorldPage,
             weather: WeatherPage,
             alarm: AlarmPage,
@@ -60,21 +66,43 @@ impl Pages {
             }
         }
         let drawer_open = self.current != PageId::Clock || state.settings_open;
+        // 关闭动画期间仍要画「最后打开的那个抽屉」，不能跟着 self.current 切回时钟
+        if drawer_open {
+            if state.settings_open {
+                self.drawer_settings = true;
+            } else {
+                self.drawer_settings = false;
+                self.drawer_page = self.current;
+            }
+        }
 
         // 自适应分栏（PL019）：页面区 = 窗口高 − 底部坞；宽度按断点显式分配，
         // 主仪与抽屉并排（不再依赖嵌套 Panel 的宽度同步）
         let page_h = ui.available_height().max(0.0);
         let page_w = ui.available_width();
         let compact = page_w < 760.0;
-        let drawer_w = if drawer_open {
-            if compact {
-                page_w
-            } else {
-                crate::theme::drawer_width(page_w).min((page_w - 420.0).max(280.0))
-            }
+        let drawer_target_w = if compact {
+            page_w
         } else {
-            0.0
+            crate::theme::drawer_width(page_w).min((page_w - 420.0).max(280.0))
         };
+
+        // 抽屉开合动效（PL021）：弹簧值 t 同时驱动抽屉宽度与舞台宽度——
+        // 星盘/读数/倍率条随 stage_w 连续缩放；reduce_motion 直接落位
+        let target = if drawer_open { 1.0 } else { 0.0 };
+        let t = if crate::theme::reduce_motion(ui.ctx()) {
+            state.drawer_spring.value = target;
+            state.drawer_spring.velocity = 0.0;
+            target
+        } else {
+            let (hz, zeta) = crate::theme::drawer_spring_params();
+            let dt = ui.input(|i| i.stable_dt);
+            if state.drawer_spring.step(target, dt, hz, zeta) {
+                ui.ctx().request_repaint();
+            }
+            state.drawer_spring.value.clamp(0.0, 1.0)
+        };
+        let drawer_w = drawer_target_w * t;
         let stage_w = (page_w - drawer_w).max(0.0);
 
         ui.horizontal(|ui| {
@@ -93,24 +121,51 @@ impl Pages {
                     },
                 );
             }
-            if drawer_open && drawer_w > 1.0 {
+            if drawer_w > 0.5 {
+                // 抽屉整体背光：暖金、最大 8px、很淡；先画在抽屉背景之下
+                let page_rect = ui.max_rect();
+                let drawer_rect = egui::Rect::from_min_size(
+                    egui::pos2(page_rect.right() - drawer_w, page_rect.top()),
+                    egui::vec2(drawer_w, page_h),
+                );
+                // 光晕单独放 Foreground 层：不被页面区/抽屉自身裁剪，且在所有内容之上；
+                // 内部 alpha 恒 0，所以盖在内容上不改变抽屉内部，只露出四边外扩的暖金
+                let glow_painter = ui
+                    .ctx()
+                    .layer_painter(egui::LayerId::new(
+                        egui::Order::Foreground,
+                        egui::Id::unique("drawer_glow"),
+                    ))
+                    .with_clip_rect(ui.ctx().content_rect());
+                crate::widgets::ring_glow::paint_rect_glow(
+                    &glow_painter,
+                    drawer_rect,
+                    0.0,
+                    crate::theme::accent_color(),
+                    8.0,
+                    0.3,
+                );
                 ui.allocate_ui_with_layout(
                     egui::vec2(drawer_w, page_h),
                     egui::Layout::top_down(egui::Align::Min),
                     |area| {
                         let rect = area.max_rect();
+                        // 开合时整体淡入淡出（背景/边框/内容同一透明度）
+                        area.set_opacity(t.clamp(0.0, 1.0));
                         area.painter().rect_filled(rect, 0, crate::theme::card_bg());
-                        area.painter().line_segment(
-                            [rect.left_top(), rect.left_bottom()],
+                        area.painter().rect_stroke(
+                            rect,
+                            egui::epaint::CornerRadius::same(0),
                             egui::Stroke::new(1.0, crate::theme::border_color()),
+                            egui::StrokeKind::Inside,
                         );
-                        let (title, subtitle) = if state.settings_open {
+                        let (title, subtitle) = if self.drawer_settings {
                             ("设置", Some("外观 · 动效 · 关于"))
                         } else {
-                            (page_title(self.current), None)
+                            (page_title(self.drawer_page), None)
                         };
                         if crate::widgets::page_header::show(area, title, subtitle) {
-                            if state.settings_open {
+                            if self.drawer_settings {
                                 state.settings_open = false;
                             } else {
                                 state.current_page = PageId::Clock;
@@ -119,14 +174,14 @@ impl Pages {
                         let content = egui::Frame::new().inner_margin(egui::Margin {
                             left: 20,
                             right: 20,
-                            top: 8,
-                            bottom: 16,
+                            top: 10,
+                            bottom: 0,
                         });
                         content.show(area, |body| {
-                            if state.settings_open {
+                            if self.drawer_settings {
                                 settings::ui(body, state);
                             } else {
-                                let page: &mut dyn Page = match self.current {
+                                let page: &mut dyn Page = match self.drawer_page {
                                     PageId::Clock => &mut self.clock,
                                     PageId::Countdown => &mut self.countdown,
                                     PageId::World => &mut self.world,
@@ -177,7 +232,10 @@ pub struct ClockPage;
 
 /// 倒计时页（impl 在 pages/countdown.rs——抽屉页）
 #[derive(Default)]
-pub struct CountdownPage;
+pub struct CountdownPage {
+    /// 近期节日选中项（会话级；跨日或点 hero 中国结恢复默认春节）
+    pub selected_festival: Option<(chrono::NaiveDate, String)>,
+}
 
 /// 世界时钟页（impl 在 pages/world.rs——抽屉页）
 #[derive(Default)]

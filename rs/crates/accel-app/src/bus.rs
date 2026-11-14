@@ -63,6 +63,12 @@ pub struct UiState {
     pub settings_open: bool,
     /// 倒计时目标列表（ConfigSaved 后由 drain 重拉 iface 同步快照）
     pub countdown_targets: Vec<accel_core::settings::CountdownTarget>,
+    /// 近期节日快照（后端 get_upcoming_festivals，启动/跨日刷新；前端只消费）
+    pub festivals: Vec<(chrono::NaiveDate, String)>,
+    /// 节日快照对应日期（跨日刷新门）
+    pub festivals_date: Option<chrono::NaiveDate>,
+    /// 下一个春节（默认 hero；后端农历域计算）
+    pub spring_festival: Option<chrono::NaiveDate>,
     /// 倒计时加号草稿（页面临时输入态）
     pub countdown_draft_name: String,
     pub countdown_draft_at: String,
@@ -124,6 +130,9 @@ impl Default for UiState {
             },
             settings_open: false,
             countdown_targets: Vec::new(),
+            festivals: Vec::new(),
+            festivals_date: None,
+            spring_festival: None,
             countdown_draft_name: String::new(),
             countdown_draft_at: String::new(),
             focus_countdown_name: false,

@@ -2,6 +2,7 @@
 //! Footer 添加城市；去掉每卡常驻减号，删除改为 Trash 两步确认。
 //! 纯函数 now_in_tz 可测（DST 边界走 chrono-tz 表）。
 
+use crate::widgets::text_ink::InkKind;
 use crate::widgets::{digits, icons};
 use accel_core::types::FrontendCommand;
 use chrono::{DateTime, Timelike};
@@ -30,15 +31,26 @@ impl crate::pages::Page for crate::pages::WorldPage {
         let pins: Vec<String> = state.world_pins_view().to_vec();
         let base_tz = state.base_timezone.clone();
 
-        let footer_h = crate::theme::page_footer_height();
-        let body_h = (ui.available_height() - footer_h - 8.0).max(0.0);
-        ui.allocate_ui(egui::vec2(ui.available_width(), body_h), |ui| {
+        // 固定页脚盒高 44；body 与页脚间距 10
+        let avail = ui.max_rect();
+        let footer_h = 44.0;
+        let body_h = (avail.height() - footer_h - 10.0).max(0.0);
+        let body_rect = egui::Rect::from_min_size(avail.min, egui::vec2(avail.width(), body_h));
+        let footer_rect = egui::Rect::from_min_size(
+            egui::pos2(avail.left(), body_rect.bottom() + 10.0),
+            egui::vec2(avail.width(), footer_h),
+        );
+
+        ui.scope_builder(egui::UiBuilder::new().max_rect(body_rect), |ui| {
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
+                    let mut stack = crate::widgets::box_stack::BoxStack::new(ui);
                     if pins.is_empty() {
-                        crate::widgets::empty::show(
+                        let rect = stack.next(ui, 96.0);
+                        crate::widgets::empty::card_at(
                             ui,
+                            rect,
                             "还没有城市",
                             "从下方添加一个城市，开始对照世界时间",
                         );
@@ -46,43 +58,64 @@ impl crate::pages::Page for crate::pages::WorldPage {
                     }
                     let pulse = crate::widgets::motion::list_pulse(state, "world");
                     let last = pins.len().saturating_sub(1);
+                    let name_font = crate::theme::font_semibold(crate::theme::font_size("body_lg"));
+                    let sub_font = crate::theme::font_regular(crate::theme::font_size("meta"));
+                    let walk_font = digits::digit_font(24.0);
                     for (i, name) in pins.iter().enumerate() {
-                        if i == last && pulse < 1.0 {
-                            ui.scope(|ui| {
+                        // 行盒高 = max(名称墨迹 + 6 + 副行墨迹, 走时墨迹) + 上下 12
+                        let name_ink =
+                            crate::widgets::text_ink::measure(ui, name, &name_font, InkKind::Cjk);
+                        let sub_ink = crate::widgets::text_ink::measure(
+                            ui,
+                            "点击设为基准",
+                            &sub_font,
+                            InkKind::Cjk,
+                        );
+                        let walk_ink = crate::widgets::text_ink::measure(
+                            ui,
+                            "00:00:00",
+                            &walk_font,
+                            InkKind::Digits,
+                        );
+                        let row_h = (name_ink.h + 6.0 + sub_ink.h).max(walk_ink.h) + 24.0;
+                        let rect = stack.slot(row_h);
+                        ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+                            if i == last && pulse < 1.0 {
                                 ui.set_opacity(0.55 + 0.45 * pulse);
-                                draw_city_row(ui, state, bus, name, &pins, &base_tz, utc_now, &ink);
-                            });
-                        } else {
-                            draw_city_row(ui, state, bus, name, &pins, &base_tz, utc_now, &ink);
-                        }
-                        ui.add_space(6.0);
+                            }
+                            draw_city_row(
+                                ui, rect, state, bus, name, &pins, &base_tz, utc_now, &ink,
+                            );
+                        });
                     }
                 });
         });
 
-        ui.add_space(8.0);
-        let combo_w = (ui.available_width() - 76.0).clamp(120.0, 220.0);
-        ui.horizontal(|ui| {
-            ui.label(
-                egui::RichText::new("添加城市")
-                    .font(crate::theme::font_medium(crate::theme::font_size("meta")))
-                    .color(ink.muted),
-            );
-            let candidates: Vec<String> = accel_core::data::world_cities::all_names()
-                .into_iter()
-                .filter(|n| !pins.iter().any(|p| p == n))
-                .map(str::to_string)
-                .collect();
-            if let Some(picked) = crate::widgets::select::show(
-                ui,
-                egui::Id::unique("world_add_select"),
-                "选择城市…",
-                &candidates,
-                combo_w,
-            ) {
-                bus.send(FrontendCommand::AddWorldCity(picked));
-                state.list_pulse = Some(("world".to_string(), std::time::Instant::now()));
-            }
+        // 添加城市页脚盒
+        let combo_w = (avail.width() - 76.0).clamp(120.0, 220.0);
+        ui.scope_builder(egui::UiBuilder::new().max_rect(footer_rect), |ui| {
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                ui.label(
+                    egui::RichText::new("添加城市")
+                        .font(crate::theme::font_medium(crate::theme::font_size("meta")))
+                        .color(ink.muted),
+                );
+                let candidates: Vec<String> = accel_core::data::world_cities::all_names()
+                    .into_iter()
+                    .filter(|n| !pins.iter().any(|p| p == n))
+                    .map(str::to_string)
+                    .collect();
+                if let Some(picked) = crate::widgets::select::show(
+                    ui,
+                    egui::Id::unique("world_add_select"),
+                    "选择城市…",
+                    &candidates,
+                    combo_w,
+                ) {
+                    bus.send(FrontendCommand::AddWorldCity(picked));
+                    state.list_pulse = Some(("world".to_string(), std::time::Instant::now()));
+                }
+            });
         });
     }
 }
@@ -91,6 +124,7 @@ impl crate::pages::Page for crate::pages::WorldPage {
 #[allow(clippy::too_many_arguments)]
 fn draw_city_row(
     ui: &mut egui::Ui,
+    rect: egui::Rect,
     state: &mut crate::bus::UiState,
     bus: &crate::bus::Bus,
     name: &str,
@@ -99,8 +133,11 @@ fn draw_city_row(
     utc_now: DateTime<chrono::Utc>,
     ink: &crate::theme::Ink,
 ) {
-    let (rect, hit) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), 60.0), egui::Sense::click());
+    let hit = ui.interact(
+        rect,
+        egui::Id::unique(("world_row", name)),
+        egui::Sense::click(),
+    );
     let tz_str = accel_core::data::world_cities::tz_of(name);
     let is_base = tz_str.is_some_and(|tz| base_tz.as_deref() == Some(tz));
     let (walk, is_day) = tz_str
@@ -140,8 +177,10 @@ fn draw_city_row(
         egui::StrokeKind::Inside,
     );
     let name_font = crate::theme::font_semibold(crate::theme::font_size("body_lg"));
+    let name_ink = crate::widgets::text_ink::measure(ui, name, &name_font, InkKind::Cjk);
+    let name_top = rect.top() + 12.0;
     ui.painter().text(
-        egui::pos2(rect.left() + 14.0, rect.top() + 10.0),
+        egui::pos2(rect.left() + 14.0, name_top - name_ink.top_pad),
         egui::Align2::LEFT_TOP,
         name,
         name_font.clone(),
@@ -158,7 +197,7 @@ fn draw_city_row(
             crate::theme::accent_color(),
         );
         let chip = egui::Rect::from_min_size(
-            egui::pos2(rect.left() + 14.0, rect.bottom() - 24.0),
+            egui::pos2(rect.left() + 14.0, name_top + name_ink.h + 6.0),
             egui::vec2(52.0, 18.0),
         );
         ui.painter().rect_filled(
@@ -182,8 +221,8 @@ fn draw_city_row(
         );
     } else if hit.hovered() || hit.has_focus() {
         ui.painter().text(
-            egui::pos2(rect.left() + 14.0, rect.bottom() - 9.0),
-            egui::Align2::LEFT_BOTTOM,
+            egui::pos2(rect.left() + 14.0, name_top + name_ink.h + 6.0),
+            egui::Align2::LEFT_TOP,
             "点击设为基准",
             crate::theme::font_regular(11.0),
             ink.meta,

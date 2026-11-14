@@ -27,6 +27,8 @@ uniform float u_radius;
 uniform float u_thickness;
 uniform vec3 u_color;
 uniform float u_bloom;
+uniform float u_alpha;
+uniform float u_inset;
 uniform int u_mode;
 
 float sd_rounded_box(vec2 p, vec2 b, float r) {
@@ -43,16 +45,31 @@ void main() {
     } else if (u_mode == 1) {
         // 向胶囊内部扩 2px：填充边缘抗锯齿半透明时，底下透出的是光晕色而不是背景
         d = sd_rounded_box(p, u_half, u_radius) + 2.0;
-    } else {
+    } else if (u_mode == 2) {
         // 圆点光斑（数字底光）：从中心直接指数衰减，无硬核、无圆边
         d = length(p);
+    } else {
+        // 矩形整体背光（抽屉）：内扩 u_inset 压住边框与光晕之间的亚像素缝
+        d = sd_rounded_box(p, u_half, u_radius) + u_inset;
     }
-    float a = d > 0.0 ? exp(-d / u_bloom) * 0.85 : 0.0;
+    float a = 0.0;
+    if (d > 0.0) {
+        if (u_mode == 3) {
+            float t = clamp(d / u_bloom, 0.0, 1.0);
+            a = (1.0 - t) * (1.0 - t);
+        } else {
+            a = exp(-d / u_bloom) * 0.85;
+        }
+    }
     // rect 边缘淡出，避免光晕在矩形边界突变成 0 形成可见方框
-    float edge = (u_mode == 2)
-        ? 1.0 - smoothstep(0.12, 0.5, max(abs(v_uv.x - 0.5), abs(v_uv.y - 0.5)))
-        : 1.0 - smoothstep(0.30, 0.5, max(abs(v_uv.x - 0.5), abs(v_uv.y - 0.5)));
-    a *= edge;
+    // mode 3 已在 bloom 处平方归零，不能再乘 edge（大矩形会把它压到肉眼不可见）
+    float edge = 1.0;
+    if (u_mode == 2) {
+        edge = 1.0 - smoothstep(0.12, 0.5, max(abs(v_uv.x - 0.5), abs(v_uv.y - 0.5)));
+    } else if (u_mode != 3) {
+        edge = 1.0 - smoothstep(0.30, 0.5, max(abs(v_uv.x - 0.5), abs(v_uv.y - 0.5)));
+    }
+    a *= edge * u_alpha;
     frag_color = vec4(u_color * a, a);
 }
 "#;
@@ -69,6 +86,8 @@ struct RingGl {
     u_thickness: Option<glow::UniformLocation>,
     u_color: Option<glow::UniformLocation>,
     u_bloom: Option<glow::UniformLocation>,
+    u_alpha: Option<glow::UniformLocation>,
+    u_inset: Option<glow::UniformLocation>,
     u_mode: Option<glow::UniformLocation>,
 }
 
@@ -149,6 +168,8 @@ impl RingGl {
                 u_thickness: loc("u_thickness"),
                 u_color: loc("u_color"),
                 u_bloom: loc("u_bloom"),
+                u_alpha: loc("u_alpha"),
+                u_inset: loc("u_inset"),
                 u_mode: loc("u_mode"),
             })
         }
@@ -201,6 +222,8 @@ pub fn paint(
                 gl.uniform_1_f32(r.u_thickness.as_ref(), thickness_px);
                 gl.uniform_3_f32(r.u_color.as_ref(), color_f[0], color_f[1], color_f[2]);
                 gl.uniform_1_f32(r.u_bloom.as_ref(), bloom_px);
+                gl.uniform_1_f32(r.u_alpha.as_ref(), 1.0);
+                gl.uniform_1_f32(r.u_inset.as_ref(), 0.0);
                 gl.uniform_1_i32(r.u_mode.as_ref(), 0);
                 gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
                 gl.bind_vertex_array(None);
@@ -251,6 +274,8 @@ pub fn paint_dot(ui: &egui::Ui, center: egui::Pos2, radius: f32, color: egui::Co
                 gl.uniform_1_f32(r.u_thickness.as_ref(), 1.0);
                 gl.uniform_3_f32(r.u_color.as_ref(), color_f[0], color_f[1], color_f[2]);
                 gl.uniform_1_f32(r.u_bloom.as_ref(), bloom_px);
+                gl.uniform_1_f32(r.u_alpha.as_ref(), 1.0);
+                gl.uniform_1_f32(r.u_inset.as_ref(), 0.0);
                 gl.uniform_1_i32(r.u_mode.as_ref(), 2);
                 gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
                 gl.bind_vertex_array(None);
@@ -313,6 +338,8 @@ pub fn paint_pill(
                 gl.uniform_1_f32(r.u_thickness.as_ref(), 1.0);
                 gl.uniform_3_f32(r.u_color.as_ref(), color_f[0], color_f[1], color_f[2]);
                 gl.uniform_1_f32(r.u_bloom.as_ref(), bloom_px);
+                gl.uniform_1_f32(r.u_alpha.as_ref(), 1.0);
+                gl.uniform_1_f32(r.u_inset.as_ref(), 0.0);
                 gl.uniform_1_i32(r.u_mode.as_ref(), 1);
                 gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
                 gl.bind_vertex_array(None);
@@ -320,6 +347,71 @@ pub fn paint_pill(
         }
     });
     ui.painter().add(egui::PaintCallback {
+        rect,
+        callback: Arc::new(cb),
+    });
+}
+
+/// 矩形整体背光（抽屉）：只向外侧扩散，bloom 处平方衰减归零
+pub fn paint_rect_glow(
+    painter: &egui::Painter,
+    bounds: egui::Rect,
+    radius: f32,
+    color: egui::Color32,
+    bloom: f32,
+    alpha: f32,
+) {
+    let ppp = painter.ctx().pixels_per_point();
+    // 大 pad：让绘制区边界处的 alpha 低到不可见，光晕不被方形裁切
+    let pad = bloom * 3.0 + 8.0;
+    let full = bounds.expand(pad);
+    let rect = full.intersect(painter.clip_rect());
+    if !rect.is_positive() {
+        return;
+    }
+    let center = bounds.center();
+    let center_norm = egui::pos2(
+        (center.x - rect.left()) / rect.width(),
+        1.0 - (center.y - rect.top()) / rect.height(),
+    );
+    let size_px = egui::vec2(rect.width() * ppp, rect.height() * ppp);
+    let half_px = egui::vec2(bounds.width() * 0.5 * ppp, bounds.height() * 0.5 * ppp);
+    let radius_px = (radius * ppp).max(0.0);
+    let bloom_px = (bloom * ppp).max(1.0);
+    let color_f = [
+        color.r() as f32 / 255.0,
+        color.g() as f32 / 255.0,
+        color.b() as f32 / 255.0,
+    ];
+    let cb = egui_glow::CallbackFn::new(move |_info, painter| {
+        let gl = painter.gl();
+        let mut guard = ring_state().lock().expect("金圈 GL 锁中毒");
+        if guard.is_none() {
+            *guard = Some(match RingGl::new(gl) {
+                Some(r) => RingState::Ready(r),
+                None => RingState::Failed,
+            });
+        }
+        if let Some(RingState::Ready(r)) = guard.as_ref() {
+            unsafe {
+                gl.use_program(Some(r.program));
+                gl.bind_vertex_array(Some(r.vao));
+                gl.uniform_2_f32(r.u_center.as_ref(), center_norm.x, center_norm.y);
+                gl.uniform_2_f32(r.u_size.as_ref(), size_px.x, size_px.y);
+                gl.uniform_2_f32(r.u_half.as_ref(), half_px.x, half_px.y);
+                gl.uniform_1_f32(r.u_radius.as_ref(), radius_px);
+                gl.uniform_1_f32(r.u_thickness.as_ref(), 1.0);
+                gl.uniform_3_f32(r.u_color.as_ref(), color_f[0], color_f[1], color_f[2]);
+                gl.uniform_1_f32(r.u_bloom.as_ref(), bloom_px);
+                gl.uniform_1_f32(r.u_alpha.as_ref(), alpha);
+                gl.uniform_1_f32(r.u_inset.as_ref(), ppp);
+                gl.uniform_1_i32(r.u_mode.as_ref(), 3);
+                gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
+                gl.bind_vertex_array(None);
+            }
+        }
+    });
+    painter.add(egui::PaintCallback {
         rect,
         callback: Arc::new(cb),
     });

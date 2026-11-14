@@ -232,6 +232,15 @@ pub fn year_chips(now: NaiveDate) -> Vec<(NaiveDate, String)> {
         .collect()
 }
 
+/// 近期节日快照（PL021 严格边界）：未来 count 个，剔除今天及以前
+pub fn upcoming_festivals(today: NaiveDate, count: usize) -> Vec<(NaiveDate, String)> {
+    year_chips(today)
+        .into_iter()
+        .filter(|(d, _)| *d > today)
+        .take(count)
+        .collect()
+}
+
 /// 农历计算核心（Python get_chinese_lunar_calendar 对等）
 /// 三级节日兜底：T1 lunar-rust 农历节日 → T2 holidays.json → T3 西式节日表
 pub fn get_chinese_lunar_calendar(year: i32, month: u32, day: u32, hour: u32) -> LunarInfo {
