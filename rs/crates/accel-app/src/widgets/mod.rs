@@ -14,6 +14,7 @@ pub mod page_header;
 pub mod primary_button;
 pub mod rate_strip;
 pub mod ring_glow;
+pub mod scroll_kit;
 pub mod select;
 pub mod slider;
 pub mod spinner;

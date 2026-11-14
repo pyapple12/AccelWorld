@@ -237,6 +237,12 @@ pub struct CountdownPage {
     pub selected_festival: Option<(chrono::NaiveDate, String)>,
     /// 目标时刻输入错误标记（点添加失败后显示，输入变化清除）
     pub time_error: bool,
+    /// 列表金色浮钮拖拽时，下一帧要写回的滚动偏移（PL022）
+    pub scroll_override: Option<f32>,
+    /// 上一帧列表滚动偏移（判断是否在滚动；None = 还没采样过）
+    pub scroll_last_offset: Option<f32>,
+    /// 三角呼吸截止时刻（秒；滚动时向后刷新，停手后回到常亮）
+    pub scroll_blink_until: f64,
 }
 
 /// 世界时钟页（impl 在 pages/world.rs——抽屉页）

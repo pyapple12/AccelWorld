@@ -14,7 +14,10 @@
     "card_hover_ms": 140,
     "card_press_ms": 90,
     "switch_ms": 160,
-    "slider_hover_ms": 120
+    "slider_hover_ms": 120,
+    "scroll_fade_ms": 1000,
+    "scroll_edge_ms": 100,
+    "scroll_hint_blink_ms": 800
   },
   "font_family": "MiSans",
   "font_family_digits": "Bahnschrift",
@@ -70,6 +73,13 @@
     "footer_gap": 10,
     "empty_card_pad": 10,
     "empty_line_gap": 5,
+    "scroll_bar_w": 4,
+    "scroll_bar_gap": 8,
+    "scroll_handle_min": 16,
+    "scroll_fade": 16,
+    "scroll_hint_icon": 9,
+    "scroll_hint_inset": 6,
+    "scroll_hint_alpha_x100": 80,
     "weather_plot_h": 132,
     "window_max_width": 1200,
     "window_max_height": 820

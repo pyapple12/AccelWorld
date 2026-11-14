@@ -1,7 +1,7 @@
 # AccelWorld 重构方案与进度（z.plan.md）
 
 > 依据：2026-08-08 项目审计（对照 AGENTS.md 规范，参考 DeepTransHub 分层结构）
-> 状态：**Rust 重构进行中**——Python 时代 S1-S10（ver 0.46）与 UI 2.0/3.0（0.5.x–0.6.0.0）已定版留档；Rust 重构 PL011–PL017 已完成（core 全量 parity + egui 外壳 + 五页 + 系统集成 + UI 精修 + UI 结构重排），PL018 已实施（退出自愈/落点校准/首帧门控/N9 裁决），PL019 已收口（图标/自适应/反馈动效），当前版本 **V0.6.5.3**
+> 状态：**Rust 重构进行中**——Python 时代 S1-S10（ver 0.46）与 UI 2.0/3.0（0.5.x–0.6.0.0）已定版留档；Rust 重构 PL011–PL017 已完成（core 全量 parity + egui 外壳 + 五页 + 系统集成 + UI 精修 + UI 结构重排），PL018 已实施（退出自愈/落点校准/首帧门控/N9 裁决），PL019 已收口（图标/自适应/反馈动效），当前版本 **V0.6.5.4**
 > 历史 UI 审核报告已于 2026-10-29 移除，原文见 git 历史；下文相关引用按历史记录理解。
 > 更新（2026-09-10）：接入 DeepTransHub 工作流体系；本文件新增「审计观察项豁免定案清单」与「附录（审计报告归档区）」，旧内容原样保留
 > 更新（2026-10-16）：新增「Rust 重构总纲：AccelWorld RS」节（见下文），Python 版全量归档 `.archived/`
@@ -2419,3 +2419,82 @@ better-layout「结构撑到破为止」窄窗断点：倒计时卡 2→1 列（
 ### 二、后续追加
 
 - （按功能追加，条目保持「主题 + 改了什么」两段式）
+
+---
+
+## 附录 PL022：倒计时列表独立滚动（2026-11-14 起，V0.6.5.4 收口）
+
+> 范围：本轮只改倒计时页；世界/闹钟同构改造留待后续，天气/设置不动。
+> 执行纪律：先落方案再改代码；不跑全量回归与截图探针，由用户真机目测。
+
+### 一、目标
+
+- **滑动区域限制在内容卡**：只有 E9 目标卡列表可滚；E2 hero 与 E7 近期节日固定在列表上方，不参与滚动。
+- **兜底**：列表视口高 < 一张目标卡（55.6）→ 整个列表不画；滑杆、渐隐、三角一并消失。
+- **空态与滚动无关**：无目标时不创建 ScrollArea；CTA + 虚线框静态占“固定头到页脚之间”的矩形，沿用 53.6 最小高规则。
+- **滑杆**：自绘 4px 金色浮钮，位置在卡片右缘 +8px（右边距 8/4/8 居中）；原生滑杆隐藏；最小拇指 16px，可拖拽。
+- **渐隐**：上下各 16px；贴顶/贴底时对应一侧不画；边缘态 100ms、回落 1s，跟随 `reduce_motion`；egui 自带 20px 渐隐置零。
+- **三角**：上下各一，9px 图形、内缩 6px、金色、水平居中、不拦点击；只在滚动时按 1s 呼吸（1→0.35→1），停手 800ms 后常亮。
+- **换序**：本轮不做（需 core 排序命令与持久化，单独立项）。
+
+### 二、结构
+
+```text
+drawer
+├ PageHeader                 54.3
+├ 内容上边距                  10
+├ 固定头
+│   ├ E2 hero                90.9
+│   ├ 10
+│   └ E7 近期节日             12.3
+├ 10
+├ 列表视口（唯一滚动区）
+│   └ E9 目标卡 / 兜底隐藏
+├ 10
+└ E15 页脚                  101.6
+```
+
+### 三、实现
+
+1. 新增 `widgets/scroll_kit.rs`：`apply_style`（关掉 egui 自带 20px 渐隐）、`paint_fade`（Mesh 渐变到 `card_bg`，上下各多画 1px 压缝）、`paint_hints`（painter 三角形，透明度由调用方给）。
+2. `widgets/mod.rs` 挂模块。
+3. `pages/countdown.rs::ui`：先算固定头高度并画 hero/节日，再算列表矩形；目标卡分支走 ScrollArea（原生滑杆隐藏）+ scroll_kit，空态分支直接静态绘制；`target_row_height(ui)` 抽函数，绘制与兜底共用；兜底 `list_h + 0.5 >= row_h`；`draw_list_scroll` 画渐隐/三角/卡片外侧金色浮钮，并处理浮钮拖拽回写。
+4. `ui.json`：新增 `scroll_bar_w` / `scroll_bar_gap` / `scroll_handle_min` / `scroll_fade` / `scroll_hint_icon` / `scroll_hint_inset` / `scroll_hint_alpha_x100`；`motion` 新增 `scroll_fade_ms` / `scroll_edge_ms` / `scroll_hint_blink_ms`。
+5. 文档与版本：`x.progress.md` PL022、UI 术语表与标注图、README / `w.study.md` / `m.milestone.md` 同步；`base.json` → 0.6.5.4。
+
+### 四、数值核算
+
+`body = page_h − 175.9`，固定头 `= 90.9 + 10 + 12.3 + 10 = 123.2`。
+
+| 窗口高      | page_h | body  | 列表高 | 结果      |
+| ----------- | ------ | ----- | ------ | --------- |
+| 420（最小） | 336    | 160.1 | 36.9   | 整块隐藏  |
+| 440         | 356    | 180.1 | 56.9   | 1 张      |
+| 560         | 464    | 288.1 | 164.9  | 2 张 + 余 |
+| 640（默认） | 544    | 368.1 | 244.9  | 3 张 + 半 |
+| 820（最大） | 724    | 548.1 | 424.9  | 6 张 + 余 |
+
+门槛约 439px 窗口高；最小窗 420 时列表隐藏是固定头的必然结果。
+
+### 五、风险与取舍
+
+- 滚轮悬在 hero/节日行上不滚列表（egui 事件归属）；本轮接受，后续需要再做滚轮转发。
+- 空态 CTA 与列表矩形同裁切：视口过小时 CTA 也一起消失。
+- 世界/闹钟仍是默认 2px 原生浮杆，等下一轮统一成倒计时这套。
+- 渐隐颜色取抽屉底 `card_bg`；目标卡同色，实际效果是文字与描边渐隐、卡面本身不变色。
+- 金色浮钮在卡片外侧，拖拽回写走 `vertical_scroll_offset`，内容跟手有一帧延迟。
+- 三角呼吸只在滚动窗口内重绘；静止后不再请求重绘，避免空转。
+
+### 六、执行记录（V0.6.5.4）
+
+- 新增 `widgets/scroll_kit.rs`：`apply_style` 关掉 egui 自带 20px/0.5 渐隐（它会和自绘 16px 在 16px 处叠出硬台阶）；`paint_fade` 用四顶点 Mesh 从 `card_bg` 不透明渐到透明，上下各多画 1px 并放宽裁剪压住半像素缝；`paint_hints` 用 `Shape::convex_polygon` 画 9px 三角，透明度由调用方给。
+- `pages/countdown.rs`：`header_h = hero + 10 + 节日行 + 10`，固定头用独立 `scope_builder` 并裁到 body；列表矩形 = body 余下部分；空态分支不再创建 ScrollArea；目标分支先算 `target_row_height(ui)` 再按 `list_h + 0.5 >= row_h` 兜底；`ScrollArea` 固定 `id_salt("countdown_list")` 并隐藏原生滑杆；`draw_list_scroll` 画渐隐/三角/卡片右缘 +8px（右边距 8/4/8 居中）的 4px 金色浮钮（拖拽写回 `scroll_override`）；三角在滚动后 800ms 内按 1s 呼吸，其余时间常亮。
+- `ui.json` 新增 layout `scroll_bar_w` / `scroll_bar_gap` / `scroll_handle_min` / `scroll_fade` / `scroll_hint_icon` / `scroll_hint_inset` / `scroll_hint_alpha_x100`，motion `scroll_fade_ms` / `scroll_edge_ms` / `scroll_hint_blink_ms`。
+- 未跑全量测试与截图探针；已构建并拉起，待用户真机目测。
+
+### 七、视觉走查修订（2026-11-15）
+
+- **底部横线**：egui 0.37 的 `ScrollStyle` 自带 20px / 0.5 渐隐，和自绘 14px 叠在一起，在 14px 处留下一条硬台阶；`apply_style` 把 `fade.strength` 置 0，只留自绘层；渐隐带上下各多画 1px 并放宽裁剪，压住裁剪边的半像素缝。
+- **渐隐高度**：14px → 16px（上下同值），贴边仍收为 0。
+- **滑杆**：原生滑杆隐藏，改自绘 4px 金色浮钮；位置由“卡片右缘 +10px”改为 **+8px**，右边距 8 / 4 / 8 居中，杆中心到卡片右缘与抽屉右边框各 10px；命中域左右各放宽 6px，拖拽回写 `vertical_scroll_offset`。
+- **三角闪烁**：从静态改为只在滚动时呼吸；偏移一变化续 800ms 窗口，窗口内 1s 一周期（1→0.35→1），停手回常亮 0.8；`reduce_motion` 直接常亮。

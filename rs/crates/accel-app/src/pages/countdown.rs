@@ -133,99 +133,119 @@ impl crate::pages::Page for crate::pages::CountdownPage {
             egui::vec2(avail.width(), footer_h),
         );
 
-        ui.scope_builder(egui::UiBuilder::new().max_rect(body_rect), |ui| {
-            egui::ScrollArea::vertical()
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
+        // PL022：固定头 = hero + 近期节日，不参与滚动；只有 E9 目标卡进列表视口
+        let festivals = state.festivals.clone();
+        let hero_h = hero.as_ref().map(|_| hero_height(ui));
+        let meta_h = if festivals.is_empty() {
+            None
+        } else {
+            let meta_font = crate::theme::font_regular(crate::theme::font_size("meta"));
+            Some(crate::widgets::text_metrics::height(
+                ui.ctx(),
+                &meta_font,
+                InkKind::Cjk,
+            ))
+        };
+        let mut header_h = 0.0;
+        if let Some(h) = hero_h {
+            header_h += h + crate::widgets::box_stack::BOX_GAP;
+        }
+        if let Some(h) = meta_h {
+            header_h += h + crate::widgets::box_stack::BOX_GAP;
+        }
+        let header_h = header_h.min(body_h);
+        let header_rect =
+            egui::Rect::from_min_size(body_rect.min, egui::vec2(body_rect.width(), header_h));
+        let list_rect = egui::Rect::from_min_max(
+            egui::pos2(body_rect.left(), header_rect.bottom()),
+            body_rect.max,
+        );
+
+        if header_h > 0.5 {
+            ui.scope_builder(egui::UiBuilder::new().max_rect(header_rect), |ui| {
+                ui.set_clip_rect(header_rect);
+                let mut stack = crate::widgets::box_stack::BoxStack::new(ui);
+                // E2 hero 盒；中国结图标点击恢复默认春节
+                if let Some((name, at)) = &hero {
+                    let rect = stack.next(ui, hero_height(ui));
+                    if draw_hero(ui, rect, name, *at, now, &ink) {
+                        self.selected_festival = None;
+                    }
+                }
+
+                // E7 近期节日盒：后端快照 5 个，可点击切换 hero
+                if let Some(h) = meta_h {
+                    let rect = stack.next(ui, h);
+                    if let Some(clicked) =
+                        draw_festivals(ui, rect, &festivals, self.selected_festival.as_ref(), &ink)
+                    {
+                        self.selected_festival = Some(clicked);
+                    }
+                }
+            });
+        }
+
+        let row_h = target_row_height(ui);
+        if targets.is_empty() {
+            // 空态与滚动无关：不建 ScrollArea，CTA + 虚线框静态占列表矩形
+            if list_rect.height() > 0.5 {
+                ui.scope_builder(egui::UiBuilder::new().max_rect(list_rect), |ui| {
+                    ui.set_clip_rect(list_rect);
                     let mut stack = crate::widgets::box_stack::BoxStack::new(ui);
-                    // E2 hero 盒；中国结图标点击恢复默认春节
-                    if let Some((name, at)) = &hero {
-                        let rect = stack.next(ui, hero_height(ui));
-                        if draw_hero(ui, rect, name, *at, now, &ink) {
-                            self.selected_festival = None;
-                        }
-                    }
-
-                    // E7 近期节日盒：后端快照 5 个，可点击切换 hero
-                    let festivals = state.festivals.clone();
-                    if !festivals.is_empty() {
-                        let meta_font = crate::theme::font_regular(crate::theme::font_size("meta"));
-                        let meta_h = crate::widgets::text_metrics::height(
-                            ui.ctx(),
-                            &meta_font,
-                            InkKind::Cjk,
-                        );
-                        let rect = stack.next(ui, meta_h);
-                        if let Some(clicked) = draw_festivals(
+                    // CTA 盒高 = 固定行高；点击区只扩展命中，不占布局
+                    let cta_font = crate::theme::font_medium(crate::theme::font_size("body"));
+                    let cta_h =
+                        crate::widgets::text_metrics::height(ui.ctx(), &cta_font, InkKind::Cjk);
+                    let cta = stack.next(ui, cta_h);
+                    draw_empty_cta(ui, cta, state, &ink);
+                    // 虚线框吃掉 CTA 之后的剩余高度；不足最小内容高则整块消失
+                    let used = cta.bottom() - list_rect.top() + crate::widgets::box_stack::BOX_GAP;
+                    let remain_h = list_rect.height() - used;
+                    if remain_h >= crate::widgets::empty::min_height(ui) {
+                        let card = stack.next(ui, remain_h);
+                        crate::widgets::empty::card_at(
                             ui,
-                            rect,
-                            &festivals,
-                            self.selected_festival.as_ref(),
-                            &ink,
-                        ) {
-                            self.selected_festival = Some(clicked);
-                        }
-                    }
-
-                    // E9 目标行卡盒（hero 是春节/选中节日，不占用户目标）
-                    if !targets.is_empty() {
-                        let pulse = crate::widgets::motion::list_pulse(state, "countdown");
-                        let last = targets.len().saturating_sub(1);
-                        let name_font = crate::theme::font_medium(crate::theme::font_size("body"));
-                        let date_font = crate::theme::font_regular(crate::theme::font_size("meta"));
-                        for (i, (name, at)) in targets.iter().enumerate() {
-                            // E9 盒高 = 固定名称行高 + 6 + 固定日期行高 + 上下 12
-                            let name_h = crate::widgets::text_metrics::height(
-                                ui.ctx(),
-                                &name_font,
-                                InkKind::Cjk,
-                            );
-                            let date_h = crate::widgets::text_metrics::height(
-                                ui.ctx(),
-                                &date_font,
-                                InkKind::Cjk,
-                            );
-                            let time_h = crate::widgets::text_metrics::height(
-                                ui.ctx(),
-                                &digits::digit_font(crate::theme::font_size("time_sm")),
-                                InkKind::Digits,
-                            );
-                            // 10 + 名称盒 + 5 + 第二行盒（取最高）+ 10
-                            let row_h = 10.0 + name_h + 5.0 + date_h.max(time_h) + 10.0;
-                            let rect = stack.next(ui, row_h);
-                            ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
-                                if i == last && pulse < 1.0 {
-                                    ui.set_opacity(0.55 + 0.45 * pulse);
-                                }
-                                draw_target_row(ui, rect, state, bus, name, *at, now, &ink);
-                            });
-                        }
-                    }
-
-                    // CTA 盒 + 空态盒
-                    if targets.is_empty() {
-                        // CTA 盒高 = 固定行高；点击区只扩展命中，不占布局
-                        let cta_font = crate::theme::font_medium(crate::theme::font_size("body"));
-                        let cta_h =
-                            crate::widgets::text_metrics::height(ui.ctx(), &cta_font, InkKind::Cjk);
-                        let cta = stack.next(ui, cta_h);
-                        draw_empty_cta(ui, cta, state, &ink);
-                        // 虚线框自适应：吃掉 CTA 之后的全部剩余高度；不足最小内容高则整块消失
-                        let used =
-                            cta.bottom() - body_rect.top() + crate::widgets::box_stack::BOX_GAP;
-                        let remain_h = body_h - used;
-                        if remain_h >= crate::widgets::empty::min_height(ui) {
-                            let card = stack.next(ui, remain_h);
-                            crate::widgets::empty::card_at(
-                                ui,
-                                card,
-                                "还没有自定义目标",
-                                "在下方填写名称与时刻",
-                            );
-                        }
+                            card,
+                            "还没有自定义目标",
+                            "在下方填写名称与时刻",
+                        );
                     }
                 });
-        });
+            }
+        } else if list_rect.height() + 0.5 >= row_h {
+            // 兜底通过：列表视口只装目标卡；滑杆/渐隐/三角贴视口，不跨固定头与页脚
+            ui.scope_builder(egui::UiBuilder::new().max_rect(list_rect), |ui| {
+                crate::widgets::scroll_kit::apply_style(ui);
+                let mut area = egui::ScrollArea::vertical()
+                    .id_salt("countdown_list")
+                    .auto_shrink([false, false])
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden);
+                if let Some(y) = self.scroll_override.take() {
+                    area = area.vertical_scroll_offset(y);
+                }
+                let out = area.show(ui, |ui| {
+                    let mut stack = crate::widgets::box_stack::BoxStack::new(ui);
+                    let pulse = crate::widgets::motion::list_pulse(state, "countdown");
+                    let last = targets.len().saturating_sub(1);
+                    for (i, (name, at)) in targets.iter().enumerate() {
+                        let rect = stack.next(ui, row_h);
+                        ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+                            if i == last && pulse < 1.0 {
+                                ui.set_opacity(0.55 + 0.45 * pulse);
+                            }
+                            draw_target_row(ui, rect, state, bus, name, *at, now, &ink);
+                        });
+                    }
+                });
+                self.scroll_override = draw_list_scroll(
+                    ui,
+                    &out,
+                    list_rect,
+                    &mut self.scroll_last_offset,
+                    &mut self.scroll_blink_until,
+                );
+            });
+        }
 
         // E15 页脚盒
         ui.scope_builder(egui::UiBuilder::new().max_rect(footer_rect), |ui| {
@@ -787,6 +807,130 @@ fn draw_target_row(
     }
 }
 
+/// 目标卡固定盒高：10 + 名称盒 + 5 + 第二行（日期/剩余取高）+ 10。
+/// 绘制与“不足一张卡就整块隐藏”的兜底共用，避免两处各算一遍。
+fn target_row_height(ui: &egui::Ui) -> f32 {
+    let name_font = crate::theme::font_medium(crate::theme::font_size("body"));
+    let date_font = crate::theme::font_regular(crate::theme::font_size("meta"));
+    let time_font = digits::digit_font(crate::theme::font_size("time_sm"));
+    let name_h = crate::widgets::text_metrics::height(ui.ctx(), &name_font, InkKind::Cjk);
+    let date_h = crate::widgets::text_metrics::height(ui.ctx(), &date_font, InkKind::Cjk);
+    let time_h = crate::widgets::text_metrics::height(ui.ctx(), &time_font, InkKind::Digits);
+    10.0 + name_h + 5.0 + date_h.max(time_h) + 10.0
+}
+
+/// 列表滚动视觉件：上下 16px 渐隐、上下金色三角（滚动期呼吸、静止常亮）、
+/// 卡片右缘 +8px 的 4px 金色浮钮（右边距 8/4/8 居中）；返回拖拽浮钮时下一帧要写回的滚动偏移。
+fn draw_list_scroll(
+    ui: &egui::Ui,
+    out: &egui::scroll_area::ScrollAreaOutput<()>,
+    list_rect: egui::Rect,
+    scroll_last_offset: &mut Option<f32>,
+    scroll_blink_until: &mut f64,
+) -> Option<f32> {
+    let viewport = out.inner_rect;
+    if viewport.height() <= 0.5 {
+        return None;
+    }
+    let offset = out.state.clamped_offset().y;
+    let max_offset = (out.content_size.y - viewport.height()).max(0.0);
+    let scrollable = max_offset > 1.0;
+    let at_top = offset <= 0.5;
+    let at_bottom = offset >= max_offset - 0.5;
+
+    // 滚动判定：偏移变化即刷新呼吸截止；停手后回到常亮
+    let now = ui.input(|i| i.time);
+    let blink_s = crate::theme::motion_ms("scroll_hint_blink_ms") as f64 / 1000.0;
+    if let Some(prev) = *scroll_last_offset
+        && (offset - prev).abs() > 0.1
+    {
+        *scroll_blink_until = now + blink_s;
+    }
+    *scroll_last_offset = Some(offset);
+    let reduce = crate::theme::reduce_motion(ui.ctx());
+    let blinking = scrollable && !reduce && now < *scroll_blink_until;
+    if blinking {
+        ui.ctx().request_repaint();
+    }
+    let base_alpha = crate::theme::layout_f32("scroll_hint_alpha_x100") / 100.0;
+    // 1s 呼吸：1 → 0.35 → 1；静止时保持常亮，不闪
+    let hint_alpha = if blinking {
+        let phase = (now * std::f64::consts::TAU).cos() as f32;
+        base_alpha * (0.675 + 0.325 * phase)
+    } else {
+        base_alpha
+    };
+
+    let fade = crate::theme::layout_f32("scroll_fade");
+    let top_t = fade_t(ui, "countdown_fade_top", scrollable && !at_top);
+    let bottom_t = fade_t(ui, "countdown_fade_bottom", scrollable && !at_bottom);
+    crate::widgets::scroll_kit::paint_fade(ui, viewport, fade * top_t, fade * bottom_t);
+    crate::widgets::scroll_kit::paint_hints(
+        ui,
+        viewport,
+        scrollable && !at_top,
+        scrollable && !at_bottom,
+        hint_alpha,
+    );
+
+    // 金色浮钮：卡片右缘 +8px（右边距 8/4/8 居中），4px 宽；拖拽命中域左右各放宽 6px
+    if !scrollable {
+        return None;
+    }
+    let gap = crate::theme::layout_f32("scroll_bar_gap");
+    let width = crate::theme::layout_f32("scroll_bar_w");
+    let track_h = viewport.height();
+    let thumb_h = (track_h * (viewport.height() / out.content_size.y.max(1.0)))
+        .max(crate::theme::layout_f32("scroll_handle_min"))
+        .min(track_h);
+    let travel = (track_h - thumb_h).max(0.0);
+    let range = max_offset.max(1.0);
+    let ratio = (offset / range).clamp(0.0, 1.0);
+    let x = list_rect.right() + gap;
+    let hit = egui::Rect::from_min_max(
+        egui::pos2(x - 6.0, viewport.top()),
+        egui::pos2(x + width + 6.0, viewport.bottom()),
+    );
+    let resp = ui
+        .interact(
+            hit,
+            egui::Id::unique("countdown_scroll_thumb"),
+            egui::Sense::drag(),
+        )
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
+    let mut thumb_ratio = ratio;
+    let mut next_override = None;
+    if resp.dragged() && travel > 0.0 {
+        let dy = ui.input(|i| i.pointer.delta().y);
+        let new_offset = (offset + dy / travel * max_offset).clamp(0.0, max_offset);
+        thumb_ratio = (new_offset / range).clamp(0.0, 1.0);
+        next_override = Some(new_offset);
+    }
+    let y = viewport.top() + thumb_ratio * travel;
+    let radius = ((width / 2.0).max(1.0)) as u8;
+    ui.painter().rect_filled(
+        egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(width, thumb_h)),
+        egui::epaint::CornerRadius::same(radius),
+        crate::theme::accent_color(),
+    );
+    next_override
+}
+
+/// 渐隐显隐动画：出现走 scroll_fade_ms，收走边走 scroll_edge_ms；减少动效直接落位。
+fn fade_t(ui: &egui::Ui, id: &str, visible: bool) -> f32 {
+    let target = if visible { 1.0 } else { 0.0 };
+    if crate::theme::reduce_motion(ui.ctx()) {
+        return target;
+    }
+    let ms = if visible {
+        crate::theme::motion_ms("scroll_fade_ms")
+    } else {
+        crate::theme::motion_ms("scroll_edge_ms")
+    };
+    ui.ctx()
+        .animate_value_with_time(egui::Id::unique(id), target, ms / 1000.0)
+}
+
 /// 页脚高度：字段实际高度 + footer_gap + 按钮实际高度 + footer_bottom
 fn footer_height(ui: &egui::Ui) -> f32 {
     crate::widgets::field::fixed_height(ui)
@@ -918,15 +1062,14 @@ fn draw_footer(
 }
 
 // ===== src/pages/countdown.rs 说明区 =====
-// 输入：UiState 的目标快照 + 草稿；输出：hero/节日 meta/其他目标行/固定 Footer 添加
-// 逻辑步骤：目标快照 → hero（默认春节/选中节日；用户目标全部列出）→
-//   节日行 → 目标行（剩余右对齐、Trash 两步确认）→ Footer（名称/时刻/添加；
-//   时刻解析失败或校验失败时在标签行右端显示「输入错误！」）
-// 设计理由（PL017）：原 hero + 列表重复同一数字，3 个目标后 Footer 被 ScrollArea
-//   挤出；本版 hero 单列 + 列表只列其余 + 页脚固定；56px hero 拆成 40px 并收号，
-//   280px 抽屉不再两端裁切
+// 输入：UiState 的目标快照 + 草稿；输出：固定头（hero/节日）+ 目标列表 + 固定 Footer
+// 逻辑步骤：目标快照 → 固定头（hero 默认春节/选中节日 + 近期节日）→
+//   列表视口（仅目标行，剩余右对齐、Trash 两步确认；不足一张卡整块隐藏）→
+//   Footer（名称/时刻/添加；时刻解析失败或校验失败时在标签行右端显示「输入错误！」）
+// 设计理由（PL017/PL022）：hero 与节日固定在上方，滚动只服务目标卡——抽屉窄，
+//   整页滚会把 hero 滚走；列表视口独立后滑杆/渐隐/三角只贴卡片区；空态不建 ScrollArea
 // 异常处理：空草稿不产红字；DST 不存在不提交；输入错误内联显示；hero 空有兜底
-// 关联依赖：tools::countdown/chinese_calendar/widgets(field/digits/empty)；
+// 关联依赖：tools::countdown/chinese_calendar/widgets(field/digits/empty/scroll_kit)；
 //   消费方：pages::Pages 抽屉
 #[cfg(test)]
 mod tests {

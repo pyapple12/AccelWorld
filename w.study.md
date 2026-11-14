@@ -130,9 +130,9 @@ pub async fn fetch(&self, city: &str, force: bool) -> Result<WeatherData, Weathe
 - `pages/mod.rs`：总装配——页面区/底部坞显式分带；舞台与抽屉按宽度定宽并排（<760 全宽抽屉；≥760 舞台 ≥420、抽屉 280..400）；抽屉弹簧开合；ESC 关设置/回时钟
 - `clock.rs`：单环 12h 四针表盘（60 刻度 + 12/3/6/9 内侧；时/分/秒走现实，黄针走加速 12h；AM/PM 胶囊；金圈=加速日进度色谱）；盘下 readout 铺满页面宽、竖线居中；整数 1–365 倍率条 + 量化行（365 档显示 1 年）；页头盒子模型（高 560 分行数 / 宽 560 分文本）；星盘常驻 120–560
 - 抽屉页统一盒模型（PL021）：页头 20 + 标题盒 24.3 + 10 = 54.3；内容上边距 10；区域用 `BoxStack` 固定盒高 + 10 间距；文字只在自己盒内定位，混排共用基线，盒子位置不由墨迹反推；滚动行用 `next` 登记整行高度
-- 倒计时：E9 目标卡 55.6（10 + 14.3 + 5 + 16.3 + 10）；E15 页脚 101.6（标签 12.3 + 5 + 输入 20 + 10 + 按钮 34.3 + 20）；空态两行盒 16.3 + 5 + 12.3 整体居中，最小 53.6；目标时刻支持 `YYYY` / `YYYY-M` / `YYYY-M-D` / `M-D` / 完整时分，回车与添加等价
+- 倒计时：E2 hero 与 E7 近期节日固定为页头，不参与滚动；只有 E9 目标卡列表独立滚动（卡片右缘 +8px 的 4px 金色浮钮 + 上下 16px 渐隐 + 滚动时呼吸的小三角），列表视口高不足一张卡 55.6 时整块隐藏；E9 目标卡 55.6（10 + 14.3 + 5 + 16.3 + 10）；E15 页脚 101.6（标签 12.3 + 5 + 输入 20 + 10 + 按钮 34.3 + 20）；空态两行盒 16.3 + 5 + 12.3 整体居中，最小 53.6；目标时刻支持 `YYYY` / `YYYY-M` / `YYYY-M-D` / `M-D` / 完整时分，回车与添加等价
 - `theme.rs`：ui.json `colors.*` 深色实心单板（仅深色定案）→ egui Visuals + 语义色（strong/body/muted/meta/success 五层，对比度全矩阵 ≥4.5:1 实测）/input_border/border_strong/字号/间距/圆角访问器；MiSans Regular/Medium/Semibold 三档字重 + Tabler 图标族；选中底 `selection` #2A3552 + `ink.strong` 文字
-- `widgets/`：digits（等宽数字位）/ icons（Tabler 子集字体绘制）/ icon_button / dock（悬浮带标签）/ page_header / field（show_fixed）/ switch / empty / rate_strip / slider / chip / toast / select / primary_button / spinner / motion / box_stack
+- `widgets/`：digits（等宽数字位）/ icons（Tabler 子集字体绘制）/ icon_button / dock（悬浮带标签）/ page_header / field（show_fixed）/ switch / empty / rate_strip / slider / chip / toast / select / primary_button / spinner / motion / box_stack / scroll_kit（列表浮杆/渐隐/三角）
 - 高 DPI 纪律：面/文本坐标一律逻辑点；标题栏底色经 DWMWA_CAPTION_COLOR 恒钉深色；窗口几何按当前显示器工作区夹取（max 1200×820）
 - 走查门：`ACCELWORLD_UI_SHOT` 截图探针（真窗逐页 PrintWindow PNG，`PW_CLIENTONLY` 已消除底部白带；固定 `ACCELWORLD_UI_SHOT_GEOMETRY` 测试几何）+ 用户桌面终审
 - 历史：玻璃渲染（WGSL + GlassScene + Acrylic）废弃（UIR）；UIR 初代灰石板金调（UIR2 子夜星图换装）；UIR2 侧栏五页模型（UIR4 改星盘主仪+仪器坞+抽屉）；PL017 结构重排（图标坞/盘下读数/抽屉三段式/字重/短倍率条）；PL019 图标字体/自适应分栏/自绘 Select/反馈动效；PL021 五页盒模型/倒计时输入与错误内联/滚动登记修复

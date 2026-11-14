@@ -1,6 +1,6 @@
 # ACCELWORLD Clock（天宫时计）UI 术语表
 
-> 基线：**V0.6.5.3（PL021 盒模型收口）**。行号会漂移，本表锚点用**文件 + 函数/组件名**，不用行号。
+> 基线：**V0.6.5.4（PL022 倒计时列表独立滚动）**。行号会漂移，本表锚点用**文件 + 函数/组件名**，不用行号。
 > 配套：根目录 **`u.UI_MAP.html`**（六页标注图 + 术语索引 + 状态词 + 令牌速查，浏览器直接打开）。
 > 用途：用户目测 ↔ 代码 ↔ 文档三方对账。描述问题时建议统一写成：
 > **`页面/区域 > 子区域 > 元素 [状态]：现象`**
@@ -163,25 +163,26 @@
 
 ## 5. 倒计时页（E）
 
-| 编号 | 主称                   | 代码锚点                            | 说明 / 别名 / 禁用                                                                                    |
-| ---- | ---------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| E1   | 倒计时页               | `pages/countdown.rs`                | 抽屉页；标题“倒计时”。                                                                                |
-| E2   | Hero 卡 / 下一个节日卡 | `countdown.rs::draw_hero`           | 90.9px 高（10 + 12.3 + 10 + 28.3 + 10 + 10.3 + 10），card_bg + 1.2px 金边；默认春节或用户点选的节日。 |
-| E3   | “下一个节日”标签       | `draw_hero` 左上                    | 10/500 金色；不是页面标题。                                                                           |
-| E4   | Hero 节日名            | `draw_hero`                         | 12/600；与标签同盒、共用基线。                                                                        |
-| E5   | Hero 到期日            | `draw_hero` 左下                    | 10px meta，`到期日：YYYY-MM-DD HH:MM`。                                                               |
-| E6   | Hero 剩余大数          | `format_remaining` + digits         | 28px，右对齐；超宽用 `hero_fit_scale` 收号（下限 0.5）；已结束转 danger。                             |
-| E7   | 近期节日行             | `countdown.rs::draw_festivals`      | 行盒 12.3；未来 5 个节日，金色可点；hover/选中在行盒底 +2px 画 2px 金线；hover 光标为手指。           |
-| E9   | 目标行卡               | `draw_target_row`                   | 55.6px（10 + 名称 14.3 + 5 + 第二行 16.3 + 10），card_bg/hover_bg，12px 圆角；hover 140ms。           |
-| E10  | 目标行名称/日期        | `draw_target_row`                   | 名称 14/500 第一行；日期 12 meta 第二行左侧。                                                         |
-| E11  | 目标行剩余             | `draw_target_row` digits            | 第二行右侧，16px 与日期共用基线；天数 3 位槽宽、天前后 3px；右对齐到 `rect.right()-36`。              |
-| E12  | 目标行删除             | `draw_target_row` Trash             | 14px，贴右、垂直中心对卡中心；常显低对比；两步武装（Check，4s），再次点击删除。                       |
-| E13  | 倒计时空态             | `widgets/empty.rs::card_at`         | 虚线框；标题盒 16.3 + 5 + 正文盒 12.3 整体居中；最小高 53.6，低于即整块消失。                         |
-| E14  | 空态 CTA               | `countdown.rs` `添加第一个目标`     | 金色 14/500 文本热区，点击把焦点送到名称字段；不是主按钮。                                            |
-| E15  | 倒计时页脚             | `draw_footer`；`footer_height`      | 标签 12.3 + 5 + 输入 20 + 10 + 按钮 34.3 + 20 = 101.6；名称:时刻 4:6；按钮底距抽屉底 20。             |
-| E16  | 名称字段               | `field::show_fixed` label“目标名称” | 12/500 label + 20px 输入框；12px 文字上下各 4px；不是裸 TextEdit。                                    |
-| E17  | 时刻字段               | `field::show_fixed` label“目标时刻” | 支持 `YYYY` / `YYYY-M` / `YYYY-M-D` / `M-D` / 完整时分；回车等同添加；错误时标签行右端红字。          |
-| E18  | 添加按钮               | `widgets/primary_button.rs` “添加”  | 宽 88；高 = 10 + 文字盒 14.3 + 10 = 34.3；ink 实底；不是金色按钮。                                    |
+| 编号 | 主称                   | 代码锚点                                        | 说明 / 别名 / 禁用                                                                                                                                |
+| ---- | ---------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| E1   | 倒计时页               | `pages/countdown.rs`                            | 抽屉页；标题“倒计时”。                                                                                                                            |
+| E2   | Hero 卡 / 下一个节日卡 | `countdown.rs::draw_hero`                       | 90.9px 高（10 + 12.3 + 10 + 28.3 + 10 + 10.3 + 10），card_bg + 1.2px 金边；默认春节或用户点选的节日；**固定，不参与滚动**。                       |
+| E3   | “下一个节日”标签       | `draw_hero` 左上                                | 10/500 金色；不是页面标题。                                                                                                                       |
+| E4   | Hero 节日名            | `draw_hero`                                     | 12/600；与标签同盒、共用基线。                                                                                                                    |
+| E5   | Hero 到期日            | `draw_hero` 左下                                | 10px meta，`到期日：YYYY-MM-DD HH:MM`。                                                                                                           |
+| E6   | Hero 剩余大数          | `format_remaining` + digits                     | 28px，右对齐；超宽用 `hero_fit_scale` 收号（下限 0.5）；已结束转 danger。                                                                         |
+| E7   | 近期节日行             | `countdown.rs::draw_festivals`                  | 行盒 12.3；未来 5 个节日，金色可点；hover/选中在行盒底 +2px 画 2px 金线；hover 光标为手指；**固定，不参与滚动**。                                 |
+| E9   | 目标行卡               | `draw_target_row`                               | 55.6px（10 + 名称 14.3 + 5 + 第二行 16.3 + 10），card_bg/hover_bg，12px 圆角；hover 140ms；**列表视口唯一滚动内容**，视口不足一张卡时整块不画。   |
+| E10  | 目标行名称/日期        | `draw_target_row`                               | 名称 14/500 第一行；日期 12 meta 第二行左侧。                                                                                                     |
+| E11  | 目标行剩余             | `draw_target_row` digits                        | 第二行右侧，16px 与日期共用基线；天数 3 位槽宽、天前后 3px；右对齐到 `rect.right()-36`。                                                          |
+| E12  | 目标行删除             | `draw_target_row` Trash                         | 14px，贴右、垂直中心对卡中心；常显低对比；两步武装（Check，4s），再次点击删除。                                                                   |
+| E13  | 倒计时空态             | `widgets/empty.rs::card_at`                     | 虚线框；标题盒 16.3 + 5 + 正文盒 12.3 整体居中；最小高 53.6，低于即整块消失。                                                                     |
+| E14  | 空态 CTA               | `countdown.rs` `添加第一个目标`                 | 金色 14/500 文本热区，点击把焦点送到名称字段；不是主按钮。                                                                                        |
+| E15  | 倒计时页脚             | `draw_footer`；`footer_height`                  | 标签 12.3 + 5 + 输入 20 + 10 + 按钮 34.3 + 20 = 101.6；名称:时刻 4:6；按钮底距抽屉底 20。                                                         |
+| E16  | 名称字段               | `field::show_fixed` label“目标名称”             | 12/500 label + 20px 输入框；12px 文字上下各 4px；不是裸 TextEdit。                                                                                |
+| E17  | 时刻字段               | `field::show_fixed` label“目标时刻”             | 支持 `YYYY` / `YYYY-M` / `YYYY-M-D` / `M-D` / 完整时分；回车等同添加；错误时标签行右端红字。                                                      |
+| E18  | 添加按钮               | `widgets/primary_button.rs` “添加”              | 宽 88；高 = 10 + 文字盒 14.3 + 10 = 34.3；ink 实底；不是金色按钮。                                                                                |
+| E19  | 列表滚动件             | `countdown.rs::draw_list_scroll` / `scroll_kit` | 4px 金色浮钮（卡片右缘 +8px，右边距 8/4/8 居中，最小拇指 16px，可拖拽）；上下 16px 渐隐；9px 金色三角（滚动时 1s 呼吸，停手常亮）；只贴列表视口。 |
 
 > 目标时刻：`YYYY` / `YYYY-M` / `YYYY-M-D` / `M-D` / `YYYY-M-D HH:MM[:SS]`；无年 `M-D` 取下一次，过去时间拒绝；纯日期补 00:00。
 > 回车：名称框时间已填 → 等同点添加；未填 → 焦点跳时间框；时间框 → 等同点添加。失败在「目标时刻」标签行右端显示 `输入错误！`。
@@ -271,7 +272,7 @@
 | I5   | 减少动效行   | “减少动效 / 直取终态，不做过渡”          | 左标签 14/500 + 说明 12 muted；右端开关。    |
 | I6   | 减少动效开关 | `switch::show(settings_reduce_motion)`   | layout.switch_w/h；on=success。              |
 | I7   | 关于分区     | `section("关于", "版本与数据来源")`      | 只读信息区。                                 |
-| I8   | 版本行       | `Static::get().version()`                | 右值如 `0.6.5.3`。                           |
+| I8   | 版本行       | `Static::get().version()`                | 右值如 `0.6.5.4`。                           |
 | I9   | 数据来源行   | “Open-Meteo（免费天气接口）”             | 右端 14px Cloud 图标轻提示。                 |
 | I10  | 字体行       | “MiSans（小米，免费商用）/ Bahnschrift”  | 右值 muted。                                 |
 | I11  | 设置页尾签   | “天宫时计 · 子夜星图”                    | 12px meta；不是产品页头。                    |
@@ -303,20 +304,21 @@
 
 > 这一层是“实现件”，用户目测时通常只需要前四行；后几行是避免叫错。
 
-| 编号 | 主称                   | 代码锚点                          | 说明 / 别名 / 禁用                                                                                              |
-| ---- | ---------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| K1   | 字段 / Field           | `widgets/field.rs::show_fixed`    | label 12/500 + 固定 20px 输入框（12px 文字上下各 4px）+ 圆角 + 焦点环；字段高 = label 12.3 + 间距 5 + 输入 20。 |
-| K2   | 下拉 / Select          | `widgets/select.rs::show`         | 30.5px 触发器 + 锚定菜单；键盘 Space/Enter/↑↓/Esc；不是原生 ComboBox。                                          |
-| K3   | 主按钮 / PrimaryButton | `widgets/primary_button.rs::show` | 宽 88；高 = 10 + 14.3 + 10 = 34.3；ink 实底，window 字；hover 提亮 + 金线，按压只压暗不缩放；金不给按钮。       |
-| K4   | 开关 / Switch          | `widgets/switch.rs::show`         | layout.switch_w/h；on=success；不是 checkbox。                                                                  |
-| K5   | 空态框 / EmptyState    | `widgets/empty.rs::card_at`       | 虚线框 + 两行盒（16.3 + 5 + 12.3）整体居中；最小 53.6；不是占位符 skeleton。                                    |
-| K6   | 加载弧 / Spinner       | `widgets/spinner.rs::show`        | 16px、270°、600ms/圈；只在加载态绘制。                                                                          |
-| K7   | 图标 / Icon            | `widgets/icons.rs::draw`          | Tabler Icons 3.50 子集字体，29 变体，24 网格 2px；不是手绘 SVG 了。                                             |
-| K8   | 数字绘制 / Digits      | `widgets/digits.rs`               | Bahnschrift 槽宽制；所有走时/剩余/温度大数的等宽来源。                                                          |
-| K9   | 倍率条 / RateStrip     | `widgets/rate_strip.rs`           | 见 B18–B23；不是 `widgets/slider.rs`。                                                                          |
-| K10  | 通用 chip（旧）        | `widgets/chip.rs::show`           | 高度 = 文字盒较高者 + chip_pad_y×2；**当前页面未消费**（农历已改 meta 行）。不要把它和闹钟快捷 chip 混称。      |
-| K11  | Slider（内部）         | `widgets/slider.rs`               | 当前主要提供 `rate_to_ratio`/`ratio_to_rate` 纯函数；主仪 UI 已由 RateStrip 接管。                              |
-| K12  | 图标按钮 / IconButton  | `widgets/icon_button.rs::show`    | 用于刷新等单图标操作；不是主按钮。                                                                              |
+| 编号 | 主称                     | 代码锚点                          | 说明 / 别名 / 禁用                                                                                                                                                          |
+| ---- | ------------------------ | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| K1   | 字段 / Field             | `widgets/field.rs::show_fixed`    | label 12/500 + 固定 20px 输入框（12px 文字上下各 4px）+ 圆角 + 焦点环；字段高 = label 12.3 + 间距 5 + 输入 20。                                                             |
+| K2   | 下拉 / Select            | `widgets/select.rs::show`         | 30.5px 触发器 + 锚定菜单；键盘 Space/Enter/↑↓/Esc；不是原生 ComboBox。                                                                                                      |
+| K3   | 主按钮 / PrimaryButton   | `widgets/primary_button.rs::show` | 宽 88；高 = 10 + 14.3 + 10 = 34.3；ink 实底，window 字；hover 提亮 + 金线，按压只压暗不缩放；金不给按钮。                                                                   |
+| K4   | 开关 / Switch            | `widgets/switch.rs::show`         | layout.switch_w/h；on=success；不是 checkbox。                                                                                                                              |
+| K5   | 空态框 / EmptyState      | `widgets/empty.rs::card_at`       | 虚线框 + 两行盒（16.3 + 5 + 12.3）整体居中；最小 53.6；不是占位符 skeleton。                                                                                                |
+| K6   | 加载弧 / Spinner         | `widgets/spinner.rs::show`        | 16px、270°、600ms/圈；只在加载态绘制。                                                                                                                                      |
+| K7   | 图标 / Icon              | `widgets/icons.rs::draw`          | Tabler Icons 3.50 子集字体，29 变体，24 网格 2px；不是手绘 SVG 了。                                                                                                         |
+| K8   | 数字绘制 / Digits        | `widgets/digits.rs`               | Bahnschrift 槽宽制；所有走时/剩余/温度大数的等宽来源。                                                                                                                      |
+| K9   | 倍率条 / RateStrip       | `widgets/rate_strip.rs`           | 见 B18–B23；不是 `widgets/slider.rs`。                                                                                                                                      |
+| K10  | 通用 chip（旧）          | `widgets/chip.rs::show`           | 高度 = 文字盒较高者 + chip_pad_y×2；**当前页面未消费**（农历已改 meta 行）。不要把它和闹钟快捷 chip 混称。                                                                  |
+| K11  | Slider（内部）           | `widgets/slider.rs`               | 当前主要提供 `rate_to_ratio`/`ratio_to_rate` 纯函数；主仪 UI 已由 RateStrip 接管。                                                                                          |
+| K12  | 图标按钮 / IconButton    | `widgets/icon_button.rs::show`    | 用于刷新等单图标操作；不是主按钮。                                                                                                                                          |
+| K13  | 列表滚动套件 / ScrollKit | `widgets/scroll_kit.rs`           | 自绘 4px 金色浮钮（卡片右缘 +8px、右边距 8/4/8 居中、最小拇指 16px、可拖拽）+ 上下 16px 渐隐 + 9px 金色三角（滚动期 1s 呼吸，停手常亮）；只服务列表视口，不跨固定头与页脚。 |
 
 ---
 
@@ -370,29 +372,33 @@
 
 ### 14.1 几何
 
-| 项             | 值                                        | 来源                              |
-| -------------- | ----------------------------------------- | --------------------------------- |
-| 窗口默认       | 960×640                                   | `base.json` `window_width/height` |
-| 窗口最小       | 520×420                                   | `base.json` `window_min_*`        |
-| 窗口最大       | 1200×820                                  | `ui.json` `layout.window_max_*`   |
-| 坞带高         | 64                                        | `layout.dock_height`              |
-| 坞 pill        | 目标 560×56；窄舞台最低 280 宽            | `layout.dock_pill_*`              |
-| 抽屉宽         | token 320–400；中央至少 420，实际最低 280 | `pages/mod.rs` / `drawer_width`   |
-| 抽屉页头       | 20 + 24.3 + 10 = 54.3                     | `page_header::show`               |
-| 抽屉页脚       | 倒计时/闹钟 101.6；世界 select + 8        | `footer_height`                   |
-| 星盘直径       | 120–560                                   | `clock::dial_diameter`            |
-| 盘下读数       | 27 + 0.62×hero                            | `draw_readout`                    |
-| 倍率条         | 宽 220–360，高 66                         | `rate_strip`                      |
-| 倒计时 Hero 卡 | 90.9                                      | `draw_hero`                       |
-| 倒计时目标行   | 55.6                                      | `draw_target_row`                 |
-| 世界城市行     | 58.6 / 64.3                               | `draw_city_row`                   |
-| 闹钟行         | 48.3                                      | `draw_alarm_row`                  |
-| 天气曲线       | 132                                       | `draw_hourly`                     |
-| 七日行         | 22.3                                      | `draw_week`                       |
-| 字段           | label 12.3 + 5 + 输入 20                  | `field::show_fixed`               |
-| 主按钮         | 10 + 14.3 + 10 = 34.3                     | `primary_button`                  |
-| 开关           | layout.switch_w/h                         | `switch`                          |
-| toast 宽       | 260；<600 窗口全宽 −32，下限 180          | `toast_width`                     |
+| 项             | 值                                                            | 来源                              |
+| -------------- | ------------------------------------------------------------- | --------------------------------- |
+| 窗口默认       | 960×640                                                       | `base.json` `window_width/height` |
+| 窗口最小       | 520×420                                                       | `base.json` `window_min_*`        |
+| 窗口最大       | 1200×820                                                      | `ui.json` `layout.window_max_*`   |
+| 坞带高         | 64                                                            | `layout.dock_height`              |
+| 坞 pill        | 目标 560×56；窄舞台最低 280 宽                                | `layout.dock_pill_*`              |
+| 抽屉宽         | token 320–400；中央至少 420，实际最低 280                     | `pages/mod.rs` / `drawer_width`   |
+| 抽屉页头       | 20 + 24.3 + 10 = 54.3                                         | `page_header::show`               |
+| 抽屉页脚       | 倒计时/闹钟 101.6；世界 select + 8                            | `footer_height`                   |
+| 星盘直径       | 120–560                                                       | `clock::dial_diameter`            |
+| 盘下读数       | 27 + 0.62×hero                                                | `draw_readout`                    |
+| 倍率条         | 宽 220–360，高 66                                             | `rate_strip`                      |
+| 倒计时 Hero 卡 | 90.9                                                          | `draw_hero`                       |
+| 倒计时目标行   | 55.6                                                          | `draw_target_row`                 |
+| 倒计时列表视口 | page_h − 54.3 − 10 − 123.2 − 101.6 − 10 = page_h − 299.1      | `countdown.rs::ui`                |
+| 列表滑杆       | 4px 金色浮钮，卡片右缘 +8px；右边距 8/4/8 居中；最小拇指 16px | `countdown.rs::draw_list_scroll`  |
+| 列表渐隐       | 上下 16px；贴边 0；100ms / 1s                                 | `scroll_kit::paint_fade`          |
+| 列表三角       | 9px 金色；滚动后 800ms 内 1s 呼吸                             | `scroll_kit::paint_hints`         |
+| 世界城市行     | 58.6 / 64.3                                                   | `draw_city_row`                   |
+| 闹钟行         | 48.3                                                          | `draw_alarm_row`                  |
+| 天气曲线       | 132                                                           | `draw_hourly`                     |
+| 七日行         | 22.3                                                          | `draw_week`                       |
+| 字段           | label 12.3 + 5 + 输入 20                                      | `field::show_fixed`               |
+| 主按钮         | 10 + 14.3 + 10 = 34.3                                         | `primary_button`                  |
+| 开关           | layout.switch_w/h                                             | `switch`                          |
+| toast 宽       | 260；<600 窗口全宽 −32，下限 180                              | `toast_width`                     |
 
 ### 14.2 颜色（`ui.json colors`）
 
@@ -470,4 +476,4 @@
 
 ---
 
-_基线：V0.6.5.3（PL021 盒模型收口）。若代码与表格冲突，以代码为准，并回来改表。_
+_基线：V0.6.5.4（PL022 倒计时列表独立滚动）。若代码与表格冲突，以代码为准，并回来改表。_

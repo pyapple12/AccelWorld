@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ACCELWORLD Clock UI 标注指南 · V0.6.5.3</title>
+    <title>ACCELWORLD Clock UI 标注指南 · V0.6.5.4</title>
     <style>
       :root {
         --bg: #0b0f19;
@@ -1813,8 +1813,8 @@
         token。目标只有一个：你指着屏幕说“这里”，我们指的是同一个东西。
       </p>
       <div class="meta-row">
-        <span class="badge gold">基线 V0.6.5.3</span>
-        <span class="badge">V0.6.5.3</span>
+        <span class="badge gold">基线 V0.6.5.4</span>
+        <span class="badge">V0.6.5.4</span>
         <span class="badge">窗口 960×640 · min 520×420 · max 1200×820</span>
         <span>配套：<code>u.UI_GLOSSARY.md</code></span>
       </div>
@@ -2317,8 +2317,10 @@
               </div>
             </div>
             <figcaption>
-              倒计时页。主仪编号见总览；本图重点标抽屉内部。页脚错误内联在
-              「目标时刻」标签行右端，按钮位置不变。
+              倒计时页。主仪编号见总览；本图重点标抽屉内部。hero
+              与近期节日固定，不参与滚动；只有目标卡列表可滚（卡片右缘 +8px 的
+              4px 金色浮钮 + 上下 16px 渐隐 + 滚动时呼吸的小三角），
+              列表视口不足一张卡时整块隐藏。页脚错误内联在「目标时刻」标签行右端，按钮位置不变。
             </figcaption>
           </figure>
           <aside class="legend-panel">
@@ -2343,14 +2345,16 @@
                 <td class="id">E7</td>
                 <td class="nm">近期节日行</td>
                 <td class="ds">
-                  12.3px 行盒；未来 5 个节日，金色可点，行盒底 +2px 画 2px 金线
+                  12.3px 行盒；未来 5 个节日，金色可点，行盒底 +2px 画 2px
+                  金线；固定不滚
                 </td>
               </tr>
               <tr>
                 <td class="id">E9</td>
                 <td class="nm">目标行卡</td>
                 <td class="ds">
-                  55.6px；10 + 名称 14.3 + 5 + 第二行 16.3 + 10
+                  55.6px（10 + 名称 14.3 + 5 + 第二行 16.3 +
+                  10）；列表视口唯一滚动内容
                 </td>
               </tr>
               <tr>
@@ -3925,6 +3929,14 @@
                 <td><code>countdown.rs</code></td>
               </tr>
               <tr>
+                <td>倒计时列表滑杆 / 渐隐 / 三角</td>
+                <td>
+                  4px 金色，卡片右缘 +8px（8/4/8 居中）；上下
+                  16px；9px，滚动时呼吸
+                </td>
+                <td><code>countdown.rs</code> / <code>scroll_kit.rs</code></td>
+              </tr>
+              <tr>
                 <td>世界城市行 / 闹钟行</td>
                 <td>58.6 / 64.3 / 48.3</td>
                 <td><code>world.rs</code> / <code>alarm.rs</code></td>
@@ -4274,7 +4286,7 @@
     </main>
 
     <footer class="wrap footer">
-      <span>ACCELWORLD Clock UI 标注指南 · 基线 V0.6.5.3</span>
+      <span>ACCELWORLD Clock UI 标注指南 · 基线 V0.6.5.4</span>
       <span
         >配套：<code>u.UI_GLOSSARY.md</code> · 窗口图按 820px
         宽绘制，仅示意结构，不替代真机截图</span
