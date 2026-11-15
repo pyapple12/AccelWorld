@@ -183,25 +183,40 @@ fn draw_item(
         );
     }
     let color = if active { strong } else { muted };
-    // 图标与文字间距固定 5px（不随坞高变化）：图标 20px 居中于 center-8，文字顶 center+3
-    let icon_cy = if compact {
-        rect.center().y
+    let label_font = crate::theme::font_medium(11.0);
+    let label_h = super::text_metrics::height(ui.ctx(), &label_font, super::text_ink::InkKind::Cjk);
+    let label_bottom = rect.bottom() - 4.0;
+    let label_top = label_bottom - label_h;
+    let icon_gap = 5.0;
+    let (icon_rect, label_box) = if compact {
+        (rect, None)
     } else {
-        rect.center().y - 8.0
+        (
+            egui::Rect::from_min_max(rect.min, egui::pos2(rect.max.x, label_top - icon_gap)),
+            Some(egui::Rect::from_min_max(
+                egui::pos2(rect.min.x, label_top),
+                egui::pos2(rect.max.x, label_bottom),
+            )),
+        )
     };
     icons::draw(
         ui.painter(),
-        egui::pos2(rect.center().x, icon_cy),
+        icon_rect.center(),
         if compact { 22.0 } else { 20.0 },
         icon,
         color,
     );
-    if !compact {
+    if let Some(label_box) = label_box {
+        let label_ink =
+            super::text_ink::measure(ui, label, &label_font, super::text_ink::InkKind::Cjk);
         ui.painter().text(
-            egui::pos2(rect.center().x, rect.center().y + 3.0),
+            egui::pos2(
+                label_box.center().x,
+                label_ink.top_for_bottom(label_box.bottom()),
+            ),
             Align2::CENTER_TOP,
             label,
-            crate::theme::font_medium(11.0),
+            label_font,
             color,
         );
     }

@@ -7,7 +7,7 @@ use crate::widgets::{icons, switch};
 /// 设置页正文（页头由 pages::Pages 统一绘制）
 pub fn ui(ui: &mut egui::Ui, state: &mut UiState) {
     let ink = crate::theme::ink();
-    // 盒高查启动指标表（角色最大墨迹高，不是当前字符串）
+    // 盒高查启动指标表（字号 + 0.5，不是当前字符串）
     let section_font = crate::theme::font_semibold(crate::theme::font_size("section"));
     let meta_font = crate::theme::font_regular(crate::theme::font_size("meta"));
     let body_font = crate::theme::font_regular(crate::theme::font_size("body"));
@@ -90,9 +90,18 @@ pub fn ui(ui: &mut egui::Ui, state: &mut UiState) {
 
             let rect = stack.next(ui, brand_h);
             let brand_box = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), meta_h));
+            let brand_ink = crate::widgets::text_ink::measure(
+                ui,
+                "天宫时计 · 子夜星图",
+                &meta_font,
+                crate::widgets::text_ink::InkKind::Cjk,
+            );
             ui.painter().text(
-                brand_box.left_center(),
-                egui::Align2::LEFT_CENTER,
+                egui::pos2(
+                    brand_box.left(),
+                    brand_ink.top_for_bottom(brand_box.bottom()),
+                ),
+                egui::Align2::LEFT_TOP,
                 "天宫时计 · 子夜星图",
                 meta_font,
                 ink.meta,
@@ -115,9 +124,18 @@ fn section_box(ui: &egui::Ui, rect: egui::Rect, title: &str, desc: &str, ink: &c
         crate::widgets::text_ink::InkKind::Cjk,
     );
     let title_box = egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), section_h));
+    let title_ink = crate::widgets::text_ink::measure(
+        ui,
+        title,
+        &section_font,
+        crate::widgets::text_ink::InkKind::Cjk,
+    );
     ui.painter().text(
-        title_box.left_center(),
-        egui::Align2::LEFT_CENTER,
+        egui::pos2(
+            title_box.left(),
+            title_ink.top_for_bottom(title_box.bottom()),
+        ),
+        egui::Align2::LEFT_TOP,
         title,
         section_font,
         ink.strong,
@@ -129,9 +147,15 @@ fn section_box(ui: &egui::Ui, rect: egui::Rect, title: &str, desc: &str, ink: &c
         ),
         egui::vec2(rect.width(), desc_h),
     );
+    let desc_ink = crate::widgets::text_ink::measure(
+        ui,
+        desc,
+        &desc_font,
+        crate::widgets::text_ink::InkKind::Cjk,
+    );
     ui.painter().text(
-        desc_box.left_center(),
-        egui::Align2::LEFT_CENTER,
+        egui::pos2(desc_box.left(), desc_ink.top_for_bottom(desc_box.bottom())),
+        egui::Align2::LEFT_TOP,
         desc,
         desc_font,
         ink.muted,
@@ -156,9 +180,17 @@ fn row_box(
 ) {
     let painter = ui.painter().with_clip_rect(rect);
     let font = crate::theme::font_regular(crate::theme::font_size("body"));
+    let text_h = crate::widgets::text_metrics::height(
+        ui.ctx(),
+        &font,
+        crate::widgets::text_ink::InkKind::Cjk,
+    );
+    let text_bottom = rect.center().y + text_h / 2.0;
+    let label_ink =
+        crate::widgets::text_ink::measure(ui, label, &font, crate::widgets::text_ink::InkKind::Cjk);
     painter.text(
-        rect.left_center(),
-        egui::Align2::LEFT_CENTER,
+        egui::pos2(rect.left(), label_ink.top_for_bottom(text_bottom)),
+        egui::Align2::LEFT_TOP,
         label,
         font.clone(),
         ink.body,
@@ -174,9 +206,11 @@ fn row_box(
         );
         right -= 22.0;
     }
+    let value_ink =
+        crate::widgets::text_ink::measure(ui, value, &font, crate::widgets::text_ink::InkKind::Cjk);
     painter.text(
-        egui::pos2(right, rect.center().y),
-        egui::Align2::RIGHT_CENTER,
+        egui::pos2(right, value_ink.top_for_bottom(text_bottom)),
+        egui::Align2::RIGHT_TOP,
         value,
         font,
         ink.muted,
@@ -206,9 +240,18 @@ fn switch_box(
         egui::pos2(rect.left(), rect.top() + crate::theme::spacing_f32("sm")),
         egui::vec2(rect.width(), title_h),
     );
+    let title_ink = crate::widgets::text_ink::measure(
+        ui,
+        "减少动效",
+        &title_font,
+        crate::widgets::text_ink::InkKind::Cjk,
+    );
     ui.painter().text(
-        title_box.left_center(),
-        egui::Align2::LEFT_CENTER,
+        egui::pos2(
+            title_box.left(),
+            title_ink.top_for_bottom(title_box.bottom()),
+        ),
+        egui::Align2::LEFT_TOP,
         "减少动效",
         title_font,
         ink.body,
@@ -220,9 +263,15 @@ fn switch_box(
         ),
         egui::vec2(rect.width(), desc_h),
     );
+    let desc_ink = crate::widgets::text_ink::measure(
+        ui,
+        "直取终态，不做过渡",
+        &desc_font,
+        crate::widgets::text_ink::InkKind::Cjk,
+    );
     ui.painter().text(
-        desc_box.left_center(),
-        egui::Align2::LEFT_CENTER,
+        egui::pos2(desc_box.left(), desc_ink.top_for_bottom(desc_box.bottom())),
+        egui::Align2::LEFT_TOP,
         "直取终态，不做过渡",
         desc_font,
         ink.muted,

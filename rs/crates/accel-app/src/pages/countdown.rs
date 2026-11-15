@@ -186,6 +186,63 @@ impl crate::pages::Page for crate::pages::CountdownPage {
         }
 
         let row_h = target_row_height(ui);
+        if crate::layout_probe::on() {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static FRAME: AtomicU64 = AtomicU64::new(0);
+            if FRAME.fetch_add(1, Ordering::Relaxed).is_multiple_of(30) {
+                let gap = crate::widgets::box_stack::BOX_GAP;
+                let hero_name = hero_name_line_h(ui);
+                let hero_full = hero_height(ui);
+                let row_full = target_row_height(ui);
+                let field_h = crate::widgets::field::fixed_height(ui);
+                let button_h = crate::widgets::primary_button::height(ui);
+                let footer_gap = crate::theme::layout_f32("footer_gap");
+                let footer_bottom = crate::theme::layout_f32("footer_bottom");
+                eprintln!(
+                    "[LAYOUT_COUNTDOWN] avail=({:.1},{:.1},{:.1},{:.1}) footer_h={:.1} body_h={:.1} body=({:.1},{:.1},{:.1},{:.1}) footer=({:.1},{:.1},{:.1},{:.1}) hero_h={:.1} meta_h={:.1} gap={:.1} header_h={:.1} header=({:.1},{:.1},{:.1},{:.1}) list=({:.1},{:.1},{:.1},{:.1}) row_h={:.1} rows={} rows_x_h={:.1} hero_name={:.1} hero_full={:.1} row_full={:.1} field={:.1} button={:.1} footer_parts=({:.1}+{:.1}+{:.1}+{:.1}) hero_present={} festivals={}",
+                    avail.left(),
+                    avail.top(),
+                    avail.width(),
+                    avail.height(),
+                    footer_h,
+                    body_h,
+                    body_rect.left(),
+                    body_rect.top(),
+                    body_rect.width(),
+                    body_rect.height(),
+                    footer_rect.left(),
+                    footer_rect.top(),
+                    footer_rect.width(),
+                    footer_rect.height(),
+                    hero_h.unwrap_or(0.0),
+                    meta_h.unwrap_or(0.0),
+                    gap,
+                    header_h,
+                    header_rect.left(),
+                    header_rect.top(),
+                    header_rect.width(),
+                    header_rect.height(),
+                    list_rect.left(),
+                    list_rect.top(),
+                    list_rect.width(),
+                    list_rect.height(),
+                    row_h,
+                    targets.len(),
+                    targets.len() as f32 * row_h,
+                    hero_name,
+                    hero_full,
+                    row_full,
+                    field_h,
+                    button_h,
+                    field_h,
+                    footer_gap,
+                    button_h,
+                    footer_bottom,
+                    hero.is_some(),
+                    festivals.len()
+                );
+            }
+        }
         if targets.is_empty() {
             // 空态与滚动无关：不建 ScrollArea，CTA + 虚线框静态占列表矩形
             if list_rect.height() > 0.5 {
@@ -271,6 +328,16 @@ fn draw_festivals(
         .width();
     let label_ink = text_ink::measure(ui, label, &font, InkKind::Cjk);
     let text_y = label_ink.top_for_bottom(rect.bottom());
+    crate::layout_probe::rect(ui, "cd.fest", rect);
+    crate::layout_probe::text(
+        ui,
+        "cd.fest_label",
+        label,
+        &font,
+        InkKind::Cjk,
+        egui::pos2(rect.left(), text_y),
+        egui::Align2::LEFT_TOP,
+    );
     ui.painter().text(
         egui::pos2(rect.left(), text_y),
         egui::Align2::LEFT_TOP,
@@ -496,6 +563,25 @@ fn draw_hero(
         .layout_no_wrap("下一个节日".to_string(), label_font.clone(), ink.muted)
         .rect
         .width();
+    crate::layout_probe::rect(ui, "cd.hero", rect);
+    crate::layout_probe::text(
+        ui,
+        "cd.hero_label",
+        "下一个节日",
+        &label_font,
+        InkKind::Cjk,
+        egui::pos2(rect.left() + 10.0, label_y),
+        egui::Align2::LEFT_TOP,
+    );
+    crate::layout_probe::text(
+        ui,
+        "cd.hero_name",
+        name,
+        &name_font,
+        InkKind::Cjk,
+        egui::pos2(rect.left() + 10.0 + label_w + 8.0, name_y),
+        egui::Align2::LEFT_TOP,
+    );
     painter.text(
         egui::pos2(rect.left() + 10.0, label_y),
         egui::Align2::LEFT_TOP,
@@ -511,7 +597,7 @@ fn draw_hero(
         ink.strong,
     );
 
-    // 第二行：还剩（28 常规 + accent） + 剩余（28 粗体 + strong），固定中心线
+    // 第二行：还剩（28 常规 + accent） + 剩余（28 粗体 + strong），共用数值行盒底
     let third_top = top + line_h + 10.0;
     let line3 = crate::widgets::text_metrics::height(
         ui.ctx(),
@@ -528,13 +614,13 @@ fn draw_hero(
         &crate::theme::font_semibold(28.0),
         InkKind::Digits,
     ));
-    let center_y = third_top + line3 / 2.0;
+    let line3_bottom = third_top + line3;
     let right = rect.right() - 10.0;
     let value_left = right - value_w;
     painter.text(
         egui::pos2(
             value_left - 6.0 - remain_w,
-            center_y - remain_ink.h / 2.0 - remain_ink.top_pad,
+            remain_ink.top_for_bottom(line3_bottom),
         ),
         egui::Align2::LEFT_TOP,
         "还剩",
@@ -542,16 +628,14 @@ fn draw_hero(
         crate::theme::accent_color(),
     );
     if ended {
+        let ended_ink = text_ink::measure(ui, &value_text, &value_font, InkKind::Cjk);
         let text_w = ui
             .painter()
             .layout_no_wrap(value_text.clone(), value_font.clone(), ink.danger)
             .rect
             .width();
         painter.text(
-            egui::pos2(
-                right - text_w,
-                center_y - tian_ink.h / 2.0 - tian_ink.top_pad,
-            ),
+            egui::pos2(right - text_w, ended_ink.top_for_bottom(line3_bottom)),
             egui::Align2::LEFT_TOP,
             &value_text,
             value_font,
@@ -561,40 +645,39 @@ fn draw_hero(
         // 天数在 3 位模板区内右对齐；数字与天 5px；天与时间 5px
         let start = right - value_w;
         let day_x = start + day_template_w - day_actual_w;
-        digits::draw_centered_ink(
+        digits::draw_bottom(
             &painter,
-            egui::pos2(day_x + day_actual_w / 2.0, center_y),
+            line3_bottom,
+            day_x + day_actual_w / 2.0,
             day_text,
             &value_font,
             ink.strong,
         );
         let tian_x = start + day_template_w + 5.0;
         painter.text(
-            egui::pos2(tian_x, center_y - tian_ink.h / 2.0 - tian_ink.top_pad),
+            egui::pos2(tian_x, tian_ink.top_for_bottom(line3_bottom)),
             egui::Align2::LEFT_TOP,
             "天",
             value_font.clone(),
             ink.strong,
         );
         let time_x = tian_x + tian_w + 5.0;
-        digits::draw_centered_ink(
+        digits::draw_bottom(
             &painter,
-            egui::pos2(time_x + time_w / 2.0, center_y),
+            line3_bottom,
+            time_x + time_w / 2.0,
             time_text,
             &value_font,
             ink.strong,
         );
     }
 
-    // 第三行：到期日（盒内墨迹底贴盒底）
+    // 第三行：到期日（盒底对齐）
     let date_top = third_top + line3 + 10.0;
     let date_h = crate::widgets::text_metrics::height(ui.ctx(), &date_font, InkKind::Cjk);
     let date_bottom = date_top + date_h;
     painter.text(
-        egui::pos2(
-            rect.left() + 10.0,
-            date_bottom - date_ink.h - date_ink.top_pad,
-        ),
+        egui::pos2(rect.left() + 10.0, date_ink.top_for_bottom(date_bottom)),
         egui::Align2::LEFT_TOP,
         &date_text,
         date_font,
@@ -684,6 +767,16 @@ fn draw_target_row(
         egui::pos2(rect.left() + 14.0, rect.top() + 10.0),
         egui::vec2(rect.width() - 28.0, name_h),
     );
+    crate::layout_probe::rect(ui, "cd.row", rect);
+    crate::layout_probe::text(
+        ui,
+        "cd.row_name",
+        name,
+        &name_font,
+        InkKind::Cjk,
+        egui::pos2(name_box.left(), name_ink.top_for_bottom(name_box.bottom())),
+        egui::Align2::LEFT_TOP,
+    );
     ui.painter().text(
         egui::pos2(name_box.left(), name_ink.top_for_bottom(name_box.bottom())),
         egui::Align2::LEFT_TOP,
@@ -693,7 +786,15 @@ fn draw_target_row(
     );
     let line2_top = name_box.bottom() + 5.0;
     let line2_bottom = line2_top + line2_h;
-    let line2_center = line2_top + line2_h / 2.0;
+    crate::layout_probe::text(
+        ui,
+        "cd.row_date",
+        &date_text,
+        &date_font,
+        InkKind::Cjk,
+        egui::pos2(rect.left() + 14.0, date_ink.top_for_bottom(line2_bottom)),
+        egui::Align2::LEFT_TOP,
+    );
     ui.painter().text(
         egui::pos2(rect.left() + 14.0, date_ink.top_for_bottom(line2_bottom)),
         egui::Align2::LEFT_TOP,
@@ -705,9 +806,10 @@ fn draw_target_row(
     let value_right = rect.right() - 36.0;
     if ended {
         let w = digits::text_width(ui.painter(), &text, &time_font);
-        digits::draw_centered(
+        digits::draw_bottom(
             ui.painter(),
-            egui::pos2(value_right - w / 2.0, line2_center),
+            line2_bottom,
+            value_right - w / 2.0,
             &text,
             &time_font,
             ink.danger,
@@ -731,9 +833,10 @@ fn draw_target_row(
         let value_w = day_template_w + gap + tian_w + gap + time_w;
         let start = value_right - value_w;
         let day_x = start + day_template_w - day_actual_w;
-        digits::draw_centered(
+        digits::draw_bottom(
             ui.painter(),
-            egui::pos2(day_x + day_actual_w / 2.0, line2_center),
+            line2_bottom,
+            day_x + day_actual_w / 2.0,
             day_text,
             &time_font,
             ink.muted,
@@ -747,9 +850,10 @@ fn draw_target_row(
             ink.muted,
         );
         let time_x = tian_x + tian_w + gap;
-        digits::draw_centered(
+        digits::draw_bottom(
             ui.painter(),
-            egui::pos2(time_x + time_w / 2.0, line2_center),
+            line2_bottom,
+            time_x + time_w / 2.0,
             time_text,
             &time_font,
             ink.muted,
@@ -835,6 +939,24 @@ fn draw_list_scroll(
     let offset = out.state.clamped_offset().y;
     let max_offset = (out.content_size.y - viewport.height()).max(0.0);
     let scrollable = max_offset > 1.0;
+    if std::env::var("ACCELWORLD_LAYOUT_PROBE").is_ok() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static FRAME: AtomicU64 = AtomicU64::new(0);
+        if FRAME.fetch_add(1, Ordering::Relaxed).is_multiple_of(30) {
+            eprintln!(
+                "[LAYOUT_COUNTDOWN_LIST] viewport=({:.1},{:.1},{:.1},{:.1}) content=({:.1},{:.1}) scrollable={} offset={:.1} max={:.1}",
+                viewport.left(),
+                viewport.top(),
+                viewport.width(),
+                viewport.height(),
+                out.content_size.x,
+                out.content_size.y,
+                scrollable,
+                offset,
+                max_offset
+            );
+        }
+    }
     let at_top = offset <= 0.5;
     let at_bottom = offset >= max_offset - 0.5;
 
@@ -1051,9 +1173,10 @@ fn draw_footer(
         let font = crate::theme::font_semibold(crate::theme::font_size("meta"));
         let label_h = crate::widgets::text_metrics::height(ui.ctx(), &font, InkKind::Cjk);
         let rect = ui.max_rect();
+        let err_ink = text_ink::measure(ui, "输入错误！", &font, InkKind::Cjk);
         ui.painter().text(
-            egui::pos2(rect.right(), rect.top() + label_h / 2.0),
-            egui::Align2::RIGHT_CENTER,
+            egui::pos2(rect.right(), err_ink.top_for_bottom(rect.top() + label_h)),
+            egui::Align2::RIGHT_TOP,
             "输入错误！",
             font,
             ink.danger,

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ACCELWORLD Clock UI 标注指南 · V0.6.5.4</title>
+    <title>ACCELWORLD Clock UI 标注指南 · V0.6.5.5</title>
     <style>
       :root {
         --bg: #0b0f19;
@@ -1813,8 +1813,8 @@
         token。目标只有一个：你指着屏幕说“这里”，我们指的是同一个东西。
       </p>
       <div class="meta-row">
-        <span class="badge gold">基线 V0.6.5.4</span>
-        <span class="badge">V0.6.5.4</span>
+        <span class="badge gold">基线 V0.6.5.5</span>
+        <span class="badge">V0.6.5.5</span>
         <span class="badge">窗口 960×640 · min 520×420 · max 1200×820</span>
         <span>配套：<code>u.UI_GLOSSARY.md</code></span>
       </div>
@@ -1971,7 +1971,8 @@
                 <td class="id">B1</td>
                 <td class="nm">舞台页头</td>
                 <td class="ds">
-                  左日期 + 右农历；盒高 = 固定行高 + 10px 到分隔线
+                  左日期盒 14.5 + 右农历盒 12.5×2+3=28.0，盒底对齐；盒底 +5 空气
+                  +1 横线
                 </td>
               </tr>
               <tr>
@@ -2012,7 +2013,7 @@
               <tr>
                 <td class="id">D2</td>
                 <td class="nm">抽屉页头</td>
-                <td class="ds">页面标题 + 关闭 ×；高 54.3（20 + 24.3 + 10）</td>
+                <td class="ds">页面标题 + 关闭 ×；高 54.5（20 + 24.5 + 10）</td>
               </tr>
               <tr>
                 <td class="id">D7</td>
@@ -2101,8 +2102,8 @@
                 <td class="id">B1</td>
                 <td class="nm">舞台页头</td>
                 <td class="ds">
-                  盒高 = 固定行高 + 10px 到分隔线；高 560 分两行/一行，宽 560
-                  分完整/精简
+                  左日期盒 14.5 + 右农历盒 28.0（12.5×2+3），盒底对齐；盒底 +5
+                  +1 横线；高 560 分两行/一行，宽 560 分完整/精简
                 </td>
               </tr>
               <tr>
@@ -2334,7 +2335,7 @@
               <tr>
                 <td class="id">E2</td>
                 <td class="nm">Hero 卡</td>
-                <td class="ds">90.9px；默认春节，或用户点选的近期节日</td>
+                <td class="ds">91.5px；默认春节，或用户点选的近期节日</td>
               </tr>
               <tr>
                 <td class="id">E3</td>
@@ -2345,7 +2346,7 @@
                 <td class="id">E7</td>
                 <td class="nm">近期节日行</td>
                 <td class="ds">
-                  12.3px 行盒；未来 5 个节日，金色可点，行盒底 +2px 画 2px
+                  12.5px 行盒；未来 5 个节日，金色可点，行盒底 +2px 画 2px
                   金线；固定不滚
                 </td>
               </tr>
@@ -2353,7 +2354,7 @@
                 <td class="id">E9</td>
                 <td class="nm">目标行卡</td>
                 <td class="ds">
-                  55.6px（10 + 名称 14.3 + 5 + 第二行 16.3 +
+                  56.0px（10 + 名称 14.5 + 5 + 第二行 16.5 +
                   10）；列表视口唯一滚动内容
                 </td>
               </tr>
@@ -2368,14 +2369,14 @@
                 <td class="id">E15</td>
                 <td class="nm">抽屉页脚</td>
                 <td class="ds">
-                  固定 101.6；标签 12.3 + 5 + 输入 20 + 10 + 按钮 34.3 + 20
+                  固定 102.5；标签 12.5 + 5 + 输入 20.5 + 10 + 按钮 34.5 + 20
                 </td>
               </tr>
               <tr>
                 <td class="id">E16</td>
                 <td class="nm">名称字段</td>
                 <td class="ds">
-                  固定盒：label 12.3 + 5 + 输入 20；12px 文字上下各 4px
+                  固定盒：label 12.5 + 5 + 输入 20.5；12.5 文字盒上下各 4px
                 </td>
               </tr>
               <tr>
@@ -2388,7 +2389,7 @@
               <tr>
                 <td class="id">E18</td>
                 <td class="nm">添加按钮</td>
-                <td class="ds">宽 88；高 34.3；ink 实底；不是金色</td>
+                <td class="ds">宽 88；高 34.5；ink 实底；不是金色</td>
               </tr>
             </table>
             <h3>目测检查点</h3>
@@ -3650,7 +3651,7 @@
           <div class="component-card">
             <h4>K3 · 主按钮 PrimaryButton</h4>
             <p class="cdesc">
-              宽 88；高 34.3（10 + 14.3 + 10）；ink 实底；金不给按钮
+              宽 88；高 34.5（10 + 14.5 + 10）；ink 实底；金不给按钮
             </p>
             <div class="demo-buttons">
               <span class="demo-btn">常态</span>
@@ -3670,7 +3671,7 @@
           <div class="component-card">
             <h4>K5 · 空态 EmptyState</h4>
             <p class="cdesc">
-              虚线框 + 标题盒 16.3 + 5 + 正文盒 12.3，整体居中；最小 53.6
+              虚线框 + 标题盒 16.5 + 5 + 正文盒 12.5，整体居中；最小 54.0
             </p>
             <div class="demo-empty">
               <span class="t">还没有目标</span>
@@ -3904,28 +3905,31 @@
               <tr>
                 <td>抽屉页头 / 页脚</td>
                 <td>
-                  页头 54.3（20+24.3+10）；页脚倒计时/闹钟 101.6，世界 select+8
+                  页头 54.5（20+24.5+10）；页脚倒计时/闹钟 102.5，世界 select+8
                 </td>
                 <td><code>page_header::show / footer_height</code></td>
               </tr>
               <tr>
                 <td>星盘</td>
-                <td>120–560（常驻，无数字版）</td>
+                <td>
+                  边长 = min(剩余高, 页宽 − 2×82)，下限 120、无上限；82 = 10 +
+                  52 + 20；可见盘 = 盒 − 20
+                </td>
                 <td><code>clock::dial_diameter</code></td>
               </tr>
               <tr>
                 <td>盘下读数</td>
-                <td>27 + 0.62×hero（固定读数盒）</td>
+                <td>12.5 + 5 + max(hero+0.5, real+0.5, 18.5)（固定读数盒）</td>
                 <td><code>draw_readout</code></td>
               </tr>
               <tr>
                 <td>倍率条</td>
-                <td>宽 220–360，高 66；轨 6px；旋钮 8→9px；1–365</td>
+                <td>宽 220–360，高 86.5；轨 6px；旋钮 8→9px；1–365</td>
                 <td><code>widgets/rate_strip.rs</code></td>
               </tr>
               <tr>
                 <td>倒计时 Hero / 目标行</td>
-                <td>90.9 / 55.6</td>
+                <td>91.5 / 56.0</td>
                 <td><code>countdown.rs</code></td>
               </tr>
               <tr>
@@ -3938,17 +3942,17 @@
               </tr>
               <tr>
                 <td>世界城市行 / 闹钟行</td>
-                <td>58.6 / 64.3 / 48.3</td>
+                <td>59.0 / 64.5 / 48.5</td>
                 <td><code>world.rs</code> / <code>alarm.rs</code></td>
               </tr>
               <tr>
                 <td>天气曲线 / 七日行</td>
-                <td>132 / 22.3</td>
+                <td>132 / 22.5</td>
                 <td><code>weather.rs</code></td>
               </tr>
               <tr>
                 <td>字段 / 主按钮 / 开关</td>
-                <td>字段 12.3+5+20 / 按钮 34.3 / 开关 layout token</td>
+                <td>字段 12.5+5+20.5 / 按钮 34.5 / 开关 layout token</td>
                 <td>
                   <code>field</code> / <code>primary_button</code> /
                   <code>switch</code>
@@ -4286,7 +4290,7 @@
     </main>
 
     <footer class="wrap footer">
-      <span>ACCELWORLD Clock UI 标注指南 · 基线 V0.6.5.4</span>
+      <span>ACCELWORLD Clock UI 标注指南 · 基线 V0.6.5.5</span>
       <span
         >配套：<code>u.UI_GLOSSARY.md</code> · 窗口图按 820px
         宽绘制，仅示意结构，不替代真机截图</span

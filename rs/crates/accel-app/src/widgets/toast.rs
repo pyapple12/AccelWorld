@@ -5,6 +5,8 @@
 //! 零忙转纪律自持）
 
 use crate::bus::{Toast, ToastKind};
+use crate::widgets::icons::{self, Icon};
+use crate::widgets::text_ink::{self, InkKind};
 
 /// toast 卡片宽（纯函数）：<600 视口全宽 −32，宽窗 260；下限 180
 pub fn toast_width(viewport_w: f32) -> f32 {
@@ -84,49 +86,90 @@ pub fn paint(ctx: &egui::Context, toasts: &mut Vec<Toast>) {
                     .stroke(egui::Stroke::new(1.0, crate::theme::border_color()))
                     .inner_margin(egui::Margin::same(12))
                     .show(ui, |ui| {
-                        ui.set_max_width(width - 24.0);
+                        let content_w = width - 24.0;
+                        let title_font = crate::theme::font_medium(crate::theme::font_size("body"));
+                        let body_font = crate::theme::font_regular(crate::theme::font_size("meta"));
+                        let title_h = crate::widgets::text_metrics::height(
+                            ui.ctx(),
+                            &title_font,
+                            InkKind::Cjk,
+                        );
+                        let body_galley = ui.painter().layout(
+                            toast.body.clone(),
+                            body_font.clone(),
+                            ink.muted,
+                            content_w,
+                        );
+                        let body_rows = body_galley.rows.len().max(1);
+                        let body_h =
+                            (body_rows as f32 * (body_font.size + 0.5)).max(body_galley.size().y);
+                        let gap = 5.0;
+                        let content_h = title_h + gap + body_h;
+                        let (content, _) = ui.allocate_exact_size(
+                            egui::vec2(content_w, content_h),
+                            egui::Sense::hover(),
+                        );
                         // 左缘色条（状态不只靠颜色：色条 + 标题 + 正文三层冗余）
-                        let inner = ui.max_rect();
                         ui.painter().rect_filled(
                             egui::Rect::from_min_size(
-                                egui::pos2(inner.left() - 12.0, inner.top() - 12.0),
-                                egui::vec2(3.0, inner.height() + 24.0),
+                                egui::pos2(content.left() - 12.0, content.top() - 12.0),
+                                egui::vec2(3.0, content.height() + 24.0),
                             ),
                             egui::epaint::CornerRadius::same(0),
                             edge,
                         );
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new(&toast.title)
-                                    .font(crate::theme::font_medium(crate::theme::font_size(
-                                        "body",
-                                    )))
-                                    .color(ink.strong),
-                            );
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    if ui
-                                        .add(
-                                            egui::Button::new(
-                                                egui::RichText::new("×").size(16.0).color(ink.meta),
-                                            )
-                                            .frame(false)
-                                            .min_size(egui::vec2(20.0, 20.0)),
-                                        )
-                                        .on_hover_text("关闭")
-                                        .clicked()
-                                    {
-                                        close = true;
-                                    }
-                                },
-                            );
-                        });
-                        ui.label(
-                            egui::RichText::new(&toast.body)
-                                .font(crate::theme::font_regular(crate::theme::font_size("meta")))
-                                .color(ink.muted),
+                        // 标题盒：右侧留 20px 关闭键；文字盒底对齐
+                        let title_box = egui::Rect::from_min_size(
+                            content.min,
+                            egui::vec2((content_w - 24.0).max(1.0), title_h),
                         );
+                        let title_ink =
+                            text_ink::measure(ui, &toast.title, &title_font, InkKind::Cjk);
+                        ui.painter().with_clip_rect(title_box).text(
+                            egui::pos2(
+                                title_box.left(),
+                                title_ink.top_for_bottom(title_box.bottom()),
+                            ),
+                            egui::Align2::LEFT_TOP,
+                            &toast.title,
+                            title_font,
+                            ink.strong,
+                        );
+                        // 关闭：图标进 20×20 盒，与页头同一语言
+                        let close_rect = egui::Rect::from_min_size(
+                            egui::pos2(content.right() - 20.0, content.top()),
+                            egui::vec2(20.0, 20.0),
+                        );
+                        let close_resp = ui.interact(
+                            close_rect,
+                            egui::Id::unique(("toast_close", i, toast.born)),
+                            egui::Sense::click(),
+                        );
+                        icons::draw(
+                            ui.painter(),
+                            close_rect.center(),
+                            14.0,
+                            Icon::Close,
+                            if close_resp.hovered() {
+                                ink.strong
+                            } else {
+                                ink.meta
+                            },
+                        );
+                        let keyboard = close_resp.has_focus()
+                            && ui.input(|i| {
+                                i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Space)
+                            });
+                        if close_resp.clicked() || keyboard {
+                            close = true;
+                        }
+                        // 正文盒：盒底对齐；长文本按盒裁剪，不越过卡片
+                        let body_box = egui::Rect::from_min_size(
+                            egui::pos2(content.left(), content.top() + title_h + gap),
+                            egui::vec2(content_w, body_h),
+                        );
+                        ui.painter()
+                            .galley(body_box.left_top(), body_galley, ink.muted);
                     });
             });
         if close {
@@ -141,7 +184,8 @@ pub fn paint(ctx: &egui::Context, toasts: &mut Vec<Toast>) {
 // ===== src/widgets/toast.rs 说明区 =====
 // 输入：UiState.toasts（drain 入队/修剪）；输出：右上角堆叠卡片绘制 + 提频重绘
 // 逻辑步骤：修剪过期（bus drain 已做，此处兜底）→ 提频决策（动画 16ms/驻留
-//   0.25s）→ 逐卡 Area 定位绘制（入场/出场滑移按 born 相位推导，无逐卡状态）
+//   0.25s）→ 逐卡 Area 定位绘制（入场/出场滑移按 born 相位推导，无逐卡状态）→
+//   标题盒 14.5 + 5 + 正文盒（行数×12.5，不低于 galley 高）；关闭为 20×20 盒内 Tabler Close 图标
 // 设计理由（PL016.07）：审核建议 egui-notify——其发布线未覆盖 egui 0.37，
 //   手写零依赖且动画参数/主题全走 ui.json motion 段（自持纪律）；出场选滑出
 //   而非淡出（Frame 无 alpha 管线，滑出同样成立且实现干净）

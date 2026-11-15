@@ -5,12 +5,12 @@ use egui::{Sense, Vec2};
 
 use super::text_ink::{self, InkKind};
 
-/// chip 高度：label/value 行高较大者 + 上下 padding token
+/// chip 高度：label/value 盒高较大者 + 上下 padding token
 pub fn chip_height(ui: &egui::Ui) -> f32 {
     let label_font = egui::FontId::proportional(crate::theme::font_size("meta"));
     let value_font = egui::FontId::proportional(crate::theme::font_size("body"));
-    let label_h = crate::widgets::text_metrics::line_height(ui.ctx(), &label_font);
-    let value_h = crate::widgets::text_metrics::line_height(ui.ctx(), &value_font);
+    let label_h = crate::widgets::text_metrics::height(ui.ctx(), &label_font, InkKind::Cjk);
+    let value_h = crate::widgets::text_metrics::height(ui.ctx(), &value_font, InkKind::Cjk);
     label_h.max(value_h) + 2.0 * crate::theme::layout_f32("chip_pad_y")
 }
 
@@ -78,8 +78,14 @@ pub fn show(ui: &mut egui::Ui, label: &str, value: &str) -> egui::Response {
     let center_y = rect.center().y;
     let label_ink = text_ink::measure(ui, label, &label_font, InkKind::Cjk);
     let value_ink = text_ink::measure(ui, value, &value_font, InkKind::Cjk);
-    let max_size = label_font.size.max(value_font.size);
-    let baseline = center_y + (max_size - crate::widgets::text_metrics::RESERVE) * 0.5;
+    let max_font = if label_font.size >= value_font.size {
+        &label_font
+    } else {
+        &value_font
+    };
+    let box_h = crate::widgets::text_metrics::height(ui.ctx(), max_font, InkKind::Cjk);
+    let box_bottom = center_y + box_h * 0.5;
+    let baseline = box_bottom - crate::widgets::text_metrics::BOTTOM_RESERVE;
     ui.painter().text(
         egui::pos2(rect.left() + 12.0, label_ink.top_for_baseline(baseline)),
         egui::Align2::LEFT_TOP,

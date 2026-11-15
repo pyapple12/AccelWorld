@@ -1,64 +1,99 @@
-//! 短倍率条（PL020）：360px 居中、6px 轨、1×/365× 端标、整数 1–365 档；
+//! 短倍率条（PL023 盒子版）：360px 居中、6px 轨、1×/365× 端标、整数 1–365 档；
 //! 轨道下附「现实 1 天 = 加速 N 天」量化行。
-//! 拖动 SetRate、松手/点击 ApplyRate 恰一次；方向键 ±1 即时落盘。
+//! 固定盒：14.5 + 10 + 24 + 10 + 11.5 + 5 + 11.5 = 86.5；拖动 SetRate、松手/点击 ApplyRate 恰一次。
 
 use egui::{Align2, Rect, Sense, Stroke};
 
 use super::slider::{rate_to_ratio, ratio_to_rate};
 use super::text_ink::{self, InkKind};
 
-/// 绘制倍率条并写回 rate；高度按断点传入，内部按比例排布
+/// 倍率条总高：由字体盒与 spacing token 计算（当前 86.5）
+pub fn height() -> f32 {
+    let label_row_h =
+        (crate::theme::font_size("meta") + 0.5).max(crate::theme::font_size("body") + 0.5);
+    let tick_row_h = 11.0 + 0.5;
+    label_row_h
+        + crate::theme::layout_f32("rate_label_track_gap")
+        + crate::theme::layout_f32("rate_track_box")
+        + crate::theme::layout_f32("rate_track_ticks_gap")
+        + tick_row_h
+        + crate::theme::layout_f32("rate_ticks_quant_gap")
+        + tick_row_h
+}
+
+/// 绘制倍率条并写回 rate；内部四个固定盒，不随断点缩放
 pub fn show(
     ui: &mut egui::Ui,
     min: f64,
     max: f64,
     rate: &mut f64,
-    height: f32,
     mut on_change: impl FnMut(f64),
     mut on_commit: impl FnMut(f64),
 ) {
     let ink = crate::theme::ink();
-    let width = ui.available_width().clamp(220.0, 360.0);
-    // B18 盒 = 可见内容 bbox：盒顶即「倍率」文字顶，盒底即量化行底
-    let s = ((height + 12.0) / 78.0).clamp(0.82, 1.0);
+    let width_max = crate::theme::layout_f32("rate_width_max");
+    let width = ui.available_width().clamp(220.0, width_max);
+    let track_box_h = crate::theme::layout_f32("rate_track_box");
+    let track_thickness = crate::theme::layout_f32("rate_track");
+    let label_track_gap = crate::theme::layout_f32("rate_label_track_gap");
+    let track_ticks_gap = crate::theme::layout_f32("rate_track_ticks_gap");
+    let ticks_quant_gap = crate::theme::layout_f32("rate_ticks_quant_gap");
+    let tick_row_h = 11.0 + 0.5;
+    let total_h = height();
     let (outer, _) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), height), Sense::hover());
-    let inner_h = height.max(40.0);
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), total_h), Sense::hover());
     let inner = Rect::from_min_size(
         egui::pos2(outer.center().x - width / 2.0, outer.top()),
-        egui::vec2(width, inner_h),
+        egui::vec2(width, total_h),
     );
-    let track_y = inner.top() + inner_h * 0.36;
-    let ticks_y = inner.top() + inner_h * 0.60;
-    let label_font = crate::theme::font_medium(crate::theme::font_size("meta") * s);
+    let label_row_h =
+        (crate::theme::font_size("meta") + 0.5).max(crate::theme::font_size("body") + 0.5);
+    let label_row_bottom = inner.top() + label_row_h;
+    let label_font = crate::theme::font_medium(crate::theme::font_size("meta"));
     let label_ink = text_ink::measure(ui, "倍率", &label_font, InkKind::Cjk);
-    let label_h = crate::widgets::text_metrics::height(ui.ctx(), &label_font, InkKind::Cjk);
+    crate::layout_probe::text(
+        ui,
+        "rate.label",
+        "倍率",
+        &label_font,
+        InkKind::Cjk,
+        egui::pos2(inner.left(), label_ink.top_for_bottom(label_row_bottom)),
+        Align2::LEFT_TOP,
+    );
     ui.painter().text(
-        egui::pos2(
-            inner.left(),
-            label_ink.top_for_bottom(inner.top() + label_h),
-        ),
+        egui::pos2(inner.left(), label_ink.top_for_bottom(label_row_bottom)),
         Align2::LEFT_TOP,
         "倍率",
         label_font,
         ink.muted,
     );
-    let rate_font = crate::theme::font_medium(crate::theme::font_size("body") * s);
+    let rate_font = crate::theme::font_medium(crate::theme::font_size("body"));
     let rate_text = format!("×{rate:.0}");
     let rate_ink = text_ink::measure(ui, &rate_text, &rate_font, InkKind::Cjk);
-    let rate_h = crate::widgets::text_metrics::height(ui.ctx(), &rate_font, InkKind::Cjk);
+    crate::layout_probe::text(
+        ui,
+        "rate.value",
+        &rate_text,
+        &rate_font,
+        InkKind::Cjk,
+        egui::pos2(inner.right(), rate_ink.top_for_bottom(label_row_bottom)),
+        Align2::RIGHT_TOP,
+    );
     ui.painter().text(
-        egui::pos2(inner.right(), rate_ink.top_for_bottom(inner.top() + rate_h)),
+        egui::pos2(inner.right(), rate_ink.top_for_bottom(label_row_bottom)),
         Align2::RIGHT_TOP,
         rate_text,
         rate_font,
         crate::theme::accent_color(),
     );
 
+    let track_box_top = label_row_bottom + label_track_gap;
+    let track_y = track_box_top + (track_box_h - track_thickness) / 2.0;
     let track = Rect::from_min_max(
         egui::pos2(inner.left(), track_y),
-        egui::pos2(inner.right(), track_y + 6.0),
+        egui::pos2(inner.right(), track_y + track_thickness),
     );
+    crate::layout_probe::rect(ui, "rate.track", track);
     let hit = track.expand2(egui::vec2(0.0, 10.0));
     let resp = ui.interact(hit, egui::Id::unique("rate_strip"), Sense::click_and_drag());
     let mut changed = None;
@@ -139,12 +174,20 @@ pub fn show(
             egui::StrokeKind::Inside,
         );
     }
-    let tick_font = crate::theme::font_regular(11.0 * s);
-    let tick_h = crate::widgets::text_metrics::height(ui.ctx(), &tick_font, InkKind::Cjk);
-    let tick_bottom = ticks_y + tick_h;
+    let tick_font = crate::theme::font_regular(11.0);
+    let tick_row_bottom = track_box_top + track_box_h + track_ticks_gap + tick_row_h;
     let tick1_ink = text_ink::measure(ui, "1×", &tick_font, InkKind::Cjk);
+    crate::layout_probe::text(
+        ui,
+        "rate.tick1",
+        "1×",
+        &tick_font,
+        InkKind::Cjk,
+        egui::pos2(inner.left(), tick1_ink.top_for_bottom(tick_row_bottom)),
+        Align2::LEFT_TOP,
+    );
     ui.painter().text(
-        egui::pos2(inner.left(), tick1_ink.top_for_bottom(tick_bottom)),
+        egui::pos2(inner.left(), tick1_ink.top_for_bottom(tick_row_bottom)),
         Align2::LEFT_TOP,
         "1×",
         tick_font.clone(),
@@ -152,23 +195,42 @@ pub fn show(
     );
     let tick_max_text = format!("{max:.0}×");
     let tick_max_ink = text_ink::measure(ui, &tick_max_text, &tick_font, InkKind::Cjk);
+    crate::layout_probe::text(
+        ui,
+        "rate.tickmax",
+        &tick_max_text,
+        &tick_font,
+        InkKind::Cjk,
+        egui::pos2(inner.right(), tick_max_ink.top_for_bottom(tick_row_bottom)),
+        Align2::RIGHT_TOP,
+    );
     ui.painter().text(
-        egui::pos2(inner.right(), tick_max_ink.top_for_bottom(tick_bottom)),
+        egui::pos2(inner.right(), tick_max_ink.top_for_bottom(tick_row_bottom)),
         Align2::RIGHT_TOP,
         tick_max_text,
         tick_font,
         ink.meta,
     );
-    let quant_font = crate::theme::font_regular(11.0 * s);
+    let quant_font = crate::theme::font_regular(11.0);
     let quant_ink = text_ink::measure(ui, "现实", &quant_font, InkKind::Cjk);
+    let quant_row_bottom = tick_row_bottom + ticks_quant_gap + tick_row_h;
     let year_days = accel_core::static_config::Static::get().base_f64("days_per_year");
     let quant_text = if (*rate - year_days).abs() < 0.5 {
         "现实 1 天 = 加速 1 年".to_string()
     } else {
         format!("现实 1 天 = 加速 {rate:.0} 天")
     };
+    crate::layout_probe::text(
+        ui,
+        "rate.quant",
+        &quant_text,
+        &quant_font,
+        InkKind::Cjk,
+        egui::pos2(inner.center().x, quant_ink.top_for_bottom(quant_row_bottom)),
+        Align2::CENTER_TOP,
+    );
     ui.painter().text(
-        egui::pos2(inner.center().x, quant_ink.top_for_bottom(inner.bottom())),
+        egui::pos2(inner.center().x, quant_ink.top_for_bottom(quant_row_bottom)),
         Align2::CENTER_TOP,
         quant_text,
         quant_font,
@@ -178,10 +240,18 @@ pub fn show(
 
 // ===== src/widgets/rate_strip.rs 说明区 =====
 // 输入：Ui + min/max/rate + change/commit 回调；输出：倍率条（拖拽/点击/方向键）
-// 逻辑步骤：固定 360px 居中 → 标签行（倍率/×N）→ 6px 轨（muted）→ 交互
-//   （比例→整数档，拖动 on_change/松手 on_commit）→ 金色 fill/旋钮
-//   → 1×/365× 端标 → 「现实 1 天 = 加速 N 天 / 1 年」量化行 → 焦点环
-// 设计理由（PL020）：倍率收敛为 1–365 整数，滑杆只出整数档；量化行把倍率翻译成
-//   「现实 1 天 = 加速 N 天」，让 365× 的「天上 1 年」语义可直接读
+// 逻辑步骤：固定 360px 居中 → 标签行 14.5（倍率/×N 盒底）→ 10 → 轨道盒 24（6px 轨居中）
+//   → 10 → 端标行 11.5 → 5 → 量化行 11.5；交互比例→整数档，拖动 on_change/松手 on_commit
+// 设计理由（PL023）：四个固定盒，不随断点缩放；轨/端标/量化行都是盒子；金只做数据
 // 异常处理：max<=min 时 rate_to_ratio 返回 0；键步长即时落盘
-// 关联依赖：slider(rate_to_ratio/ratio_to_rate)/theme；消费方：pages/clock
+// 关联依赖：slider(rate_to_ratio/ratio_to_rate)/text_ink/theme；消费方：pages/clock
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn height_matches_fixed_boxes() {
+        assert!((height() - 86.5).abs() < 1e-6, "got {}", height());
+    }
+}

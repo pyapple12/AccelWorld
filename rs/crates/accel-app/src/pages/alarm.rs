@@ -91,9 +91,18 @@ impl crate::pages::Page for crate::pages::AlarmPage {
                             &label_font,
                             crate::widgets::text_ink::InkKind::Cjk,
                         );
+                        let quick_label_ink = crate::widgets::text_ink::measure(
+                            ui,
+                            "快捷添加",
+                            &label_font,
+                            crate::widgets::text_ink::InkKind::Cjk,
+                        );
                         ui.painter().text(
-                            egui::pos2(quick.left(), quick.top() + label_h / 2.0),
-                            egui::Align2::LEFT_CENTER,
+                            egui::pos2(
+                                quick.left(),
+                                quick_label_ink.top_for_bottom(quick.top() + label_h),
+                            ),
+                            egui::Align2::LEFT_TOP,
                             "快捷添加",
                             label_font,
                             ink.muted,
@@ -205,8 +214,17 @@ fn quick_chip(ui: &mut egui::Ui, text: &str) -> bool {
         egui::StrokeKind::Inside,
     );
     ui.painter().text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
+        egui::pos2(
+            rect.center().x,
+            crate::widgets::text_ink::top_for_center(
+                ui,
+                text,
+                &font,
+                crate::widgets::text_ink::InkKind::Cjk,
+                rect.center().y,
+            ),
+        ),
+        egui::Align2::CENTER_TOP,
         text,
         font.clone(),
         if hover { ink.strong } else { ink.body },
@@ -272,10 +290,11 @@ fn draw_alarm_row(
         &time_font,
         crate::widgets::text_ink::InkKind::Digits,
     );
-    let time_center = rect.top() + 12.0 + time_h / 2.0;
-    digits::draw_centered_ink(
+    let time_bottom = rect.top() + 12.0 + time_h;
+    digits::draw_bottom(
         ui.painter(),
-        egui::pos2(rect.left() + 82.0, time_center),
+        time_bottom,
+        rect.left() + 82.0,
         &alarm.time,
         &time_font,
         if alarm.enabled { ink.strong } else { ink.meta },
@@ -291,15 +310,16 @@ fn draw_alarm_row(
     let label_x = rect.left() + 140.0;
     let avail = (rect.right() - 44.0 - label_x).max(0.0);
     let shown = truncate_to_width(ui, &full_label, &label_font, avail);
-    let label_h = crate::widgets::text_metrics::height(
-        ui.ctx(),
+    let label_bottom = rect.bottom() - 12.0;
+    let label_ink = crate::widgets::text_ink::measure(
+        ui,
+        &shown,
         &label_font,
         crate::widgets::text_ink::InkKind::Cjk,
     );
-    let label_center = rect.bottom() - 12.0 - label_h / 2.0;
     ui.painter().text(
-        egui::pos2(label_x, label_center),
-        egui::Align2::LEFT_CENTER,
+        egui::pos2(label_x, label_ink.top_for_bottom(label_bottom)),
+        egui::Align2::LEFT_TOP,
         &shown,
         label_font,
         if alarm.enabled { ink.body } else { ink.meta },

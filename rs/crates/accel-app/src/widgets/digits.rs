@@ -30,22 +30,71 @@ pub fn text_width(painter: &Painter, text: &str, font: &FontId) -> f32 {
     text.chars().map(|c| cell * slot_ratio(c)).sum()
 }
 
-/// 居中绘制等宽数字串（时钟/倒计时/走时表盘共用）；返回占用矩形
-/// center.y 是行盒中心；基线 = 行盒中心 + (字号 − RESERVE) / 2
-pub fn draw_centered(
+/// 盒子底对齐绘制等宽数字串；返回盒子矩形
+pub fn draw_bottom(
     painter: &Painter,
-    center: egui::Pos2,
+    box_bottom: f32,
+    center_x: f32,
     text: &str,
     font: &FontId,
     color: Color32,
 ) -> Rect {
+    let ink = metrics_for(painter, font);
+    let y = ink.top_for_bottom(box_bottom);
+    let total = draw_slots(painter, text, font, color, center_x, y);
+    Rect::from_min_size(
+        egui::pos2(center_x - total / 2.0, box_bottom - ink.h),
+        Vec2::new(total, ink.h),
+    )
+}
+
+/// 盒子中线对齐绘制等宽数字串（字墨中线 = 盒中线）；返回盒子矩形
+pub fn draw_center(
+    painter: &Painter,
+    box_center: f32,
+    center_x: f32,
+    text: &str,
+    font: &FontId,
+    color: Color32,
+) -> Rect {
+    let ink = center_for(painter, text, font);
+    let y = ink.top_for_center(box_center);
+    let total = draw_slots(painter, text, font, color, center_x, y);
+    Rect::from_min_size(
+        egui::pos2(center_x - total / 2.0, box_center - ink.h / 2.0),
+        Vec2::new(total, ink.h),
+    )
+}
+
+/// 数字盒度量（字体基线 + 盒高；默认盒底路径）
+fn metrics_for(painter: &Painter, font: &FontId) -> super::text_ink::Ink {
+    let galley = painter.layout_no_wrap("0".to_owned(), font.clone(), Color32::WHITE);
+    super::text_ink::metrics_from_galley(&galley, font)
+}
+
+/// 数字明确居中度量（整串字墨并集；仅 draw_center 用）
+fn center_for(painter: &Painter, text: &str, font: &FontId) -> super::text_ink::InkCenter {
+    let probe = if text.is_empty() {
+        "0".to_owned()
+    } else {
+        text.to_owned()
+    };
+    let galley = painter.layout_no_wrap(probe, font.clone(), Color32::WHITE);
+    super::text_ink::center_from_galley(&galley, font)
+}
+
+/// 逐字符槽宽绘制；y 是 galley 顶；返回总宽
+fn draw_slots(
+    painter: &Painter,
+    text: &str,
+    font: &FontId,
+    color: Color32,
+    center_x: f32,
+    y: f32,
+) -> f32 {
     let cell = cell_width(painter, font);
     let total: f32 = text.chars().map(|c| cell * slot_ratio(c)).sum();
-    let baseline = center.y + (font.size - super::text_metrics::RESERVE) * 0.5;
-    let probe = painter.layout_no_wrap("0".to_owned(), font.clone(), color);
-    let ink = super::text_ink::ink_from_galley(&probe, font, super::text_ink::InkKind::Digits);
-    let y = ink.top_for_baseline(baseline);
-    let mut cursor = center.x - total / 2.0;
+    let mut cursor = center_x - total / 2.0;
     for c in text.chars() {
         let w = cell * slot_ratio(c);
         painter.text(
@@ -57,49 +106,17 @@ pub fn draw_centered(
         );
         cursor += w;
     }
-    Rect::from_min_size(
-        egui::pos2(center.x - total / 2.0, baseline - font.size * 0.86),
-        Vec2::new(total, font.size * 1.24),
-    )
-}
-
-/// 按墨迹中心绘制数字串（固定盒内居中；不参与跨行基线）
-pub fn draw_centered_ink(
-    painter: &Painter,
-    center: egui::Pos2,
-    text: &str,
-    font: &FontId,
-    color: Color32,
-) -> Rect {
-    let cell = cell_width(painter, font);
-    let total: f32 = text.chars().map(|c| cell * slot_ratio(c)).sum();
-    let mut cursor = center.x - total / 2.0;
-    for c in text.chars() {
-        let w = cell * slot_ratio(c);
-        painter.text(
-            egui::pos2(cursor + w / 2.0, center.y),
-            Align2::CENTER_CENTER,
-            c.to_string(),
-            font.clone(),
-            color,
-        );
-        cursor += w;
-    }
-    Rect::from_min_size(
-        egui::pos2(center.x - total / 2.0, center.y - font.size * 0.62),
-        Vec2::new(total, font.size * 1.24),
-    )
+    total
 }
 
 // ===== src/widgets/digits.rs 说明区 =====
-// 输入：painter + 中心点/文案/字号/颜色；输出：逐字符固定槽宽的表盘数字
-// 逻辑步骤：cell_width（「0」字形宽，下限字号×0.5）→ slot_ratio（数字满槽/
-//   冒号点窄槽 0.45）→ 逐字符 CENTER_CENTER 绘制于槽心
-// 设计理由：y.problems#12 根治——Bahnschrift 数字 advance 不等，直接 layout
-//   整串文本则走秒期间宽度抖动；槽宽制与字体解耦（字体缺失回退仍有表盘节奏）；
-//   窄槽标点对齐机械钟/表盘惯例（冒号占位小、视觉重心稳定）
-// 异常处理：无 panic 面；空串返回零宽矩形于 center
-// 关联依赖：egui Painter.layout_no_wrap（单字符量宽实测）；消费方：五页所有
+// 输入：painter + 盒子底/盒中线 + 文案/字号/颜色；输出：逐字符固定槽宽的表盘数字
+// 逻辑步骤：cell_width（「0」最大 advance，下限字号×0.5）→ slot_ratio（数字满槽/
+//   冒号点窄槽 0.45）→ draw_bottom 以盒底−0.2 为基线；draw_center 以字墨中线对盒中线
+// 设计理由（PL023）：数字也是文字盒；默认盒底对齐，明确居中才用字墨中线；
+//   槽宽制与字体解耦（字体缺失回退仍有表盘节奏）；不再用 0.62/0.86/1.24 估算盒子
+// 异常处理：无 panic 面；空串返回零宽盒子
+// 关联依赖：text_ink::metrics_from_galley / center_from_galley；消费方：五页所有
 //   时间类大字（时钟 hero/标准时/世界走时/倒计时剩余/闹钟时刻）
 #[cfg(test)]
 mod tests {
@@ -136,5 +153,28 @@ mod tests {
         assert!((w - cell * 4.45).abs() < 1e-4, "12:34 应为 4.45 槽: {w}");
         // 空串零宽
         assert!(text_width(&painter, "", &font).abs() < 1e-6);
+    }
+
+    fn test_painter() -> egui::Painter {
+        let ctx = egui::Context::default();
+        crate::window::install_fonts(&ctx);
+        ctx.begin_pass(egui::RawInput::default());
+        egui::Painter::new(
+            ctx,
+            egui::LayerId::background(),
+            egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(200.0, 100.0)),
+        )
+    }
+
+    #[test]
+    fn draw_bottom_and_center_use_box_values() {
+        let painter = test_painter();
+        let font = digit_font(20.0);
+        let bottom = draw_bottom(&painter, 100.0, 50.0, "12", &font, Color32::WHITE);
+        assert!((bottom.bottom() - 100.0).abs() < 1e-4);
+        assert!((bottom.height() - 20.5).abs() < 1e-4);
+        let center = draw_center(&painter, 100.0, 50.0, "12", &font, Color32::WHITE);
+        assert!((center.center().y - 100.0).abs() < 1e-4);
+        assert!((center.height() - 20.5).abs() < 1e-4);
     }
 }

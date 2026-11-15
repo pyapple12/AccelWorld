@@ -1,29 +1,25 @@
-//! 文字墨迹与基线度量：墨迹 bbox 用于盒高参考，竖排定位统一走排版基线。
-//! 基线取 galley 的 row.pos.y + glyph.pos.y，不受字形位图取整影响。
+//! 文字盒度量：盒高 = 字号 + 0.3（上）+ 0.2（下）；基线 = 盒底 − 0.2。
+//! 基线取 galley 行排版基线；整串字墨 bbox 仅服务“明确居中”，不参与盒高。
 
-use egui::{Color32, FontId, Ui};
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+use std::sync::{Mutex, OnceLock};
 
-/// 字面类型：中文表意字 / 数字（Bahnschrift）——仅在无位图时做回退估算
+use egui::{Color32, FontId, Galley, Ui};
+
+/// 字面类型：中文表意字 / 数字（Bahnschrift）——语义标签，盒高与基线不区分
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum InkKind {
     Cjk,
     Digits,
 }
 
-/// 文字墨迹度量（偏移相对 galley 顶）
+/// 文字盒度量：盒高 = 字号 + 0.5；基线 = 盒底 − 0.2；不含任何字墨 bbox
 #[derive(Clone, Copy)]
 pub struct Ink {
-    /// galley 行框高
-    pub line_h: f32,
-    /// 行框顶 → 墨迹顶
-    pub top_pad: f32,
-    /// 墨迹底 → 行框底
-    pub bottom_pad: f32,
-    /// 墨迹高
+    /// 盒高（= 字号 + 0.3 + 0.2）
     pub h: f32,
-    /// 墨迹中心 − 行框中心（正数：墨迹偏下）
-    pub center_offset: f32,
-    /// 行框顶 → 基线（排版基线，不受字形位图取整影响）
+    /// galley 顶 → 行排版基线（字体度量，同一行所有字形共用）
     pub baseline: f32,
 }
 
@@ -33,76 +29,188 @@ impl Ink {
         baseline - self.baseline
     }
 
-    /// 行盒底 → galley 顶（盒高 = 字号 + RESERVE，基线在盒底上方 RESERVE）
+    /// 盒底 → galley 顶：基线 = 盒底 − 0.2
     pub fn top_for_bottom(&self, bottom: f32) -> f32 {
-        self.top_for_baseline(bottom - super::text_metrics::RESERVE)
-    }
-
-    /// 行盒中心 → galley 顶（盒高 = 字号 + RESERVE）
-    pub fn top_for_center(&self, center: f32, font_size: f32) -> f32 {
-        let baseline = center + (font_size - super::text_metrics::RESERVE) * 0.5;
-        self.top_for_baseline(baseline)
+        self.top_for_baseline(bottom - super::text_metrics::BOTTOM_RESERVE)
     }
 }
 
-/// 量一段文字的墨迹 bbox：优先取字形位图（uv_rect.offset/size），无位图时按字面比例回退
-pub fn measure(ui: &Ui, text: &str, font: &FontId, kind: InkKind) -> Ink {
+/// 明确居中用的字墨中线（唯一读取 glyph bbox 的路径，不参与盒高）
+#[derive(Clone, Copy)]
+pub(crate) struct InkCenter {
+    pub h: f32,
+    pub baseline: f32,
+    pub ink_top: f32,
+    pub ink_bottom: f32,
+}
+
+impl InkCenter {
+    /// 盒中心 → galley 顶：字墨中线 = 盒中线
+    pub fn top_for_center(&self, center: f32) -> f32 {
+        let ascent = (self.baseline - self.ink_top).max(0.0);
+        let descent = (self.ink_bottom - self.baseline).max(0.0);
+        let baseline = center + (ascent - descent) * 0.5;
+        baseline - self.baseline
+    }
+}
+
+/// 字体基线缓存键：字号 bits + 字族 hash + ppp bits
+type FontKey = (u32, u64, u32);
+
+fn font_key(ui: &Ui, font: &FontId) -> FontKey {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    font.family.hash(&mut h);
+    (
+        font.size.to_bits(),
+        h.finish(),
+        ui.ctx().pixels_per_point().to_bits(),
+    )
+}
+
+fn baseline_cache() -> &'static Mutex<HashMap<FontKey, f32>> {
+    static CACHE: OnceLock<Mutex<HashMap<FontKey, f32>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// 字体行排版基线（按字号/字族缓存，默认盒底路径不再 layout 文本）
+fn baseline_for(ui: &Ui, font: &FontId) -> f32 {
+    let key = font_key(ui, font);
+    if let Some(v) = baseline_cache()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&key)
+        .copied()
+    {
+        return v;
+    }
     let galley = ui
         .painter()
-        .layout_no_wrap(text.to_string(), font.clone(), Color32::WHITE);
-    ink_from_galley(&galley, font, kind)
+        .layout_no_wrap("0".to_owned(), font.clone(), Color32::WHITE);
+    let baseline = galley
+        .rows
+        .first()
+        .and_then(|r| r.glyphs.first().map(|g| r.pos.y + g.pos.y))
+        .unwrap_or(font.size);
+    baseline_cache()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(key, baseline);
+    baseline
 }
 
-/// 从已排版的 galley 提取墨迹（启动指标表与运行期 measure 共用）
-pub(crate) fn ink_from_galley(galley: &egui::Galley, font: &FontId, kind: InkKind) -> Ink {
-    let line_h = galley.size().y;
-    let size = font.size;
-    let row = galley.rows.first();
-    let glyph = row.and_then(|r| r.glyphs.first());
-    let (ink_top, ink_bottom, baseline) = match (row, glyph) {
-        (Some(r), Some(g)) => {
-            let baseline = r.pos.y + g.pos.y;
-            let uv = g.uv_rect;
-            if uv.size.y > 0.0 {
-                // 字形位图就是「实际看到的」边界（含抗锯齿像素）
-                let top = baseline + uv.offset.y;
-                (top, top + uv.size.y, baseline)
-            } else {
-                let (cap, below) = ratios(kind);
-                (baseline - size * cap, baseline + size * below, baseline)
-            }
-        }
-        _ => {
-            let (cap, below) = ratios(kind);
-            let h = size * (cap + below);
-            (line_h / 2.0 - h / 2.0, line_h / 2.0 + h / 2.0, line_h / 2.0)
-        }
-    };
-    let h = (ink_bottom - ink_top).max(1.0);
+/// 默认盒底路径：只取盒高 + 字体基线，不读文本、不读 bbox
+pub fn measure(ui: &Ui, _text: &str, font: &FontId, _kind: InkKind) -> Ink {
     Ink {
-        line_h,
-        top_pad: ink_top,
-        bottom_pad: (line_h - ink_bottom).max(0.0),
-        h,
-        center_offset: (ink_top + ink_bottom) / 2.0 - line_h / 2.0,
+        h: font.size + super::text_metrics::TOP_RESERVE + super::text_metrics::BOTTOM_RESERVE,
+        baseline: baseline_for(ui, font),
+    }
+}
+
+/// 明确居中路径：盒中心 → galley 顶；只有这里读整串字墨 bbox
+pub fn top_for_center(ui: &Ui, text: &str, font: &FontId, _kind: InkKind, center: f32) -> f32 {
+    let probe = if text.is_empty() { "0" } else { text };
+    let galley = ui
+        .painter()
+        .layout_no_wrap(probe.to_owned(), font.clone(), Color32::WHITE);
+    center_from_galley(&galley, font).top_for_center(center)
+}
+
+/// 由 galley 构造盒度量；不读任何字号/字形 bbox
+pub(crate) fn metrics_from_galley(galley: &Galley, font: &FontId) -> Ink {
+    let baseline = galley
+        .rows
+        .first()
+        .and_then(|r| r.glyphs.first().map(|g| r.pos.y + g.pos.y))
+        .unwrap_or(font.size);
+    Ink {
+        h: font.size + super::text_metrics::TOP_RESERVE + super::text_metrics::BOTTOM_RESERVE,
         baseline,
     }
 }
 
-/// 无位图时的字面比例回退：中文 0.86em + 0.03em 下沿，数字 0.62em
-fn ratios(kind: InkKind) -> (f32, f32) {
-    match kind {
-        InkKind::Cjk => (0.86, 0.03),
-        InkKind::Digits => (0.62, 0.0),
+/// 由 galley 构造“明确居中”的字墨中线；整串 glyph uv_rect 并集
+pub(crate) fn center_from_galley(galley: &Galley, font: &FontId) -> InkCenter {
+    let baseline = galley
+        .rows
+        .first()
+        .and_then(|r| r.glyphs.first().map(|g| r.pos.y + g.pos.y))
+        .unwrap_or(font.size);
+    let (mut ink_top, mut ink_bottom) = (f32::INFINITY, f32::NEG_INFINITY);
+    if let Some(row) = galley.rows.first() {
+        for g in &row.glyphs {
+            let uv = g.uv_rect;
+            if uv.size.y > 0.0 {
+                let top = baseline + uv.offset.y;
+                ink_top = ink_top.min(top);
+                ink_bottom = ink_bottom.max(top + uv.size.y);
+            }
+        }
+    }
+    if !ink_top.is_finite() || !ink_bottom.is_finite() {
+        // 空串/纯空格：无可见字墨；用名义 em 盒做居中回退
+        ink_top = baseline - font.size;
+        ink_bottom = baseline;
+    }
+    InkCenter {
+        h: font.size + super::text_metrics::TOP_RESERVE + super::text_metrics::BOTTOM_RESERVE,
+        baseline,
+        ink_top,
+        ink_bottom,
     }
 }
 
 // ===== src/widgets/text_ink.rs 说明区 =====
-// 输入：Ui + 文案 + 字体 + 字面类型；输出：墨迹 bbox、行框偏移与排版基线
-// 逻辑步骤：layout_no_wrap 取 galley → 首 glyph 的 pos.y 即基线 → uv_rect.offset/size
-//   给出字形位图的上下边界；无位图（空格等）时按字面比例回退
-// 设计理由（PL021/基线）：竖排定位统一用 top_for_baseline/top_for_bottom/
-//   top_for_center 换算，基线来自排版数据，避免首字位图下沿留白不同导致混排错位；
-//   墨迹 bbox 仅保留作盒高参考与回退
-// 异常处理：空文本/无位图回退到行框中心 + 比例；h 下限 1px
-// 关联依赖：egui Glyph.uv_rect（offset/size 单位为 points）；消费方：pages/*、widgets/*
+// 输入：字体/文本；输出：盒高 + 行排版基线（默认）；明确居中分支另算字墨中线
+// 逻辑步骤：盒高 = 字号 + 0.3 + 0.2 → 基线按 (字号, 字族, ppp) 缓存 →
+//   top_for_bottom；只有 top_for_center 才 layout 文本并取整串 uv_rect 并集
+// 设计理由（PL023）：默认盒底路径不读任何 bbox；bbox 只服务“明确居中”的视觉对中，
+//   不参与盒高、不参与盒子对齐；基线是行排版基线，不是首位图 bbox
+// 异常处理：空串/纯空格居中回退名义 em 盒；h 恒为字号+0.5
+// 关联配置：text_metrics::TOP_RESERVE / BOTTOM_RESERVE；消费方：pages/*、widgets/*
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 构造一个盒度量：基线距 galley 顶 11
+    fn sample() -> Ink {
+        Ink {
+            h: 14.5,
+            baseline: 11.0,
+        }
+    }
+
+    #[test]
+    fn bottom_baseline_is_bottom_minus_reserve() {
+        let ink = sample();
+        let galley_top = ink.top_for_bottom(100.0);
+        assert!((galley_top + ink.baseline - 99.8).abs() < 1e-5);
+    }
+
+    #[test]
+    fn center_puts_ink_center_on_box_center() {
+        let ink = InkCenter {
+            h: 14.5,
+            baseline: 11.0,
+            ink_top: 2.0,
+            ink_bottom: 14.0,
+        };
+        let box_center = 200.0;
+        let galley_top = ink.top_for_center(box_center);
+        let ink_center = galley_top + (ink.ink_top + ink.ink_bottom) * 0.5;
+        assert!((ink_center - box_center).abs() < 1e-5);
+    }
+
+    #[test]
+    fn mixed_boxes_share_baseline_at_shared_bottom() {
+        let mut small = sample();
+        small.h = 12.5;
+        let mut large = sample();
+        large.h = 18.5;
+        let bottom = 300.0;
+        let small_baseline = small.top_for_bottom(bottom) + small.baseline;
+        let large_baseline = large.top_for_bottom(bottom) + large.baseline;
+        assert!((small_baseline - large_baseline).abs() < 1e-5);
+        assert!((small_baseline - (bottom - 0.2)).abs() < 1e-5);
+    }
+}

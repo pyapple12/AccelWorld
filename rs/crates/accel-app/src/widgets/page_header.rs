@@ -1,4 +1,4 @@
-//! 抽屉页头（PL017）：56px 标题 + 可选副标题 + 右端关闭；返回 true 表示点击关闭。
+//! 抽屉页头（PL017）：20 + 标题盒 24.5 + 10 = 54.5px；可选副标题 + 右端关闭；返回 true 表示点击关闭。
 //! 统一页面名与关闭出口，替代原先“内容即页面、只能点 dock 回时钟”的导航缺口。
 
 use egui::{Align2, Sense, Stroke};
@@ -21,11 +21,14 @@ pub fn show(ui: &mut egui::Ui, title: &str, subtitle: Option<&str>) -> bool {
     let width = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), Sense::hover());
 
-    // 标题在盒内按墨迹顶锚定，盒子位置不参与反推
+    // 标题盒顶贴页头盒顶；文字默认盒底对齐
     let title_ink = super::text_ink::measure(ui, title, &title_font, super::text_ink::InkKind::Cjk);
     let title_top = rect.top() + top_pad;
     ui.painter().text(
-        egui::pos2(rect.left() + 20.0, title_top - title_ink.top_pad),
+        egui::pos2(
+            rect.left() + 20.0,
+            title_ink.top_for_bottom(title_top + title_h),
+        ),
         Align2::LEFT_TOP,
         title,
         title_font,
@@ -35,7 +38,7 @@ pub fn show(ui: &mut egui::Ui, title: &str, subtitle: Option<&str>) -> bool {
         let sub_ink = super::text_ink::measure(ui, sub, &sub_font, super::text_ink::InkKind::Cjk);
         let sub_top = title_top + title_h + gap;
         ui.painter().text(
-            egui::pos2(rect.left() + 20.0, sub_top - sub_ink.top_pad),
+            egui::pos2(rect.left() + 20.0, sub_ink.top_for_bottom(sub_top + sub_h)),
             Align2::LEFT_TOP,
             sub,
             sub_font,
@@ -96,7 +99,7 @@ pub fn show(ui: &mut egui::Ui, title: &str, subtitle: Option<&str>) -> bool {
 
 // ===== src/widgets/page_header.rs 说明区 =====
 // 输入：Ui + 标题/副标题；输出：关闭是否激活（调用方把 current_page 置回 Clock）
-// 逻辑步骤：56px 横向分配 → 标题（20/600）/副标题（12）→ 关闭 36px 命中域（X/悬停/
+// 逻辑步骤：20 + 24.5 + 10 = 54.5 纵向分配 → 标题（24/600）/副标题（12）→ 关闭 36px 命中域（X/悬停/
 //   焦点环/Enter·Space）→ 底部 1px 发丝
 // 设计理由（PL017）：抽屉页原先没有页面名与关闭，用户只能靠 dock 猜；页头把
 //   “我在哪/怎么回去”变成结构，而不是 tooltip。关闭键用 Close 而非文本 ×，

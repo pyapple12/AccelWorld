@@ -3,10 +3,10 @@
 
 use egui::{Align2, Response, Sense, Stroke};
 
-/// 按钮高度：文字行高 + 上下 padding token
+/// 按钮高度：文字盒高 + 上下 padding token
 pub fn height(ui: &egui::Ui) -> f32 {
     let font = crate::theme::font_semibold(crate::theme::font_size("body"));
-    crate::widgets::text_metrics::line_height(ui.ctx(), &font)
+    crate::widgets::text_metrics::height(ui.ctx(), &font, crate::widgets::text_ink::InkKind::Cjk)
         + 2.0 * crate::theme::layout_f32("button_pad_y")
 }
 
@@ -38,16 +38,16 @@ pub fn show(ui: &mut egui::Ui, label: &str, width: f32) -> Response {
         );
     }
     let label_font = crate::theme::font_semibold(crate::theme::font_size("body"));
-    let label_ink = crate::widgets::text_ink::measure(
-        ui,
-        label,
-        &label_font,
-        crate::widgets::text_ink::InkKind::Cjk,
-    );
     ui.painter().text(
         egui::pos2(
             rect.center().x,
-            label_ink.top_for_center(rect.center().y, label_font.size),
+            crate::widgets::text_ink::top_for_center(
+                ui,
+                label,
+                &label_font,
+                crate::widgets::text_ink::InkKind::Cjk,
+                rect.center().y,
+            ),
         ),
         Align2::CENTER_TOP,
         label,

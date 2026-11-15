@@ -9,7 +9,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - 全量测试：`cargo test --workspace`（core 单测 + app 单测）
 - GUI 冒烟（真窗出血，会弹窗）：`cargo run -p accel-app`；UI 截图探针（逐页 PNG 后自动退出）：`$env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app`
 - 探针环境变量（正常模式零影响）：`ACCELWORLD_FPS_PROBE=<秒>` 静置测帧；`ACCELWORLD_UI_SHOT_GEOMETRY=WxH` 固定测试几何；`ACCELWORLD_TEST_NO_SAVE=1` 退出不写窗口存档；`ACCELWORLD_TEST_POS="x,y"` + `ACCELWORLD_EXPECT_POS="x,y"` 落点对照；`ACCELWORLD_EARLY_SHOT_MS=<ms>` 早期帧；`ACCELWORLD_TEST_CLOSE_LOSS=n` 丢弃前 n 次 Close（验证退出自愈）
-- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.5.4`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
+- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.5.5`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
 - **版本体系**：四段式纯数字 `X.Y.Z.P`（无 `ver ` 前缀）；`feat`/`fix`/`refactor`/`perf` 提交前 bump patch 位；bump 以 **HEAD 已提交版本**为基准，同一批未提交改动只加一次，不得在工作区已 bump 的值上再加一；历史存量 `ver 0.4x` 三段式仅存于历史文档与提交记录，不回溯改写
 
 ## 环境陷阱
@@ -35,6 +35,21 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - **UI 正式文档**：`u.UI_GLOSSARY.md` UI 术语表（区域/控件/状态主称 + 代码锚点，目测对账单一入口）/ `u.UI_MAP.html` UI 标注指南（六页结构图 + 编号索引 + 状态词 + 令牌速查，浏览器直接打开）
 - 项目级 Agent 技能在 `.agents/skills/`（工作流 4 件：audit-project / audit-report / progress-task / skillforge；UI 5 件：better-interface / better-colors / better-layout / better-typography / better-ui；设计与评审 8 件：taste-skill / game-ui-ux / game-feel / diagram-design / performance-optimization / save-systems / input-systems / dimensional-drawing；gitignore 仅本地使用）
 - 历史规划文档 `workingboard/` 已归档 `archived/workingboard`（gitignore）
+
+## 文字盒与盒子对齐（强制基准，2026-11-15 定案，不得更改）
+
+- **唯一参照系是盒子。** 文字、星盘、按钮、胶囊等一切 UI 元素都盒子化；盒子可以套盒子，但最多一层（容器盒 + 子盒），子盒内只放文字/图形，不再继续套盒。
+- **文字盒**：`盒高 = 字号 + 0.3（上） + 0.2（下） = 字号 + 0.5`；`盒顶 = 盒底 − 盒高`；`盒中线 = 盒顶 + 盒高 / 2`；`盒内基线 = 盒底 − 0.2`。0.3 是字顶上方余量，0.2 是基线下方防下探余量。
+- **盒底不是裁切边界。** 0.2px 只是排版余量；英文 g/p/y 等真实字形下探允许画出盒底，盒子与父盒都不得因此裁切文字。
+- **默认垂直对齐 = 盒底对盒底。** 盒子与盒子只比较盒子数值；文字基线只在盒子内部画字，**不参与外部对齐**。混排一行时，行盒高 = 各文字盒高的最大值，各子盒底边对齐行盒底边；各盒内部基线自然同为 `盒底 − 0.2`，这是结果，不是对齐依据。
+- **明确说明“居中”时 = 文字自己的字墨中线对盒子中线。** 文字是主动方，盒子中线是目标；混排时每个不同字号各自拿自己的字墨中线对同一盒子中线，允许基线不同。禁止用 `中线 + 盒高/2 − 0.2` 冒充居中（那只是底对齐的另一种写法）。组件高度可以因删除 `line_height` 变矮；居中只由字墨中线对盒中线决定，不得用 padding 补偿高度来伪造居中；居中不对就是居中算法错。
+- **盒子间对齐只允许盒子数值**：顶部 `a.top = b.top`；垂直中心 `a.center.y = b.center.y`；底部 `a.bottom = b.bottom`；左 `a.left = b.left`；水平中心 `a.center.x = b.center.x`；右 `a.right = b.right`。不得出现字墨 bbox、基线、字号、cap height、0.62/0.86/1.24 等比例作为对齐参数。
+- **字宽防抖沿用现行办法**：数字槽宽取 0–9 最大 advance，按字号/字族缓存，下限 `字号 × 0.5`；数字/字母 1.0 槽，冒号/句点/空格 0.45 槽。
+- **原生控件也必须进盒。** TextEdit、原生 label、图表标注等外层必须有明确盒子；原生尺寸可以不变，但位置、对齐、间距只走盒子数值。
+- **非文字元素同样盒子化。** 星盘、按钮、胶囊等与文字盒同级；凡只规定下限的尺寸，不设上限（例如星盘盒只保底 120）。
+- **星盘盒**：正方形，边长 = `min(剩余高, 页宽 − 2×82)`，下限 120、无上限；`82 = 内容边→药丸 10 + 药丸 52 + 药丸→盘盒 20`。宽度不足时以宽度定边长，高度跟随，不得按高度无限放大撑破内容。
+- **实现口径**：`text_metrics::height()` 返回 `字号 + 0.3 + 0.2`；`text_ink` 只提供字体基线偏移，以及“明确居中”所需的**整串字墨 bbox 并集**，不得用首字位图 bbox 决定盒高；组件高度不得再用 `line_height` 另立一套。
+- **历史文档例外**：`x.progress.md`、`z.plan.md`、`m.milestone.md` 中已完成/已归档的旧记录保持原样；现行文档（`u.UI_GLOSSARY.md`、`w.study.md`、`u.UI_MAP.html`、README、代码注释与说明区）必须与本规范一致。
 
 ## 工程原则（设计哲学，所有项目通用）
 

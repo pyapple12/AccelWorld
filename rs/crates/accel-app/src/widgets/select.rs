@@ -12,10 +12,10 @@ struct State {
     cursor: usize,
 }
 
-/// 下拉触发器高度：文字行高 + 上下 padding token
+/// 下拉触发器高度：文字盒高 + 上下 padding token
 pub fn height(ui: &egui::Ui) -> f32 {
     let font = crate::theme::font_regular(crate::theme::font_size("body"));
-    crate::widgets::text_metrics::line_height(ui.ctx(), &font)
+    crate::widgets::text_metrics::height(ui.ctx(), &font, InkKind::Cjk)
         + 2.0 * crate::theme::layout_f32("select_pad_y")
 }
 
@@ -56,11 +56,10 @@ pub fn show(
         egui::StrokeKind::Inside,
     );
     let trigger_font = crate::theme::font_regular(crate::theme::font_size("body"));
-    let trigger_ink = text_ink::measure(ui, current, &trigger_font, InkKind::Cjk);
     ui.painter().text(
         egui::pos2(
             rect.left() + 12.0,
-            trigger_ink.top_for_center(rect.center().y, trigger_font.size),
+            text_ink::top_for_center(ui, current, &trigger_font, InkKind::Cjk, rect.center().y),
         ),
         Align2::LEFT_TOP,
         current,
@@ -171,12 +170,16 @@ pub fn show(
                                     }
                                     let opt_font =
                                         crate::theme::font_regular(crate::theme::font_size("body"));
-                                    let opt_ink =
-                                        text_ink::measure(ui, opt, &opt_font, InkKind::Cjk);
                                     ui.painter().text(
                                         egui::pos2(
                                             row.left() + 8.0,
-                                            opt_ink.top_for_center(row.center().y, opt_font.size),
+                                            text_ink::top_for_center(
+                                                ui,
+                                                opt,
+                                                &opt_font,
+                                                InkKind::Cjk,
+                                                row.center().y,
+                                            ),
                                         ),
                                         Align2::LEFT_TOP,
                                         opt,

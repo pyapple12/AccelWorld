@@ -71,9 +71,9 @@ pub fn card_at(ui: &egui::Ui, rect: egui::Rect, title: &str, body: &str) {
     let block_h = title_h + gap + body_h;
     let block_top = rect.center().y - block_h / 2.0;
 
-    let title_y = block_top + (title_h - title_ink.h) / 2.0 - title_ink.top_pad;
+    let title_y = title_ink.top_for_bottom(block_top + title_h);
     let body_top = block_top + title_h + gap;
-    let body_y = body_top + (body_h - body_ink.h) / 2.0 - body_ink.top_pad;
+    let body_y = body_ink.top_for_bottom(body_top + body_h);
 
     ui.painter().text(
         egui::pos2(rect.center().x, title_y),
@@ -94,8 +94,8 @@ pub fn card_at(ui: &egui::Ui, rect: egui::Rect, title: &str, body: &str) {
 // ===== src/widgets/empty.rs 说明区 =====
 // 输入：Ui + 标题/说明；输出：虚线框与两行文字
 // 逻辑步骤：标题盒 + empty_line_gap + 正文盒 = 内容块；块中心对准虚线框中心；
-//   每行文字在各自固定盒内按墨迹中心摆放
-// 设计理由（PL021 盒模型）：虚线框高度由页面剩余空间决定，文字盒位置只由盒高与
-//   间距计算，不再用两行墨迹中心反推
+//   每行文字在各自固定盒内盒底对齐
+// 设计理由（PL023 盒模型）：虚线框高度由页面剩余空间决定，文字盒位置只由盒高与
+//   间距计算；块对框是盒中线对盒中线，行内默认盒底；不再用两行中点反推
 // 异常处理：无 panic 面
 // 关联依赖：theme/border/ink、text_metrics/text_ink；消费方：倒计时/世界/闹钟

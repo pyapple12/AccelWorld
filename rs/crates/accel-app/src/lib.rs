@@ -2,6 +2,7 @@
 //! bin 形态（main——render_probe 已随 UIR 玻璃拆除删除）共享的模块根；GUI 依赖仅本 crate
 
 pub mod bus;
+pub mod layout_probe;
 pub mod logging;
 pub mod pages;
 pub mod platform;

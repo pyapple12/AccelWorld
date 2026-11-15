@@ -8,8 +8,10 @@ use crate::theme;
 /// 固定盒字段的三段：label 盒高 / 间距 / 输入框高
 fn fixed_parts(ui: &egui::Ui) -> (f32, f32, f32) {
     let label_font = theme::font_medium(theme::font_size("meta"));
+    let input_font = theme::font_regular(theme::font_size("meta"));
     let label_h = super::text_metrics::height(ui.ctx(), &label_font, super::text_ink::InkKind::Cjk);
-    let input_h = theme::font_size("meta") + 2.0 * theme::layout_f32("field_input_pad");
+    let input_h = super::text_metrics::height(ui.ctx(), &input_font, super::text_ink::InkKind::Cjk)
+        + 2.0 * theme::layout_f32("field_input_pad");
     (label_h, theme::layout_f32("field_label_gap"), input_h)
 }
 
@@ -35,7 +37,7 @@ pub fn show_fixed(
     let (rect, _) = ui.allocate_exact_size(egui::vec2(width, total), Sense::hover());
 
     let label_ink = super::text_ink::measure(ui, label, &label_font, super::text_ink::InkKind::Cjk);
-    let label_y = rect.top() + (label_h - label_ink.h) / 2.0 - label_ink.top_pad;
+    let label_y = label_ink.top_for_bottom(rect.top() + label_h);
     ui.painter().text(
         egui::pos2(rect.left(), label_y),
         egui::Align2::LEFT_TOP,
@@ -89,9 +91,9 @@ pub fn show_fixed(
 
 // ===== src/widgets/field.rs 说明区 =====
 // 输入：Ui + label/hint/文本/宽度；输出：输入框 Response
-// 逻辑步骤：field_height 由 label 行高 + spacing.xs + 输入行高 + field_pad_y×2 计算；
+// 逻辑步骤：字段 = label 盒 12.5 + field_label_gap + 输入盒 20.5（文字盒 12.5 + 上下各 4）；
 //   show 先按该高度精确分配 rect，再在子 Ui 内放 label 与输入框
-// 设计理由（PL021）：旧 field_height=54 是声明值，label 实际行高 19 导致总高 57，
-//   两个页脚按 54 计算按钮底距抽屉底；改由同一公式计算，声明值=实际值
+// 设计理由（PL023）：label 盒底对齐；输入框是原生 TextEdit 的外盒，原生尺寸可以不变，
+//   但盒子高度/位置只由文字盒 + padding 决定，不再用 field_pad_y 手写 20
 // 异常处理：无 panic 面；输入行高下限 1px
-// 关联配置：scale.meta/body、spacing.xs、layout.field_pad_x/field_pad_y/field_border
+// 关联配置：scale.meta/body、spacing.xs、layout.field_pad_x/field_input_pad/field_border

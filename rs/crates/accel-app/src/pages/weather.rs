@@ -81,7 +81,7 @@ impl crate::pages::Page for crate::pages::WeatherPage {
 
                 let error = state.weather_errors.get(&city).cloned();
                 let data = state.weather.get(&city).cloned();
-                // 盒高全部查启动指标表（角色最大墨迹高，不是当前字符串）
+                // 盒高全部查启动指标表（字号 + 0.5，不是当前字符串）
                 let meta_font = crate::theme::font_regular(crate::theme::font_size("meta"));
                 let body_font = crate::theme::font_regular(crate::theme::font_size("body"));
                 let meta_h =
@@ -107,36 +107,108 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                     + crate::theme::spacing_f32("sm");
                 if let Some(err) = &error {
                     let rect = stack.next(ui, error_h);
-                    ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
-                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                            ui.label(
-                                egui::RichText::new(format!("更新失败：{err}"))
-                                    .font(crate::theme::font_regular(crate::theme::font_size(
-                                        "meta",
-                                    )))
-                                    .color(ink.danger),
+                    let font = crate::theme::font_regular(crate::theme::font_size("meta"));
+                    let err_text = format!("更新失败：{err}");
+                    let err_w = ui
+                        .painter()
+                        .layout_no_wrap(err_text.clone(), font.clone(), ink.danger)
+                        .rect
+                        .width();
+                    let old_text = data
+                        .as_ref()
+                        .map(|w| format!("· 显示上次数据 {:.1}°", w.temperature));
+                    let old_w = old_text
+                        .as_ref()
+                        .map(|t| {
+                            ui.painter()
+                                .layout_no_wrap(t.clone(), font.clone(), ink.meta)
+                                .rect
+                                .width()
+                        })
+                        .unwrap_or(0.0);
+                    let retry_w = 44.0;
+                    let retry_h = 22.0;
+                    let retry_rect = egui::Rect::from_center_size(
+                        egui::pos2(rect.right() - retry_w / 2.0, rect.center().y),
+                        egui::vec2(retry_w, retry_h),
+                    );
+                    let text_box = egui::Rect::from_min_max(
+                        rect.min,
+                        egui::pos2(retry_rect.left() - 8.0, rect.bottom()),
+                    );
+                    let painter = ui.painter().with_clip_rect(text_box);
+                    let text_y = crate::widgets::text_ink::top_for_center(
+                        ui,
+                        &err_text,
+                        &font,
+                        InkKind::Cjk,
+                        rect.center().y,
+                    );
+                    painter.text(
+                        egui::pos2(rect.left(), text_y),
+                        egui::Align2::LEFT_TOP,
+                        &err_text,
+                        font.clone(),
+                        ink.danger,
+                    );
+                    if let Some(old) = old_text {
+                        let x = rect.left() + err_w + 6.0;
+                        if x + old_w <= text_box.right() {
+                            painter.text(
+                                egui::pos2(x, text_y),
+                                egui::Align2::LEFT_TOP,
+                                old,
+                                font,
+                                ink.meta,
                             );
-                            if let Some(w) = &data {
-                                ui.label(
-                                    egui::RichText::new(format!(
-                                        "· 显示上次数据 {:.1}°",
-                                        w.temperature
-                                    ))
-                                    .font(crate::theme::font_regular(crate::theme::font_size(
-                                        "meta",
-                                    )))
-                                    .color(ink.meta),
-                                );
-                            }
-                            if ui.small_button("重试").clicked() {
-                                bus.send(FrontendCommand::RefreshWeather {
-                                    city: city.clone(),
-                                    force: true,
-                                });
-                                state.weather_loading.insert(city.clone());
-                            }
+                        }
+                    }
+                    let retry = ui
+                        .interact(
+                            retry_rect,
+                            egui::Id::unique(("weather_retry", city.as_str())),
+                            egui::Sense::click(),
+                        )
+                        .on_hover_cursor(egui::CursorIcon::PointingHand);
+                    ui.painter().rect_filled(
+                        retry_rect,
+                        egui::epaint::CornerRadius::same(6),
+                        if retry.hovered() {
+                            crate::theme::hover_bg()
+                        } else {
+                            crate::theme::card_bg()
+                        },
+                    );
+                    ui.painter().rect_stroke(
+                        retry_rect,
+                        egui::epaint::CornerRadius::same(6),
+                        egui::Stroke::new(1.0, crate::theme::border_color()),
+                        egui::StrokeKind::Inside,
+                    );
+                    let retry_font = crate::theme::font_regular(11.0);
+                    ui.painter().text(
+                        egui::pos2(
+                            retry_rect.center().x,
+                            crate::widgets::text_ink::top_for_center(
+                                ui,
+                                "重试",
+                                &retry_font,
+                                InkKind::Cjk,
+                                retry_rect.center().y,
+                            ),
+                        ),
+                        egui::Align2::CENTER_TOP,
+                        "重试",
+                        retry_font,
+                        ink.body,
+                    );
+                    if retry.clicked() {
+                        bus.send(FrontendCommand::RefreshWeather {
+                            city: city.clone(),
+                            force: true,
                         });
-                    });
+                        state.weather_loading.insert(city.clone());
+                    }
                 }
 
                 let Some(w) = data else {
@@ -183,11 +255,22 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                     ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
                         let label_box =
                             egui::Rect::from_min_size(rect.min, egui::vec2(rect.width(), meta_h));
-                        ui.painter().text(
-                            label_box.left_center(),
-                            egui::Align2::LEFT_CENTER,
+                        let hourly_label_font =
+                            crate::theme::font_medium(crate::theme::font_size("meta"));
+                        let hourly_label_ink = crate::widgets::text_ink::measure(
+                            ui,
                             "逐小时",
-                            crate::theme::font_medium(crate::theme::font_size("meta")),
+                            &hourly_label_font,
+                            InkKind::Cjk,
+                        );
+                        ui.painter().text(
+                            egui::pos2(
+                                label_box.left(),
+                                hourly_label_ink.top_for_bottom(label_box.bottom()),
+                            ),
+                            egui::Align2::LEFT_TOP,
+                            "逐小时",
+                            hourly_label_font,
                             ink.muted,
                         );
                         ui.add_space(meta_h);
@@ -205,8 +288,9 @@ impl crate::pages::Page for crate::pages::WeatherPage {
 
                 // 数据来源盒
                 let source_font = crate::theme::font_regular(11.0);
-                let source_h = crate::widgets::text_metrics::line_height(ui.ctx(), &source_font)
-                    + crate::theme::spacing_f32("sm");
+                let source_h =
+                    crate::widgets::text_metrics::height(ui.ctx(), &source_font, InkKind::Cjk)
+                        + crate::theme::spacing_f32("sm");
                 let source = stack.next(ui, source_h);
                 let source_box = egui::Rect::from_min_size(
                     egui::pos2(
@@ -215,10 +299,16 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                     ),
                     egui::vec2(source.width(), source_h - crate::theme::spacing_f32("xs")),
                 );
+                let source_text = "数据来源 Open-Meteo · 免费接口";
+                let source_ink =
+                    crate::widgets::text_ink::measure(ui, source_text, &source_font, InkKind::Cjk);
                 ui.painter().text(
-                    source_box.left_center(),
-                    egui::Align2::LEFT_CENTER,
-                    "数据来源 Open-Meteo · 免费接口",
+                    egui::pos2(
+                        source_box.left(),
+                        source_ink.top_for_bottom(source_box.bottom()),
+                    ),
+                    egui::Align2::LEFT_TOP,
+                    source_text,
                     source_font,
                     ink.meta,
                 );
@@ -252,25 +342,27 @@ fn draw_weather_hero(
     let desc_font = crate::theme::font_regular(crate::theme::font_size("body"));
     let desc_h = crate::widgets::text_metrics::height(ui.ctx(), &desc_font, InkKind::Cjk);
     let temp_top = rect.top() + 16.0;
-    let temp_center = temp_top + temp_h / 2.0;
-    digits::draw_centered_ink(
+    let temp_bottom = temp_top + temp_h;
+    digits::draw_bottom(
         painter,
-        egui::pos2(rect.left() + 62.0 + temp_w / 2.0, temp_center),
+        temp_bottom,
+        rect.left() + 62.0 + temp_w / 2.0,
         &temp,
         &temp_font,
         ink.strong,
     );
-    let desc_center = temp_top + temp_h + 6.0 + desc_h / 2.0;
+    let desc_bottom = temp_bottom + 6.0 + desc_h;
+    let desc_ink = crate::widgets::text_ink::measure(ui, &w.description, &desc_font, InkKind::Cjk);
     painter.text(
-        egui::pos2(rect.left() + 62.0, desc_center),
-        egui::Align2::LEFT_CENTER,
+        egui::pos2(rect.left() + 62.0, desc_ink.top_for_bottom(desc_bottom)),
+        egui::Align2::LEFT_TOP,
         &w.description,
         desc_font,
         ink.muted,
     );
 }
 
-/// 三列 metric：标签/值都按墨迹定位（盒高由调用方按墨迹算）
+/// 三列 metric：标签/值各自盒底对齐（盒高由调用方按字号 + 0.5 算）
 fn metric(ui: &mut egui::Ui, label: &str, value: &str) {
     let ink = crate::theme::ink();
     let rect = ui.max_rect();
@@ -278,18 +370,20 @@ fn metric(ui: &mut egui::Ui, label: &str, value: &str) {
     let value_font = crate::theme::font_medium(crate::theme::font_size("body"));
     let label_h = crate::widgets::text_metrics::height(ui.ctx(), &label_font, InkKind::Cjk);
     let value_h = crate::widgets::text_metrics::height(ui.ctx(), &value_font, InkKind::Cjk);
-    let label_center = rect.top() + 8.0 + label_h / 2.0;
+    let label_bottom = rect.top() + 8.0 + label_h;
+    let label_ink = crate::widgets::text_ink::measure(ui, label, &label_font, InkKind::Cjk);
     ui.painter().text(
-        egui::pos2(rect.left(), label_center),
-        egui::Align2::LEFT_CENTER,
+        egui::pos2(rect.left(), label_ink.top_for_bottom(label_bottom)),
+        egui::Align2::LEFT_TOP,
         label,
         label_font,
         ink.muted,
     );
-    let value_center = rect.top() + 8.0 + label_h + 4.0 + value_h / 2.0;
+    let value_bottom = label_bottom + 4.0 + value_h;
+    let value_ink = crate::widgets::text_ink::measure(ui, value, &value_font, InkKind::Cjk);
     ui.painter().text(
-        egui::pos2(rect.left(), value_center),
-        egui::Align2::LEFT_CENTER,
+        egui::pos2(rect.left(), value_ink.top_for_bottom(value_bottom)),
+        egui::Align2::LEFT_TOP,
         value,
         value_font,
         ink.body,
@@ -324,113 +418,136 @@ fn draw_hourly(ui: &mut egui::Ui, hourly: &[HourlyPoint], ink: &crate::theme::In
         v.dedup();
         v
     };
-
-    egui_plot::Plot::new("hourly_temp")
-        .height(crate::theme::layout_f32("weather_plot_h"))
-        .show_axes(false)
-        .show_grid(false)
-        .show_background(false)
-        .allow_drag(false)
-        .allow_zoom(false)
-        .allow_scroll(false)
-        .allow_boxed_zoom(false)
-        .allow_double_click_reset(false)
-        .set_margin_fraction(egui::vec2(0.04, 0.10))
-        .default_x_bounds(-0.6, (n - 1) as f64 + 0.6)
-        .default_y_bounds(y_lo, y_hi)
-        .show(ui, |plot_ui| {
-            for k in 1..=4 {
-                let y = y_lo + (y_hi - y_lo) * (k as f64 / 5.0);
-                plot_ui.hline(egui_plot::HLine::new(format!("grid{k}"), y).stroke(
-                    egui::Stroke::new(0.8, crate::theme::with_alpha(ink.muted, 40)),
-                ));
+    // 最近小时点（“现在”竖线与标注）；先算，图内只画线/点
+    let now = chrono::Local::now().naive_local();
+    let mut now_i = None;
+    let mut best = i64::MAX;
+    for (i, h) in hours.iter().enumerate() {
+        let parsed = chrono::NaiveDateTime::parse_from_str(&h.time, "%Y-%m-%dT%H:%M")
+            .or_else(|_| chrono::NaiveDateTime::parse_from_str(&h.time, "%Y-%m-%d %H:%M:%S"));
+        if let Ok(t) = parsed {
+            let d = (t - now).num_minutes().abs();
+            if d < best {
+                best = d;
+                now_i = Some(i);
             }
-            let pts: Vec<[f64; 2]> = hours
-                .iter()
-                .enumerate()
-                .map(|(i, h)| [i as f64, h.temperature])
-                .collect();
-            plot_ui.line(egui_plot::Line::new("温度", pts).color(accent).width(2.0));
-            for i in label_idx {
-                let h = hours[i];
-                plot_ui.points(
-                    egui_plot::Points::new(format!("p{i}"), vec![[i as f64, h.temperature]])
-                        .color(accent)
-                        .radius(2.5),
-                );
-                plot_ui.text(
-                    egui_plot::Text::new(
-                        format!("t{i}"),
-                        egui_plot::PlotPoint::new(i as f64, h.temperature),
-                        egui::RichText::new(format!("{:.0}°", h.temperature))
-                            .font(meta_font.clone())
-                            .color(ink.strong),
-                    )
-                    .anchor(if i == 0 {
-                        egui::Align2::LEFT_BOTTOM
-                    } else if i + 1 == n {
-                        egui::Align2::RIGHT_BOTTOM
-                    } else {
-                        egui::Align2::CENTER_BOTTOM
-                    }),
-                );
-            }
-            // 现在：最近小时点 + 竖线（超出数据范围不画）
-            let now = chrono::Local::now().naive_local();
-            let mut now_i = None;
-            let mut best = i64::MAX;
-            for (i, h) in hours.iter().enumerate() {
-                let parsed = chrono::NaiveDateTime::parse_from_str(&h.time, "%Y-%m-%dT%H:%M")
-                    .or_else(|_| {
-                        chrono::NaiveDateTime::parse_from_str(&h.time, "%Y-%m-%d %H:%M:%S")
-                    });
-                if let Ok(t) = parsed {
-                    let d = (t - now).num_minutes().abs();
-                    if d < best {
-                        best = d;
-                        now_i = Some(i);
-                    }
-                }
-            }
-            if let Some(i) = now_i.filter(|_| best <= 90) {
-                let h = hours[i];
-                plot_ui.vline(
-                    egui_plot::VLine::new("now", i as f64).stroke(egui::Stroke::new(
-                        1.0,
-                        crate::theme::with_alpha(ink.muted, 110),
-                    )),
-                );
-                plot_ui.points(
-                    egui_plot::Points::new("now_point", vec![[i as f64, h.temperature]])
-                        .color(ink.body)
-                        .radius(3.0),
-                );
-                plot_ui.text(
-                    egui_plot::Text::new(
-                        "now_label",
-                        egui_plot::PlotPoint::new(i as f64, y_hi),
-                        egui::RichText::new("现在")
-                            .font(meta_font.clone())
-                            .color(ink.meta),
-                    )
-                    .anchor(egui::Align2::CENTER_BOTTOM),
-                );
-            }
-        });
-    // 图外时间轴：四列等距，避免贴 plot 底缘被裁
-    ui.columns(4, |cols| {
-        for (k, i) in [0, n / 3, (2 * n) / 3, n - 1].into_iter().enumerate() {
-            let time = hours[i].time.get(11..16).unwrap_or("--:--");
-            cols[k].label(
-                egui::RichText::new(time)
-                    .font(egui::FontId::proportional(crate::theme::font_size("meta")))
-                    .color(ink.meta),
-            );
         }
-    });
+    }
+    let now_i = now_i.filter(|_| best <= 90);
+
+    let plot_response =
+        egui_plot::Plot::new("hourly_temp")
+            .height(crate::theme::layout_f32("weather_plot_h"))
+            .show_axes(false)
+            .show_grid(false)
+            .show_background(false)
+            .allow_drag(false)
+            .allow_zoom(false)
+            .allow_scroll(false)
+            .allow_boxed_zoom(false)
+            .allow_double_click_reset(false)
+            .set_margin_fraction(egui::vec2(0.04, 0.10))
+            .default_x_bounds(-0.6, (n - 1) as f64 + 0.6)
+            .default_y_bounds(y_lo, y_hi)
+            .show(ui, |plot_ui| {
+                for k in 1..=4 {
+                    let y = y_lo + (y_hi - y_lo) * (k as f64 / 5.0);
+                    plot_ui.hline(egui_plot::HLine::new(format!("grid{k}"), y).stroke(
+                        egui::Stroke::new(0.8, crate::theme::with_alpha(ink.muted, 40)),
+                    ));
+                }
+                let pts: Vec<[f64; 2]> = hours
+                    .iter()
+                    .enumerate()
+                    .map(|(i, h)| [i as f64, h.temperature])
+                    .collect();
+                plot_ui.line(egui_plot::Line::new("温度", pts).color(accent).width(2.0));
+                for &i in &label_idx {
+                    let h = hours[i];
+                    plot_ui.points(
+                        egui_plot::Points::new(format!("p{i}"), vec![[i as f64, h.temperature]])
+                            .color(accent)
+                            .radius(2.5),
+                    );
+                }
+                // 现在：最近小时点 + 竖线（超出数据范围不画）
+                if let Some(i) = now_i {
+                    let h = hours[i];
+                    plot_ui.vline(egui_plot::VLine::new("now", i as f64).stroke(
+                        egui::Stroke::new(1.0, crate::theme::with_alpha(ink.muted, 110)),
+                    ));
+                    plot_ui.points(
+                        egui_plot::Points::new("now_point", vec![[i as f64, h.temperature]])
+                            .color(ink.body)
+                            .radius(3.0),
+                    );
+                }
+            });
+    // 极值/“现在”标注：画在 plot 盒内的文字盒，不再用 plot 原生 Text
+    let transform = plot_response.transform;
+    for &i in &label_idx {
+        let h = hours[i];
+        let text = format!("{:.0}°", h.temperature);
+        let label_ink = crate::widgets::text_ink::measure(ui, &text, &meta_font, InkKind::Cjk);
+        let w = ui
+            .painter()
+            .layout_no_wrap(text.clone(), meta_font.clone(), ink.strong)
+            .rect
+            .width();
+        let p = transform.position_from_point(&egui_plot::PlotPoint::new(i as f64, h.temperature));
+        let x = if i == 0 {
+            p.x
+        } else if i + 1 == n {
+            p.x - w
+        } else {
+            p.x - w / 2.0
+        };
+        ui.painter().text(
+            egui::pos2(x, label_ink.top_for_bottom(p.y - 2.0)),
+            egui::Align2::LEFT_TOP,
+            text,
+            meta_font.clone(),
+            ink.strong,
+        );
+    }
+    if let Some(i) = now_i {
+        let text = "现在";
+        let label_ink = crate::widgets::text_ink::measure(ui, text, &meta_font, InkKind::Cjk);
+        let w = ui
+            .painter()
+            .layout_no_wrap(text.to_owned(), meta_font.clone(), ink.meta)
+            .rect
+            .width();
+        let p = transform.position_from_point(&egui_plot::PlotPoint::new(i as f64, y_hi));
+        ui.painter().text(
+            egui::pos2(p.x - w / 2.0, label_ink.top_for_bottom(p.y)),
+            egui::Align2::LEFT_TOP,
+            text,
+            meta_font.clone(),
+            ink.meta,
+        );
+    }
+    // 图外时间轴：四等分文字盒，盒底对齐；不再用原生 label
+    let axis_h = crate::widgets::text_metrics::height(ui.ctx(), &meta_font, InkKind::Cjk);
+    let (axis, _) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), axis_h),
+        egui::Sense::hover(),
+    );
+    for (k, i) in [0, n / 3, (2 * n) / 3, n - 1].into_iter().enumerate() {
+        let time = hours[i].time.get(11..16).unwrap_or("--:--");
+        let time_ink = crate::widgets::text_ink::measure(ui, time, &meta_font, InkKind::Cjk);
+        let cx = axis.left() + axis.width() * (k as f32 + 0.5) / 4.0;
+        ui.painter().text(
+            egui::pos2(cx, time_ink.top_for_bottom(axis.bottom())),
+            egui::Align2::CENTER_TOP,
+            time,
+            meta_font.clone(),
+            ink.meta,
+        );
+    }
 }
 
-/// 七日：固定三列（日 44 | 范围条 flex | 低高 64 右对齐在 card_bg 上）
+/// 七日：固定三列（日 44 | 范围条 flex | 低高 64 右对齐）；行内文字按盒中线居中（图谱明确例外）
 fn draw_week(ui: &mut egui::Ui, daily: &[accel_core::types::DailyPoint], ink: &crate::theme::Ink) {
     let days: Vec<&accel_core::types::DailyPoint> = daily.iter().take(7).collect();
     let week_min = days.iter().map(|d| d.t_min).fold(f64::INFINITY, f64::min);
@@ -445,23 +562,26 @@ fn draw_week(ui: &mut egui::Ui, daily: &[accel_core::types::DailyPoint], ink: &c
     let row_h = crate::widgets::text_metrics::height(ui.ctx(), &body_font, InkKind::Cjk)
         + crate::theme::spacing_f32("sm");
     let rect = ui.max_rect();
-    let label_center = rect.top() + label_h / 2.0;
+    let label_bottom = rect.top() + label_h;
+    let label_ink = crate::widgets::text_ink::measure(ui, "七日", &meta_font, InkKind::Cjk);
     ui.painter().text(
-        egui::pos2(rect.left(), label_center),
-        egui::Align2::LEFT_CENTER,
+        egui::pos2(rect.left(), label_ink.top_for_bottom(label_bottom)),
+        egui::Align2::LEFT_TOP,
         "七日",
         meta_font,
         ink.muted,
     );
+    let range_text = format!("{week_min:.0}° — {week_max:.0}°");
+    let range_font = crate::theme::font_regular(11.0);
+    let range_ink = crate::widgets::text_ink::measure(ui, &range_text, &range_font, InkKind::Cjk);
     ui.painter().text(
-        egui::pos2(rect.right(), label_center),
-        egui::Align2::RIGHT_CENTER,
-        format!("{week_min:.0}° — {week_max:.0}°"),
-        crate::theme::font_regular(11.0),
+        egui::pos2(rect.right(), range_ink.top_for_bottom(label_bottom)),
+        egui::Align2::RIGHT_TOP,
+        range_text,
+        range_font,
         ink.meta,
     );
     ui.add_space(label_h + crate::theme::spacing_f32("xs"));
-    let text_center_off = row_h / 2.0;
     for d in &days {
         let (rect, _) = ui.allocate_exact_size(
             egui::vec2(ui.available_width(), row_h),
@@ -473,8 +593,17 @@ fn draw_week(ui: &mut egui::Ui, daily: &[accel_core::types::DailyPoint], ink: &c
         let bar_w = (rect.width() - date_w - value_w - 12.0).max(24.0);
         let day_text = d.date.get(5..10).unwrap_or(&d.date);
         ui.painter().text(
-            egui::pos2(rect.left(), rect.top() + text_center_off),
-            egui::Align2::LEFT_CENTER,
+            egui::pos2(
+                rect.left(),
+                crate::widgets::text_ink::top_for_center(
+                    ui,
+                    day_text,
+                    &body_font,
+                    InkKind::Cjk,
+                    rect.center().y,
+                ),
+            ),
+            egui::Align2::LEFT_TOP,
             day_text,
             body_font.clone(),
             ink.muted,
@@ -505,8 +634,17 @@ fn draw_week(ui: &mut egui::Ui, daily: &[accel_core::types::DailyPoint], ink: &c
         // 数值固定在条右侧的 value 列，绝不压在 fill 上
         let value_text = format!("{:.0}°/{:.0}°", d.t_min, d.t_max);
         ui.painter().text(
-            egui::pos2(rect.right(), rect.top() + text_center_off),
-            egui::Align2::RIGHT_CENTER,
+            egui::pos2(
+                rect.right(),
+                crate::widgets::text_ink::top_for_center(
+                    ui,
+                    &value_text,
+                    &body_font,
+                    InkKind::Cjk,
+                    rect.center().y,
+                ),
+            ),
+            egui::Align2::RIGHT_TOP,
             value_text,
             body_font.clone(),
             ink.strong,
@@ -518,8 +656,8 @@ fn draw_week(ui: &mut egui::Ui, daily: &[accel_core::types::DailyPoint], ink: &c
 // 输入：UiState.weather/errors/loading + prefs.last_city；输出：城市/刷新 + hero +
 //   三列 metric + 无框逐时曲线 + 三列七日范围条
 // 逻辑步骤：ScrollArea（头行城市/刷新/更新中 → 错误行 + 旧值保留 → 数据/加载/空态
-//   三分支 → hero 聚簇 → metric → 曲线（150px/4-5 x 标签/只标 min-max-当前）→
-//   七日（日 44 | 条 flex | 值 68 在 card_bg）→ 数据源）
+//   三分支 → hero 聚簇 → metric → 曲线（132px/4 时间轴盒/只标 min-max-当前）→
+//   七日（日 44 | 条 flex | 值 68 在 card_bg）→ 数据源）；错误行/重试/时间轴/极值均文字盒
 // 设计理由（PL017）：原七日数字压金条且右裁（1.54:1）、曲线 88px 带默认框、整页
 //   无 ScrollArea；本版三列固定列 + show_background(false) + 整页滚动 + 错误重试
 // 异常处理：无数据分加载/空态；失败保留旧值 + 重试；曲线 <2 点跳过

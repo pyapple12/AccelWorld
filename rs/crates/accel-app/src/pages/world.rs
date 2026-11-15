@@ -34,9 +34,10 @@ impl crate::pages::Page for crate::pages::WorldPage {
         // 固定页脚盒高 44；body 与页脚间距 10
         let avail = ui.max_rect();
         let footer_h =
-            crate::widgets::select::height(ui).max(crate::widgets::text_metrics::line_height(
+            crate::widgets::select::height(ui).max(crate::widgets::text_metrics::height(
                 ui.ctx(),
                 &crate::theme::font_medium(crate::theme::font_size("meta")),
+                InkKind::Cjk,
             )) + crate::theme::spacing_f32("sm");
         let body_h = (avail.height() - footer_h - crate::theme::layout_f32("footer_gap")).max(0.0);
         let body_rect = egui::Rect::from_min_size(avail.min, egui::vec2(avail.width(), body_h));
@@ -104,31 +105,56 @@ impl crate::pages::Page for crate::pages::WorldPage {
                 });
         });
 
-        // 添加城市页脚盒
-        let combo_w = (avail.width() - 76.0).clamp(120.0, 220.0);
+        // 添加城市页脚盒：左标签（盒底/盒中线），右下拉（原生控件进盒）
+        let label_font = crate::theme::font_medium(crate::theme::font_size("meta"));
+        let label_text = "添加城市";
+        let label_w = ui
+            .painter()
+            .layout_no_wrap(label_text.to_string(), label_font.clone(), ink.muted)
+            .rect
+            .width();
+        let combo_w = (avail.width() - label_w - 14.0).clamp(120.0, 220.0);
         ui.scope_builder(egui::UiBuilder::new().max_rect(footer_rect), |ui| {
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                ui.label(
-                    egui::RichText::new("添加城市")
-                        .font(crate::theme::font_medium(crate::theme::font_size("meta")))
-                        .color(ink.muted),
-                );
-                let candidates: Vec<String> = accel_core::data::world_cities::all_names()
-                    .into_iter()
-                    .filter(|n| !pins.iter().any(|p| p == n))
-                    .map(str::to_string)
-                    .collect();
-                if let Some(picked) = crate::widgets::select::show(
-                    ui,
-                    egui::Id::unique("world_add_select"),
-                    "选择城市…",
-                    &candidates,
-                    combo_w,
-                ) {
-                    bus.send(FrontendCommand::AddWorldCity(picked));
-                    state.list_pulse = Some(("world".to_string(), std::time::Instant::now()));
-                }
-            });
+            ui.painter().text(
+                egui::pos2(
+                    footer_rect.left(),
+                    crate::widgets::text_ink::top_for_center(
+                        ui,
+                        label_text,
+                        &label_font,
+                        InkKind::Cjk,
+                        footer_rect.center().y,
+                    ),
+                ),
+                egui::Align2::LEFT_TOP,
+                label_text,
+                label_font,
+                ink.muted,
+            );
+            let candidates: Vec<String> = accel_core::data::world_cities::all_names()
+                .into_iter()
+                .filter(|n| !pins.iter().any(|p| p == n))
+                .map(str::to_string)
+                .collect();
+            let select_h = crate::widgets::select::height(ui);
+            let select_rect = egui::Rect::from_min_size(
+                egui::pos2(
+                    footer_rect.left() + label_w + 10.0,
+                    footer_rect.center().y - select_h / 2.0,
+                ),
+                egui::vec2(combo_w, select_h),
+            );
+            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(select_rect));
+            if let Some(picked) = crate::widgets::select::show(
+                &mut child,
+                egui::Id::unique("world_add_select"),
+                "选择城市…",
+                &candidates,
+                combo_w,
+            ) {
+                bus.send(FrontendCommand::AddWorldCity(picked));
+                state.list_pulse = Some(("world".to_string(), std::time::Instant::now()));
+            }
         });
     }
 }
@@ -199,9 +225,10 @@ fn draw_city_row(
         egui::pos2(rect.left() + 14.0, rect.top() + 12.0),
         egui::vec2(rect.width() - 28.0, name_h),
     );
+    let name_ink = crate::widgets::text_ink::measure(ui, name, &name_font, InkKind::Cjk);
     ui.painter().text(
-        name_box.left_center(),
-        egui::Align2::LEFT_CENTER,
+        egui::pos2(name_box.left(), name_ink.top_for_bottom(name_box.bottom())),
+        egui::Align2::LEFT_TOP,
         name,
         name_font.clone(),
         ink.strong,
@@ -233,11 +260,21 @@ fn draw_city_row(
             icons::Icon::Pin,
             crate::theme::accent_color(),
         );
+        let chip_font = crate::theme::font_regular(11.0);
         ui.painter().text(
-            egui::pos2(chip.left() + 18.0, chip.center().y),
-            egui::Align2::LEFT_CENTER,
+            egui::pos2(
+                chip.left() + 18.0,
+                crate::widgets::text_ink::top_for_center(
+                    ui,
+                    "基准",
+                    &chip_font,
+                    InkKind::Cjk,
+                    chip.center().y,
+                ),
+            ),
+            egui::Align2::LEFT_TOP,
             "基准",
-            crate::theme::font_regular(11.0),
+            chip_font,
             ink.muted,
         );
     } else if hit.hovered() || hit.has_focus() {
@@ -245,22 +282,24 @@ fn draw_city_row(
             egui::pos2(rect.left() + 14.0, sub_top),
             egui::vec2(rect.width() - 28.0, sub_block_h),
         );
+        let hint_font = crate::theme::font_regular(11.0);
+        let hint_ink =
+            crate::widgets::text_ink::measure(ui, "点击设为基准", &hint_font, InkKind::Cjk);
         ui.painter().text(
-            hint_box.left_center(),
-            egui::Align2::LEFT_CENTER,
+            egui::pos2(hint_box.left(), hint_ink.top_for_bottom(hint_box.bottom())),
+            egui::Align2::LEFT_TOP,
             "点击设为基准",
-            crate::theme::font_regular(11.0),
+            hint_font,
             ink.meta,
         );
     }
 
     let walk_font = digits::digit_font(24.0);
     let walk_w = digits::text_width(ui.painter(), &walk, &walk_font);
-    let walk_h = crate::widgets::text_metrics::height(ui.ctx(), &walk_font, InkKind::Digits);
-    let walk_center = rect.bottom() - 12.0 - walk_h / 2.0;
-    digits::draw_centered_ink(
+    digits::draw_bottom(
         ui.painter(),
-        egui::pos2(rect.right() - 48.0 - walk_w / 2.0, walk_center),
+        rect.bottom() - 12.0,
+        rect.right() - 48.0 - walk_w / 2.0,
         &walk,
         &walk_font,
         if is_base { ink.strong } else { ink.body },
