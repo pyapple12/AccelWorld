@@ -276,8 +276,8 @@ fn sidebar_label(page: PageId) -> &'static str {
 }
 
 impl AppHandle {
-    /// 首帧窗口几何夹取（PL017.01）：显示器逻辑尺寸 − 安全边距，且不超过
-    /// ui.json window_max_*；位置夹到可见区。只做一次，之后尊重用户手动调整。
+    /// 首帧窗口几何（PL024）：启动尺寸任一方向超出屏幕可用值 → 直接用最小尺寸；
+    /// 否则保持启动尺寸；位置夹到可见区。只做一次，之后尊重用户手动调整。
     fn clamp_window_once(&mut self, ctx: &Context) {
         if self.geometry_clamped {
             return;
@@ -285,10 +285,12 @@ impl AppHandle {
         let Some(monitor) = ctx.input(|i| i.viewport().monitor_size) else {
             return;
         };
-        let max = crate::theme::window_max_size();
+        let min = (
+            accel_core::static_config::Static::get().base_f64("window_min_width") as f32,
+            accel_core::static_config::Static::get().base_f64("window_min_height") as f32,
+        );
         let (sx, sy, sw, sh) = self.initial_geometry;
-        let (x, y, w, h) =
-            clamp_geometry_to_monitor(self.initial_geometry, monitor, (520.0, 420.0), max);
+        let (x, y, w, h) = clamp_geometry_to_monitor(self.initial_geometry, monitor, min);
         if (w - sw).abs() > 1.0 || (h - sh).abs() > 1.0 {
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(w, h)));
         }
@@ -693,17 +695,22 @@ pub fn parse_expect_pos(raw: &str) -> Option<(f32, f32)> {
     Some((x.trim().parse().ok()?, y.trim().parse().ok()?))
 }
 
-/// 启动几何按显示器夹取（纯函数，PL017.01）：尺寸不超过显示器−边距与 max，
-/// 位置夹到可见区；返回 (x,y,w,h)。显示器未知时调用方跳过。
+/// 启动几何（PL024）：尺寸任一方向超出屏幕可用值 → 直接用最小尺寸；否则保持
+/// 启动尺寸；位置夹到可见区；返回 (x,y,w,h)。显示器未知时调用方跳过。
 pub fn clamp_geometry_to_monitor(
     saved: (f32, f32, f32, f32),
     monitor: Vec2,
     min: (f32, f32),
-    max: Vec2,
 ) -> (f32, f32, f32, f32) {
     let (sx, sy, sw, sh) = saved;
-    let w = sw.min((monitor.x - 48.0).max(min.0)).min(max.x).max(min.0);
-    let h = sh.min((monitor.y - 110.0).max(min.1)).min(max.y).max(min.1);
+    let avail_w = (monitor.x - 48.0).max(min.0);
+    let avail_h = (monitor.y - 110.0).max(min.1);
+    let mut w = sw.max(min.0);
+    let mut h = sh.max(min.1);
+    if w > avail_w || h > avail_h {
+        w = min.0;
+        h = min.1;
+    }
     let x = sx.clamp(24.0, (monitor.x - w - 24.0).max(24.0));
     let y = sy.clamp(24.0, (monitor.y - h - 48.0).max(24.0));
     (x, y, w, h)
@@ -966,8 +973,6 @@ pub fn run_with_counter(
             base.base_f64("window_min_width") as f32,
             base.base_f64("window_min_height") as f32,
         ))
-        // PL017.01：窗口上限；首帧再按显示器工作区夹取
-        .with_max_inner_size(crate::theme::window_max_size())
         // PL018.06：隐藏创建，首帧门控后再显示（防 GPU 热释放后的首帧黑窗）
         .with_visible(false)
         .with_title("天宫时计 · ACCELWORLD Clock");
@@ -1308,25 +1313,38 @@ mod tests {
     }
 
     #[test]
-    fn clamp_geometry_keeps_window_in_monitor() {
-        // PL017.01：1550×1058 存档在 1536×816 逻辑屏上夹到 ≤1200×820 且位置可见
+    fn startup_geometry_uses_min_when_oversized() {
+        // PL024：1550×1058 存档在 1536×816 逻辑屏上任一方向超出 → 560×420
         let (x, y, w, h) = clamp_geometry_to_monitor(
             (-7.0, -7.0, 1550.0, 1058.0),
             Vec2::new(1536.0, 816.0),
-            (520.0, 420.0),
-            Vec2::new(1200.0, 820.0),
+            (560.0, 420.0),
         );
-        assert!(w <= 1200.0 && h <= 820.0, "尺寸未夹取: {w}x{h}");
-        assert!(x >= 24.0 && y >= 24.0, "位置越界: {x},{y}");
-        assert!(x + w <= 1536.0 - 24.0 + 0.1, "右缘越界: {}", x + w);
+        assert_eq!((x, y, w, h), (24.0, 24.0, 560.0, 420.0));
+
         // 正常存档不被改写
         let (x, y, w, h) = clamp_geometry_to_monitor(
             (100.0, 100.0, 900.0, 500.0),
             Vec2::new(1536.0, 816.0),
-            (520.0, 420.0),
-            Vec2::new(1200.0, 820.0),
+            (560.0, 420.0),
         );
         assert_eq!((x, y, w, h), (100.0, 100.0, 900.0, 500.0));
+
+        // 仅宽度超出 → 最小尺寸
+        let (_, _, w, h) = clamp_geometry_to_monitor(
+            (100.0, 100.0, 1600.0, 500.0),
+            Vec2::new(1536.0, 816.0),
+            (560.0, 420.0),
+        );
+        assert_eq!((w, h), (560.0, 420.0));
+
+        // 仅高度超出 → 最小尺寸
+        let (_, _, w, h) = clamp_geometry_to_monitor(
+            (100.0, 100.0, 900.0, 800.0),
+            Vec2::new(1536.0, 816.0),
+            (560.0, 420.0),
+        );
+        assert_eq!((w, h), (560.0, 420.0));
     }
 
     #[test]

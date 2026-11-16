@@ -93,6 +93,11 @@ pub fn dial_diameter(avail_w: f32, avail_h: f32) -> f32 {
     avail_h.min(avail_w - dial_side_w() * 2.0).max(120.0)
 }
 
+/// 盘内等比缩放：320 母版 → 当前盘径
+pub fn dial_scale(dial_d: f32) -> f32 {
+    dial_d / crate::theme::layout_f32("clock_dial_design")
+}
+
 /// 横向跌落（纯函数）：从表内 ≤ base 且 ≥ min 的字号中，取第一个装得下的最大档
 pub fn readout_fit_size(base: f32, avail: f32, min: f32, width_at: impl Fn(f32) -> f32) -> f32 {
     let mut sizes: Vec<f32> = crate::font_profile::get()
@@ -795,8 +800,16 @@ fn draw_dial(
     let accent = crate::theme::accent_color();
     let lume = crate::theme::lume_color();
     let idle = crate::theme::tick_idle_color();
-    let ring = crate::theme::layout_f32("clock_dial_ring");
+    let scale = dial_scale(dial_d);
+    let ring = crate::theme::layout_f32("clock_dial_ring") * scale;
     let outer_r = dial_d / 2.0 - ring;
+    let tick_long = crate::theme::layout_f32("clock_dial_tick_long") * scale;
+    let tick_short = crate::theme::layout_f32("clock_dial_tick_short") * scale;
+    let tick_long_w = crate::theme::layout_f32("clock_dial_tick_long_w") * scale;
+    let tick_short_w = crate::theme::layout_f32("clock_dial_tick_short_w") * scale;
+    let tick_cap = crate::theme::layout_f64("clock_dial_tick_cap") * scale;
+    let tick_glow_offset = crate::theme::layout_f32("clock_dial_tick_glow_offset") * scale;
+    let tick_glow_decay = crate::theme::layout_f64("clock_dial_tick_glow_decay") * scale;
     crate::layout_probe::rect(
         ui,
         "clock.dial_ticks",
@@ -808,9 +821,9 @@ fn draw_dial(
         let a = i as f32 / 60.0;
         let ang = day_angle(a);
         let hour_tick = i % 5 == 0;
-        let len = if hour_tick { 14.0 } else { 6.0 };
+        let len = if hour_tick { tick_long } else { tick_short };
         let color = if hour_tick { lume } else { idle };
-        let width = if hour_tick { 2.0 } else { 1.0 };
+        let width = if hour_tick { tick_long_w } else { tick_short_w };
         let (x1, y1) = polar(center.x, center.y, outer_r, ang);
         let (x2, y2) = polar(center.x, center.y, outer_r - len, ang);
         if hour_tick {
@@ -823,32 +836,54 @@ fn draw_dial(
         }
     }
     // 先铺 GPU 圆头光晕（底层），再画亮绿实线覆盖中心，避免光晕把实线压黑
-    crate::widgets::ring_glow::paint_ticks(ui, center, outer_r + 14.0, &ticks);
+    crate::widgets::ring_glow::paint_ticks(
+        ui,
+        center,
+        outer_r + tick_glow_offset,
+        tick_glow_decay,
+        &ticks,
+    );
     for &(p1, p2, half, color) in &ticks {
         ui.painter()
             .line_segment([p1, p2], egui::Stroke::new(half * 2.0, color));
         // 端点补同色圆点，盖住 CPU 线段的抗锯齿暗像素
-        ui.painter().circle_filled(p1, 0.6, color);
-        ui.painter().circle_filled(p2, 0.6, color);
+        ui.painter().circle_filled(p1, tick_cap, color);
+        ui.painter().circle_filled(p2, tick_cap, color);
     }
-    // 四正位 18px 夜光绿；数字底光走 GPU 径向光斑（小半径，避免圆斑）
-    let num_size = crate::theme::font_size("section");
+    // 四正位数字：图形刻度，按实际墨迹中线定位，不查字体盒表
+    let num_size = crate::theme::layout_f32("clock_dial_num_size") * scale;
+    let num_radius = crate::theme::layout_f32("clock_dial_num_radius") * scale;
+    let num_bloom = crate::theme::layout_f32("clock_dial_num_bloom") * scale;
     let cardinal = egui::FontId::proportional(num_size);
     for (ang, label) in [(0.0, "12"), (90.0, "3"), (180.0, "6"), (270.0, "9")] {
-        let (lx, ly) = polar(center.x, center.y, outer_r - 34.0, ang);
+        let (lx, ly) = polar(center.x, center.y, num_radius, ang);
         let pos = egui::pos2(lx, ly);
+        let alpha = 110;
+        let tag = match label {
+            "12" => "clock.num12",
+            "3" => "clock.num3",
+            "6" => "clock.num6",
+            _ => "clock.num9",
+        };
+        let text_top = text_ink::top_for_ink_center(ui, label, &cardinal, pos.y);
+        crate::layout_probe::glow(ui, tag, pos, num_bloom, alpha);
+        crate::layout_probe::ink(
+            ui,
+            tag,
+            label,
+            &cardinal,
+            egui::pos2(pos.x, text_top),
+            egui::Align2::CENTER_TOP,
+        );
         crate::widgets::ring_glow::paint_dot(
             ui,
             pos,
             0.0,
-            crate::theme::with_alpha(lume, 110),
-            12.0,
+            crate::theme::with_alpha(lume, alpha),
+            num_bloom,
         );
         ui.painter().text(
-            egui::pos2(
-                pos.x,
-                text_ink::top_for_center(ui, label, &cardinal, InkKind::Digits, pos.y),
-            ),
+            egui::pos2(pos.x, text_top),
             egui::Align2::CENTER_TOP,
             label,
             cardinal.clone(),
@@ -856,56 +891,132 @@ fn draw_dial(
         );
     }
 
-    // 金圈：加速日进度环（厚度 0–10px、色谱色），0 点不画；贴刻度环外侧
-    draw_ring(ui, center, outer_r, progress, ring);
+    // 金圈：加速日进度环（厚度 2–10×scale），跨日 1s 平滑，不消失
+    let ring_min = crate::theme::layout_f64("clock_dial_ring_min") * scale;
+    let ring_target = (progress * ring).max(ring_min);
+    let ring_fade_s = crate::theme::layout_f64("clock_dial_ring_fade_ms") / 1000.0;
+    let ring_thickness = ui.ctx().animate_value_with_time(
+        egui::Id::unique("clock_ring_thickness"),
+        ring_target,
+        ring_fade_s,
+    );
+    draw_ring(
+        ui,
+        center,
+        outer_r,
+        progress,
+        ring_thickness,
+        crate::theme::layout_f32("clock_dial_ring_bloom") * scale,
+    );
 
     let a1 = day_angle(accel);
-    let hand_r = outer_r - 26.0;
     // 时针：米白粗短
     let ha = day_angle(hour);
-    let (hx, hy) = polar(center.x, center.y, hand_r * 0.48, ha);
-    let (htx, hty) = polar(center.x, center.y, -12.0, ha);
+    let (hx, hy) = polar(
+        center.x,
+        center.y,
+        crate::theme::layout_f32("clock_dial_hand_hour") * scale,
+        ha,
+    );
+    let (htx, hty) = polar(
+        center.x,
+        center.y,
+        -crate::theme::layout_f32("clock_dial_tail_hour") * scale,
+        ha,
+    );
     ui.painter().line_segment(
         [egui::pos2(htx, hty), egui::pos2(hx, hy)],
-        egui::Stroke::new(5.0, ink.strong),
+        egui::Stroke::new(
+            crate::theme::layout_f32("clock_dial_hand_hour_w") * scale,
+            ink.strong,
+        ),
     );
     // 分针：星紫
     let ma = day_angle(minute);
-    let (mx, my) = polar(center.x, center.y, hand_r * 0.72, ma);
-    let (mtx, mty) = polar(center.x, center.y, -10.0, ma);
+    let (mx, my) = polar(
+        center.x,
+        center.y,
+        crate::theme::layout_f32("clock_dial_hand_minute") * scale,
+        ma,
+    );
+    let (mtx, mty) = polar(
+        center.x,
+        center.y,
+        -crate::theme::layout_f32("clock_dial_tail_minute") * scale,
+        ma,
+    );
     ui.painter().line_segment(
         [egui::pos2(mtx, mty), egui::pos2(mx, my)],
-        egui::Stroke::new(3.0, crate::theme::hand_minute_color()),
+        egui::Stroke::new(
+            crate::theme::layout_f32("clock_dial_hand_minute_w") * scale,
+            crate::theme::hand_minute_color(),
+        ),
     );
     // 秒针：朱红细长，带尾与端圆点
     let sa = day_angle(second);
-    let (sx, sy) = polar(center.x, center.y, hand_r * 0.84, sa);
-    let (stx, sty) = polar(center.x, center.y, -16.0, sa);
+    let (sx, sy) = polar(
+        center.x,
+        center.y,
+        crate::theme::layout_f32("clock_dial_hand_second") * scale,
+        sa,
+    );
+    let (stx, sty) = polar(
+        center.x,
+        center.y,
+        -crate::theme::layout_f32("clock_dial_tail_second") * scale,
+        sa,
+    );
     let sec_color = crate::theme::hand_second_color();
     ui.painter().line_segment(
         [egui::pos2(stx, sty), egui::pos2(sx, sy)],
-        egui::Stroke::new(1.2, sec_color),
+        egui::Stroke::new(
+            crate::theme::layout_f64("clock_dial_hand_second_w") * scale,
+            sec_color,
+        ),
     );
-    ui.painter()
-        .circle_filled(egui::pos2(sx, sy), 1.6, sec_color);
+    ui.painter().circle_filled(
+        egui::pos2(sx, sy),
+        crate::theme::layout_f64("clock_dial_second_tip") * scale,
+        sec_color,
+    );
     // 黄针：加速时刻，略短于秒针、比时针/分针粗
-    let (gx, gy) = polar(center.x, center.y, hand_r * 0.80, a1);
-    let (tx, ty) = polar(center.x, center.y, -14.0, a1);
+    let (gx, gy) = polar(
+        center.x,
+        center.y,
+        crate::theme::layout_f32("clock_dial_hand_accel") * scale,
+        a1,
+    );
+    let (tx, ty) = polar(
+        center.x,
+        center.y,
+        -crate::theme::layout_f32("clock_dial_tail_accel") * scale,
+        a1,
+    );
     ui.painter().line_segment(
         [egui::pos2(tx, ty), egui::pos2(gx, gy)],
-        egui::Stroke::new(3.2, accent),
+        egui::Stroke::new(
+            crate::theme::layout_f64("clock_dial_hand_accel_w") * scale,
+            accent,
+        ),
     );
-    ui.painter().circle_filled(center, 4.0, ink.strong);
-    draw_half_pills(ui, center, outer_r, pm);
+    ui.painter().circle_filled(
+        center,
+        crate::theme::layout_f32("clock_dial_hub") * scale,
+        ink.strong,
+    );
+    draw_half_pills(ui, center, outer_r, ring, pm);
 }
 
-/// 金圈（PL020）：加速日进度 → 实环 0–max；外发光由 GPU shader 画（ring_glow）
-fn draw_ring(ui: &egui::Ui, center: egui::Pos2, rim_r: f32, progress: f32, max_thickness: f32) {
+/// 金圈（PL020/PL024）：加速日进度 → 实环；厚度由调用方平滑后传入
+fn draw_ring(
+    ui: &egui::Ui,
+    center: egui::Pos2,
+    rim_r: f32,
+    progress: f32,
+    thickness: f32,
+    bloom: f32,
+) {
     let t = progress.clamp(0.0, 1.0);
-    if t < 0.01 {
-        return;
-    }
-    let thickness = (t * max_thickness).max(0.8);
     let r = rim_r + thickness / 2.0;
     let ring_outer = r + thickness / 2.0;
     crate::layout_probe::rect(
@@ -918,13 +1029,13 @@ fn draw_ring(ui: &egui::Ui, center: egui::Pos2, rim_r: f32, progress: f32, max_t
         "clock.dial_glow",
         egui::Rect::from_center_size(
             center,
-            egui::vec2((ring_outer + 7.0) * 2.0, (ring_outer + 7.0) * 2.0),
+            egui::vec2((ring_outer + bloom) * 2.0, (ring_outer + bloom) * 2.0),
         ),
     );
     let color = spectrum_color(&crate::theme::ring_spectrum(), t);
     ui.painter()
         .circle_stroke(center, r, egui::Stroke::new(thickness, color));
-    crate::widgets::ring_glow::paint(ui, center, r, thickness, color, 7.0);
+    crate::widgets::ring_glow::paint(ui, center, r, thickness, color, bloom);
 }
 
 /// 色谱插值（纯函数）：5 锚点等距映射，t=0 首色、t=1 尾色
@@ -939,7 +1050,7 @@ fn spectrum_color(anchors: &[egui::Color32; 5], t: f32) -> egui::Color32 {
 }
 
 /// 半日胶囊（PL023）：盘左右两侧与 3/9 点中线对齐，内缘距盘盒 20（距可见盘 30）；AM 橙红 / PM 淡蓝
-fn draw_half_pills(ui: &egui::Ui, center: egui::Pos2, rim_r: f32, pm: bool) {
+fn draw_half_pills(ui: &egui::Ui, center: egui::Pos2, rim_r: f32, ring: f32, pm: bool) {
     let ctx = ui.ctx();
     let am_t = crate::widgets::motion::anim(
         ctx,
@@ -950,11 +1061,11 @@ fn draw_half_pills(ui: &egui::Ui, center: egui::Pos2, rim_r: f32, pm: bool) {
     let pm_t = 1.0 - am_t;
     let bg = crate::theme::window_bg();
     let meta = crate::theme::ink().meta;
+    let accent = crate::theme::accent_color();
     let pill_w = crate::theme::layout_f32("clock_pill_w");
     let pill_h = crate::theme::layout_f32("clock_pill_h");
     let pill_radius = crate::theme::layout_f32("clock_pill_radius");
     let pill_font_size = crate::theme::font_size("meta");
-    let ring = crate::theme::layout_f32("clock_dial_ring");
     let pill_gap = crate::theme::layout_f32("clock_pill_dial_gap");
     let size = egui::vec2(pill_w, pill_h);
     let radius = egui::epaint::CornerRadius::same(pill_radius as u8);
@@ -982,7 +1093,7 @@ fn draw_half_pills(ui: &egui::Ui, center: egui::Pos2, rim_r: f32, pm: bool) {
             );
         }
         let fill = mix_color(bg, color, t);
-        let text = mix_color(meta, bg, t);
+        let text = mix_color(meta, accent, t);
         ui.painter().rect_filled(rect, radius, fill);
         let pill_font = crate::theme::font_semibold(pill_font_size);
         ui.painter().text(
@@ -1293,8 +1404,9 @@ fn draw_rate(ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bu
 // 输入：UiState（Tick 快照/倍率域）；输出：星盘 + readout + 倍率条 + SetRate/ApplyRate
 // 逻辑步骤：12h 星盘（60 刻度 + 四针 + 金圈 + AM/PM 胶囊）→ 盘下 readout
 //   （标签 11.5 + 5 + 数值行盒）→ 倍率条 73.0
-// 设计理由（PL023）：页头 26.0/块 32.0；星盘盒 = min(剩余高, 页宽−164).max(120)，
-//   可见盘 = 盒−20、金圈 0–10；读数三盒盒底对齐；倍率四固定盒；盒子只比盒子数值
+// 设计理由（PL023/PL024）：页头 26.0/块 32.0；星盘盒 = min(剩余高, 页宽−164).max(120)；
+//   盘内 320 母版，scale = dial_d/320，几何/字号/线宽/尾长/光晕全乘 scale；
+//   四针固定 60/90/110/100，胶囊固定；读数三盒盒底对齐；倍率四固定盒
 // 异常处理：time 为 None 显示读取中；各 hand/parse 异常回 0；读数横向按表跌落
 // 关联依赖：widgets(digits/motion/rate_strip)/tools::clock/theme 针色与半日色；消费方：pages::Pages
 #[cfg(test)]
@@ -1419,6 +1531,41 @@ mod tests {
         let pill = crate::theme::layout_f32("clock_pill_w");
         let gap = crate::theme::layout_f32("clock_pill_dial_gap");
         assert!((dial_side_w() - (pad + pill + gap)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn dial_scale_uses_320_design() {
+        assert!((dial_scale(320.0) - 1.0).abs() < 1e-6);
+        assert!((dial_scale(366.0) - 366.0 / 320.0).abs() < 1e-6);
+        assert!((dial_scale(120.0) - 0.375).abs() < 1e-6);
+    }
+
+    #[test]
+    fn dial_master_tokens_match_320() {
+        for (key, want) in [
+            ("clock_dial_design", 320.0),
+            ("clock_dial_hand_hour", 60.0),
+            ("clock_dial_hand_minute", 90.0),
+            ("clock_dial_hand_second", 110.0),
+            ("clock_dial_hand_accel", 100.0),
+            ("clock_dial_tick_long", 14.0),
+            ("clock_dial_tick_short", 6.0),
+            ("clock_dial_num_size", 20.0),
+            ("clock_dial_num_radius", 116.0),
+        ] {
+            assert_eq!(crate::theme::layout_f64(key), want, "{key}");
+        }
+        for (key, want) in [
+            ("clock_dial_tick_cap", 0.6),
+            ("clock_dial_tick_glow_decay", 1.6),
+            ("clock_dial_hand_second_w", 1.2),
+            ("clock_dial_hand_accel_w", 3.2),
+            ("clock_dial_second_tip", 1.6),
+            ("clock_dial_ring_min", 2.0),
+            ("clock_dial_ring_fade_ms", 1000.0),
+        ] {
+            assert!((crate::theme::layout_f64(key) - want).abs() < 1e-6, "{key}");
+        }
     }
 
     #[test]

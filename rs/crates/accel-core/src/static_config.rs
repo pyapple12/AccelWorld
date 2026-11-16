@@ -88,8 +88,7 @@ impl Static {
     }
 
     // ui 域其余访问器（A005 #15 + FIX007.10：顶层 ui_i64/ui_nested_str/ui_f64 与
-    // 嵌套 ui_nested_f64 生产零调用已删除；需两级/浮点 token 时用 `ui` 字段
-    // pointer 直取）
+    // 嵌套 ui_nested_f64 曾因零调用删除；PL024 盘内小数 token 需要，恢复嵌套浮点入口）
 
     /// ui 域嵌套对象取 i64
     pub fn ui_nested_i64(&self, group: &str, key: &str) -> i64 {
@@ -103,6 +102,19 @@ impl Static {
             None => panic!("ui.json 缺嵌套键或非整数: {group}.{key}"),
         }
     }
+
+    /// ui 域嵌套对象取 f64（小数 token）
+    pub fn ui_nested_f64(&self, group: &str, key: &str) -> f64 {
+        match self
+            .ui
+            .get(group)
+            .and_then(|g| g.get(key))
+            .and_then(Value::as_f64)
+        {
+            Some(v) => v,
+            None => panic!("ui.json 缺嵌套键或非数字: {group}.{key}"),
+        }
+    }
 }
 
 // ===== src/static_config.rs 说明区 =====
@@ -110,7 +122,7 @@ impl Static {
 //   sha256 一致，此后独立演进）
 // 输出：Static 单例 + base 域全型访问器（f64/i64/str/str_list——A009 #11：bool
 //   访问器已随 A005 #15 删除，此处清单订正）+ ui 域
-//   str/ui_nested_i64（FIX007.10：ui 域零调用 f64 族访问器已删，余走 pointer 直取）
+//   str/ui_nested_i64/ui_nested_f64（FIX007.10 曾删零调用 f64 族；PL024 恢复嵌套浮点入口）
 // 逻辑步骤：include_str 编译期嵌入 → OnceLock get_or_init 首用解析 → 访问器按键取值
 // 设计理由：token 零硬编码原则的 Rust 承接——业务参数不进代码；访问器 panic 带键名
 //   对应 Python RuntimeError/KeyError 快速失败语义（启动期暴露而非运行期静默）；
@@ -173,6 +185,7 @@ mod tests {
         assert_eq!(s.ui_str("font_family_digits"), "Bahnschrift");
         assert_eq!(s.ui_nested_i64("scale", "hero"), 72);
         assert_eq!(s.ui_nested_i64("spacing", "lg"), 16);
+        assert!((s.ui_nested_f64("layout", "clock_dial_tick_cap") - 0.6).abs() < 1e-9);
         let window_bg = s.ui.pointer("/colors/window_bg").and_then(|v| v.as_str());
         assert_eq!(window_bg, Some("#0F1420"));
         let accent = s.ui.pointer("/colors/accent").and_then(|v| v.as_str());

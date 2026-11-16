@@ -61,11 +61,11 @@ void main() {
             a = exp(-d / u_bloom) * 0.85;
         }
     }
-    // rect 边缘淡出，避免光晕在矩形边界突变成 0 形成可见方框
+    // rect 边缘淡出：光圈/数字底光用径向距离，避免方形边界
     // mode 3 已在 bloom 处平方归零，不能再乘 edge（大矩形会把它压到肉眼不可见）
     float edge = 1.0;
-    if (u_mode == 2) {
-        edge = 1.0 - smoothstep(0.12, 0.5, max(abs(v_uv.x - 0.5), abs(v_uv.y - 0.5)));
+    if (u_mode == 0 || u_mode == 2) {
+        edge = 1.0 - smoothstep(0.86, 1.0, length(v_uv - 0.5) * 2.0);
     } else if (u_mode != 3) {
         edge = 1.0 - smoothstep(0.30, 0.5, max(abs(v_uv.x - 0.5), abs(v_uv.y - 0.5)));
     }
@@ -176,6 +176,10 @@ impl RingGl {
     }
 }
 
+fn glow_painter(ui: &egui::Ui) -> egui::Painter {
+    ui.painter().with_clip_rect(ui.ctx().content_rect())
+}
+
 /// 在表盘位置排一次 GPU bloom（实环由调用方 CPU 绘制，GPU 只负责向外/向内的光晕）
 pub fn paint(
     ui: &egui::Ui,
@@ -230,7 +234,7 @@ pub fn paint(
             }
         }
     });
-    ui.painter().add(egui::PaintCallback {
+    glow_painter(ui).add(egui::PaintCallback {
         rect,
         callback: Arc::new(cb),
     });
@@ -239,7 +243,7 @@ pub fn paint(
 /// 圆点底光（四正位数字）：一次 GPU 径向光斑
 pub fn paint_dot(ui: &egui::Ui, center: egui::Pos2, radius: f32, color: egui::Color32, bloom: f32) {
     let ppp = ui.ctx().pixels_per_point();
-    let pad = bloom * 8.0 + 8.0;
+    let pad = bloom * 4.6 + 2.0;
     let half = radius + pad;
     let rect = egui::Rect::from_center_size(center, egui::vec2(half * 2.0, half * 2.0));
     let center_norm = egui::pos2(
@@ -282,7 +286,7 @@ pub fn paint_dot(ui: &egui::Ui, center: egui::Pos2, radius: f32, color: egui::Co
             }
         }
     });
-    ui.painter().add(egui::PaintCallback {
+    glow_painter(ui).add(egui::PaintCallback {
         rect,
         callback: Arc::new(cb),
     });
@@ -346,7 +350,7 @@ pub fn paint_pill(
             }
         }
     });
-    ui.painter().add(egui::PaintCallback {
+    glow_painter(ui).add(egui::PaintCallback {
         rect,
         callback: Arc::new(cb),
     });
@@ -453,6 +457,8 @@ in float v_half;
 in vec4 v_color;
 in vec2 v_uv;
 out vec4 frag_color;
+uniform float u_glow;
+
 float sd_segment_round(vec2 p, vec2 a, vec2 b) {
     vec2 pa = p - a;
     vec2 ba = b - a;
@@ -473,7 +479,7 @@ float sd_segment_flat(vec2 p, vec2 a, vec2 b, float half_w) {
 void main() {
     // 实线由 CPU 画（亮绿、平头）；GPU 只画圆头光晕
     float round = sd_segment_round(v_p, v_p1, v_p2) - v_half;
-    float a = round > 0.0 ? exp(-round / 1.6) * 0.38 : 0.0;
+    float a = round > 0.0 ? exp(-round / u_glow) * 0.38 : 0.0;
     // rect 边缘淡出，避免 quad 边界截断光晕形成方框
     float edge = 1.0 - smoothstep(0.30, 0.5, max(abs(v_uv.x - 0.5), abs(v_uv.y - 0.5)));
     a *= edge;
@@ -487,6 +493,7 @@ struct TicksGl {
     vbo: glow::Buffer,
     u_origin: Option<glow::UniformLocation>,
     u_size: Option<glow::UniformLocation>,
+    u_glow: Option<glow::UniformLocation>,
 }
 
 enum TicksState {
@@ -562,6 +569,7 @@ impl TicksGl {
                 vbo,
                 u_origin: loc("u_origin"),
                 u_size: loc("u_size"),
+                u_glow: loc("u_glow"),
             })
         }
     }
@@ -572,6 +580,7 @@ pub fn paint_ticks(
     ui: &egui::Ui,
     center: egui::Pos2,
     radius: f32,
+    glow: f32,
     ticks: &[(egui::Pos2, egui::Pos2, f32, egui::Color32)],
 ) {
     if ticks.is_empty() {
@@ -625,6 +634,7 @@ pub fn paint_ticks(
                 gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytes, glow::DYNAMIC_DRAW);
                 gl.uniform_2_f32(r.u_origin.as_ref(), origin[0], origin[1]);
                 gl.uniform_2_f32(r.u_size.as_ref(), size[0], size[1]);
+                gl.uniform_1_f32(r.u_glow.as_ref(), glow);
                 // 夜光加色混合：叠在实线边缘只会提亮，不会压黑
                 gl.enable(glow::BLEND);
                 gl.blend_func(glow::ONE, glow::ONE);
@@ -634,7 +644,7 @@ pub fn paint_ticks(
             }
         }
     });
-    ui.painter().add(egui::PaintCallback {
+    glow_painter(ui).add(egui::PaintCallback {
         rect,
         callback: Arc::new(cb),
     });
@@ -644,7 +654,7 @@ pub fn paint_ticks(
 // 输入：Ui + 环心/半径/厚度/颜色/bloom；输出：一次 PaintCallback（GPU bloom）
 // 逻辑步骤：rect 扩到光晕范围 → 归一化环心与像素尺寸 → CallbackFn 懒编译 shader →
 //   设 uniform → draw_arrays(TRIANGLE_STRIP, 4)
-// 设计理由（PL020）：用户要求真光晕而非叠圈；SDF + exp 衰减一次 fragment 出结果，
-//   与 CPU 实环分工（GPU 只画 bloom，不重复实环）
+// 设计理由（PL020/PL024）：用户要求真光晕而非叠圈；SDF + exp 衰减一次 fragment 出结果，
+//   与 CPU 实环分工（GPU 只画 bloom，不重复实环）；PL024 起刻度衰减 u_glow 随盘 scale
 // 异常处理：shader 编译/链接失败记 warn 并置 Failed，后续不再重试；实环仍由 CPU 画
 // 关联依赖：eframe::egui_glow::CallbackFn、eframe::glow；消费方：pages::clock::draw_ring

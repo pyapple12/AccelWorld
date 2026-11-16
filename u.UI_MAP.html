@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ACCELWORLD Clock UI 标注指南 · V0.6.5.5</title>
+    <title>ACCELWORLD Clock UI 标注指南 · V0.6.6.0</title>
     <style>
       :root {
         --bg: #0b0f19;
@@ -1813,9 +1813,9 @@
         token。目标只有一个：你指着屏幕说“这里”，我们指的是同一个东西。
       </p>
       <div class="meta-row">
-        <span class="badge gold">基线 V0.6.5.5</span>
-        <span class="badge">V0.6.5.5</span>
-        <span class="badge">窗口 960×640 · min 520×420 · max 1200×820</span>
+        <span class="badge gold">基线 V0.6.6.0</span>
+        <span class="badge">V0.6.6.0</span>
+        <span class="badge">窗口 960×720 · min 560×420 · 无上限</span>
         <span>配套：<code>u.UI_GLOSSARY.md</code></span>
       </div>
     </header>
@@ -2111,7 +2111,9 @@
               <tr>
                 <td class="id">B3</td>
                 <td class="nm">星盘</td>
-                <td class="ds">12h：60 刻度 + 12/3/6/9 内侧（20px section）</td>
+                <td class="ds">
+                  12h：60 刻度 + 12/3/6/9 内侧（320 母版 20px，按 scale 缩放）
+                </td>
               </tr>
               <tr>
                 <td class="id">B7</td>
@@ -2163,12 +2165,12 @@
                 时应与时针明显分开，rate=1 时重合。
               </li>
               <li>
-                AM/PM 胶囊在盘左右、与 3/9 点中线对齐；当前半日亮起（AM 橙红 /
-                PM 淡蓝）。
+                AM/PM 胶囊在盘左右、与 3/9 点中线对齐；当前半日文字变金色，
+                胶囊填充仍 AM 橙红 / PM 淡蓝。
               </li>
               <li>
-                金圈 0 点不可见，随加速日增厚到实环 7px，颜色走色谱，外发光由
-                GPU shader 画。
+                金圈从 2px 起随加速日增厚到 10px，跨日 1s
+                平滑不消失；颜色走色谱， 外发光由 GPU shader 画。
               </li>
               <li>
                 盘心没有
@@ -3456,7 +3458,7 @@
         </div>
         <div class="mini-grid">
           <div class="mini-card">
-            <h4>全宽抽屉（520×420 结构示意）</h4>
+            <h4>全宽抽屉（560×420 结构示意）</h4>
             <div class="mini-window">
               <div class="mini-bar">天宫时计　—　□　×</div>
               <div class="mini-body">
@@ -3888,13 +3890,15 @@
             <tbody>
               <tr>
                 <td>窗口默认</td>
-                <td>960×640</td>
+                <td>960×720</td>
                 <td><code>base.json</code> window_width/height</td>
               </tr>
               <tr>
-                <td>窗口最小 / 最大</td>
-                <td>520×420 / 1200×820</td>
-                <td><code>base.json</code> min；<code>ui.json</code> max</td>
+                <td>窗口最小 / 上限</td>
+                <td>560×420 / 无；启动任一方向超屏 → 560×420</td>
+                <td>
+                  <code>base.json</code> min；<code>window.rs</code> 启动判断
+                </td>
               </tr>
               <tr>
                 <td>坞带 / 坞 pill</td>
@@ -3921,7 +3925,8 @@
                 <td>星盘</td>
                 <td>
                   边长 = min(剩余高, 页宽 − 2×82)，下限 120、无上限；82 = 10 +
-                  52 + 20；可见盘 = 盒 − 20
+                  52 + 20；可见盘 = 盒 − 20；盘内按 dial_d / 320 等比， 指针 320
+                  母版 60 / 90 / 110 / 100，胶囊固定
                 </td>
                 <td><code>clock::dial_diameter</code></td>
               </tr>
@@ -4300,7 +4305,7 @@
     </main>
 
     <footer class="wrap footer">
-      <span>ACCELWORLD Clock UI 标注指南 · 基线 V0.6.5.5</span>
+      <span>ACCELWORLD Clock UI 标注指南 · 基线 V0.6.6.0</span>
       <span
         >配套：<code>u.UI_GLOSSARY.md</code> · 窗口图按 820px
         宽绘制，仅示意结构，不替代真机截图</span
@@ -4380,7 +4385,7 @@
       <circle cx="${CX}" cy="${CY}" r="3.2" fill="#ECE8DB"/>
       <g font-size="8" font-family="system-ui,sans-serif" text-anchor="middle">
         <rect x="${CX - 177}" y="${CY - 14}" width="52" height="22" rx="11" fill="#E8794F"/>
-        <text x="${CX - 151}" y="${CY + 2}" fill="#141A29" font-weight="600">AM</text>
+        <text x="${CX - 151}" y="${CY + 2}" fill="#E8B544" font-weight="600">AM</text>
         <rect x="${CX + 125}" y="${CY - 14}" width="52" height="22" rx="11" fill="none" stroke="#33406A"/>
         <text x="${CX + 151}" y="${CY + 2}" fill="#8A8774">PM</text>
       </g>

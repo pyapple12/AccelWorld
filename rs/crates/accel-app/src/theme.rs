@@ -237,13 +237,7 @@ pub fn spacing_f32(key: &str) -> f32 {
     })
 }
 
-/// 窗口最大内尺寸（layout.window_max_*）
-pub fn window_max_size() -> egui::Vec2 {
-    egui::vec2(
-        layout_f32("window_max_width"),
-        layout_f32("window_max_height"),
-    )
-}
+// 窗口最大内尺寸已随 PL024 取消（无上限）
 
 /// sRGB 相对亮度（WCAG；对比度测试用）
 pub fn relative_luminance(c: Color32) -> f32 {
@@ -324,6 +318,14 @@ pub fn layout_i64(key: &str) -> i64 {
     cached(&C, key, || Static::get().ui_nested_i64("layout", key))
 }
 
+/// 小数 layout token（结果缓存；PL024 盘内母版）
+pub fn layout_f64(key: &str) -> f32 {
+    static C: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();
+    cached(&C, key, || {
+        Static::get().ui_nested_f64("layout", key) as f32
+    })
+}
+
 /// 抽屉全开宽度（FIX011.03：比例与钳界 layout token 单源——原 0.46/[280,420]
 /// 魔法数三处内联；纯函数可测）
 pub fn drawer_width(avail_w: f32) -> f32 {
@@ -385,7 +387,7 @@ fn corner(px: u8) -> egui::epaint::CornerRadius {
 // 输入：ui.json colors/scale/spacing/radius/layout token；输出：Visuals 应用 +
 //   语义色/字号/间距/圆角/色值取值（全部实心色，无透明无 GL）
 // 逻辑步骤：apply（仅深色定案：偏好钉深 + 双槽位同款深色 Visuals）→
-//   color32_at/ink/font_size/spacing/layout/radius 取值（cached 键缓存）
+//   color32_at/ink/font_size/spacing/layout_i64/layout_f64/radius 取值（cached 键缓存）
 // 设计理由（UIR2 子夜星图）：旧板两处硬伤实测在案——text_dim 卡面 2.85:1
 //   失效（正文级信息低于 AA）、text_soft 与 text_muted 仅差 1.28:1 同职重叠；
 //   新板五层文本各距 ≥1.1:1 梯度且全矩阵 ≥4.5:1（.temp/contrast_check.awk）；

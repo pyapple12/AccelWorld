@@ -101,3 +101,48 @@ Python 版 0.6.0.0 冻结为 golden 基准，Rust 侧以五类行为夹具（tim
 - AGENTS.md「结构与约定」：渲染质量门 / 平台集成降级纪律 / 零硬编码 token
 - y.problems.md：RS 现役已知问题 #9-#12
 - z.plan.md：Rust 重构总纲 + 各 PL 执行偏移记录
+
+---
+
+## HINT004.GPU 光晕 quad 越界导致视觉圆心下沉（2026-11-17）
+
+### 现象
+
+盘内数字在大字号下，光晕上半变少、下半变多，实际渲染出来的圆心向下偏移。
+
+### 代码事实
+
+- `paint_dot` 的 `pad` 是绘制 quad 的半宽，不是光晕半径。
+- `quad_top = 数字中心 y − pad`。
+- `pad` 过大时 `quad_top < 0`，quad 顶部越过窗口上沿。
+- 此时实际渲染的光晕圆心被往下挤，不是像素被裁掉，也不是 CPU 圆心移动。
+- `[GLOW]` 打印的是 CPU 传进去的 `center`，不是最终屏幕上的渲染圆心；不能用它证明渲染圆心没变。
+
+### 实测
+
+960×720 4:3：
+
+```text
+bloom = 15.21
+12.y = 117.76
+旧 pad = 8 × 15.21 + 8 = 129.68
+quad_top = 117.76 − 129.68 = −11.92   ← 越界，渲染圆心下挤
+
+新 pad = 4.6 × 15.21 + 2 = 71.97
+quad_top = 117.76 − 71.97 = 45.79     ← 在窗口内，圆心正常
+```
+
+1200×900 4:3：旧 pad 下挤更明显，新 pad 正常。
+
+### 规则
+
+- `pad` 只按可见衰减范围取：`pad = 4.6 × bloom + 2`。
+- 必须保证 `quad_top ≥ 窗口内容区上沿`。
+- 判断光晕位置以实际渲染为准，不能只看 `[GLOW]` 的 CPU 参数。
+- `[INK]` 读实体墨迹；`[GLOW]` 读 CPU 圆心；两者相等但画面仍下挤时，问题在 quad 越界。
+
+### 关联
+
+- `rs/crates/accel-app/src/widgets/ring_glow.rs::paint_dot`
+- `rs/crates/accel-app/src/layout_probe.rs`：`[GLOW]` / `[INK]`
+- AGENTS.md：GPU 光晕 quad 规则

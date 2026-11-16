@@ -131,6 +131,44 @@ pub fn measure(ui: &Ui, _text: &str, font: &FontId, kind: InkKind) -> Ink {
     }
 }
 
+/// 整串实体墨迹四边（alpha > 96，相对 galley 左上角）：左、右、上、下
+pub fn solid_ink_bounds(ui: &Ui, text: &str, font: &FontId) -> Option<(f32, f32, f32, f32)> {
+    let galley = ui
+        .painter()
+        .layout_no_wrap(text.to_owned(), font.clone(), Color32::WHITE);
+    let atlas = ui.ctx().fonts(|f| f.image());
+    let (mut left, mut right) = (f32::INFINITY, f32::NEG_INFINITY);
+    let (mut top, mut bottom) = (f32::INFINITY, f32::NEG_INFINITY);
+    for row in &galley.rows {
+        for g in &row.glyphs {
+            let uv = g.uv_rect;
+            let cols = usize::from(uv.max[0].saturating_sub(uv.min[0]));
+            let rows = usize::from(uv.max[1].saturating_sub(uv.min[1]));
+            if cols == 0 || rows == 0 || uv.size.y <= 0.0 {
+                continue;
+            }
+            let cell_w = uv.size.x / cols as f32;
+            let row_h = uv.size.y / rows as f32;
+            for r in 0..rows {
+                for c in 0..cols {
+                    let px = atlas[(usize::from(uv.min[0]) + c, usize::from(uv.min[1]) + r)];
+                    if px.a() <= 96 {
+                        continue;
+                    }
+                    let x0 = row.pos.x + g.pos.x + uv.offset.x + c as f32 * cell_w;
+                    let y0 = row.pos.y + g.pos.y + uv.offset.y + r as f32 * row_h;
+                    left = left.min(x0);
+                    right = right.max(x0 + cell_w);
+                    top = top.min(y0);
+                    bottom = bottom.max(y0 + row_h);
+                }
+            }
+        }
+    }
+    (left.is_finite() && right.is_finite() && top.is_finite() && bottom.is_finite())
+        .then_some((left, right, top, bottom))
+}
+
 /// 明确居中路径：盒中心 → galley 顶；只有这里读整串字墨 bbox
 pub fn top_for_center(ui: &Ui, text: &str, font: &FontId, kind: InkKind, center: f32) -> f32 {
     let probe = if text.is_empty() { "0" } else { text };
@@ -138,6 +176,38 @@ pub fn top_for_center(ui: &Ui, text: &str, font: &FontId, kind: InkKind, center:
         .painter()
         .layout_no_wrap(probe.to_owned(), font.clone(), Color32::WHITE);
     center_from_galley(&galley, font, kind).top_for_center(center)
+}
+
+/// 盘内数字专用：只按实际墨迹中线定位，不查 font_profile，不产生盒高
+pub fn top_for_ink_center(ui: &Ui, text: &str, font: &FontId, center: f32) -> f32 {
+    let probe = if text.is_empty() { "0" } else { text };
+    let galley = ui
+        .painter()
+        .layout_no_wrap(probe.to_owned(), font.clone(), Color32::WHITE);
+    let baseline = galley
+        .rows
+        .first()
+        .and_then(|r| r.glyphs.first().map(|g| r.pos.y + g.pos.y))
+        .unwrap_or(font.size);
+    let (ink_top, ink_bottom) =
+        ink_bounds(&galley, baseline).unwrap_or((baseline - font.size, baseline));
+    let ascent = (baseline - ink_top).max(0.0);
+    let descent = (ink_bottom - baseline).max(0.0);
+    (center + (ascent - descent) * 0.5) - baseline
+}
+
+/// 整串 glyph 的实体字墨上下沿（相对 galley 顶）
+fn ink_bounds(galley: &Galley, baseline: f32) -> Option<(f32, f32)> {
+    let (mut ink_top, mut ink_bottom) = (f32::INFINITY, f32::NEG_INFINITY);
+    for g in galley.rows.first()?.glyphs.iter() {
+        let uv = g.uv_rect;
+        if uv.size.y > 0.0 {
+            let top = baseline + uv.offset.y;
+            ink_top = ink_top.min(top);
+            ink_bottom = ink_bottom.max(top + uv.size.y);
+        }
+    }
+    (ink_top.is_finite() && ink_bottom.is_finite()).then_some((ink_top, ink_bottom))
 }
 
 /// 由 galley 构造盒度量；按 kind 取盒高与 dy，不读任何字形 bbox
@@ -172,22 +242,8 @@ pub(crate) fn center_from_galley(galley: &Galley, font: &FontId, kind: InkKind) 
         .first()
         .and_then(|r| r.glyphs.first().map(|g| r.pos.y + g.pos.y))
         .unwrap_or(font.size);
-    let (mut ink_top, mut ink_bottom) = (f32::INFINITY, f32::NEG_INFINITY);
-    if let Some(row) = galley.rows.first() {
-        for g in &row.glyphs {
-            let uv = g.uv_rect;
-            if uv.size.y > 0.0 {
-                let top = baseline + uv.offset.y;
-                ink_top = ink_top.min(top);
-                ink_bottom = ink_bottom.max(top + uv.size.y);
-            }
-        }
-    }
-    if !ink_top.is_finite() || !ink_bottom.is_finite() {
-        // 空串/纯空格：无可见字墨；用名义 em 盒做居中回退
-        ink_top = baseline - font.size;
-        ink_bottom = baseline;
-    }
+    let (ink_top, ink_bottom) =
+        ink_bounds(galley, baseline).unwrap_or((baseline - font.size, baseline));
     InkCenter {
         h,
         baseline,
@@ -200,8 +256,9 @@ pub(crate) fn center_from_galley(galley: &Galley, font: &FontId, kind: InkKind) 
 // 输入：字体/文本/InkKind；输出：盒高 + 行排版基线 + 下空白 + dy
 // 逻辑步骤：查 font_profile → 盒高/下空白/dy → 基线按 (字号, 字族, ppp) 缓存 →
 //   top_for_bottom = 基线 − (盒底 − bottom − dy)；只有 top_for_center 才读整串 uv_rect 并集
-// 设计理由（PL023.37）：默认盒底路径不读任何 bbox；三线 P + dy = O = B；
-//   bbox 只服务“明确居中”的视觉对中，不参与盒高、不参与盒子对齐
+// 设计理由（PL023.37/PL024）：默认盒底路径不读任何 bbox；三线 P + dy = O = B；
+//   bbox 只服务“明确居中”的视觉对中，不参与盒高、不参与盒子对齐；
+//   top_for_ink_center 为盘内数字专用，只读 bbox 中线，不查 font_profile
 // 异常处理：空串/纯空格居中回退名义 em 盒；缺表 panic
 // 关联配置：ui.json font_profile；消费方：pages/*、widgets/*
 

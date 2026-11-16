@@ -8,8 +8,8 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - **统一入口四关卡**：`pwsh rs/ci.ps1`（fmt --check → clippy `-D warnings` → `cargo test --workspace` → core 依赖树零 egui/eframe）；`.github/workflows/rs-ci.yml` 复用同一命令集
 - 全量测试：`cargo test --workspace`（core 单测 + app 单测）
 - GUI 冒烟（真窗出血，会弹窗）：`cargo run -p accel-app`；UI 截图探针（逐页 PNG 后自动退出）：`$env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app`
-- 探针环境变量（正常模式零影响）：`ACCELWORLD_FPS_PROBE=<秒>` 静置测帧；`ACCELWORLD_UI_SHOT_GEOMETRY=WxH` 固定测试几何；`ACCELWORLD_TEST_NO_SAVE=1` 退出不写窗口存档；`ACCELWORLD_TEST_POS="x,y"` + `ACCELWORLD_EXPECT_POS="x,y"` 落点对照；`ACCELWORLD_EARLY_SHOT_MS=<ms>` 早期帧；`ACCELWORLD_TEST_CLOSE_LOSS=n` 丢弃前 n 次 Close（验证退出自愈）；`ACCELWORLD_LAYOUT_PROBE=1` 布局盒 `[BOX]/[RECT]`；`ACCELWORLD_TEXT_PROBE=1` 文字盒/基线/alpha 墨迹 `[TEXT]`；`ACCELWORLD_TEXT_MATRIX=1` 字体下探矩阵 `[GLYPH]/[GLYPHMAX]`（可用 `ACCELWORLD_TEXT_PROBE_TEXT` / `ACCELWORLD_TEXT_PROBE_SIZES` 覆盖样本与字号）
-- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（当前 `0.6.5.5`）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
+- 探针环境变量（正常模式零影响）：`ACCELWORLD_FPS_PROBE=<秒>` 静置测帧；`ACCELWORLD_UI_SHOT_GEOMETRY=WxH` 固定测试几何；`ACCELWORLD_TEST_NO_SAVE=1` 退出不写窗口存档；`ACCELWORLD_TEST_POS="x,y"` + `ACCELWORLD_EXPECT_POS="x,y"` 落点对照；`ACCELWORLD_EARLY_SHOT_MS=<ms>` 早期帧；`ACCELWORLD_TEST_CLOSE_LOSS=n` 丢弃前 n 次 Close（验证退出自愈）；`ACCELWORLD_LAYOUT_PROBE=1` 布局盒/光晕/实体墨迹 `[BOX]/[RECT]/[GLOW]/[INK]`；`ACCELWORLD_TEXT_PROBE=1` 文字盒/基线/alpha 墨迹 `[TEXT]`；`ACCELWORLD_TEXT_MATRIX=1` 字体下探矩阵 `[GLYPH]/[GLYPHMAX]`（可用 `ACCELWORLD_TEXT_PROBE_TEXT` / `ACCELWORLD_TEXT_PROBE_SIZES` 覆盖样本与字号）
+- **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（以该字段为准，不在文档写死当前值）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
 - **版本体系**：四段式纯数字 `X.Y.Z.P`（无 `ver ` 前缀）；`feat`/`fix`/`refactor`/`perf` 提交前 bump patch 位；bump 以 **HEAD 已提交版本**为基准，同一批未提交改动只加一次，不得在工作区已 bump 的值上再加一；历史存量 `ver 0.4x` 三段式仅存于历史文档与提交记录，不回溯改写
 
 ## 环境陷阱
@@ -42,6 +42,9 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - **文字盒**：盒高按字体组合参数表计算：`n = (字号 − 最大实体墨迹) / 栅格`，`盒高 = 字号 − (栅格 − 上空白 − 下空白) × n`；`盒顶 = 盒底 − 盒高`；`盒中线 = 盒顶 + 盒高 / 2`；`盒内基线 = 盒底 − 下空白`。上空白 = `0.2n`、下空白 = `0.1n`，当前栅格 = 0.8px。
 - **盒底不是裁切边界。** 下空白只是排版余量；英文 g/p/y 等真实字形下探允许画出盒底，盒子与父盒都不得因此裁切文字。
 - **图标盒不是裁切边界。** 图标盒 20×20 / 22×22 只是定位盒；字形光栅化后超出盒子的部分（含淡边、渐隐像素）允许画出盒外，父盒与 `clip_rect` 不得裁掉。
+- **盘内数字例外。** 星盘 12/3/6/9 属图形刻度，不建文字盒、不查 `font_profile` 的盒高与 dy；字号 = `20 × dial_scale`，按实际墨迹 bbox 中线对极坐标落点。
+- **星盘等比。** 盘内几何、字号、线宽、尾长与光晕按 `dial_d / 320` 缩放；指针长度固定为 320 下的 60 / 90 / 110 / 100 再乘 scale；AM/PM 胶囊固定不缩放，当前半日文字金色、填充不变；金圈厚度 2–10×scale，跨日 1s 平滑不消失。
+- **GPU 光晕 quad。** `paint_dot` 的 pad 取 `4.6 × bloom + 2`，且必须保证 `quad_top ≥ 窗口内容区上沿`；否则实际渲染圆心会向下挤。`[GLOW]` 只是 CPU 参数，不代表最终渲染位置。
 - **默认垂直对齐 = 盒底对盒底。** 盒子与盒子只比较盒子数值；文字基线只在盒子内部画字，**不参与外部对齐**。混排一行时，行盒高 = 各文字盒高的最大值，各子盒底边对齐行盒底边；各盒内部基线自然同为 `盒底 − 下空白`，这是结果，不是对齐依据。
 - **明确说明“居中”时 = 文字自己的字墨中线对盒子中线。** 文字是主动方，盒子中线是目标；混排时每个不同字号各自拿自己的字墨中线对同一盒子中线，允许基线不同。禁止用 `中线 + 盒高/2 − 下空白` 冒充居中（那只是底对齐的另一种写法）。组件高度可以因删除 `line_height` 变矮；居中只由字墨中线对盒中线决定，不得用 padding 补偿高度来伪造居中；居中不对就是居中算法错。
 - **盒子间对齐只允许盒子数值**：顶部 `a.top = b.top`；垂直中心 `a.center.y = b.center.y`；底部 `a.bottom = b.bottom`；左 `a.left = b.left`；水平中心 `a.center.x = b.center.x`；右 `a.right = b.right`。不得出现字墨 bbox、基线、字号、cap height、0.62/0.86/1.24 等比例作为对齐参数。
