@@ -179,20 +179,25 @@ fn row_box(
     cloud: bool,
 ) {
     let painter = ui.painter().with_clip_rect(rect);
-    let font = crate::theme::font_regular(crate::theme::font_size("body"));
+    let label_font = crate::theme::font_regular(crate::theme::font_size("body"));
+    let value_font = crate::theme::font_regular(crate::theme::font_size("meta"));
     let text_h = crate::widgets::text_metrics::height(
         ui.ctx(),
-        &font,
+        &label_font,
         crate::widgets::text_ink::InkKind::Cjk,
     );
     let text_bottom = rect.center().y + text_h / 2.0;
-    let label_ink =
-        crate::widgets::text_ink::measure(ui, label, &font, crate::widgets::text_ink::InkKind::Cjk);
+    let label_ink = crate::widgets::text_ink::measure(
+        ui,
+        label,
+        &label_font,
+        crate::widgets::text_ink::InkKind::Cjk,
+    );
     painter.text(
         egui::pos2(rect.left(), label_ink.top_for_bottom(text_bottom)),
         egui::Align2::LEFT_TOP,
         label,
-        font.clone(),
+        label_font,
         ink.body,
     );
     let mut right = rect.right();
@@ -206,13 +211,17 @@ fn row_box(
         );
         right -= 22.0;
     }
-    let value_ink =
-        crate::widgets::text_ink::measure(ui, value, &font, crate::widgets::text_ink::InkKind::Cjk);
+    let value_ink = crate::widgets::text_ink::measure(
+        ui,
+        value,
+        &value_font,
+        crate::widgets::text_ink::InkKind::Cjk,
+    );
     painter.text(
         egui::pos2(right, value_ink.top_for_bottom(text_bottom)),
         egui::Align2::RIGHT_TOP,
         value,
-        font,
+        value_font,
         ink.muted,
     );
 }

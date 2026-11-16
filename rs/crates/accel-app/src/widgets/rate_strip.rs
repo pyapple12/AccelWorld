@@ -1,17 +1,17 @@
 //! 短倍率条（PL023 盒子版）：360px 居中、6px 轨、1×/365× 端标、整数 1–365 档；
 //! 轨道下附「现实 1 天 = 加速 N 天」量化行。
-//! 固定盒：14.5 + 10 + 24 + 10 + 11.5 + 5 + 11.5 = 86.5；拖动 SetRate、松手/点击 ApplyRate 恰一次。
+//! 固定盒：16.5 + 10 + 24 + 10 + 12.5 + 5 + 12.5 = 90.5；拖动 SetRate、松手/点击 ApplyRate 恰一次。
 
 use egui::{Align2, Rect, Sense, Stroke};
 
 use super::slider::{rate_to_ratio, ratio_to_rate};
 use super::text_ink::{self, InkKind};
 
-/// 倍率条总高：由字体盒与 spacing token 计算（当前 86.5）
+/// 倍率条总高：由字体盒与 spacing token 计算（当前 90.5）
 pub fn height() -> f32 {
     let label_row_h =
         (crate::theme::font_size("meta") + 0.5).max(crate::theme::font_size("body") + 0.5);
-    let tick_row_h = 11.0 + 0.5;
+    let tick_row_h = crate::theme::font_size("meta") + 0.5;
     label_row_h
         + crate::theme::layout_f32("rate_label_track_gap")
         + crate::theme::layout_f32("rate_track_box")
@@ -174,7 +174,7 @@ pub fn show(
             egui::StrokeKind::Inside,
         );
     }
-    let tick_font = crate::theme::font_regular(11.0);
+    let tick_font = crate::theme::font_regular(crate::theme::font_size("meta"));
     let tick_row_bottom = track_box_top + track_box_h + track_ticks_gap + tick_row_h;
     let tick1_ink = text_ink::measure(ui, "1×", &tick_font, InkKind::Cjk);
     crate::layout_probe::text(
@@ -211,7 +211,7 @@ pub fn show(
         tick_font,
         ink.meta,
     );
-    let quant_font = crate::theme::font_regular(11.0);
+    let quant_font = crate::theme::font_regular(crate::theme::font_size("meta"));
     let quant_ink = text_ink::measure(ui, "现实", &quant_font, InkKind::Cjk);
     let quant_row_bottom = tick_row_bottom + ticks_quant_gap + tick_row_h;
     let year_days = accel_core::static_config::Static::get().base_f64("days_per_year");
@@ -240,8 +240,8 @@ pub fn show(
 
 // ===== src/widgets/rate_strip.rs 说明区 =====
 // 输入：Ui + min/max/rate + change/commit 回调；输出：倍率条（拖拽/点击/方向键）
-// 逻辑步骤：固定 360px 居中 → 标签行 14.5（倍率/×N 盒底）→ 10 → 轨道盒 24（6px 轨居中）
-//   → 10 → 端标行 11.5 → 5 → 量化行 11.5；交互比例→整数档，拖动 on_change/松手 on_commit
+// 逻辑步骤：固定 360px 居中 → 标签行 16.5（倍率/×N 盒底）→ 10 → 轨道盒 24（6px 轨居中）
+//   → 10 → 端标行 12.5 → 5 → 量化行 12.5；交互比例→整数档，拖动 on_change/松手 on_commit
 // 设计理由（PL023）：四个固定盒，不随断点缩放；轨/端标/量化行都是盒子；金只做数据
 // 异常处理：max<=min 时 rate_to_ratio 返回 0；键步长即时落盘
 // 关联依赖：slider(rate_to_ratio/ratio_to_rate)/text_ink/theme；消费方：pages/clock
@@ -252,6 +252,6 @@ mod tests {
 
     #[test]
     fn height_matches_fixed_boxes() {
-        assert!((height() - 86.5).abs() < 1e-6, "got {}", height());
+        assert!((height() - 90.5).abs() < 1e-6, "got {}", height());
     }
 }

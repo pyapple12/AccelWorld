@@ -122,6 +122,9 @@ fn draw_slots(
 mod tests {
     use super::*;
 
+    /// 测试样本字号（槽宽/盒高断言基准）
+    const TEST_SIZE: f32 = 20.0;
+
     #[test]
     fn slot_ratio_matrix() {
         // 数字满槽；冒号/句点/空格窄槽（表盘节奏的可证锚点）
@@ -146,9 +149,9 @@ mod tests {
             egui::LayerId::background(),
             egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(200.0, 100.0)),
         );
-        let font = digit_font(20.0);
+        let font = digit_font(TEST_SIZE);
         let cell = cell_width(&painter, &font);
-        assert!(cell >= 10.0, "槽宽下限 = 字号×0.5");
+        assert!(cell >= TEST_SIZE * 0.5, "槽宽下限 = 字号×0.5");
         let w = text_width(&painter, "12:34", &font);
         assert!((w - cell * 4.45).abs() < 1e-4, "12:34 应为 4.45 槽: {w}");
         // 空串零宽
@@ -169,12 +172,12 @@ mod tests {
     #[test]
     fn draw_bottom_and_center_use_box_values() {
         let painter = test_painter();
-        let font = digit_font(20.0);
+        let font = digit_font(TEST_SIZE);
         let bottom = draw_bottom(&painter, 100.0, 50.0, "12", &font, Color32::WHITE);
         assert!((bottom.bottom() - 100.0).abs() < 1e-4);
-        assert!((bottom.height() - 20.5).abs() < 1e-4);
+        assert!((bottom.height() - (TEST_SIZE + 0.5)).abs() < 1e-4);
         let center = draw_center(&painter, 100.0, 50.0, "12", &font, Color32::WHITE);
         assert!((center.center().y - 100.0).abs() < 1e-4);
-        assert!((center.height() - 20.5).abs() < 1e-4);
+        assert!((center.height() - (TEST_SIZE + 0.5)).abs() < 1e-4);
     }
 }

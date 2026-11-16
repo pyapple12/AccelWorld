@@ -66,9 +66,9 @@ impl crate::pages::Page for crate::pages::WorldPage {
                     }
                     let pulse = crate::widgets::motion::list_pulse(state, "world");
                     let last = pins.len().saturating_sub(1);
-                    let name_font = crate::theme::font_semibold(crate::theme::font_size("body_lg"));
+                    let name_font = crate::theme::font_semibold(crate::theme::font_size("body"));
                     let sub_font = crate::theme::font_regular(crate::theme::font_size("meta"));
-                    let walk_font = digits::digit_font(24.0);
+                    let walk_font = digits::digit_font(crate::theme::font_size("title"));
                     for (i, name) in pins.iter().enumerate() {
                         // 行盒高 = max(固定名称行高 + 6 + 副行/基准 chip 高, 走时行高) + 上下 12
                         let name_h = crate::widgets::text_metrics::height(
@@ -215,7 +215,7 @@ fn draw_city_row(
         ),
         egui::StrokeKind::Inside,
     );
-    let name_font = crate::theme::font_semibold(crate::theme::font_size("body_lg"));
+    let name_font = crate::theme::font_semibold(crate::theme::font_size("body"));
     let sub_font = crate::theme::font_regular(crate::theme::font_size("meta"));
     let name_h = crate::widgets::text_metrics::height(ui.ctx(), &name_font, InkKind::Cjk);
     let sub_h = crate::widgets::text_metrics::height(ui.ctx(), &sub_font, InkKind::Cjk);
@@ -260,7 +260,7 @@ fn draw_city_row(
             icons::Icon::Pin,
             crate::theme::accent_color(),
         );
-        let chip_font = crate::theme::font_regular(11.0);
+        let chip_font = crate::theme::font_regular(crate::theme::font_size("meta"));
         ui.painter().text(
             egui::pos2(
                 chip.left() + 18.0,
@@ -282,7 +282,7 @@ fn draw_city_row(
             egui::pos2(rect.left() + 14.0, sub_top),
             egui::vec2(rect.width() - 28.0, sub_block_h),
         );
-        let hint_font = crate::theme::font_regular(11.0);
+        let hint_font = crate::theme::font_regular(crate::theme::font_size("meta"));
         let hint_ink =
             crate::widgets::text_ink::measure(ui, "点击设为基准", &hint_font, InkKind::Cjk);
         ui.painter().text(
@@ -294,7 +294,7 @@ fn draw_city_row(
         );
     }
 
-    let walk_font = digits::digit_font(24.0);
+    let walk_font = digits::digit_font(crate::theme::font_size("title"));
     let walk_w = digits::text_width(ui.painter(), &walk, &walk_font);
     digits::draw_bottom(
         ui.painter(),

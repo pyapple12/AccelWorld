@@ -7,7 +7,7 @@ use egui::{Align2, Stroke};
 fn title_box_h(ui: &egui::Ui) -> f32 {
     crate::widgets::text_metrics::height(
         ui.ctx(),
-        &crate::theme::font_semibold(crate::theme::font_size("body_lg")),
+        &crate::theme::font_semibold(crate::theme::font_size("body")),
         crate::widgets::text_ink::InkKind::Cjk,
     )
 }
@@ -50,7 +50,7 @@ pub fn card_at(ui: &egui::Ui, rect: egui::Rect, title: &str, body: &str) {
         ));
     }
 
-    let title_font = crate::theme::font_semibold(crate::theme::font_size("body_lg"));
+    let title_font = crate::theme::font_semibold(crate::theme::font_size("body"));
     let body_font = crate::theme::font_regular(crate::theme::font_size("meta"));
     let title_ink = crate::widgets::text_ink::measure(
         ui,

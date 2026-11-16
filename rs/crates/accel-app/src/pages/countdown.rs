@@ -186,7 +186,7 @@ impl crate::pages::Page for crate::pages::CountdownPage {
         }
 
         let row_h = target_row_height(ui);
-        if crate::layout_probe::on() {
+        if crate::layout_probe::layout_on() {
             use std::sync::atomic::{AtomicU64, Ordering};
             static FRAME: AtomicU64 = AtomicU64::new(0);
             if FRAME.fetch_add(1, Ordering::Relaxed).is_multiple_of(30) {
@@ -443,8 +443,8 @@ fn draw_empty_cta(
 
 /// hero 名称行高：查全局角色表（「下一个节日」10px 与节日名 12px 取最大）
 fn hero_name_line_h(ui: &egui::Ui) -> f32 {
-    let label = crate::theme::font_medium(10.0);
-    let name = crate::theme::font_semibold(12.0);
+    let label = crate::theme::font_medium(crate::theme::font_size("meta"));
+    let name = crate::theme::font_semibold(crate::theme::font_size("meta"));
     crate::widgets::text_metrics::height(ui.ctx(), &label, InkKind::Cjk).max(
         crate::widgets::text_metrics::height(ui.ctx(), &name, InkKind::Cjk),
     )
@@ -452,9 +452,9 @@ fn hero_name_line_h(ui: &egui::Ui) -> f32 {
 
 /// hero 盒高：三行固定行高 + 10 间距；全部来自启动指标表
 fn hero_height(ui: &egui::Ui) -> f32 {
-    let remain_font = crate::theme::font_regular(28.0);
-    let value_font = crate::theme::font_semibold(28.0);
-    let date_font = crate::theme::font_regular(10.0);
+    let remain_font = crate::theme::font_regular(crate::theme::font_size("title"));
+    let value_font = crate::theme::font_semibold(crate::theme::font_size("title"));
+    let date_font = crate::theme::font_regular(crate::theme::font_size("meta"));
     let name_h = hero_name_line_h(ui);
     let line3 = crate::widgets::text_metrics::height(ui.ctx(), &remain_font, InkKind::Cjk)
         .max(crate::widgets::text_metrics::height(
@@ -480,9 +480,9 @@ fn draw_hero(
     now: NaiveDateTime,
     ink: &crate::theme::Ink,
 ) -> bool {
-    let label_font = crate::theme::font_medium(10.0);
-    let name_font = crate::theme::font_semibold(12.0);
-    let date_font = crate::theme::font_regular(10.0);
+    let label_font = crate::theme::font_medium(crate::theme::font_size("meta"));
+    let name_font = crate::theme::font_semibold(crate::theme::font_size("meta"));
+    let date_font = crate::theme::font_regular(crate::theme::font_size("meta"));
     let label_ink = text_ink::measure(ui, "下一个节日", &label_font, InkKind::Cjk);
     let name_ink = text_ink::measure(ui, name, &name_font, InkKind::Cjk);
     let date_text = format!("到期日：{}", at.format("%Y-%m-%d %H:%M"));
@@ -497,8 +497,8 @@ fn draw_hero(
             .map(|(d, t)| (d, t.trim()))
             .unwrap_or((value_text.as_str(), ""))
     };
-    let mut remain_font = crate::theme::font_regular(28.0);
-    let mut value_font = crate::theme::font_semibold(28.0);
+    let mut remain_font = crate::theme::font_regular(crate::theme::font_size("title"));
+    let mut value_font = crate::theme::font_semibold(crate::theme::font_size("title"));
     let mut remain_ink = text_ink::measure(ui, "还剩", &remain_font, InkKind::Cjk);
     let mut tian_ink = text_ink::measure(ui, "天", &value_font, InkKind::Cjk);
     let mut remain_w = ui
@@ -519,8 +519,8 @@ fn draw_hero(
     let avail = (rect.width() - 20.0).max(1.0);
     if remain_w + 6.0 + value_w > avail {
         let scale = avail / (remain_w + 6.0 + value_w);
-        remain_font = crate::theme::font_regular(28.0 * scale);
-        value_font = crate::theme::font_semibold(28.0 * scale);
+        remain_font = crate::theme::font_regular(crate::theme::font_size("title") * scale);
+        value_font = crate::theme::font_semibold(crate::theme::font_size("title") * scale);
         remain_ink = text_ink::measure(ui, "还剩", &remain_font, InkKind::Cjk);
         tian_ink = text_ink::measure(ui, "天", &value_font, InkKind::Cjk);
         remain_w = ui
@@ -601,17 +601,17 @@ fn draw_hero(
     let third_top = top + line_h + 10.0;
     let line3 = crate::widgets::text_metrics::height(
         ui.ctx(),
-        &crate::theme::font_regular(28.0),
+        &crate::theme::font_regular(crate::theme::font_size("title")),
         InkKind::Cjk,
     )
     .max(crate::widgets::text_metrics::height(
         ui.ctx(),
-        &crate::theme::font_semibold(28.0),
+        &crate::theme::font_semibold(crate::theme::font_size("title")),
         InkKind::Cjk,
     ))
     .max(crate::widgets::text_metrics::height(
         ui.ctx(),
-        &crate::theme::font_semibold(28.0),
+        &crate::theme::font_semibold(crate::theme::font_size("title")),
         InkKind::Digits,
     ));
     let line3_bottom = third_top + line3;
@@ -727,7 +727,7 @@ fn draw_target_row(
     let date_ink = text_ink::measure(ui, &date_text, &date_font, InkKind::Cjk);
     let name_h = crate::widgets::text_metrics::height(ui.ctx(), &name_font, InkKind::Cjk);
     let date_h = crate::widgets::text_metrics::height(ui.ctx(), &date_font, InkKind::Cjk);
-    let time_font = digits::digit_font(crate::theme::font_size("time_sm"));
+    let time_font = digits::digit_font(crate::theme::font_size("body"));
     let time_h = crate::widgets::text_metrics::height(ui.ctx(), &time_font, InkKind::Digits);
     let line2_h = date_h.max(time_h);
     let resp = ui.interact(
@@ -823,7 +823,7 @@ fn draw_target_row(
         let day_template_w = digits::text_width(ui.painter(), "000", &time_font);
         let day_actual_w = digits::text_width(ui.painter(), day_text, &time_font);
         let time_w = digits::text_width(ui.painter(), "00:00:00", &time_font);
-        let tian_font = crate::theme::font_semibold(crate::theme::font_size("time_sm"));
+        let tian_font = crate::theme::font_semibold(crate::theme::font_size("body"));
         let tian_w = ui
             .painter()
             .layout_no_wrap("天".to_string(), tian_font.clone(), ink.muted)
@@ -916,7 +916,7 @@ fn draw_target_row(
 fn target_row_height(ui: &egui::Ui) -> f32 {
     let name_font = crate::theme::font_medium(crate::theme::font_size("body"));
     let date_font = crate::theme::font_regular(crate::theme::font_size("meta"));
-    let time_font = digits::digit_font(crate::theme::font_size("time_sm"));
+    let time_font = digits::digit_font(crate::theme::font_size("body"));
     let name_h = crate::widgets::text_metrics::height(ui.ctx(), &name_font, InkKind::Cjk);
     let date_h = crate::widgets::text_metrics::height(ui.ctx(), &date_font, InkKind::Cjk);
     let time_h = crate::widgets::text_metrics::height(ui.ctx(), &time_font, InkKind::Digits);

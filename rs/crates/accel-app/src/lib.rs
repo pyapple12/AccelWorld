@@ -6,6 +6,7 @@ pub mod layout_probe;
 pub mod logging;
 pub mod pages;
 pub mod platform;
+pub mod text_probe;
 pub mod theme;
 pub mod tools;
 pub mod widgets;

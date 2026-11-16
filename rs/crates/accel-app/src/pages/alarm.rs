@@ -70,7 +70,7 @@ impl crate::pages::Page for crate::pages::AlarmPage {
         let row_h = {
             let time_h = crate::widgets::text_metrics::height(
                 ui.ctx(),
-                &digits::digit_font(24.0),
+                &digits::digit_font(crate::theme::font_size("title")),
                 crate::widgets::text_ink::InkKind::Digits,
             );
             time_h.max(switch::height()) + crate::theme::spacing_f32("xl")
@@ -284,7 +284,7 @@ fn draw_alarm_row(
         bus.send(FrontendCommand::ToggleAlarm(alarm.id.clone()));
     }
 
-    let time_font = digits::digit_font(24.0);
+    let time_font = digits::digit_font(crate::theme::font_size("title"));
     let time_h = crate::widgets::text_metrics::height(
         ui.ctx(),
         &time_font,

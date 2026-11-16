@@ -183,7 +183,7 @@ fn draw_item(
         );
     }
     let color = if active { strong } else { muted };
-    let label_font = crate::theme::font_medium(11.0);
+    let label_font = crate::theme::font_medium(crate::theme::font_size("meta"));
     let label_h = super::text_metrics::height(ui.ctx(), &label_font, super::text_ink::InkKind::Cjk);
     let label_bottom = rect.bottom() - 4.0;
     let label_top = label_bottom - label_h;

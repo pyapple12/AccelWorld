@@ -2837,5 +2837,7 @@ pub struct Ink {
 - `digits`：`draw_bottom` 用字体度量；`draw_center` 用实际文本的字墨并集；删除旧 `draw_centered / draw_centered_ink` 与 0.62/0.86/1.24。
 - 原生 label 清零：时钟加载态、世界页脚、天气错误行/重试、逐小时时间轴、极值/“现在”标注、toast 标题/正文全部进盒；toast 关闭改 Tabler Close 图标。
 - 防漂移：`rate_strip::height()` 由字体盒 + token 计算；`DIAL_SIDE_W` 与药丸 token 单测对齐；`clock_metrics` 标签盒高由 meta 字号算。
+- 探针制度化：`ACCELWORLD_LAYOUT_PROBE=1` 输出 `[BOX]/[RECT]`；`ACCELWORLD_TEXT_PROBE=1` 输出 `[TEXT]`（盒/基线/字体 descent/alpha 8-32-96 墨迹底）；`ACCELWORLD_TEXT_MATRIX=1` 启动时输出 `[GLYPH]/[GLYPHMAX]` 下探矩阵，样本与字号可用 `ACCELWORLD_TEXT_PROBE_TEXT` / `ACCELWORLD_TEXT_PROBE_SIZES` 覆盖。
+- 字号 6 档 token 化（PL023.35）：`ui.json scale` 只留 `hero 72 / display 42 / title 28 / section 20 / body 16 / meta 12`；旧 10/11/14/18/24/28/40/44 全部映射到六档；`clock_header_date_size`、`clock_pill_font_size` 删除改读 `body/meta`；读数大数断点 56/48/44/40/36、36/32/30/28/26 移入 `layout.readout_*`；检验口径：`rg` 扫 `font_(regular|medium|semibold)\([0-9]`、`digit_font\([0-9]`、`FontId::(new|proportional)\([0-9]` 零命中，`font_size("...")` 键集合 ⊆ 六档。
 - 验证：`cargo test --workspace` = 86 app + 1 bin + 117 core；`clippy -D warnings` 零错误；`ci.ps1` ALL_GREEN；974×678 与 600×820 探针、520/760/900/1200 截图矩阵通过。
 - 剩余：无；版本已 bump 到 0.6.5.5，提交草稿待用户审核后自行执行 git 写操作。

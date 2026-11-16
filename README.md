@@ -68,6 +68,10 @@ cargo test --workspace
 
 # UI 截图探针（真窗逐页 PNG 后自动退出，输出到指定目录；固定测试几何）
 $env:ACCELWORLD_UI_SHOT=".temp/ui_shots"; $env:ACCELWORLD_UI_SHOT_GEOMETRY="900x500"; cargo run -p accel-app
+
+# 布局盒 / 文字 alpha / 字体下探矩阵探针（正常模式零影响）
+$env:ACCELWORLD_LAYOUT_PROBE="1"; cargo run -p accel-app
+$env:ACCELWORLD_TEXT_PROBE="1"; $env:ACCELWORLD_TEXT_MATRIX="1"; cargo run -p accel-app
 ```
 
 ## 使用说明

@@ -85,9 +85,6 @@ pub fn polar(cx: f32, cy: f32, r: f32, angle_deg: f32) -> (f32, f32) {
 const BOX_GAP: f32 = 20.0;
 /// B3 盒每侧固定占位：内容边→药丸 10 + 药丸 52 + 药丸→盘盒 20
 const DIAL_SIDE_W: f32 = 82.0;
-/// 读数标签盒高由 meta 字号决定（12 + 0.5）
-/// 第 N 天字号（盒高 18.5）
-const READOUT_DAY_SIZE: f32 = 18.0;
 
 /// 星盘边长（纯函数）：B3 剩余高与盒宽（扣两侧 82）取小，下限 120、无上限
 pub fn dial_diameter(avail_w: f32, avail_h: f32) -> f32 {
@@ -107,7 +104,7 @@ impl crate::pages::Page for crate::pages::ClockPage {
     fn ui(&mut self, ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
         let Some(info) = state.time.clone() else {
             let text = "正在读取时间…";
-            let font = crate::theme::font_regular(crate::theme::font_size("body_lg"));
+            let font = crate::theme::font_regular(crate::theme::font_size("body"));
             let center = ui.max_rect().center();
             ui.painter().text(
                 egui::pos2(
@@ -172,7 +169,7 @@ impl crate::pages::Page for crate::pages::ClockPage {
             day_t,
             pm,
         );
-        if crate::layout_probe::on() {
+        if crate::layout_probe::layout_on() {
             use std::sync::atomic::{AtomicU64, Ordering};
             static FRAME: AtomicU64 = AtomicU64::new(0);
             if FRAME.fetch_add(1, Ordering::Relaxed).is_multiple_of(30) {
@@ -256,7 +253,7 @@ impl HeaderLayout {
 
 /// 量页头两个子盒（B1 日期 / B2 农历）的盒高与宽度跌落档位
 fn header_layout(ui: &egui::Ui, info: &accel_core::types::TimeInfo, page_w: f32) -> HeaderLayout {
-    let label_size = crate::theme::layout_f32("clock_header_date_size");
+    let label_size = crate::theme::font_size("body");
     let label_font = crate::theme::font_semibold(label_size);
     let meta_font = crate::theme::font_regular(crate::theme::font_size("meta"));
     let b1 = text_ink::measure(ui, &info.chinese_date, &label_font, InkKind::Cjk);
@@ -342,6 +339,19 @@ fn draw_stage_header(
         date_pos,
         egui::Align2::LEFT_TOP,
     );
+    crate::text_probe::line(
+        ui,
+        "clock.date.ink",
+        &info.chinese_date,
+        &date_font,
+        InkKind::Cjk,
+        date_pos,
+        egui::Align2::LEFT_TOP,
+        egui::Rect::from_min_max(
+            egui::pos2(rect.left() + 18.0, content_bottom - layout.b1_h),
+            egui::pos2(rect.left() + 18.0 + layout.b1_w, content_bottom),
+        ),
+    );
     ui.painter().text(
         date_pos,
         egui::Align2::LEFT_TOP,
@@ -383,6 +393,28 @@ fn draw_stage_header(
             line1_pos,
             egui::Align2::RIGHT_TOP,
         );
+        let line1_w = ui
+            .painter()
+            .layout_no_wrap(
+                layout.line1.clone(),
+                layout.meta_font.clone(),
+                egui::Color32::WHITE,
+            )
+            .rect
+            .width();
+        crate::text_probe::line(
+            ui,
+            "clock.lunar1.ink",
+            &layout.line1,
+            &layout.meta_font,
+            InkKind::Cjk,
+            line1_pos,
+            egui::Align2::RIGHT_TOP,
+            egui::Rect::from_min_max(
+                egui::pos2(right - line1_w, line1_bottom - layout.meta_h),
+                egui::pos2(right, line1_bottom),
+            ),
+        );
         ui.painter().text(
             line1_pos,
             egui::Align2::RIGHT_TOP,
@@ -407,6 +439,28 @@ fn draw_stage_header(
             InkKind::Cjk,
             line1_pos,
             egui::Align2::RIGHT_TOP,
+        );
+        let line1_w = ui
+            .painter()
+            .layout_no_wrap(
+                layout.line1.clone(),
+                layout.meta_font.clone(),
+                egui::Color32::WHITE,
+            )
+            .rect
+            .width();
+        crate::text_probe::line(
+            ui,
+            "clock.lunar1.ink",
+            &layout.line1,
+            &layout.meta_font,
+            InkKind::Cjk,
+            line1_pos,
+            egui::Align2::RIGHT_TOP,
+            egui::Rect::from_min_max(
+                egui::pos2(right - line1_w, content_bottom - layout.meta_h),
+                egui::pos2(right, content_bottom),
+            ),
         );
         ui.painter().text(
             line1_pos,
@@ -654,6 +708,20 @@ fn draw_yi_ji(
     let mut x = right_bottom.x - total;
     let yi_ink = text_ink::measure(ui, "宜", font, InkKind::Cjk);
     let y = yi_ink.top_for_bottom(right_bottom.y);
+    let line2_text = format!("宜 {yi_text}  忌 {ji_text}");
+    crate::text_probe::line(
+        ui,
+        "clock.lunar2.ink",
+        &line2_text,
+        font,
+        InkKind::Cjk,
+        egui::pos2(right_bottom.x - total, y),
+        egui::Align2::LEFT_TOP,
+        egui::Rect::from_min_max(
+            egui::pos2(right_bottom.x - total, right_bottom.y - yi_ink.h),
+            egui::pos2(right_bottom.x, right_bottom.y),
+        ),
+    );
     crate::layout_probe::rect(
         ui,
         "clock.lunar2",
@@ -780,7 +848,7 @@ fn draw_dial(
         ui.painter().circle_filled(p2, 0.6, color);
     }
     // 四正位 18px 夜光绿；数字底光走 GPU 径向光斑（小半径，避免圆斑）
-    let num_size = crate::theme::font_size("dial_num");
+    let num_size = crate::theme::font_size("section");
     let cardinal = egui::FontId::proportional(num_size);
     for (ang, label) in [(0.0, "12"), (90.0, "3"), (180.0, "6"), (270.0, "9")] {
         let (lx, ly) = polar(center.x, center.y, outer_r - 34.0, ang);
@@ -901,7 +969,7 @@ fn draw_half_pills(ui: &egui::Ui, center: egui::Pos2, rim_r: f32, pm: bool) {
     let pill_w = crate::theme::layout_f32("clock_pill_w");
     let pill_h = crate::theme::layout_f32("clock_pill_h");
     let pill_radius = crate::theme::layout_f32("clock_pill_radius");
-    let pill_font_size = crate::theme::layout_f32("clock_pill_font_size");
+    let pill_font_size = crate::theme::font_size("meta");
     let ring = crate::theme::layout_f32("clock_dial_ring");
     let pill_gap = crate::theme::layout_f32("clock_pill_dial_gap");
     let size = egui::vec2(pill_w, pill_h);
@@ -963,21 +1031,27 @@ struct ClockMetrics {
 
 /// 按页面区高度取盒内字号断点；读数盒高由标签盒 + 间距 + 数值行盒算出
 fn clock_metrics(page_h: f32, label_gap: f32) -> ClockMetrics {
+    let pair = |hero_key: &str, real_key: &str| {
+        (
+            crate::theme::layout_f32(hero_key),
+            crate::theme::layout_f32(real_key),
+        )
+    };
     let (hero, real) = if page_h >= 720.0 {
-        (56.0, 36.0)
+        pair("readout_hero_lg", "readout_real_lg")
     } else if page_h >= 600.0 {
-        (48.0, 32.0)
+        pair("readout_hero_md", "readout_real_md")
     } else if page_h >= 520.0 {
-        (44.0, 30.0)
+        pair("readout_hero_sm", "readout_real_sm")
     } else if page_h >= 440.0 {
-        (40.0, 28.0)
+        pair("readout_hero_xs", "readout_real_xs")
     } else {
-        (36.0, 26.0)
+        pair("readout_hero_xxs", "readout_real_xxs")
     };
     let label_h = crate::theme::font_size("meta") + 0.5;
     let value_row_h = (hero + 0.5_f32)
         .max(real + 0.5_f32)
-        .max(READOUT_DAY_SIZE + 0.5_f32);
+        .max(crate::theme::font_size("section") + 0.5_f32);
     ClockMetrics {
         hero,
         real,
@@ -1003,8 +1077,8 @@ fn draw_readout(
     let base = m.hero;
     let day = custom_day(&info.custom_time);
     let day_text = day_time(&info.custom_time);
-    let day_font = crate::theme::font_semibold(READOUT_DAY_SIZE);
-    let day_num_font = digits::digit_font(READOUT_DAY_SIZE);
+    let day_font = crate::theme::font_semibold(crate::theme::font_size("section"));
+    let day_num_font = digits::digit_font(crate::theme::font_size("section"));
     let measure = |text: &str, font: &egui::FontId| {
         ui.painter()
             .layout_no_wrap(text.to_string(), font.clone(), ink.strong)

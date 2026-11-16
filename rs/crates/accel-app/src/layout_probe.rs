@@ -8,8 +8,8 @@ use egui::{Align2, Color32, FontId, Pos2, Rect, Ui};
 
 use crate::widgets::text_ink::{self, InkKind};
 
-/// 探针是否开启（缓存一次，正常模式每帧零 env 查询）
-pub fn on() -> bool {
+/// 布局盒探针是否开启（缓存一次，正常模式每帧零 env 查询）
+pub fn layout_on() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();
     *ON.get_or_init(|| std::env::var("ACCELWORLD_LAYOUT_PROBE").is_ok())
 }
@@ -37,7 +37,7 @@ pub fn text(
     pos: Pos2,
     align: Align2,
 ) {
-    if !on() || !due(ui, tag) {
+    if !layout_on() || !due(ui, tag) {
         return;
     }
     let galley = ui
@@ -61,35 +61,9 @@ pub fn text(
     );
 }
 
-/// 明确居中：打印盒中线与按字墨中线算出的 galley 顶
-pub fn text_center(
-    ui: &Ui,
-    tag: &'static str,
-    text: &str,
-    font: &FontId,
-    kind: InkKind,
-    box_center: Pos2,
-) {
-    if !on() || !due(ui, tag) {
-        return;
-    }
-    let galley = ui
-        .painter()
-        .layout_no_wrap(text.to_owned(), font.clone(), Color32::WHITE);
-    let w = galley.rect.width();
-    let galley_top = text_ink::top_for_center(ui, text, font, kind, box_center.y);
-    eprintln!(
-        "[CENTER] {tag} x={:.2} box_center={:.2} w={:.2} galley_top={:.2}",
-        box_center.x - w * 0.5,
-        box_center.y,
-        w,
-        galley_top
-    );
-}
-
 /// 形状：打印实际绘制矩形
 pub fn rect(ui: &Ui, tag: &'static str, rect: Rect) {
-    if !on() || !due(ui, tag) {
+    if !layout_on() || !due(ui, tag) {
         return;
     }
     eprintln!(

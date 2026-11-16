@@ -90,7 +90,7 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                     crate::widgets::text_metrics::height(ui.ctx(), &body_font, InkKind::Cjk);
                 let temp_h = crate::widgets::text_metrics::height(
                     ui.ctx(),
-                    &digits::digit_font(44.0),
+                    &digits::digit_font(crate::theme::font_size("display")),
                     InkKind::Digits,
                 );
                 let error_h = meta_h + 14.0;
@@ -185,7 +185,7 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                         egui::Stroke::new(1.0, crate::theme::border_color()),
                         egui::StrokeKind::Inside,
                     );
-                    let retry_font = crate::theme::font_regular(11.0);
+                    let retry_font = crate::theme::font_regular(crate::theme::font_size("meta"));
                     ui.painter().text(
                         egui::pos2(
                             retry_rect.center().x,
@@ -287,7 +287,7 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                 }
 
                 // 数据来源盒
-                let source_font = crate::theme::font_regular(11.0);
+                let source_font = crate::theme::font_regular(crate::theme::font_size("meta"));
                 let source_h =
                     crate::widgets::text_metrics::height(ui.ctx(), &source_font, InkKind::Cjk)
                         + crate::theme::spacing_f32("sm");
@@ -331,7 +331,7 @@ fn draw_weather_hero(
         icon_for_code(w.weather_code),
         ink.muted,
     );
-    let temp_font = digits::digit_font(44.0);
+    let temp_font = digits::digit_font(crate::theme::font_size("display"));
     let temp = format!("{:.1}°", w.temperature);
     let temp_w = digits::text_width(painter, &temp, &temp_font);
     let temp_h = crate::widgets::text_metrics::height(
@@ -366,7 +366,7 @@ fn draw_weather_hero(
 fn metric(ui: &mut egui::Ui, label: &str, value: &str) {
     let ink = crate::theme::ink();
     let rect = ui.max_rect();
-    let label_font = crate::theme::font_regular(11.0);
+    let label_font = crate::theme::font_regular(crate::theme::font_size("meta"));
     let value_font = crate::theme::font_medium(crate::theme::font_size("body"));
     let label_h = crate::widgets::text_metrics::height(ui.ctx(), &label_font, InkKind::Cjk);
     let value_h = crate::widgets::text_metrics::height(ui.ctx(), &value_font, InkKind::Cjk);
@@ -485,6 +485,7 @@ fn draw_hourly(ui: &mut egui::Ui, hourly: &[HourlyPoint], ink: &crate::theme::In
             });
     // 极值/“现在”标注：画在 plot 盒内的文字盒，不再用 plot 原生 Text
     let transform = plot_response.transform;
+    let plot_rect = plot_response.response.rect;
     for &i in &label_idx {
         let h = hours[i];
         let text = format!("{:.0}°", h.temperature);
@@ -502,8 +503,13 @@ fn draw_hourly(ui: &mut egui::Ui, hourly: &[HourlyPoint], ink: &crate::theme::In
         } else {
             p.x - w / 2.0
         };
+        // 标签优先放点上方；贴近绘图区顶时翻到点下方，避免压到标题
+        let mut label_bottom = p.y - 2.0;
+        if label_bottom - label_ink.h < plot_rect.top() + 1.0 {
+            label_bottom = p.y + 2.0 + label_ink.h;
+        }
         ui.painter().text(
-            egui::pos2(x, label_ink.top_for_bottom(p.y - 2.0)),
+            egui::pos2(x, label_ink.top_for_bottom(label_bottom)),
             egui::Align2::LEFT_TOP,
             text,
             meta_font.clone(),
@@ -572,10 +578,10 @@ fn draw_week(ui: &mut egui::Ui, daily: &[accel_core::types::DailyPoint], ink: &c
         ink.muted,
     );
     let range_text = format!("{week_min:.0}° — {week_max:.0}°");
-    let range_font = crate::theme::font_regular(11.0);
+    let range_font = crate::theme::font_regular(crate::theme::font_size("meta"));
     let range_ink = crate::widgets::text_ink::measure(ui, &range_text, &range_font, InkKind::Cjk);
     ui.painter().text(
-        egui::pos2(rect.right(), range_ink.top_for_bottom(label_bottom)),
+        egui::pos2(rect.right() - 4.0, range_ink.top_for_bottom(label_bottom)),
         egui::Align2::RIGHT_TOP,
         range_text,
         range_font,
@@ -635,7 +641,7 @@ fn draw_week(ui: &mut egui::Ui, daily: &[accel_core::types::DailyPoint], ink: &c
         let value_text = format!("{:.0}°/{:.0}°", d.t_min, d.t_max);
         ui.painter().text(
             egui::pos2(
-                rect.right(),
+                rect.right() - 4.0,
                 crate::widgets::text_ink::top_for_center(
                     ui,
                     &value_text,

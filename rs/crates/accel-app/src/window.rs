@@ -118,6 +118,7 @@ impl eframe::App for AppHandle {
     /// 帧绘制：悬浮仪器坞 → 页总装 → toast → 重绘节奏（PL017 装配）
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        crate::text_probe::maybe_run_matrix(&ctx);
         // PL018.06 首帧门控：隐藏创建；完成 1 帧（首帧已 present）或 250ms 兜底后再显示。
         // 看门狗线程负责“隐藏窗口不派发首帧”的死角（见 run_with_counter）。
         if !self.first_show_done
