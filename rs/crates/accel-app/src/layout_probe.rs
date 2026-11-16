@@ -1,5 +1,5 @@
-//! 运行时盒子探针（ACCELWORLD_LAYOUT_PROBE=1）：打印文字盒与实际形状矩形。
-//! 文字盒 = 字号 + 0.5；基线 = 盒底 − 0.2；形状用实际绘制矩形。
+//! 运行时盒子探针（ACCELWORLD_LAYOUT_PROBE=1）：打印盒子、基线与实际形状矩形。
+//! 盒高/下空白/dy 查 font_profile；形状用实际绘制矩形。
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -53,7 +53,7 @@ pub fn text(
         pos.x
     };
     let baseline = pos.y + ink.baseline;
-    let box_bottom = baseline + crate::widgets::text_metrics::BOTTOM_RESERVE;
+    let box_bottom = baseline + ink.dy + ink.bottom;
     let box_top = box_bottom - ink.h;
     eprintln!(
         "[BOX] {tag} x={:.2} y={:.2} w={:.2} h={:.2} box_bottom={:.2} baseline={:.2}",

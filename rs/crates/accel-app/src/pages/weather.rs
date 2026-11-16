@@ -81,7 +81,7 @@ impl crate::pages::Page for crate::pages::WeatherPage {
 
                 let error = state.weather_errors.get(&city).cloned();
                 let data = state.weather.get(&city).cloned();
-                // 盒高全部查启动指标表（字号 + 0.5，不是当前字符串）
+                // 盒高全部查 font_profile（不是当前字符串）
                 let meta_font = crate::theme::font_regular(crate::theme::font_size("meta"));
                 let body_font = crate::theme::font_regular(crate::theme::font_size("body"));
                 let meta_h =
@@ -300,8 +300,12 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                     egui::vec2(source.width(), source_h - crate::theme::spacing_f32("xs")),
                 );
                 let source_text = "数据来源 Open-Meteo · 免费接口";
-                let source_ink =
-                    crate::widgets::text_ink::measure(ui, source_text, &source_font, InkKind::Cjk);
+                let source_ink = crate::widgets::text_ink::measure(
+                    ui,
+                    source_text,
+                    &source_font,
+                    InkKind::Latin,
+                );
                 ui.painter().text(
                     egui::pos2(
                         source_box.left(),
@@ -362,7 +366,7 @@ fn draw_weather_hero(
     );
 }
 
-/// 三列 metric：标签/值各自盒底对齐（盒高由调用方按字号 + 0.5 算）
+/// 三列 metric：标签/值各自盒底对齐（盒高由调用方查 font_profile）
 fn metric(ui: &mut egui::Ui, label: &str, value: &str) {
     let ink = crate::theme::ink();
     let rect = ui.max_rect();
@@ -380,7 +384,7 @@ fn metric(ui: &mut egui::Ui, label: &str, value: &str) {
         ink.muted,
     );
     let value_bottom = label_bottom + 4.0 + value_h;
-    let value_ink = crate::widgets::text_ink::measure(ui, value, &value_font, InkKind::Cjk);
+    let value_ink = crate::widgets::text_ink::measure(ui, value, &value_font, InkKind::Mixed);
     ui.painter().text(
         egui::pos2(rect.left(), value_ink.top_for_bottom(value_bottom)),
         egui::Align2::LEFT_TOP,
@@ -489,7 +493,7 @@ fn draw_hourly(ui: &mut egui::Ui, hourly: &[HourlyPoint], ink: &crate::theme::In
     for &i in &label_idx {
         let h = hours[i];
         let text = format!("{:.0}°", h.temperature);
-        let label_ink = crate::widgets::text_ink::measure(ui, &text, &meta_font, InkKind::Cjk);
+        let label_ink = crate::widgets::text_ink::measure(ui, &text, &meta_font, InkKind::Digits);
         let w = ui
             .painter()
             .layout_no_wrap(text.clone(), meta_font.clone(), ink.strong)
@@ -525,8 +529,9 @@ fn draw_hourly(ui: &mut egui::Ui, hourly: &[HourlyPoint], ink: &crate::theme::In
             .rect
             .width();
         let p = transform.position_from_point(&egui_plot::PlotPoint::new(i as f64, y_hi));
+        // “现在”贴在绘图区顶：标签放到 y_hi 下方，避免压到“逐小时”标题
         ui.painter().text(
-            egui::pos2(p.x - w / 2.0, label_ink.top_for_bottom(p.y)),
+            egui::pos2(p.x - w / 2.0, label_ink.top_for_bottom(p.y + label_ink.h)),
             egui::Align2::LEFT_TOP,
             text,
             meta_font.clone(),
@@ -541,7 +546,7 @@ fn draw_hourly(ui: &mut egui::Ui, hourly: &[HourlyPoint], ink: &crate::theme::In
     );
     for (k, i) in [0, n / 3, (2 * n) / 3, n - 1].into_iter().enumerate() {
         let time = hours[i].time.get(11..16).unwrap_or("--:--");
-        let time_ink = crate::widgets::text_ink::measure(ui, time, &meta_font, InkKind::Cjk);
+        let time_ink = crate::widgets::text_ink::measure(ui, time, &meta_font, InkKind::Digits);
         let cx = axis.left() + axis.width() * (k as f32 + 0.5) / 4.0;
         ui.painter().text(
             egui::pos2(cx, time_ink.top_for_bottom(axis.bottom())),

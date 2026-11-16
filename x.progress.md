@@ -682,7 +682,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 ### FIX012: 第12轮审计修复 [audit#A012]
 
 - [x] FIX012.01 [P2] 倒计时空草稿红字常驻（A012 #1，FIX011.16 回归） —— countdown.rs err_msg 计算提于行外并加 `draft_at_empty`/`draft_name_empty` 双门（空串/空名不产红字）；验证：探针 01_countdown 帧视觉实证空草稿无红字（加号行仅 placeholder）+ 现树测试全绿 + 四关卡（2026-10-28 完成）
-- [x] FIX012.02 [P2] 磁盘缓存 30 天上限进 token（A012 #2，A011 漏报补列） —— base.json 增 `weather_disk_cache_max_age_s: 2592000`，weather.rs 改 `disk_cache_max_age_secs()` Static 读取（下钳 1 防损坏配置）；验证：token 对账双绿（7 枚 weather_* 全消费）+ weather 域测试全绿 + 四关卡（2026-10-28 完成）
+- [x] FIX012.02 [P2] 磁盘缓存 30 天上限进 token（A012 #2，A011 漏报补列） —— base.json 增 `weather_disk_cache_max_age_s: 2592000`，weather.rs 改 `disk_cache_max_age_secs()` Static 读取（下钳 1 防损坏配置）；验证：token 对账双绿（7 枚 weather\_\* 全消费）+ weather 域测试全绿 + 四关卡（2026-10-28 完成）
 - [x] FIX012.03 [P3] 测试时间炸弹拆除（A012 #3） —— alarm.rs 夹具 created_at "2027-01-01T06:00:00"→"9999-12-31T00:00:00"（零产品代码改动）；验证：该测试绿 + 全量回归绿（2026-10-28 完成，硬截止前 64 天落地）
 - [x] FIX012.04 [P3] 说明区/注释失实族订正（A012 #4，4 处合并） —— ①toast.rs 关联配置补 layout.toast_step；②slider.rs 头/尾「松手→on_commit」改「松手/点击→on_commit 恰一发」；③window.rs 模块头+说明区「侧栏→当前页」改「仪器坞→页总装（抽屉+主仪）→toast→设置浮窗」；④chinese_calendar.rs 订正为「法定表+8 项农历规则+清明+除夕回退」；验证：rg 失实词清零（2026-10-28 完成）
 - [x] FIX012.05 [P3] serde derive 死代码族处置（A012 #5） —— ①types.rs 新测试模块 theme_pref_serde_matches_as_str（to_value/from_value 双向 + as_str/parse 锚定——「rename 锚定」承诺可失败化）；②alarm.rs 删 Alarm::Deserialize 与 AlarmDraft 双 derive + serde(default) 族属性 + 孤儿 default_true + Deserialize import；验证：新单测绿 + 全量回归绿 + 四关卡（2026-10-28 完成）
@@ -794,7 +794,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
   - **验收**：`hover_t`/`press_t` 端点单测（0/1、reduce=1 直取）；`rg` 无新增硬编码时长；空闲 `ACCELWORLD_FPS_PROBE=5` 计数与 0.6.3.3 差 ≤1；G5。
   - **边界**：若 1px 上浮引发相邻卡重叠，改为只提亮边框。
 - [x] PL019.13 [P1] 反馈动效 B（Select/刷新/新增行/减少动效覆盖）
-  - **做法**：①Select 菜单 180ms（alpha + 4px，reduce 直取）；②天气 spinner 与 160ms 淡入（`.11` 已做，此处统一 reduce 行为）；③列表新增行：页面保存上一帧 key 集合，检测新增 key → 记 `(key, Instant)`；行渲染时 elapsed<120ms 则 alpha=t、offset=4px*(1-t)，仅一次；④全部动画统一走 `widgets/motion.rs::anim(ctx, id, target, ms)`，reduce 时直接返回 target；`rg "animate_"` 对账，确保无绕过。
+  - **做法**：①Select 菜单 180ms（alpha + 4px，reduce 直取）；②天气 spinner 与 160ms 淡入（`.11` 已做，此处统一 reduce 行为）；③列表新增行：页面保存上一帧 key 集合，检测新增 key → 记 `(key, Instant)`；行渲染时 elapsed<120ms 则 alpha=t、offset=4px\*(1-t)，仅一次；④全部动画统一走 `widgets/motion.rs::anim(ctx, id, target, ms)`，reduce 时直接返回 target；`rg "animate_"` 对账，确保无绕过。
   - **验收**：添加目标/闹钟/城市各观察一次新行 120ms 出现；reduce 开时无任何动画残留；`rg "animate_"` 全部经封装；G5。
   - **边界**：若列表 diff 复杂，退化为“仅 toast 提示新增”，不保留半套动画。
 - [x] PL019.14 [P1] 收尾与验收
@@ -893,7 +893,6 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] PL023.04 [P0] `layout_probe` 改盒子探针 —— `[INK]`→`[BOX]`：盒顶/盒底/盒高/盒内基线；明确居中另打 `[CENTER]`（盒中线/字墨中线）；`[RECT]` 保留；验证：974×678 下打印盒值，不再打印“字墨 bbox”。
 - [x] PL023.05 [P0] 删除 `line_height` —— 5 个消费点（chip/primary_button/select/world 页脚/weather 数据源）先以 `height()` 替换；`rg line_height` 归零；验证：`cargo build -p accel-app` 零错误。
 - [x] PL023.06 [P0] 内核单测 —— 盒高/基线/混排共用盒底/明确居中字墨中线；`top_for_bottom` 基线=盒底−0.2；验证：`cargo test -p accel-app` 全绿。
-
 - [x] PL023.07 [P1] chip 盒子 —— 高度 `max(height(meta),height(body))+2×chip_pad_y`=26.5；label/value 共用内容盒底，各自 `top_for_bottom`；删除 `descent`；验证：chip 高 26.5，文字底贴内容盒底。
 - [x] PL023.08 [P1] 主按钮盒子 —— 高度 `height(body)+2×button_pad_y`=34.5；文字 `top_for_center(按钮盒中线)`；不补 padding；验证：按钮高 34.5，字墨中线=盒中线。
 - [x] PL023.09 [P1] 下拉盒子 —— 高度 `height(body)+2×select_pad_y`=26.5；触发器/选项 `top_for_center(盒中线)`；验证：触发器 26.5，选项行字墨居中。
@@ -903,7 +902,6 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] PL023.13 [P1] 坞标签盒 —— 项盒拆图标盒 + 标签盒 11.5；标签盒底对齐；去掉 `center+3` 偏移；验证：坞高 56/44 两档，标签不压图标。
 - [x] PL023.14 [P1] toast 文字盒 —— 标题盒 14.5 + 正文盒 12.5；多行正文按行盒数计高；删除原生 label；验证：toast 标题/正文分别盒底对齐。
 - [x] PL023.15 [P1] 控件回归 —— 构建 + 控件截图；确认按钮 34.5/下拉 26.5/chip 26.5/字段 38.0；**不因变矮补 padding**，居中不对改 `top_for_center`；验证：`cargo test -p accel-app` + 截图目测。
-
 - [x] PL023.16 [P2] 时钟页头 —— 日期盒 14.5；农历 12.5+3+12.5=28.0；内容 28.0；块 34.0；盒底+5+1 线；一线跌落 14.5/20.5；删除墨迹 bbox 依赖；验证：974×678 下 `date y=23.5`、`lunar1 y=10.0`、`lunar2 y=25.5`、`rule 43.0..44.0`。
 - [x] PL023.17 [P2] 星盘盒/圈/光晕 —— `DIAL_SIDE_W=82`；`dial_diameter=min(剩余高,页宽−164).max(120)`，删 560 上限；`outer_r=盒/2−10`；圈厚 0–10；`r=visible_r+thickness/2`（去 +1）；光晕盒外绘制、不建 b3 裁剪；验证：高度限制/宽度限制/下限三组单测。
 - [x] PL023.18 [P2] 半日药丸 —— 52×22/r11/字号11（盒 11.5）进 token；内缘距盘盒 20、外缘距内容边 10；三盒盒中线对齐；文字字墨中线=药丸盒中线；验证：600×900 竖屏两侧链 10+52+20 对称。
@@ -911,14 +909,12 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] PL023.20 [P2] 倍率条 —— 固定 86.5=14.5+10+24+10+11.5+5+11.5；6px 轨在 24 盒内居中；端标/量化 11.5 盒底；删 `s/0.36/0.60` 与断点缩放；验证：`rate_strip::height()=86.5`，轨道盒 24。
 - [x] PL023.21 [P2] 页面堆叠 —— `ClockMetrics` 保留 hero/real 断点、删 `rate_h` 断点；`readout_h` 由盒子算；`b3_h=page_h−header_h−readout_h−86.5−3×20`；验证：974×678 下 B3=339.9、可见盘=319.9。
 - [x] PL023.22 [P2] 时钟探针/截图 —— 974×678 + 600×900；核对 `[BOX]` 全部盒值；截图看星盘、药丸、读数、倍率；验证：探针无“字墨 bbox”，用户桌面走查。
-
 - [x] PL023.23 [P3] 倒计时 —— hero 91.5；目标行 56.0；页脚 102.5；空态 54.0；hero 第二行与目标行剩余数字改 `draw_bottom`；列表视口 `page_h−301.0`；验证：四值单测 + 探针。
 - [x] PL023.24 [P3] 世界 —— 页脚 `max(select26.5, meta12.5)+8=34.5`；行高 59.0/64.5；名称/副行/提示/走时盒底；基准 chip 字墨中线；删 `line_height`/`LEFT_CENTER`；验证：行高两档 + 截图。
 - [x] PL023.25 [P3] 天气 —— hero 97.0/指标 47.0/逐小时 168.5/七日 182.0/来源 20.5；温度/描述/指标/七日盒底；原生 label 与图表标注全部进盒；验证：五值单测 + 截图。
 - [x] PL023.26 [P3] 闹钟 —— 行 48.5；快捷 59.0/89.5；页脚 102.5；时刻/标签盒底；快捷 chip 字墨中线；删 `LEFT_CENTER/CENTER_CENTER` 文案；验证：三值单测 + 截图。
 - [x] PL023.27 [P3] 设置 —— 分区 46.0/只读行 30.5/开关行 47.0/品牌 20.5；标题/说明/左右值共用行内文字盒底；删 `LEFT/RIGHT_CENTER`；验证：四值单测 + 截图。
 - [x] PL023.28 [P3] 四页回归 —— 倒计时/世界/天气/闹钟/设置逐页 `ACCELWORLD_UI_SHOT`；确认无文字越界、无盒缝错位；验证：截图矩阵 + 用户走查。
-
 - [x] PL023.29 [P4] `ui.json` token —— 新增 `clock_dial_ring=10`、`clock_pill_w/h/radius/font_size=52/22/11/11`、`clock_pill_dial_gap=20`、`clock_readout_label_gap=5`、`rate_track_box=24`、`rate_track=6`、`rate_label_track_gap=10`、`rate_track_ticks_gap=10`、`rate_ticks_quant_gap=5`、`rate_width_max=360`；验证：死键检查 + 构建。
 - [x] PL023.30 [P4] 注释与说明区 —— 所有改动文件模块头/`说明区`改新口径；删除“墨迹 bbox/共用基线/0.62×hero/0.36/0.60/0.86/1.24/line_height”；验证：`rg` 旧词归零（历史文档除外）。
 - [x] PL023.31 [P4] 文档同步 —— `u.UI_GLOSSARY.md`/`u.UI_MAP.html`/`w.study.md`/README 同步；`x.progress`/`z.plan` 旧条目与 `m.milestone` 不动；验证：文档数值与单测一致。
@@ -926,3 +922,8 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] PL023.33 [P4] 版本与提交草稿 —— `base.json` → 0.6.5.5；整理 git add 清单与 commit 草稿；AI 不执行 git 写操作；验证：用户审阅后自行提交（2026-11-16 完成版本 bump 与草稿，提交待用户审核）。
 - [x] PL023.34 [P4] 探针制度化 —— `layout_probe` 只负责 `[BOX]/[RECT]`；新增 `text_probe` 负责 `[TEXT]/[GLYPH]/[GLYPHMAX]`；开关 `ACCELWORLD_LAYOUT_PROBE` / `ACCELWORLD_TEXT_PROBE` / `ACCELWORLD_TEXT_MATRIX`，矩阵样本与字号可 env 覆盖；验证：`cargo test` + `ci.ps1` ALL_GREEN，`[TEXT]`/`[GLYPHMAX]` 实跑有输出。
 - [x] PL023.35 [P4] 字号 6 档 token 化 —— `ui.json scale` 收敛为 `hero 72 / display 42 / title 28 / section 20 / body 16 / meta 12`，删除 `time_md/time_sm/body_lg/dial_num` 与 `clock_header_date_size/clock_pill_font_size`；读数断点改 `layout.readout_hero_*/readout_real_*`；全部硬编码字号替换为 `font_size(token)`；验证：`rg` 四条检验零命中，`ci.ps1` ALL_GREEN，六页截图走查（设置页值列、天气七日值/周范围溢出已修）。
+- [x] PL023.36 [P0] 字体组合参数表与三线基线方案 —— 落笔 `z.plan.md` 附录 PL023 第十二节与 `AGENTS.md`：三线 `P + dy = O = B`、`B = 盒底 − 下`；`n = (字号 − 最大实体墨迹) / 0.8`，`盒高 = 字号 − (0.8 − 0.2 − 0.1) × n`，上 `0.2n` 下 `0.1n`；表里存栅格数 `dy_cjk_grids`，运行期 `dy = grids × grid`；dy 与盒高 n 是两套栅格数（1/2/2/3/4/8 与 1/1/1/1/2/4）；display 由 42 调为 40（40px 中位 36.8 / 最大 38.4 / dy 4 栅格 / n 2）；验证：方案评审通过后进入实施。
+- [x] PL023.37 [P0] 字体组合参数表落地 —— `ui.json` 新增 `font_profile`（grid / top_ratio / bottom_ratio / 六档 + 四个 readout 档的 `dy_cjk_grids`·`dy_latin_grids`·`dy_digit_grids`·`trim_grids`）；`font_profile` 解析模块启动时按 `font_family + font_family_digits` 选表，查不到直接报错不回退；验证：单测六档 `盒高 = 字号 − trim` 闭合、`n` 为整数。
+- [x] PL023.38 [P0] 底层入口替换 —— `text_metrics::height` 与 `text_ink::measure` / `top_for_bottom` 改查表；删除 `TOP_RESERVE`、`BOTTOM_RESERVE` 与所有 `font.size + 0.5`；三线按 `P + dy = O = B` 输出；验证：`rg` 旧常量零命中。
+- [x] PL023.39 [P1] 页面替换与单测 —— 逐页移除 `+0.5` / `+0.2`；读数断点 56/48/44/40/36 作为 `readout_*` 档案入表；`InkKind` 扩为 Cjk/Latin/Digits/Mixed；补 `trim_grids` 整数、三线闭合、盒高闭合单测；验证：`cargo test` 87 项全过。
+- [x] PL023.40 [P2] 回归与文档 —— 6 档 × 520/974/1200 截图、全量字符探针矩阵、`ci.ps1` ALL_GREEN；AGENTS.md 增补三线规范与测量口径，w.study 增补实现路径；UI 术语表 / 标注图同步新盒高与 display 40；验证：用户桌面走查终审。

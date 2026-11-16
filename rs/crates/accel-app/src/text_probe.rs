@@ -145,6 +145,38 @@ pub fn line(
     );
 }
 
+/// 便捷入口：只给绘制位置与盒底，内部按盒高构造盒矩形
+#[allow(clippy::too_many_arguments)]
+pub fn boxed_line(
+    ui: &Ui,
+    tag: &'static str,
+    text: &str,
+    font: &FontId,
+    kind: InkKind,
+    pos: Pos2,
+    align: Align2,
+    box_bottom: f32,
+) {
+    if !on() {
+        return;
+    }
+    let ink = text_ink::measure(ui, text, font, kind);
+    let w = ui
+        .painter()
+        .layout_no_wrap(text.to_owned(), font.clone(), Color32::WHITE)
+        .rect
+        .width();
+    let x = if align == Align2::RIGHT_TOP {
+        pos.x - w
+    } else if align == Align2::CENTER_TOP {
+        pos.x - w * 0.5
+    } else {
+        pos.x
+    };
+    let box_rect = Rect::from_min_size(Pos2::new(x, box_bottom - ink.h), egui::vec2(w, ink.h));
+    line(ui, tag, text, font, kind, pos, align, box_rect);
+}
+
 /// 启动时最多跑一次的字体下探矩阵
 pub fn maybe_run_matrix(ctx: &egui::Context) {
     if !matrix_on() {
@@ -174,7 +206,7 @@ fn run_matrix(ctx: &egui::Context) {
                 .collect::<Vec<_>>()
         })
         .filter(|v| !v.is_empty())
-        .unwrap_or_else(|| vec![12.0, 16.0, 20.0, 28.0, 42.0, 72.0]);
+        .unwrap_or_else(|| vec![12.0, 16.0, 20.0, 28.0, 40.0, 72.0]);
     let ppp = ctx.pixels_per_point();
     eprintln!("[GLYPH] matrix ppp={ppp:.3} text=\"{text}\" sizes={sizes:?}");
     for size in sizes {
@@ -189,6 +221,7 @@ fn run_matrix(ctx: &egui::Context) {
             for glyph in galley.rows.iter().flat_map(|r| r.glyphs.iter()) {
                 let bounds = alpha_bounds(&atlas, glyph);
                 let v = bounds.map(|b| b.map_or(f32::NAN, |(_, bottom)| bottom));
+                let t = bounds.map(|b| b.map_or(f32::NAN, |(top, _)| top));
                 if v.iter().all(|x| x.is_nan()) {
                     continue;
                 }
@@ -198,8 +231,8 @@ fn run_matrix(ctx: &egui::Context) {
                     }
                 }
                 eprintln!(
-                    "[GLYPH] size={size:.1} kind={kind} ch={:?} U+{:04X} a8={:.2} a32={:.2} a96={:.2}",
-                    glyph.chr, glyph.chr as u32, v[0], v[1], v[2]
+                    "[GLYPH] size={size:.1} kind={kind} ch={:?} U+{:04X} a8={:.2} a32={:.2} a96={:.2} t96={:.2}",
+                    glyph.chr, glyph.chr as u32, v[0], v[1], v[2], t[2]
                 );
             }
             eprintln!(

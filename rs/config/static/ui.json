@@ -23,11 +23,93 @@
   "font_family_digits": "Bahnschrift",
   "scale": {
     "hero": 72,
-    "display": 42,
+    "display": 40,
     "title": 28,
     "section": 20,
     "body": 16,
     "meta": 12
+  },
+  "font_profile": {
+    "active": "misans_bahnschrift",
+    "profiles": {
+      "misans_bahnschrift": {
+        "grid": 0.8,
+        "top_ratio": 0.2,
+        "bottom_ratio": 0.1,
+        "sizes": {
+          "meta": {
+            "size": 12,
+            "dy_cjk_grids": 1,
+            "dy_latin_grids": 0,
+            "dy_digit_grids": 0,
+            "trim_grids": 1
+          },
+          "body": {
+            "size": 16,
+            "dy_cjk_grids": 2,
+            "dy_latin_grids": 0,
+            "dy_digit_grids": 0,
+            "trim_grids": 1
+          },
+          "section": {
+            "size": 20,
+            "dy_cjk_grids": 2,
+            "dy_latin_grids": 0,
+            "dy_digit_grids": 0,
+            "trim_grids": 1
+          },
+          "title": {
+            "size": 28,
+            "dy_cjk_grids": 3,
+            "dy_latin_grids": 0,
+            "dy_digit_grids": 0,
+            "trim_grids": 1
+          },
+          "display": {
+            "size": 40,
+            "dy_cjk_grids": 4,
+            "dy_latin_grids": 0,
+            "dy_digit_grids": 0,
+            "trim_grids": 2
+          },
+          "hero": {
+            "size": 72,
+            "dy_cjk_grids": 8,
+            "dy_latin_grids": 0,
+            "dy_digit_grids": 0,
+            "trim_grids": 4
+          },
+          "readout_lg": {
+            "size": 56,
+            "dy_cjk_grids": 5,
+            "dy_latin_grids": 0,
+            "dy_digit_grids": 0,
+            "trim_grids": 3
+          },
+          "readout_md": {
+            "size": 48,
+            "dy_cjk_grids": 4,
+            "dy_latin_grids": 0,
+            "dy_digit_grids": 0,
+            "trim_grids": 3
+          },
+          "readout_sm": {
+            "size": 44,
+            "dy_cjk_grids": 4,
+            "dy_latin_grids": 0,
+            "dy_digit_grids": 0,
+            "trim_grids": 2
+          },
+          "readout_xs": {
+            "size": 36,
+            "dy_cjk_grids": 3,
+            "dy_latin_grids": 0,
+            "dy_digit_grids": 0,
+            "trim_grids": 2
+          }
+        }
+      }
+    }
   },
   "radius": {
     "lg": 16,

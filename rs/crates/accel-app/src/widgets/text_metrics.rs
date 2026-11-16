@@ -1,5 +1,5 @@
-//! 全局文字盒高（PL023）：盒高 = 字号 + 0.3px（上）+ 0.2px（下）。
-//! 盒高与字形无关；数字槽宽仍按 0–9 最大 advance 缓存。
+//! 全局文字盒高（PL023.37）：盒高按 font_profile 查表，不再写死常量。
+//! 数字槽宽仍按 0–9 最大 advance 缓存。
 
 use egui::{Color32, Context, FontId};
 use std::collections::HashMap;
@@ -7,11 +7,6 @@ use std::hash::{Hash, Hasher};
 use std::sync::{Mutex, OnceLock};
 
 use super::text_ink::InkKind;
-
-/// 盒顶上方余量
-pub const TOP_RESERVE: f32 = 0.3;
-/// 基线下方余量：真实字形下探允许画出盒底，盒子不裁切
-pub const BOTTOM_RESERVE: f32 = 0.2;
 
 /// 数字槽宽缓存键：字号 bits + 字族 hash
 type CellKey = (u32, u64);
@@ -39,9 +34,9 @@ fn cell_key(font: &FontId) -> CellKey {
     (font.size.to_bits(), family_hash(font))
 }
 
-/// 角色盒高：固定为字号 + 0.5px；与文本/字形无关
+/// 角色盒高：查字体组合参数表；与文本/字形无关
 pub fn height(_ctx: &Context, font: &FontId, _kind: InkKind) -> f32 {
-    font.size + TOP_RESERVE + BOTTOM_RESERVE
+    crate::font_profile::get().for_size(font.size).h
 }
 
 /// 数字槽宽：取 0–9 的最大 advance，按字号/字族缓存
@@ -74,21 +69,21 @@ pub fn digit_cell(ctx: &Context, font: &FontId) -> f32 {
 }
 
 // ===== src/widgets/text_metrics.rs 说明区 =====
-// 输入：Context + FontId；输出：固定盒高 / 数字最大槽宽
-// 逻辑步骤：height 直接返回 font.size + 0.3 + 0.2；digit_cell 首次量 0–9 最大 advance 后缓存
-// 设计理由（PL023）：盒高只由字号 + 规范常量决定，同字号恒等；0.3 在字顶上方，0.2 在基线下方；
-//   字形真实下探允许画出盒底，盒子不裁切；组件高度不再另立 line_height 第二套
+// 输入：Context + FontId；输出：查表盒高 / 数字最大槽宽
+// 逻辑步骤：height 按字号查 font_profile；digit_cell 首次量 0–9 最大 advance 后缓存
+// 设计理由（PL023.37）：盒高只由字体组合表决定，同字号恒等；字形真实下探允许画出盒底，
+//   盒子不裁切；组件高度不再另立 line_height 第二套
 // 异常处理：锁中毒取回内部数据；槽宽下限 = 字号×0.5
-// 关联依赖：无字体集扫描；消费方：pages/*、widgets/digits
+// 关联依赖：font_profile；消费方：pages/*、widgets/digits
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn box_height_is_font_plus_half() {
+    fn box_height_matches_profile() {
         let ctx = Context::default();
-        for (size, want) in [(12.0, 12.5), (14.0, 14.5), (18.0, 18.5), (44.0, 44.5)] {
+        for (size, want) in [(12.0, 11.5), (16.0, 15.5), (20.0, 19.5), (72.0, 70.0)] {
             let font = FontId::proportional(size);
             let got = height(&ctx, &font, InkKind::Cjk);
             assert!((got - want).abs() < 1e-5, "{size} -> {got}, want {want}");

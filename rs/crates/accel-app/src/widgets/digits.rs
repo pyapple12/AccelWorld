@@ -173,11 +173,12 @@ mod tests {
     fn draw_bottom_and_center_use_box_values() {
         let painter = test_painter();
         let font = digit_font(TEST_SIZE);
+        let want_h = crate::font_profile::get().for_size(TEST_SIZE).h;
         let bottom = draw_bottom(&painter, 100.0, 50.0, "12", &font, Color32::WHITE);
         assert!((bottom.bottom() - 100.0).abs() < 1e-4);
-        assert!((bottom.height() - (TEST_SIZE + 0.5)).abs() < 1e-4);
+        assert!((bottom.height() - want_h).abs() < 1e-4);
         let center = draw_center(&painter, 100.0, 50.0, "12", &font, Color32::WHITE);
         assert!((center.center().y - 100.0).abs() < 1e-4);
-        assert!((center.height() - (TEST_SIZE + 0.5)).abs() < 1e-4);
+        assert!((center.height() - want_h).abs() < 1e-4);
     }
 }

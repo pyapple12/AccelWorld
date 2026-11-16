@@ -101,8 +101,9 @@ pub fn paint(ctx: &egui::Context, toasts: &mut Vec<Toast>) {
                             content_w,
                         );
                         let body_rows = body_galley.rows.len().max(1);
-                        let body_h =
-                            (body_rows as f32 * (body_font.size + 0.5)).max(body_galley.size().y);
+                        let body_h = (body_rows as f32
+                            * crate::font_profile::get().for_size(body_font.size).h)
+                            .max(body_galley.size().y);
                         let gap = 5.0;
                         let content_h = title_h + gap + body_h;
                         let (content, _) = ui.allocate_exact_size(

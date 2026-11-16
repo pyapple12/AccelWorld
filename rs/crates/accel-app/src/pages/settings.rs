@@ -7,7 +7,7 @@ use crate::widgets::{icons, switch};
 /// 设置页正文（页头由 pages::Pages 统一绘制）
 pub fn ui(ui: &mut egui::Ui, state: &mut UiState) {
     let ink = crate::theme::ink();
-    // 盒高查启动指标表（字号 + 0.5，不是当前字符串）
+    // 盒高查 font_profile（不是当前字符串）
     let section_font = crate::theme::font_semibold(crate::theme::font_size("section"));
     let meta_font = crate::theme::font_regular(crate::theme::font_size("meta"));
     let body_font = crate::theme::font_regular(crate::theme::font_size("body"));
@@ -44,7 +44,15 @@ pub fn ui(ui: &mut egui::Ui, state: &mut UiState) {
             let rect = stack.next(ui, section_h);
             section_box(ui, rect, "外观", "当前主题", &ink);
             let rect = stack.next(ui, row_h);
-            row_box(ui, rect, "主题", "子夜星图（深色）", &ink, false);
+            row_box(
+                ui,
+                rect,
+                "主题",
+                "子夜星图（深色）",
+                &ink,
+                false,
+                crate::widgets::text_ink::InkKind::Cjk,
+            );
 
             // 动效
             let rect = stack.next(ui, section_h);
@@ -75,17 +83,24 @@ pub fn ui(ui: &mut egui::Ui, state: &mut UiState) {
                         .version()
                         .to_string(),
                     false,
+                    crate::widgets::text_ink::InkKind::Digits,
                 ),
-                ("数据来源", "Open-Meteo（免费天气接口）".to_string(), true),
+                (
+                    "数据来源",
+                    "Open-Meteo（免费天气接口）".to_string(),
+                    true,
+                    crate::widgets::text_ink::InkKind::Cjk,
+                ),
                 (
                     "字体",
                     "MiSans（小米，免费商用）/ Bahnschrift".to_string(),
                     false,
+                    crate::widgets::text_ink::InkKind::Cjk,
                 ),
             ];
-            for (label, value, cloud) in rows {
+            for (label, value, cloud, kind) in rows {
                 let rect = stack.next(ui, row_h);
-                row_box(ui, rect, label, &value, &ink, cloud);
+                row_box(ui, rect, label, &value, &ink, cloud, kind);
             }
 
             let rect = stack.next(ui, brand_h);
@@ -177,6 +192,7 @@ fn row_box(
     value: &str,
     ink: &crate::theme::Ink,
     cloud: bool,
+    value_kind: crate::widgets::text_ink::InkKind,
 ) {
     let painter = ui.painter().with_clip_rect(rect);
     let label_font = crate::theme::font_regular(crate::theme::font_size("body"));
@@ -211,12 +227,7 @@ fn row_box(
         );
         right -= 22.0;
     }
-    let value_ink = crate::widgets::text_ink::measure(
-        ui,
-        value,
-        &value_font,
-        crate::widgets::text_ink::InkKind::Cjk,
-    );
+    let value_ink = crate::widgets::text_ink::measure(ui, value, &value_font, value_kind);
     painter.text(
         egui::pos2(right, value_ink.top_for_bottom(text_bottom)),
         egui::Align2::RIGHT_TOP,

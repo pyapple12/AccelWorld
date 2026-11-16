@@ -1,4 +1,4 @@
-//! 文字盒度量：盒高 = 字号 + 0.3（上）+ 0.2（下）；基线 = 盒底 − 0.2。
+//! 文字盒度量（PL023.37）：盒高、上/下空白与 dy 全部查 font_profile。
 //! 基线取 galley 行排版基线；整串字墨 bbox 仅服务“明确居中”，不参与盒高。
 
 use std::collections::HashMap;
@@ -7,20 +7,26 @@ use std::sync::{Mutex, OnceLock};
 
 use egui::{Color32, FontId, Galley, Ui};
 
-/// 字面类型：中文表意字 / 数字（Bahnschrift）——语义标签，盒高与基线不区分
+/// 字面类型：中文 / 纯英文 / 纯数字 / 英文数字混排——决定取哪一类 dy
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum InkKind {
     Cjk,
+    Latin,
     Digits,
+    Mixed,
 }
 
-/// 文字盒度量：盒高 = 字号 + 0.5；基线 = 盒底 − 0.2；不含任何字墨 bbox
+/// 文字盒度量：盒高与下空白查表；不含任何字墨 bbox
 #[derive(Clone, Copy)]
 pub struct Ink {
-    /// 盒高（= 字号 + 0.3 + 0.2）
+    /// 盒高（表内算出）
     pub h: f32,
     /// galley 顶 → 行排版基线（字体度量，同一行所有字形共用）
     pub baseline: f32,
+    /// 盒底 → 盒子基线 B
+    pub bottom: f32,
+    /// 排版基线上移量：中文 dy > 0，英文/数字当前 0
+    pub dy: f32,
 }
 
 impl Ink {
@@ -29,9 +35,9 @@ impl Ink {
         baseline - self.baseline
     }
 
-    /// 盒底 → galley 顶：基线 = 盒底 − 0.2
+    /// 盒底 → galley 顶：B = 盒底 − bottom，P = B − dy
     pub fn top_for_bottom(&self, bottom: f32) -> f32 {
-        self.top_for_baseline(bottom - super::text_metrics::BOTTOM_RESERVE)
+        self.top_for_baseline(bottom - self.bottom - self.dy)
     }
 }
 
@@ -98,11 +104,26 @@ fn baseline_for(ui: &Ui, font: &FontId) -> f32 {
     baseline
 }
 
-/// 默认盒底路径：只取盒高 + 字体基线，不读文本、不读 bbox
-pub fn measure(ui: &Ui, _text: &str, font: &FontId, _kind: InkKind) -> Ink {
+/// 由字号与字面类型选 dy：中文取 dy_cjk，英文取 dy_latin，数字取 dy_digit，
+/// 混排取两者较大值（当前英文/数字/混排均为 0）
+fn dy_for(font: &FontId, kind: InkKind) -> f32 {
+    let p = crate::font_profile::get().for_size(font.size);
+    match kind {
+        InkKind::Cjk => p.dy_cjk,
+        InkKind::Latin => p.dy_latin,
+        InkKind::Digits => p.dy_digit,
+        InkKind::Mixed => p.dy_latin.max(p.dy_digit),
+    }
+}
+
+/// 默认盒底路径：查表盒高 + 字体基线，不读文本、不读 bbox
+pub fn measure(ui: &Ui, _text: &str, font: &FontId, kind: InkKind) -> Ink {
+    let p = crate::font_profile::get().for_size(font.size);
     Ink {
-        h: font.size + super::text_metrics::TOP_RESERVE + super::text_metrics::BOTTOM_RESERVE,
+        h: p.h,
         baseline: baseline_for(ui, font),
+        bottom: p.bottom,
+        dy: dy_for(font, kind),
     }
 }
 
@@ -117,19 +138,23 @@ pub fn top_for_center(ui: &Ui, text: &str, font: &FontId, _kind: InkKind, center
 
 /// 由 galley 构造盒度量；不读任何字号/字形 bbox
 pub(crate) fn metrics_from_galley(galley: &Galley, font: &FontId) -> Ink {
+    let p = crate::font_profile::get().for_size(font.size);
     let baseline = galley
         .rows
         .first()
         .and_then(|r| r.glyphs.first().map(|g| r.pos.y + g.pos.y))
         .unwrap_or(font.size);
     Ink {
-        h: font.size + super::text_metrics::TOP_RESERVE + super::text_metrics::BOTTOM_RESERVE,
+        h: p.h,
         baseline,
+        bottom: p.bottom,
+        dy: p.dy_cjk,
     }
 }
 
 /// 由 galley 构造“明确居中”的字墨中线；整串 glyph uv_rect 并集
 pub(crate) fn center_from_galley(galley: &Galley, font: &FontId) -> InkCenter {
+    let p = crate::font_profile::get().for_size(font.size);
     let baseline = galley
         .rows
         .first()
@@ -152,7 +177,7 @@ pub(crate) fn center_from_galley(galley: &Galley, font: &FontId) -> InkCenter {
         ink_bottom = baseline;
     }
     InkCenter {
-        h: font.size + super::text_metrics::TOP_RESERVE + super::text_metrics::BOTTOM_RESERVE,
+        h: p.h,
         baseline,
         ink_top,
         ink_bottom,
@@ -160,13 +185,13 @@ pub(crate) fn center_from_galley(galley: &Galley, font: &FontId) -> InkCenter {
 }
 
 // ===== src/widgets/text_ink.rs 说明区 =====
-// 输入：字体/文本；输出：盒高 + 行排版基线（默认）；明确居中分支另算字墨中线
-// 逻辑步骤：盒高 = 字号 + 0.3 + 0.2 → 基线按 (字号, 字族, ppp) 缓存 →
-//   top_for_bottom；只有 top_for_center 才 layout 文本并取整串 uv_rect 并集
-// 设计理由（PL023）：默认盒底路径不读任何 bbox；bbox 只服务“明确居中”的视觉对中，
-//   不参与盒高、不参与盒子对齐；基线是行排版基线，不是首位图 bbox
-// 异常处理：空串/纯空格居中回退名义 em 盒；h 恒为字号+0.5
-// 关联配置：text_metrics::TOP_RESERVE / BOTTOM_RESERVE；消费方：pages/*、widgets/*
+// 输入：字体/文本/InkKind；输出：盒高 + 行排版基线 + 下空白 + dy
+// 逻辑步骤：查 font_profile → 盒高/下空白/dy → 基线按 (字号, 字族, ppp) 缓存 →
+//   top_for_bottom = 基线 − (盒底 − bottom − dy)；只有 top_for_center 才读整串 uv_rect 并集
+// 设计理由（PL023.37）：默认盒底路径不读任何 bbox；三线 P + dy = O = B；
+//   bbox 只服务“明确居中”的视觉对中，不参与盒高、不参与盒子对齐
+// 异常处理：空串/纯空格居中回退名义 em 盒；缺表 panic
+// 关联配置：ui.json font_profile；消费方：pages/*、widgets/*
 
 #[cfg(test)]
 mod tests {
@@ -177,14 +202,16 @@ mod tests {
         Ink {
             h: 14.5,
             baseline: 11.0,
+            bottom: 0.1,
+            dy: 1.6,
         }
     }
 
     #[test]
-    fn bottom_baseline_is_bottom_minus_reserve() {
+    fn bottom_baseline_is_bottom_minus_bottom_and_dy() {
         let ink = sample();
         let galley_top = ink.top_for_bottom(100.0);
-        assert!((galley_top + ink.baseline - 99.8).abs() < 1e-5);
+        assert!((galley_top + ink.baseline - (100.0 - 0.1 - 1.6)).abs() < 1e-5);
     }
 
     #[test]
@@ -204,13 +231,17 @@ mod tests {
     #[test]
     fn mixed_boxes_share_baseline_at_shared_bottom() {
         let mut small = sample();
-        small.h = 12.5;
+        small.h = 11.5;
+        small.bottom = 0.1;
+        small.dy = 0.8;
         let mut large = sample();
-        large.h = 18.5;
+        large.h = 19.5;
+        large.bottom = 0.1;
+        large.dy = 1.6;
         let bottom = 300.0;
         let small_baseline = small.top_for_bottom(bottom) + small.baseline;
         let large_baseline = large.top_for_bottom(bottom) + large.baseline;
-        assert!((small_baseline - large_baseline).abs() < 1e-5);
-        assert!((small_baseline - (bottom - 0.2)).abs() < 1e-5);
+        assert!((small_baseline - (bottom - 0.1 - 0.8)).abs() < 1e-5);
+        assert!((large_baseline - (bottom - 0.1 - 1.6)).abs() < 1e-5);
     }
 }

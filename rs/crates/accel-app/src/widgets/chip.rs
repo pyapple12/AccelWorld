@@ -85,7 +85,12 @@ pub fn show(ui: &mut egui::Ui, label: &str, value: &str) -> egui::Response {
     };
     let box_h = crate::widgets::text_metrics::height(ui.ctx(), max_font, InkKind::Cjk);
     let box_bottom = center_y + box_h * 0.5;
-    let baseline = box_bottom - crate::widgets::text_metrics::BOTTOM_RESERVE;
+    let (box_bottom_reserve, box_dy) = if label_font.size >= value_font.size {
+        (label_ink.bottom, label_ink.dy)
+    } else {
+        (value_ink.bottom, value_ink.dy)
+    };
+    let baseline = box_bottom - box_bottom_reserve - box_dy;
     ui.painter().text(
         egui::pos2(rect.left() + 12.0, label_ink.top_for_baseline(baseline)),
         egui::Align2::LEFT_TOP,

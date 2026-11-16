@@ -1,17 +1,17 @@
 //! 短倍率条（PL023 盒子版）：360px 居中、6px 轨、1×/365× 端标、整数 1–365 档；
 //! 轨道下附「现实 1 天 = 加速 N 天」量化行。
-//! 固定盒：16.5 + 10 + 24 + 10 + 12.5 + 5 + 12.5 = 90.5；拖动 SetRate、松手/点击 ApplyRate 恰一次。
+//! 固定盒：15.5 + 10 + 24 + 10 + 11.5 + 5 + 11.5 = 87.5；拖动 SetRate、松手/点击 ApplyRate 恰一次。
 
 use egui::{Align2, Rect, Sense, Stroke};
 
 use super::slider::{rate_to_ratio, ratio_to_rate};
 use super::text_ink::{self, InkKind};
 
-/// 倍率条总高：由字体盒与 spacing token 计算（当前 90.5）
+/// 倍率条总高：由字体组合表与 spacing token 计算
 pub fn height() -> f32 {
-    let label_row_h =
-        (crate::theme::font_size("meta") + 0.5).max(crate::theme::font_size("body") + 0.5);
-    let tick_row_h = crate::theme::font_size("meta") + 0.5;
+    let h = |size: f32| crate::font_profile::get().for_size(size).h;
+    let label_row_h = h(crate::theme::font_size("meta")).max(h(crate::theme::font_size("body")));
+    let tick_row_h = h(crate::theme::font_size("meta"));
     label_row_h
         + crate::theme::layout_f32("rate_label_track_gap")
         + crate::theme::layout_f32("rate_track_box")
@@ -38,7 +38,8 @@ pub fn show(
     let label_track_gap = crate::theme::layout_f32("rate_label_track_gap");
     let track_ticks_gap = crate::theme::layout_f32("rate_track_ticks_gap");
     let ticks_quant_gap = crate::theme::layout_f32("rate_ticks_quant_gap");
-    let tick_row_h = 11.0 + 0.5;
+    let h = |size: f32| crate::font_profile::get().for_size(size).h;
+    let tick_row_h = h(crate::theme::font_size("meta"));
     let total_h = height();
     let (outer, _) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), total_h), Sense::hover());
@@ -46,8 +47,7 @@ pub fn show(
         egui::pos2(outer.center().x - width / 2.0, outer.top()),
         egui::vec2(width, total_h),
     );
-    let label_row_h =
-        (crate::theme::font_size("meta") + 0.5).max(crate::theme::font_size("body") + 0.5);
+    let label_row_h = h(crate::theme::font_size("meta")).max(h(crate::theme::font_size("body")));
     let label_row_bottom = inner.top() + label_row_h;
     let label_font = crate::theme::font_medium(crate::theme::font_size("meta"));
     let label_ink = text_ink::measure(ui, "倍率", &label_font, InkKind::Cjk);
@@ -60,6 +60,16 @@ pub fn show(
         egui::pos2(inner.left(), label_ink.top_for_bottom(label_row_bottom)),
         Align2::LEFT_TOP,
     );
+    crate::text_probe::boxed_line(
+        ui,
+        "rate.label",
+        "倍率",
+        &label_font,
+        InkKind::Cjk,
+        egui::pos2(inner.left(), label_ink.top_for_bottom(label_row_bottom)),
+        Align2::LEFT_TOP,
+        label_row_bottom,
+    );
     ui.painter().text(
         egui::pos2(inner.left(), label_ink.top_for_bottom(label_row_bottom)),
         Align2::LEFT_TOP,
@@ -69,15 +79,25 @@ pub fn show(
     );
     let rate_font = crate::theme::font_medium(crate::theme::font_size("body"));
     let rate_text = format!("×{rate:.0}");
-    let rate_ink = text_ink::measure(ui, &rate_text, &rate_font, InkKind::Cjk);
+    let rate_ink = text_ink::measure(ui, &rate_text, &rate_font, InkKind::Digits);
     crate::layout_probe::text(
         ui,
         "rate.value",
         &rate_text,
         &rate_font,
-        InkKind::Cjk,
+        InkKind::Digits,
         egui::pos2(inner.right(), rate_ink.top_for_bottom(label_row_bottom)),
         Align2::RIGHT_TOP,
+    );
+    crate::text_probe::boxed_line(
+        ui,
+        "rate.value",
+        &rate_text,
+        &rate_font,
+        InkKind::Digits,
+        egui::pos2(inner.right(), rate_ink.top_for_bottom(label_row_bottom)),
+        Align2::RIGHT_TOP,
+        label_row_bottom,
     );
     ui.painter().text(
         egui::pos2(inner.right(), rate_ink.top_for_bottom(label_row_bottom)),
@@ -176,15 +196,25 @@ pub fn show(
     }
     let tick_font = crate::theme::font_regular(crate::theme::font_size("meta"));
     let tick_row_bottom = track_box_top + track_box_h + track_ticks_gap + tick_row_h;
-    let tick1_ink = text_ink::measure(ui, "1×", &tick_font, InkKind::Cjk);
+    let tick1_ink = text_ink::measure(ui, "1×", &tick_font, InkKind::Digits);
     crate::layout_probe::text(
         ui,
         "rate.tick1",
         "1×",
         &tick_font,
-        InkKind::Cjk,
+        InkKind::Digits,
         egui::pos2(inner.left(), tick1_ink.top_for_bottom(tick_row_bottom)),
         Align2::LEFT_TOP,
+    );
+    crate::text_probe::boxed_line(
+        ui,
+        "rate.tick1",
+        "1×",
+        &tick_font,
+        InkKind::Digits,
+        egui::pos2(inner.left(), tick1_ink.top_for_bottom(tick_row_bottom)),
+        Align2::LEFT_TOP,
+        tick_row_bottom,
     );
     ui.painter().text(
         egui::pos2(inner.left(), tick1_ink.top_for_bottom(tick_row_bottom)),
@@ -194,15 +224,25 @@ pub fn show(
         ink.meta,
     );
     let tick_max_text = format!("{max:.0}×");
-    let tick_max_ink = text_ink::measure(ui, &tick_max_text, &tick_font, InkKind::Cjk);
+    let tick_max_ink = text_ink::measure(ui, &tick_max_text, &tick_font, InkKind::Digits);
     crate::layout_probe::text(
         ui,
         "rate.tickmax",
         &tick_max_text,
         &tick_font,
-        InkKind::Cjk,
+        InkKind::Digits,
         egui::pos2(inner.right(), tick_max_ink.top_for_bottom(tick_row_bottom)),
         Align2::RIGHT_TOP,
+    );
+    crate::text_probe::boxed_line(
+        ui,
+        "rate.tickmax",
+        &tick_max_text,
+        &tick_font,
+        InkKind::Digits,
+        egui::pos2(inner.right(), tick_max_ink.top_for_bottom(tick_row_bottom)),
+        Align2::RIGHT_TOP,
+        tick_row_bottom,
     );
     ui.painter().text(
         egui::pos2(inner.right(), tick_max_ink.top_for_bottom(tick_row_bottom)),
@@ -229,6 +269,16 @@ pub fn show(
         egui::pos2(inner.center().x, quant_ink.top_for_bottom(quant_row_bottom)),
         Align2::CENTER_TOP,
     );
+    crate::text_probe::boxed_line(
+        ui,
+        "rate.quant",
+        &quant_text,
+        &quant_font,
+        InkKind::Cjk,
+        egui::pos2(inner.center().x, quant_ink.top_for_bottom(quant_row_bottom)),
+        Align2::CENTER_TOP,
+        quant_row_bottom,
+    );
     ui.painter().text(
         egui::pos2(inner.center().x, quant_ink.top_for_bottom(quant_row_bottom)),
         Align2::CENTER_TOP,
@@ -252,6 +302,6 @@ mod tests {
 
     #[test]
     fn height_matches_fixed_boxes() {
-        assert!((height() - 90.5).abs() < 1e-6, "got {}", height());
+        assert!((height() - 87.5).abs() < 1e-6, "got {}", height());
     }
 }

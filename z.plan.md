@@ -2841,3 +2841,120 @@ pub struct Ink {
 - 字号 6 档 token 化（PL023.35）：`ui.json scale` 只留 `hero 72 / display 42 / title 28 / section 20 / body 16 / meta 12`；旧 10/11/14/18/24/28/40/44 全部映射到六档；`clock_header_date_size`、`clock_pill_font_size` 删除改读 `body/meta`；读数大数断点 56/48/44/40/36、36/32/30/28/26 移入 `layout.readout_*`；检验口径：`rg` 扫 `font_(regular|medium|semibold)\([0-9]`、`digit_font\([0-9]`、`FontId::(new|proportional)\([0-9]` 零命中，`font_size("...")` 键集合 ⊆ 六档。
 - 验证：`cargo test --workspace` = 86 app + 1 bin + 117 core；`clippy -D warnings` 零错误；`ci.ps1` ALL_GREEN；974×678 与 600×820 探针、520/760/900/1200 截图矩阵通过。
 - 剩余：无；版本已 bump 到 0.6.5.5，提交草稿待用户审核后自行执行 git 写操作。
+
+### 十二、后续方案：字体组合参数表与三线基线（2026-11-16 立项，待实施）
+
+#### 目标
+
+- 把“字号 → 盒高 / 基线 / 中文下探”从代码常量改为按字体组合查表。
+- 三线对齐成为唯一规则：排版基线 `P` 加 `dy` 得到优化基线 `O`，`O` 对齐盒子基线 `B`。
+- 换字体只换表，不改公式；英文、数字的 `dy` 预留在表里，当前为 0。
+
+#### 数据表
+
+`ui.json` 新增 `font_profile`，键 = `font_family + font_family_digits`：
+
+```json
+"font_profile": {
+  "active": "misans_bahnschrift",
+  "profiles": {
+    "misans_bahnschrift": {
+      "grid": 0.8,
+      "base_trim": 0.5,
+      "top_ratio": 0.2,
+      "bottom_ratio": 0.1,
+      "sizes": {
+        "meta":    { "dy_cjk_grids": 1, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 1 },
+        "body":    { "dy_cjk_grids": 2, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 1 },
+        "section": { "dy_cjk_grids": 2, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 1 },
+        "title":   { "dy_cjk_grids": 3, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 1 },
+        "display": { "dy_cjk_grids": 4, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 2 },
+        "hero":    { "dy_cjk_grids": 8, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 4 }
+      }
+    }
+  }
+}
+```
+
+#### 三线
+
+```text
+盒子基线 B   = 盒底 − bottom
+优化基线 O   = B
+排版基线 P   = O − dy
+              P_cjk + dy_cjk = P_latin + dy_latin = P_digit + dy_digit = B
+```
+
+- 中文：`dy_cjk` 上移排版基线，实体墨迹底落在 `B`。
+- 英文、数字：当前 `dy = 0`，排版基线直接等于 `B`。
+- 渲染用 `P` 定位 galley；`B` 只做对齐目标，不直接绘制。
+
+#### 盒高与 trim_grids
+
+```text
+n      = (字号 − 最大实体墨迹) / grid
+trim   = (grid − top_ratio − bottom_ratio) × n
+top    = top_ratio × n
+bottom = bottom_ratio × n
+盒高   = 字号 − trim = 最大实体墨迹 + top + bottom
+```
+
+`n` 必须为整数；不是整数说明测量或字号档位有误，不得四舍五入掩盖。
+
+`n` 与 `dy` 是两套栅格数，不得混用：
+
+```text
+盒高 n：1 / 1 / 1 / 1 / 2 / 4
+dy 栅格：1 / 2 / 2 / 3 / 4 / 8
+
+dy = dy_cjk_grids × grid
+```
+
+`bottom` 就是盒底到文字摆放基线 `B` 的距离：`B = 盒底 − bottom`。
+
+#### 测量口径
+
+- 字符集：程序静态文案 + `ui.json` 去重汉字 + `a–z A–Z 0–9`。
+- 字重：regular。
+- 阈值：`alpha > 96` 实体；不用淡边，不用 bbox。
+- DPI：125%，`grid = 0.8px`。
+- `dy`：该档中文实体下探；众数与中位冲突时以覆盖主体为准。
+- 最大墨迹：全字符集实测最大值；中位只作参照，不参与 trim。
+
+#### 退役清单
+
+| 旧实现                                         | 处理                                       |
+| ---------------------------------------------- | ------------------------------------------ |
+| `text_metrics::TOP_RESERVE` / `BOTTOM_RESERVE` | 删除，改查表                               |
+| `text_metrics::height = font.size + 0.5`       | 改查表                                     |
+| `text_ink::measure` 的 `字号 + 0.3 + 0.2`      | 改查表                                     |
+| `text_ink::top_for_bottom` 的 `bottom − 0.2`   | 改查表 `bottom`                            |
+| `clock.rs` 的 `+ 0.5_f32` / `+ 0.2`            | 改查表                                     |
+| `rate_strip::height` 的 `+ 0.5`                | 改查表                                     |
+| `digits.rs` 的 `+ 0.5`                         | 改查表                                     |
+| `toast.rs` 的 `font.size + 0.5`                | 改查表                                     |
+| `clock_metrics` 读数断点 56/48/44/40/36        | 作为 `readout_*` 档案进表，不再散在 layout |
+
+#### 实施步骤
+
+1. 新增 `font_profile` 数据与解析模块，启动时按当前字体组合选表，查不到直接报错。
+2. 改 `text_metrics`、`text_ink` 两个底层入口，删除旧常量。
+3. 逐页替换 `+0.5` / `+0.2`，加单测并跑编译。
+4. 补读数断点的档案条目，确认 `readout_*` 也走同一公式。
+5. 跑 6 档 × 3 窗口截图、探针矩阵、`ci.ps1`。
+6. 同步 AGENTS / w.study / UI 术语表 / 标注图；历史记录不改。
+
+#### 检验
+
+- 单测：每档 `盒高 = 字号 − trim`；`trim_grids = (字号 − 最大墨迹) / 0.8` 为整数；`P + dy = B`。
+- 探针：`ACCELWORLD_TEXT_MATRIX=1` + 全量字符 + `SIZES=12,16,20,28,40,72`，输出 `t96` 与 `a96`；核对 dy、最大墨迹、中位。
+- 截图：520×420 / 974×678 / 1200×820，六页逐页走查。
+- 静态门：`rg` 确认代码不再出现 `TOP_RESERVE`、`BOTTOM_RESERVE`、`font.size + 0.5`、`bottom − 0.2`。
+- CI：`cargo fmt --check`、clippy `-D warnings`、`cargo test --workspace`、`ci.ps1` ALL_GREEN。
+
+#### 风险
+
+- 读数动态字号不在六档：作为独立档案进表，不硬编码。
+- 换字体未测表：启动报错，不回退错表。
+- 40/72 的盒高落在 39 / 70，不是 .5：由 `trim_grids` 决定，不强行改留空。
+- 旧文档数值：只改现行文档，`m.milestone.md` 等历史记录保持原样。

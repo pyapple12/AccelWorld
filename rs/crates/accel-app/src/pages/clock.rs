@@ -1004,7 +1004,7 @@ fn draw_half_pills(ui: &egui::Ui, center: egui::Pos2, rim_r: f32, pm: bool) {
         ui.painter().text(
             egui::pos2(
                 rect.center().x,
-                text_ink::top_for_center(ui, label, &pill_font, InkKind::Cjk, rect.center().y),
+                text_ink::top_for_center(ui, label, &pill_font, InkKind::Latin, rect.center().y),
             ),
             egui::Align2::CENTER_TOP,
             label,
@@ -1048,10 +1048,11 @@ fn clock_metrics(page_h: f32, label_gap: f32) -> ClockMetrics {
     } else {
         pair("readout_hero_xxs", "readout_real_xxs")
     };
-    let label_h = crate::theme::font_size("meta") + 0.5;
-    let value_row_h = (hero + 0.5_f32)
-        .max(real + 0.5_f32)
-        .max(crate::theme::font_size("section") + 0.5_f32);
+    let h = |size: f32| crate::font_profile::get().for_size(size).h;
+    let label_h = h(crate::theme::font_size("meta"));
+    let value_row_h = h(hero)
+        .max(h(real))
+        .max(h(crate::theme::font_size("section")));
     ClockMetrics {
         hero,
         real,
@@ -1110,6 +1111,7 @@ fn draw_readout(
 
     let label_h = crate::widgets::text_metrics::height(ui.ctx(), &label_font, InkKind::Cjk);
     let label_y = label_ink.top_for_bottom(area.top() + label_h);
+    let label_bottom = area.top() + label_h;
     crate::layout_probe::text(
         ui,
         "clock.ro_label_accel",
@@ -1119,6 +1121,16 @@ fn draw_readout(
         egui::pos2(day_left, label_y),
         egui::Align2::LEFT_TOP,
     );
+    crate::text_probe::boxed_line(
+        ui,
+        "clock.ro_label_accel",
+        "加速",
+        &label_font,
+        InkKind::Cjk,
+        egui::pos2(day_left, label_y),
+        egui::Align2::LEFT_TOP,
+        label_bottom,
+    );
     crate::layout_probe::text(
         ui,
         "clock.ro_label_real",
@@ -1127,6 +1139,16 @@ fn draw_readout(
         InkKind::Cjk,
         egui::pos2(center_x + 20.0, label_y),
         egui::Align2::LEFT_TOP,
+    );
+    crate::text_probe::boxed_line(
+        ui,
+        "clock.ro_label_real",
+        "现实",
+        &label_font,
+        InkKind::Cjk,
+        egui::pos2(center_x + 20.0, label_y),
+        egui::Align2::LEFT_TOP,
+        label_bottom,
     );
     ui.painter().text(
         egui::pos2(day_left, label_y),
