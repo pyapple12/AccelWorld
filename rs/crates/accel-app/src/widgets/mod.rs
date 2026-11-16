@@ -22,6 +22,7 @@ pub mod switch;
 pub mod text_ink;
 pub mod text_metrics;
 pub mod toast;
+pub mod tooltip;
 
 // ===== src/widgets/mod.rs 说明区 =====
 // PL017 套件：dock（悬浮带标签导航）/page_header（抽屉页头）/field（label+输入+焦点环）/

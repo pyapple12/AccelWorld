@@ -325,7 +325,7 @@ fn header_layout(ui: &egui::Ui, info: &accel_core::types::TimeInfo, page_w: f32)
     }
 }
 
-/// 舞台页头盒：左 15.5 日期盒 / 右 11.5×2 + 3 = 26.0 农历盒，底对齐；字底贴盒底
+/// 舞台页头盒：左 15.5 日期盒 / 右 11.5×2 + 3 = 26.0 农历盒，中线对齐；字底贴各自盒底
 fn draw_stage_header(
     ui: &mut egui::Ui,
     info: &accel_core::types::TimeInfo,
@@ -334,16 +334,19 @@ fn draw_stage_header(
 ) {
     let ink = crate::theme::ink();
     let top = rect.top();
-    let content_bottom = top + layout.content_h();
-    let b1_center = content_bottom - layout.b1_h / 2.0;
+    let center_y = top + layout.content_h() / 2.0;
+    let b1_top = center_y - layout.b1_h / 2.0;
+    let b1_bottom = center_y + layout.b1_h / 2.0;
+    let b2_top = center_y - layout.b2_h / 2.0;
+    let b2_bottom = center_y + layout.b2_h / 2.0;
     ui.painter().circle_filled(
-        egui::pos2(rect.left() + 6.0, b1_center),
+        egui::pos2(rect.left() + 6.0, center_y),
         3.5,
         crate::theme::accent_color(),
     );
-    // 左日期盒 15.5：盒底 = 共同盒底；字底贴盒底，不越过盒底
+    // 左日期盒 15.5：盒中线 = 农历块中线；字底贴盒底，不越过盒底
     let date_font = crate::theme::font_semibold(layout.label_size);
-    let date_pos = egui::pos2(rect.left() + 18.0, layout.b1.top_for_bottom(content_bottom));
+    let date_pos = egui::pos2(rect.left() + 18.0, layout.b1.top_for_bottom(b1_bottom));
     crate::layout_probe::text(
         ui,
         "clock.date",
@@ -362,8 +365,8 @@ fn draw_stage_header(
         date_pos,
         egui::Align2::LEFT_TOP,
         egui::Rect::from_min_max(
-            egui::pos2(rect.left() + 18.0, content_bottom - layout.b1_h),
-            egui::pos2(rect.left() + 18.0 + layout.b1_w, content_bottom),
+            egui::pos2(rect.left() + 18.0, b1_top),
+            egui::pos2(rect.left() + 18.0 + layout.b1_w, b1_bottom),
         ),
     );
     ui.painter().text(
@@ -375,7 +378,7 @@ fn draw_stage_header(
     );
     // 日期 hover：周数 / 节日 / 节气（命中域 = 15.5 盒，不占整个页头）
     let date_rect = egui::Rect::from_min_size(
-        egui::pos2(rect.left(), content_bottom - layout.b1_h),
+        egui::pos2(rect.left(), b1_top),
         egui::vec2(18.0 + layout.b1_w, layout.b1_h),
     );
     let date_resp = ui.interact(
@@ -395,7 +398,7 @@ fn draw_stage_header(
 
     let right = rect.right() - 6.0;
     if layout.two_line {
-        let line2_bottom = content_bottom;
+        let line2_bottom = b2_bottom;
         let line1_bottom = line2_bottom - layout.meta_h - layout.line_gap;
         let line1_pos = egui::pos2(right, layout.meta.top_for_bottom(line1_bottom));
         crate::layout_probe::text(
@@ -444,7 +447,7 @@ fn draw_stage_header(
             &layout.meta_font,
         );
     } else {
-        let line1_pos = egui::pos2(right, layout.meta.top_for_bottom(content_bottom));
+        let line1_pos = egui::pos2(right, layout.meta.top_for_bottom(b2_bottom));
         crate::layout_probe::text(
             ui,
             "clock.lunar1",
@@ -472,8 +475,8 @@ fn draw_stage_header(
             line1_pos,
             egui::Align2::RIGHT_TOP,
             egui::Rect::from_min_max(
-                egui::pos2(right - line1_w, content_bottom - layout.meta_h),
-                egui::pos2(right, content_bottom),
+                egui::pos2(right - line1_w, b2_top),
+                egui::pos2(right, b2_bottom),
             ),
         );
         ui.painter().text(
@@ -486,8 +489,8 @@ fn draw_stage_header(
     }
     // 农历 hover：右盒 = 26.0（两行）/ 11.5（一行），不占 5px + 线
     let tip_rect = egui::Rect::from_min_max(
-        egui::pos2(rect.center().x, rect.top()),
-        egui::pos2(right, content_bottom),
+        egui::pos2(rect.center().x, b2_top),
+        egui::pos2(right, b2_bottom),
     );
     let resp = ui.interact(
         tip_rect,
@@ -530,7 +533,6 @@ fn draw_date_tooltip(
     info: &accel_core::types::TimeInfo,
     font: &egui::FontId,
 ) {
-    let ink = crate::theme::ink();
     let date = info.standard_datetime.get(..10).unwrap_or("");
     let week = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
         .map(|d| d.iso_week().week())
@@ -544,44 +546,14 @@ fn draw_date_tooltip(
         text.push_str(" · ");
         text.push_str(&info.lunar_jieqi);
     }
-    let pad_x = crate::theme::layout_f32("tooltip_pad_x");
-    let pad_y = crate::theme::layout_f32("tooltip_pad_y");
-    let radius = crate::theme::radius_px("sm") as u8;
-    let line = text_ink::measure(ui, &text, font, InkKind::Cjk);
-    let w = ui
-        .painter()
-        .layout_no_wrap(text.clone(), font.clone(), ink.muted)
-        .rect
-        .width()
-        + pad_x * 2.0;
-    let h = pad_y * 2.0 + line.h;
-    let ctx = ui.ctx().clone();
-    egui::Area::new(egui::Id::unique("stage_date_tip_card"))
-        .order(egui::Order::Tooltip)
-        .fixed_pos(egui::pos2(left, top))
-        .show(&ctx, |ui| {
-            let (rect, _) = ui.allocate_exact_size(egui::vec2(w, h), egui::Sense::hover());
-            let p = ui.painter();
-            p.rect_filled(
-                rect,
-                egui::epaint::CornerRadius::same(radius),
-                crate::theme::card_bg(),
-            );
-            p.rect_stroke(
-                rect,
-                egui::epaint::CornerRadius::same(radius),
-                egui::Stroke::new(1.0, crate::theme::border_strong_color()),
-                egui::StrokeKind::Inside,
-            );
-            let row_bottom = rect.top() + pad_y + line.h;
-            p.text(
-                egui::pos2(rect.left() + pad_x, line.top_for_bottom(row_bottom)),
-                egui::Align2::LEFT_TOP,
-                &text,
-                font.clone(),
-                ink.muted,
-            );
-        });
+    crate::widgets::tooltip::show_at(
+        ui,
+        egui::Id::unique("stage_date_tip_card"),
+        &text,
+        font,
+        left,
+        top,
+    );
 }
 
 /// 页头农历 tooltip（一行模式）：右缘贴页头 10px、顶在页头下方 6px，展示宜忌
@@ -615,7 +587,6 @@ fn draw_lunar_tooltip(
     let pad_x = crate::theme::layout_f32("tooltip_pad_x");
     let pad_y = crate::theme::layout_f32("tooltip_pad_y");
     let line_gap = crate::theme::layout_f32("tooltip_line_gap");
-    let radius = crate::theme::radius_px("sm") as u8;
     let w = label_w + max_line_w + pad_x * 2.0;
     let rows = yi_lines.len() + ji_lines.len();
     if rows == 0 {
@@ -630,18 +601,8 @@ fn draw_lunar_tooltip(
         .fixed_pos(egui::pos2(x, top))
         .show(&ctx, |ui| {
             let (rect, _) = ui.allocate_exact_size(egui::vec2(w, h), egui::Sense::hover());
+            crate::widgets::tooltip::frame(ui, rect);
             let p = ui.painter();
-            p.rect_filled(
-                rect,
-                egui::epaint::CornerRadius::same(radius),
-                crate::theme::card_bg(),
-            );
-            p.rect_stroke(
-                rect,
-                egui::epaint::CornerRadius::same(radius),
-                egui::Stroke::new(1.0, crate::theme::border_strong_color()),
-                egui::StrokeKind::Inside,
-            );
             let text_x = rect.left() + pad_x + label_w;
             let mut row_top = rect.top() + pad_y;
             for (i, text_line) in yi_lines.iter().enumerate() {
@@ -1209,9 +1170,15 @@ fn draw_readout(
     );
 
     let mut x = day_left;
-    // 「第 N 天」三盒共用数值行盒底
+    // 「第 / N / 天」三个内盒，各自盒中线对齐到外盒中线
     let day_h = crate::widgets::text_metrics::height(ui.ctx(), &day_font, InkKind::Cjk);
-    let cn_y = cn_ink.top_for_bottom(value_bottom);
+    let num_h = crate::widgets::text_metrics::height(ui.ctx(), &day_num_font, InkKind::Digits);
+    let outer_h = day_h.max(num_h);
+    let center_y = value_bottom - outer_h / 2.0;
+    let di_top = center_y - day_h / 2.0;
+    let di_bottom = center_y + day_h / 2.0;
+    let num_bottom = center_y + num_h / 2.0;
+    let cn_y = cn_ink.top_for_bottom(di_bottom);
     ui.painter().text(
         egui::pos2(x, cn_y),
         egui::Align2::LEFT_TOP,
@@ -1219,15 +1186,21 @@ fn draw_readout(
         day_font.clone(),
         accent,
     );
+    crate::layout_probe::rect(
+        ui,
+        "clock.ro_day_di",
+        egui::Rect::from_min_size(egui::pos2(x, di_top), egui::vec2(w_di, day_h)),
+    );
     x += w_di + day_gap;
-    digits::draw_bottom(
+    let num_rect = digits::draw_bottom(
         ui.painter(),
-        value_bottom,
+        num_bottom,
         x + w_num / 2.0,
         &day_num_text,
         &day_num_font,
         ink.strong,
     );
+    crate::layout_probe::rect(ui, "clock.ro_day_num", num_rect);
     x += w_num + day_gap;
     ui.painter().text(
         egui::pos2(x, cn_y),
@@ -1238,10 +1211,15 @@ fn draw_readout(
     );
     crate::layout_probe::rect(
         ui,
+        "clock.ro_day_tian",
+        egui::Rect::from_min_size(egui::pos2(x, di_top), egui::vec2(w_tian, day_h)),
+    );
+    crate::layout_probe::rect(
+        ui,
         "clock.ro_day",
         egui::Rect::from_min_size(
-            egui::pos2(day_left, value_bottom - day_h),
-            egui::vec2(day_w, day_h),
+            egui::pos2(day_left, value_bottom - outer_h),
+            egui::vec2(day_w, outer_h),
         ),
     );
 
