@@ -1,6 +1,6 @@
 //! 短倍率条（PL023 盒子版）：360px 居中、6px 轨、1×/365× 端标、整数 1–365 档；
 //! 轨道下附「现实 1 天 = 加速 N 天」量化行。
-//! 固定盒：12.5 + 10 + 24 + 10 + 10.0 + 5 + 10.0 = 81.5；拖动 SetRate、松手/点击 ApplyRate 恰一次。
+//! 固定盒：12.5 + 5 + 24 + 5 + 10.0 + 5 + 11.5 = 73.0；拖动 SetRate、松手/点击 ApplyRate 恰一次。
 
 use egui::{Align2, Rect, Sense, Stroke};
 
@@ -14,13 +14,14 @@ pub fn height() -> f32 {
     let label_row_h =
         cjk(crate::theme::font_size("meta")).max(latin(crate::theme::font_size("body")));
     let tick_row_h = latin(crate::theme::font_size("meta"));
+    let quant_row_h = cjk(crate::theme::font_size("meta"));
     label_row_h
         + crate::theme::layout_f32("rate_label_track_gap")
         + crate::theme::layout_f32("rate_track_box")
         + crate::theme::layout_f32("rate_track_ticks_gap")
         + tick_row_h
         + crate::theme::layout_f32("rate_ticks_quant_gap")
-        + tick_row_h
+        + quant_row_h
 }
 
 /// 绘制倍率条并写回 rate；内部四个固定盒，不随断点缩放
@@ -257,7 +258,8 @@ pub fn show(
     );
     let quant_font = crate::theme::font_regular(crate::theme::font_size("meta"));
     let quant_ink = text_ink::measure(ui, "现实", &quant_font, InkKind::Cjk);
-    let quant_row_bottom = tick_row_bottom + ticks_quant_gap + tick_row_h;
+    let quant_row_h = cjk(crate::theme::font_size("meta"));
+    let quant_row_bottom = tick_row_bottom + ticks_quant_gap + quant_row_h;
     let year_days = accel_core::static_config::Static::get().base_f64("days_per_year");
     let quant_text = if (*rate - year_days).abs() < 0.5 {
         "现实 1 天 = 加速 1 年".to_string()
@@ -294,8 +296,8 @@ pub fn show(
 
 // ===== src/widgets/rate_strip.rs 说明区 =====
 // 输入：Ui + min/max/rate + change/commit 回调；输出：倍率条（拖拽/点击/方向键）
-// 逻辑步骤：固定 360px 居中 → 标签行 16.5（倍率/×N 盒底）→ 10 → 轨道盒 24（6px 轨居中）
-//   → 10 → 端标行 12.5 → 5 → 量化行 12.5；交互比例→整数档，拖动 on_change/松手 on_commit
+// 逻辑步骤：固定 360px 居中 → 标签行 12.5（倍率/×N 盒底）→ 5 → 轨道盒 24（6px 轨居中）
+//   → 5 → 端标行 10.0（数字）→ 5 → 量化行 11.5（中文）；交互比例→整数档，拖动 on_change/松手 on_commit
 // 设计理由（PL023）：四个固定盒，不随断点缩放；轨/端标/量化行都是盒子；金只做数据
 // 异常处理：max<=min 时 rate_to_ratio 返回 0；键步长即时落盘
 // 关联依赖：slider(rate_to_ratio/ratio_to_rate)/text_ink/theme；消费方：pages/clock
@@ -306,6 +308,6 @@ mod tests {
 
     #[test]
     fn height_matches_fixed_boxes() {
-        assert!((height() - 81.5).abs() < 1e-6, "got {}", height());
+        assert!((height() - 73.0).abs() < 1e-6, "got {}", height());
     }
 }

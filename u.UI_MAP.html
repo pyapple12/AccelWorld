@@ -1998,7 +1998,7 @@
               <tr>
                 <td class="id">C1</td>
                 <td class="nm">坞带</td>
-                <td class="ds">窗口底部 64px 区域</td>
+                <td class="ds">窗口底部 56px 区域（矮窗 44px）</td>
               </tr>
               <tr>
                 <td class="id">C2</td>
@@ -2139,7 +2139,7 @@
               <tr>
                 <td class="id">B18</td>
                 <td class="nm">倍率条</td>
-                <td class="ds">宽 220–360，高 81.5；6px 轨 + 量化行；1–365</td>
+                <td class="ds">宽 220–360，高 73.0；6px 轨 + 量化行；1–365</td>
               </tr>
               <tr>
                 <td class="id">B25</td>
@@ -3894,7 +3894,7 @@
               </tr>
               <tr>
                 <td>坞带 / 坞 pill</td>
-                <td>64 高 / 目标 560×56，窄舞台最低 280 宽</td>
+                <td>56 / 44 高 / 目标 560×56，窄舞台最低 280 宽</td>
                 <td><code>layout.dock_*</code></td>
               </tr>
               <tr>
@@ -3927,7 +3927,7 @@
               </tr>
               <tr>
                 <td>倍率条</td>
-                <td>宽 220–360，高 81.5；轨 6px；旋钮 8→9px；1–365</td>
+                <td>宽 220–360，高 73.0；轨 6px；旋钮 8→9px；1–365</td>
                 <td><code>widgets/rate_strip.rs</code></td>
               </tr>
               <tr>
@@ -3985,7 +3985,8 @@
                 <td>hero</td>
                 <td>72</td>
                 <td>
-                  读数大数按窗口高取 layout 断点 56/48/44/40/36；token
+                  读数大数按窗口高取
+                  56/48/44/40/36，再按可用宽从表内档位跌落取最大可装档；token
                   为上限锚点
                 </td>
               </tr>

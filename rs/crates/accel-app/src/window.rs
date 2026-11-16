@@ -195,11 +195,15 @@ impl eframe::App for AppHandle {
             egui::Rect::from_min_size(ui.max_rect().min, size)
         };
         ui.painter().rect_filled(full, 0, crate::theme::window_bg());
-        let content = full.shrink(10.0);
-        // C2 坞高度两级跌落：≥560 用 56，以下用 44（44 时隐藏文字）
-        let dock_h = if full.height() >= 560.0 { 56.0 } else { 44.0 };
-        // 盒子模型（PL020）：C2 盒 = dock_h，B18 与 C2 之间统一 20px
-        let box_gap = 20.0;
+        let content = full.shrink(crate::theme::layout_f32("window_content_inset"));
+        // C2 坞高度两级跌落：正常 56，矮窗 44（断点与高度均为 token）
+        let dock_h = if full.height() >= crate::theme::layout_f32("dock_height_breakpoint") {
+            crate::theme::layout_f32("dock_height_lg")
+        } else {
+            crate::theme::layout_f32("dock_height_sm")
+        };
+        // 盒子模型（PL020）：C2 盒 = dock_h，B18 与 C2 之间统一 page_box_gap
+        let box_gap = crate::theme::layout_f32("page_box_gap");
         let dock_rect = egui::Rect::from_min_max(
             egui::pos2(
                 content.left(),

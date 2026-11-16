@@ -1,7 +1,7 @@
 //! 时钟页（PL020 12h 双半日）：星盘居中 + 盘下 readout + 短倍率条 + 农历 meta。
 //! 三针走现实时间（时/分/秒），黄针走加速时刻 12h；AM/PM 胶囊跟随现实半日；
 //! 金弧 = 黄针与时针的较短弧。纯函数 hour_fraction/minute_fraction/second_fraction/
-//! accelerated_hand_fraction/is_pm/dial_diameter/hero_fit_scale 可测。
+//! accelerated_hand_fraction/is_pm/dial_diameter/readout_fit_size 可测。
 
 use crate::tools::clock::split_lunar_info;
 use crate::widgets::digits;
@@ -81,23 +81,36 @@ pub fn polar(cx: f32, cy: f32, r: f32, angle_deg: f32) -> (f32, f32) {
     (cx + r * a.cos(), cy + r * a.sin())
 }
 
-/// 盒子间距（B1+B2 → B3 → B11 → B18 → C2 统一 20px）
-const BOX_GAP: f32 = 20.0;
-/// B3 盒每侧固定占位：内容边→药丸 10 + 药丸 52 + 药丸→盘盒 20
-const DIAL_SIDE_W: f32 = 82.0;
-
-/// 星盘边长（纯函数）：B3 剩余高与盒宽（扣两侧 82）取小，下限 120、无上限
-pub fn dial_diameter(avail_w: f32, avail_h: f32) -> f32 {
-    avail_h.min(avail_w - DIAL_SIDE_W * 2.0).max(120.0)
+/// 星盘两侧预留：盘边距 + 药丸宽 + 药丸到盘间距（全部读表）
+fn dial_side_w() -> f32 {
+    crate::theme::layout_f32("clock_dial_side_pad")
+        + crate::theme::layout_f32("clock_pill_w")
+        + crate::theme::layout_f32("clock_pill_dial_gap")
 }
 
-/// hero 收号（纯函数）：组合宽超可用宽时按比例缩，下限 0.5
-pub fn hero_fit_scale(combined_w: f32, avail_w: f32) -> f32 {
-    if combined_w <= avail_w || combined_w <= 0.0 {
-        1.0
-    } else {
-        (avail_w / combined_w).clamp(0.5, 1.0)
+/// 星盘边长（纯函数）：B3 剩余高与盒宽（扣两侧预留）取小，下限 120、无上限
+pub fn dial_diameter(avail_w: f32, avail_h: f32) -> f32 {
+    avail_h.min(avail_w - dial_side_w() * 2.0).max(120.0)
+}
+
+/// 横向跌落（纯函数）：从表内 ≤ base 且 ≥ min 的字号中，取第一个装得下的最大档
+pub fn readout_fit_size(base: f32, avail: f32, min: f32, width_at: impl Fn(f32) -> f32) -> f32 {
+    let mut sizes: Vec<f32> = crate::font_profile::get()
+        .sizes()
+        .iter()
+        .map(|p| p.size)
+        .filter(|s| *s >= min && *s <= base + 0.01)
+        .collect();
+    sizes.sort_by(|a, b| b.total_cmp(a));
+    sizes.dedup();
+    let mut chosen = min;
+    for size in sizes {
+        if width_at(size) <= avail {
+            chosen = size;
+            break;
+        }
     }
+    chosen
 }
 
 impl crate::pages::Page for crate::pages::ClockPage {
@@ -130,12 +143,13 @@ impl crate::pages::Page for crate::pages::ClockPage {
         };
         let page_w = page_rect.width();
         let left = page_rect.left();
+        let box_gap = crate::theme::layout_f32("page_box_gap");
         let m = clock_metrics(page_h, crate::theme::layout_f32("clock_readout_label_gap"));
         let header = header_layout(ui, &info, page_w);
         let header_h = header.height();
         // 页面 = 盒子垂直堆叠：页头(B1+B2) / B3 星盘 / B11 读数 / B18 倍率条（C2 在页面外）
         let rate_h = crate::widgets::rate_strip::height();
-        let fixed = header_h + m.readout_h + rate_h + BOX_GAP * 3.0;
+        let fixed = header_h + m.readout_h + rate_h + box_gap * 3.0;
         let b3_h = page_h - fixed;
 
         // 星点背景（低对比、静态；点击穿透）
@@ -155,7 +169,7 @@ impl crate::pages::Page for crate::pages::ClockPage {
 
         let mut y = page_rect.top();
         draw_stage_header(ui, &info, &header, box_rect(y, header_h));
-        y += header_h + BOX_GAP;
+        y += header_h + box_gap;
         // B3 吃剩余高度；盘径在盒内按宽高取小（AM/PM 尺寸与位置固定）
         let b3 = box_rect(y, b3_h.max(0.0));
         draw_dial(
@@ -178,10 +192,10 @@ impl crate::pages::Page for crate::pages::ClockPage {
                 let rule_w = crate::theme::layout_f32("clock_header_rule_w");
                 let content_bottom = page_rect.top() + header.content_h();
                 let rule_y = page_rect.top() + header_h - rule_w / 2.0;
-                let readout_top = b3.bottom() + BOX_GAP;
-                let rate_top = readout_top + m.readout_h + BOX_GAP;
+                let readout_top = b3.bottom() + box_gap;
+                let rate_top = readout_top + m.readout_h + box_gap;
                 eprintln!(
-                    "[CLOCK] page=({:.1},{:.1},{:.1},{:.1}) hdr=({:.1}|{:.1}+{:.1}+{:.1}={:.1}) block={:.1} rule=({:.1}+{:.1}) rule_y={:.1} content_bottom={:.1} dial_band=({:.1},{:.1},{:.1},{:.1}) dial={:.1} visible={:.1} ring=10 readout=({:.1},{:.1}) label=12.5 hero={:.1} real={:.1} day=18.5 rate=({:.1},{:.1}) two_line={}",
+                    "[CLOCK] page=({:.1},{:.1},{:.1},{:.1}) hdr=({:.1}|{:.1}+{:.1}+{:.1}={:.1}) block={:.1} rule=({:.1}+{:.1}) rule_y={:.1} content_bottom={:.1} dial_band=({:.1},{:.1},{:.1},{:.1}) dial={:.1} visible={:.1} ring=10 readout=({:.1},{:.1}) label=11.5 hero={:.1} real={:.1} day=19.5 rate=({:.1},{:.1}) two_line={}",
                     page_rect.left(),
                     page_rect.top(),
                     page_rect.width(),
@@ -201,7 +215,7 @@ impl crate::pages::Page for crate::pages::ClockPage {
                     b3.width(),
                     b3.height(),
                     dial_d,
-                    dial_d - 20.0,
+                    dial_d - crate::theme::layout_f32("clock_dial_ring") * 2.0,
                     readout_top,
                     m.readout_h,
                     m.hero,
@@ -212,9 +226,9 @@ impl crate::pages::Page for crate::pages::ClockPage {
                 );
             }
         }
-        y += b3_h + BOX_GAP;
+        y += b3_h + box_gap;
         draw_readout(ui, &info, m, box_rect(y, m.readout_h));
-        y += m.readout_h + BOX_GAP;
+        y += m.readout_h + box_gap;
         let b18 = box_rect(y, rate_h);
         ui.scope_builder(egui::UiBuilder::new().max_rect(b18), |b18_ui| {
             draw_rate(b18_ui, state, bus);
@@ -311,7 +325,7 @@ fn header_layout(ui: &egui::Ui, info: &accel_core::types::TimeInfo, page_w: f32)
     }
 }
 
-/// 舞台页头盒：左 14.5 日期盒 / 右 12.5×2 + 3 = 28.0 农历盒，底对齐；字底贴盒底
+/// 舞台页头盒：左 15.5 日期盒 / 右 11.5×2 + 3 = 26.0 农历盒，底对齐；字底贴盒底
 fn draw_stage_header(
     ui: &mut egui::Ui,
     info: &accel_core::types::TimeInfo,
@@ -327,7 +341,7 @@ fn draw_stage_header(
         3.5,
         crate::theme::accent_color(),
     );
-    // 左日期盒 14.5：盒底 = 共同盒底；字底贴盒底，不越过盒底
+    // 左日期盒 15.5：盒底 = 共同盒底；字底贴盒底，不越过盒底
     let date_font = crate::theme::font_semibold(layout.label_size);
     let date_pos = egui::pos2(rect.left() + 18.0, layout.b1.top_for_bottom(content_bottom));
     crate::layout_probe::text(
@@ -359,7 +373,7 @@ fn draw_stage_header(
         date_font,
         ink.strong,
     );
-    // 日期 hover：周数 / 节日 / 节气（命中域 = 14.5 盒，不占整个页头）
+    // 日期 hover：周数 / 节日 / 节气（命中域 = 15.5 盒，不占整个页头）
     let date_rect = egui::Rect::from_min_size(
         egui::pos2(rect.left(), content_bottom - layout.b1_h),
         egui::vec2(18.0 + layout.b1_w, layout.b1_h),
@@ -470,7 +484,7 @@ fn draw_stage_header(
             ink.muted,
         );
     }
-    // 农历 hover：右盒 = 28.0（两行）/ 12.5（一行），不占 5px + 线
+    // 农历 hover：右盒 = 26.0（两行）/ 11.5（一行），不占 5px + 线
     let tip_rect = egui::Rect::from_min_max(
         egui::pos2(rect.center().x, rect.top()),
         egui::pos2(right, content_bottom),
@@ -530,16 +544,17 @@ fn draw_date_tooltip(
         text.push_str(" · ");
         text.push_str(&info.lunar_jieqi);
     }
-    let pad_x = 8.0;
-    let pad_y = 6.0;
-    let line_h = font.size * 1.5;
+    let pad_x = crate::theme::layout_f32("tooltip_pad_x");
+    let pad_y = crate::theme::layout_f32("tooltip_pad_y");
+    let radius = crate::theme::radius_px("sm") as u8;
+    let line = text_ink::measure(ui, &text, font, InkKind::Cjk);
     let w = ui
         .painter()
         .layout_no_wrap(text.clone(), font.clone(), ink.muted)
         .rect
         .width()
         + pad_x * 2.0;
-    let h = pad_y * 2.0 + line_h;
+    let h = pad_y * 2.0 + line.h;
     let ctx = ui.ctx().clone();
     egui::Area::new(egui::Id::unique("stage_date_tip_card"))
         .order(egui::Order::Tooltip)
@@ -549,17 +564,18 @@ fn draw_date_tooltip(
             let p = ui.painter();
             p.rect_filled(
                 rect,
-                egui::epaint::CornerRadius::same(8),
+                egui::epaint::CornerRadius::same(radius),
                 crate::theme::card_bg(),
             );
             p.rect_stroke(
                 rect,
-                egui::epaint::CornerRadius::same(8),
+                egui::epaint::CornerRadius::same(radius),
                 egui::Stroke::new(1.0, crate::theme::border_strong_color()),
                 egui::StrokeKind::Inside,
             );
+            let row_bottom = rect.top() + pad_y + line.h;
             p.text(
-                egui::pos2(rect.left() + pad_x, rect.top() + pad_y),
+                egui::pos2(rect.left() + pad_x, line.top_for_bottom(row_bottom)),
                 egui::Align2::LEFT_TOP,
                 &text,
                 font.clone(),
@@ -596,12 +612,17 @@ fn draw_lunar_tooltip(
         .chain(ji_lines.iter())
         .map(|l| measure(l, ink.muted))
         .fold(0.0f32, f32::max);
-    let pad_x = 8.0;
-    let pad_y = 6.0;
-    let line_h = font.size * 1.5;
+    let pad_x = crate::theme::layout_f32("tooltip_pad_x");
+    let pad_y = crate::theme::layout_f32("tooltip_pad_y");
+    let line_gap = crate::theme::layout_f32("tooltip_line_gap");
+    let radius = crate::theme::radius_px("sm") as u8;
     let w = label_w + max_line_w + pad_x * 2.0;
     let rows = yi_lines.len() + ji_lines.len();
-    let h = pad_y * 2.0 + rows as f32 * line_h;
+    if rows == 0 {
+        return;
+    }
+    let row_ink = text_ink::measure(ui, "", font, InkKind::Cjk);
+    let h = pad_y * 2.0 + rows as f32 * row_ink.h + rows.saturating_sub(1) as f32 * line_gap;
     let x = (right - 10.0 - w).max(0.0);
     let ctx = ui.ctx().clone();
     egui::Area::new(egui::Id::unique("stage_lunar_tip_card"))
@@ -612,21 +633,22 @@ fn draw_lunar_tooltip(
             let p = ui.painter();
             p.rect_filled(
                 rect,
-                egui::epaint::CornerRadius::same(8),
+                egui::epaint::CornerRadius::same(radius),
                 crate::theme::card_bg(),
             );
             p.rect_stroke(
                 rect,
-                egui::epaint::CornerRadius::same(8),
+                egui::epaint::CornerRadius::same(radius),
                 egui::Stroke::new(1.0, crate::theme::border_strong_color()),
                 egui::StrokeKind::Inside,
             );
-            let mut y = rect.top() + pad_y;
             let text_x = rect.left() + pad_x + label_w;
-            for (i, line) in yi_lines.iter().enumerate() {
+            let mut row_top = rect.top() + pad_y;
+            for (i, text_line) in yi_lines.iter().enumerate() {
+                let row_bottom = row_top + row_ink.h;
                 if i == 0 {
                     p.text(
-                        egui::pos2(rect.left() + pad_x, y),
+                        egui::pos2(rect.left() + pad_x, row_ink.top_for_bottom(row_bottom)),
                         egui::Align2::LEFT_TOP,
                         "宜 ",
                         font.clone(),
@@ -634,18 +656,19 @@ fn draw_lunar_tooltip(
                     );
                 }
                 p.text(
-                    egui::pos2(text_x, y),
+                    egui::pos2(text_x, row_ink.top_for_bottom(row_bottom)),
                     egui::Align2::LEFT_TOP,
-                    line,
+                    text_line,
                     font.clone(),
                     ink.muted,
                 );
-                y += line_h;
+                row_top = row_bottom + line_gap;
             }
-            for (i, line) in ji_lines.iter().enumerate() {
+            for (i, text_line) in ji_lines.iter().enumerate() {
+                let row_bottom = row_top + row_ink.h;
                 if i == 0 {
                     p.text(
-                        egui::pos2(rect.left() + pad_x, y),
+                        egui::pos2(rect.left() + pad_x, row_ink.top_for_bottom(row_bottom)),
                         egui::Align2::LEFT_TOP,
                         "忌 ",
                         font.clone(),
@@ -653,13 +676,13 @@ fn draw_lunar_tooltip(
                     );
                 }
                 p.text(
-                    egui::pos2(text_x, y),
+                    egui::pos2(text_x, row_ink.top_for_bottom(row_bottom)),
                     egui::Align2::LEFT_TOP,
-                    line,
+                    text_line,
                     font.clone(),
                     ink.muted,
                 );
-                y += line_h;
+                row_top = row_bottom + line_gap;
             }
         });
 }
@@ -1100,12 +1123,13 @@ fn draw_readout(
     let cn_ink = text_ink::measure(ui, "天", &day_font, InkKind::Cjk);
 
     // 左区右对齐到 center-20；右区左对齐到 center+20
-    let time_measure = digits::digit_font(base);
-    let measured = digits::text_width(ui.painter(), &day_text, &time_measure);
+    let readout_min = crate::theme::layout_f32("readout_size_min");
     let left_avail = (center_x - 20.0 - area.left() - day_w - 12.0).max(40.0);
-    let scale = hero_fit_scale(measured, left_avail);
-    let hero_font = digits::digit_font(base * scale);
-    let hero_w = measured * scale;
+    let hero_size = readout_fit_size(base, left_avail, readout_min, |size| {
+        digits::text_width(ui.painter(), &day_text, &digits::digit_font(size))
+    });
+    let hero_font = digits::digit_font(hero_size);
+    let hero_w = digits::text_width(ui.painter(), &day_text, &hero_font);
     let left_time_x = center_x - 20.0 - hero_w;
     let day_left = left_time_x - 12.0 - day_w;
     let value_bottom = area.bottom();
@@ -1222,17 +1246,18 @@ fn draw_readout(
     );
 
     let real_text = time_part(&info.standard_datetime);
-    let real_measure = digits::digit_font(m.real);
-    let real_w = digits::text_width(ui.painter(), real_text, &real_measure);
     let real_label_x = center_x + 20.0;
     let real_time_x = real_label_x + day_w + 12.0;
     let real_avail = (area.right() - real_time_x).max(40.0);
-    let real_scale = hero_fit_scale(real_w, real_avail);
-    let real_font = digits::digit_font(m.real * real_scale);
+    let real_size = readout_fit_size(m.real, real_avail, readout_min, |size| {
+        digits::text_width(ui.painter(), real_text, &digits::digit_font(size))
+    });
+    let real_font = digits::digit_font(real_size);
+    let real_w = digits::text_width(ui.painter(), real_text, &real_font);
     digits::draw_bottom(
         ui.painter(),
         value_bottom,
-        real_time_x + real_w * real_scale / 2.0,
+        real_time_x + real_w / 2.0,
         real_text,
         &real_font,
         ink.body,
@@ -1243,7 +1268,7 @@ fn draw_readout(
         "clock.ro_real",
         egui::Rect::from_min_size(
             egui::pos2(real_time_x, value_bottom - real_h),
-            egui::vec2(real_w * real_scale, real_h),
+            egui::vec2(real_w, real_h),
         ),
     );
     ui.painter().line_segment(
@@ -1263,7 +1288,7 @@ fn draw_readout(
     );
 }
 
-/// 短倍率条：宽 220–360、6px 轨、1×/365× 端标；固定 86.5 盒
+/// 短倍率条：宽 220–360、6px 轨、1×/365× 端标；固定 73.0 盒
 fn draw_rate(ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bus::Bus) {
     let (min, max) = state.rate_bounds;
     let mut rate = state.rate;
@@ -1289,10 +1314,10 @@ fn draw_rate(ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bu
 // ===== src/pages/clock.rs 说明区 =====
 // 输入：UiState（Tick 快照/倍率域）；输出：星盘 + readout + 倍率条 + SetRate/ApplyRate
 // 逻辑步骤：12h 星盘（60 刻度 + 四针 + 金圈 + AM/PM 胶囊）→ 盘下 readout
-//   （标签 12.5 + 5 + 数值行盒）→ 倍率条 86.5
-// 设计理由（PL023）：页头 28.0/块 34.0；星盘盒 = min(剩余高, 页宽−164).max(120)，
+//   （标签 11.5 + 5 + 数值行盒）→ 倍率条 73.0
+// 设计理由（PL023）：页头 26.0/块 32.0；星盘盒 = min(剩余高, 页宽−164).max(120)，
 //   可见盘 = 盒−20、金圈 0–10；读数三盒盒底对齐；倍率四固定盒；盒子只比盒子数值
-// 异常处理：time 为 None 显示读取中；各 hand/parse 异常回 0；hero_fit 下限 0.5
+// 异常处理：time 为 None 显示读取中；各 hand/parse 异常回 0；读数横向按表跌落
 // 关联依赖：widgets(digits/motion/rate_strip)/tools::clock/theme 针色与半日色；消费方：pages::Pages
 #[cfg(test)]
 mod tests {
@@ -1402,7 +1427,7 @@ mod tests {
 
     #[test]
     fn dial_diameter_fits_box_width_and_height() {
-        // B3 盒：边长 = min(剩余高, 盒宽 − 两侧 82×2)，下限 120、无上限
+        // B3 盒：边长 = min(剩余高, 盒宽 − 两侧预留×2)，下限 120、无上限
         assert_eq!(dial_diameter(400.0, 600.0), 236.0);
         assert_eq!(dial_diameter(1000.0, 1000.0), 836.0);
         assert_eq!(dial_diameter(150.0, 200.0), 120.0);
@@ -1412,15 +1437,20 @@ mod tests {
 
     #[test]
     fn dial_side_reserve_matches_pill_tokens() {
+        let pad = crate::theme::layout_f32("clock_dial_side_pad");
         let pill = crate::theme::layout_f32("clock_pill_w");
         let gap = crate::theme::layout_f32("clock_pill_dial_gap");
-        assert!((DIAL_SIDE_W - (10.0 + pill + gap)).abs() < 1e-6);
+        assert!((dial_side_w() - (pad + pill + gap)).abs() < 1e-6);
     }
 
     #[test]
-    fn hero_fit_shrinks_with_floor() {
-        assert_eq!(hero_fit_scale(300.0, 340.0), 1.0);
-        assert!((hero_fit_scale(400.0, 340.0) - 0.85).abs() < 1e-6);
-        assert_eq!(hero_fit_scale(500.0, 100.0), 0.5);
+    fn readout_fit_drops_to_largest_fitting_tier() {
+        // 宽度 = 字号 × 10，便于验证档位选择
+        let width = |size: f32| size * 10.0;
+        assert_eq!(readout_fit_size(44.0, 440.0, 24.0, width), 44.0);
+        assert_eq!(readout_fit_size(44.0, 430.0, 24.0, width), 40.0);
+        assert_eq!(readout_fit_size(44.0, 390.0, 24.0, width), 36.0);
+        assert_eq!(readout_fit_size(44.0, 240.0, 24.0, width), 24.0);
+        assert_eq!(readout_fit_size(36.0, 300.0, 24.0, width), 28.0);
     }
 }

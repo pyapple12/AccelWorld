@@ -2973,6 +2973,14 @@ trim_grids      = 3 / 3 / 2 / 2 / 2 | 2 / 1 / 1 / 1 / 1
 - `m_cjk`、`m_latin` 必须整除 `grid`；出现小数说明测量口径有误，不得四舍五入。
 - 中位只作参照，不参与 trim。
 
+#### 读数横向跌落
+
+- 高度档先定基准：`clock_metrics` 按页面高选 hero / real。
+- 横向只从表内取档：`≤ base` 且 `≥ readout_size_min`（24），按降序取第一个 `text_width(size) ≤ 可用宽` 的档。
+- 左右列各自计算：左列扣「第 N 天」宽 + 12，右列扣同一宽度；允许左右不同档。
+- 行高仍按基准档的 `h_latin` 算，跌落只改字号，不改页面栈。
+- 不连续缩放；`hero_fit_scale` 退役。
+
 #### 退役清单
 
 | 旧实现                                         | 处理                                       |
@@ -2998,7 +3006,7 @@ trim_grids      = 3 / 3 / 2 / 2 / 2 | 2 / 1 / 1 / 1 / 1
 
 #### 检验
 
-- 单测：每档 `h_cjk = size − step × trim_grids`；`trim_grids = size / grid − cjk_ink_grids` 为整数；`h_latin` 落在 0.5 网格；`P + dy = B`。
+- 单测：每档 `h_cjk = size − step × trim_grids`；`trim_grids = size / grid − cjk_ink_grids` 为整数；`h_latin` 落在 0.5 网格；`P + dy = B`；`readout_fit_size` 只选表内档且取最大可装档。
 - 探针：`ACCELWORLD_TEXT_MATRIX=1` + 全量汉字与 `0–9 a–z A–Z` 两组 + `SIZES=12,16,20,28,40,72`，`t96` 取上缘、`a96` 取下探；中文 `m_cjk = 上缘 + 下探`，拉丁剔除 `g/j/p/q/y` 后取上缘。
 - 截图：520×420 / 974×678 / 1200×820，六页逐页走查。
 - 静态门：`rg` 确认代码不再出现 `TOP_RESERVE`、`BOTTOM_RESERVE`、`font.size + 0.5`、`bottom − 0.2`。

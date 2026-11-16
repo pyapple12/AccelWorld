@@ -132,33 +132,41 @@ pub fn measure(ui: &Ui, _text: &str, font: &FontId, kind: InkKind) -> Ink {
 }
 
 /// 明确居中路径：盒中心 → galley 顶；只有这里读整串字墨 bbox
-pub fn top_for_center(ui: &Ui, text: &str, font: &FontId, _kind: InkKind, center: f32) -> f32 {
+pub fn top_for_center(ui: &Ui, text: &str, font: &FontId, kind: InkKind, center: f32) -> f32 {
     let probe = if text.is_empty() { "0" } else { text };
     let galley = ui
         .painter()
         .layout_no_wrap(probe.to_owned(), font.clone(), Color32::WHITE);
-    center_from_galley(&galley, font).top_for_center(center)
+    center_from_galley(&galley, font, kind).top_for_center(center)
 }
 
-/// 由 galley 构造盒度量；不读任何字号/字形 bbox
-pub(crate) fn metrics_from_galley(galley: &Galley, font: &FontId) -> Ink {
+/// 由 galley 构造盒度量；按 kind 取盒高与 dy，不读任何字形 bbox
+pub(crate) fn metrics_from_galley(galley: &Galley, font: &FontId, kind: InkKind) -> Ink {
     let p = crate::font_profile::get().for_size(font.size);
+    let h = match kind {
+        InkKind::Cjk => p.h,
+        InkKind::Latin | InkKind::Digits | InkKind::Mixed => p.h_latin,
+    };
     let baseline = galley
         .rows
         .first()
         .and_then(|r| r.glyphs.first().map(|g| r.pos.y + g.pos.y))
         .unwrap_or(font.size);
     Ink {
-        h: p.h,
+        h,
         baseline,
         bottom: p.bottom,
-        dy: p.dy_cjk,
+        dy: dy_for(font, kind),
     }
 }
 
 /// 由 galley 构造“明确居中”的字墨中线；整串 glyph uv_rect 并集
-pub(crate) fn center_from_galley(galley: &Galley, font: &FontId) -> InkCenter {
+pub(crate) fn center_from_galley(galley: &Galley, font: &FontId, kind: InkKind) -> InkCenter {
     let p = crate::font_profile::get().for_size(font.size);
+    let h = match kind {
+        InkKind::Cjk => p.h,
+        InkKind::Latin | InkKind::Digits | InkKind::Mixed => p.h_latin,
+    };
     let baseline = galley
         .rows
         .first()
@@ -181,7 +189,7 @@ pub(crate) fn center_from_galley(galley: &Galley, font: &FontId) -> InkCenter {
         ink_bottom = baseline;
     }
     InkCenter {
-        h: p.h,
+        h,
         baseline,
         ink_top,
         ink_bottom,

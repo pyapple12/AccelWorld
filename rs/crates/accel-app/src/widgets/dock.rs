@@ -17,14 +17,16 @@ pub struct DockItem {
 pub fn show(ui: &mut egui::Ui, state: &mut UiState, items: &[DockItem]) {
     let ink = crate::theme::ink();
     let avail = ui.max_rect();
-    // 文字是否保留只看坞高：56 保留图标+文字，44 只留图标
-    let compact = avail.height() < 56.0;
+    // 文字是否保留只看坞高：lg 保留图标+文字，sm 只留图标
+    let compact = avail.height() < crate::theme::layout_f32("dock_height_lg");
     // C2 固定在全窗居中，不随抽屉开合移动；抽屉只影响 B1–B18 页面内容
     let pill_w = (crate::theme::layout_f32("dock_pill_width"))
         .min(avail.width() - 24.0)
         .max(280.0);
-    let pill_h = avail.height().max(40.0);
-    let pill_w = (pill_w * (pill_h / 56.0)).max(280.0);
+    let pill_h = avail
+        .height()
+        .max(crate::theme::layout_f32("dock_pill_min_h"));
+    let pill_w = (pill_w * (pill_h / crate::theme::layout_f32("dock_height_lg"))).max(280.0);
     let pill = Rect::from_center_size(avail.center(), egui::vec2(pill_w, pill_h));
     ui.painter().rect_filled(
         pill,

@@ -66,10 +66,10 @@ pub fn draw_center(
     )
 }
 
-/// 数字盒度量（字体基线 + 盒高；默认盒底路径）
+/// 数字盒度量（字体基线 + 盒高；默认盒底路径，取数字类）
 fn metrics_for(painter: &Painter, font: &FontId) -> super::text_ink::Ink {
     let galley = painter.layout_no_wrap("0".to_owned(), font.clone(), Color32::WHITE);
-    super::text_ink::metrics_from_galley(&galley, font)
+    super::text_ink::metrics_from_galley(&galley, font, super::text_ink::InkKind::Digits)
 }
 
 /// 数字明确居中度量（整串字墨并集；仅 draw_center 用）
@@ -80,7 +80,7 @@ fn center_for(painter: &Painter, text: &str, font: &FontId) -> super::text_ink::
         text.to_owned()
     };
     let galley = painter.layout_no_wrap(probe, font.clone(), Color32::WHITE);
-    super::text_ink::center_from_galley(&galley, font)
+    super::text_ink::center_from_galley(&galley, font, super::text_ink::InkKind::Digits)
 }
 
 /// 逐字符槽宽绘制；y 是 galley 顶；返回总宽
@@ -173,7 +173,7 @@ mod tests {
     fn draw_bottom_and_center_use_box_values() {
         let painter = test_painter();
         let font = digit_font(TEST_SIZE);
-        let want_h = crate::font_profile::get().for_size(TEST_SIZE).h;
+        let want_h = crate::font_profile::get().for_size(TEST_SIZE).h_latin;
         let bottom = draw_bottom(&painter, 100.0, 50.0, "12", &font, Color32::WHITE);
         assert!((bottom.bottom() - 100.0).abs() < 1e-4);
         assert!((bottom.height() - want_h).abs() < 1e-4);
