@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 use accel_core::static_config::Static;
 use serde_json::Value;
 
-/// 单档参数：盒高、上下空白、三类字的 dy（全部由表算出）
+/// 单档参数：盒高、上下空白、三类字的 dy、拉丁盒高（全部由表算出）
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SizeProfile {
     pub size: f32,
@@ -16,6 +16,7 @@ pub struct SizeProfile {
     pub top: f32,
     pub bottom: f32,
     pub h: f32,
+    pub h_latin: f32,
 }
 
 /// 当前激活的字体组合
@@ -87,9 +88,14 @@ fn build() -> Profile {
         None => panic!("ui.json 缺 {base}/sizes"),
     };
     let mut list = Vec::with_capacity(sizes.len());
+    let step = grid - top_ratio - bottom_ratio;
     for value in sizes.values() {
         let size = read_i64(value, "size") as f32;
         let trim = read_i64(value, "trim_grids") as f32;
+        let trim_latin = read_i64(value, "trim_grids_latin") as f32;
+        let h = size - step * trim;
+        let h_latin_raw = h - trim_latin * grid;
+        let h_latin = (h_latin_raw / step).ceil() * step;
         list.push(SizeProfile {
             size,
             dy_cjk: read_i64(value, "dy_cjk_grids") as f32 * grid,
@@ -97,7 +103,8 @@ fn build() -> Profile {
             dy_digit: read_i64(value, "dy_digit_grids") as f32 * grid,
             top: top_ratio * trim,
             bottom: bottom_ratio * trim,
-            h: size - (grid - top_ratio - bottom_ratio) * trim,
+            h,
+            h_latin,
         });
     }
     list.sort_by(|a, b| a.size.total_cmp(&b.size));
@@ -133,6 +140,72 @@ mod tests {
             );
             let n = p.top / 0.2;
             assert!((n - n.round()).abs() < 1e-5, "{size} n={n}");
+        }
+    }
+
+    #[test]
+    fn latin_heights_close() {
+        for (size, want) in [
+            (12.0, 10.0),
+            (16.0, 12.5),
+            (20.0, 15.5),
+            (28.0, 22.0),
+            (40.0, 31.0),
+            (72.0, 56.0),
+        ] {
+            let p = get().for_size(size);
+            assert!(
+                (p.h_latin - want).abs() < 1e-5,
+                "{size} -> {} want {want}",
+                p.h_latin
+            );
+        }
+    }
+
+    #[test]
+    fn hero_readout_heights_close() {
+        for (size, want_h, want_latin) in [
+            (56.0, 54.5, 43.5),
+            (48.0, 46.5, 37.0),
+            (44.0, 43.0, 34.5),
+            (40.0, 39.0, 31.0),
+            (36.0, 35.0, 28.0),
+        ] {
+            let p = get().for_size(size);
+            assert_eq!(p.size, size);
+            assert!(
+                (p.h - want_h).abs() < 1e-5,
+                "{size} h {} want {want_h}",
+                p.h
+            );
+            assert!(
+                (p.h_latin - want_latin).abs() < 1e-5,
+                "{size} h_latin {} want {want_latin}",
+                p.h_latin
+            );
+        }
+    }
+
+    #[test]
+    fn real_readout_heights_close() {
+        for (size, want_h, want_latin) in [
+            (36.0, 35.0, 28.0),
+            (32.0, 31.5, 24.5),
+            (28.0, 27.5, 22.0),
+            (24.0, 23.5, 19.0),
+        ] {
+            let p = get().for_size(size);
+            assert_eq!(p.size, size);
+            assert!(
+                (p.h - want_h).abs() < 1e-5,
+                "{size} h {} want {want_h}",
+                p.h
+            );
+            assert!(
+                (p.h_latin - want_latin).abs() < 1e-5,
+                "{size} h_latin {} want {want_latin}",
+                p.h_latin
+            );
         }
     }
 

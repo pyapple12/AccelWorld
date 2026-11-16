@@ -2838,11 +2838,11 @@ pub struct Ink {
 - 原生 label 清零：时钟加载态、世界页脚、天气错误行/重试、逐小时时间轴、极值/“现在”标注、toast 标题/正文全部进盒；toast 关闭改 Tabler Close 图标。
 - 防漂移：`rate_strip::height()` 由字体盒 + token 计算；`DIAL_SIDE_W` 与药丸 token 单测对齐；`clock_metrics` 标签盒高由 meta 字号算。
 - 探针制度化：`ACCELWORLD_LAYOUT_PROBE=1` 输出 `[BOX]/[RECT]`；`ACCELWORLD_TEXT_PROBE=1` 输出 `[TEXT]`（盒/基线/字体 descent/alpha 8-32-96 墨迹底）；`ACCELWORLD_TEXT_MATRIX=1` 启动时输出 `[GLYPH]/[GLYPHMAX]` 下探矩阵，样本与字号可用 `ACCELWORLD_TEXT_PROBE_TEXT` / `ACCELWORLD_TEXT_PROBE_SIZES` 覆盖。
-- 字号 6 档 token 化（PL023.35）：`ui.json scale` 只留 `hero 72 / display 42 / title 28 / section 20 / body 16 / meta 12`；旧 10/11/14/18/24/28/40/44 全部映射到六档；`clock_header_date_size`、`clock_pill_font_size` 删除改读 `body/meta`；读数大数断点 56/48/44/40/36、36/32/30/28/26 移入 `layout.readout_*`；检验口径：`rg` 扫 `font_(regular|medium|semibold)\([0-9]`、`digit_font\([0-9]`、`FontId::(new|proportional)\([0-9]` 零命中，`font_size("...")` 键集合 ⊆ 六档。
+- 字号 6 档 token 化（PL023.35）：`ui.json scale` 只留 `hero 72 / display 42 / title 28 / section 20 / body 16 / meta 12`；旧 10/11/14/18/24/28/40/44 全部映射到六档；`clock_header_date_size`、`clock_pill_font_size` 删除改读 `body/meta`；读数大数断点 56/48/44/40/36、36/32/28/28/24 移入 `layout.readout_*`；检验口径：`rg` 扫 `font_(regular|medium|semibold)\([0-9]`、`digit_font\([0-9]`、`FontId::(new|proportional)\([0-9]` 零命中，`font_size("...")` 键集合 ⊆ 六档。
 - 验证：`cargo test --workspace` = 86 app + 1 bin + 117 core；`clippy -D warnings` 零错误；`ci.ps1` ALL_GREEN；974×678 与 600×820 探针、520/760/900/1200 截图矩阵通过。
 - 剩余：无；版本已 bump 到 0.6.5.5，提交草稿待用户审核后自行执行 git 写操作。
 
-### 十二、后续方案：字体组合参数表与三线基线（2026-11-16 立项，待实施）
+### 十二、后续方案：字体组合参数表与三线基线（2026-11-16 立项，已实施）
 
 #### 目标
 
@@ -2860,16 +2860,25 @@ pub struct Ink {
   "profiles": {
     "misans_bahnschrift": {
       "grid": 0.8,
-      "base_trim": 0.5,
       "top_ratio": 0.2,
       "bottom_ratio": 0.1,
       "sizes": {
-        "meta":    { "dy_cjk_grids": 1, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 1 },
-        "body":    { "dy_cjk_grids": 2, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 1 },
-        "section": { "dy_cjk_grids": 2, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 1 },
-        "title":   { "dy_cjk_grids": 3, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 1 },
-        "display": { "dy_cjk_grids": 4, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 2 },
-        "hero":    { "dy_cjk_grids": 8, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 4 }
+        "meta":    { "size": 12, "cjk_ink_grids": 14, "latin_ink_grids": 12, "trim_grids_latin": 2,  "dy_cjk_grids": 1, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 1 },
+        "body":    { "size": 16, "cjk_ink_grids": 19, "latin_ink_grids": 15, "trim_grids_latin": 4,  "dy_cjk_grids": 2, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 1 },
+        "section": { "size": 20, "cjk_ink_grids": 24, "latin_ink_grids": 19, "trim_grids_latin": 5,  "dy_cjk_grids": 2, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 1 },
+        "title":   { "size": 28, "cjk_ink_grids": 34, "latin_ink_grids": 27, "trim_grids_latin": 7,  "dy_cjk_grids": 3, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 1 },
+        "display": { "size": 40, "cjk_ink_grids": 48, "latin_ink_grids": 38, "trim_grids_latin": 10, "dy_cjk_grids": 4, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 2 },
+        "hero":    { "size": 72, "cjk_ink_grids": 86, "latin_ink_grids": 68, "trim_grids_latin": 18, "dy_cjk_grids": 8, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 4 },
+        "readout_hero_lg":  { "size": 56, "cjk_ink_grids": 67, "latin_ink_grids": 53, "trim_grids_latin": 14, "dy_cjk_grids": 5, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 3 },
+        "readout_hero_md":  { "size": 48, "cjk_ink_grids": 57, "latin_ink_grids": 45, "trim_grids_latin": 12, "dy_cjk_grids": 4, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 3 },
+        "readout_hero_sm":  { "size": 44, "cjk_ink_grids": 53, "latin_ink_grids": 42, "trim_grids_latin": 11, "dy_cjk_grids": 4, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 2 },
+        "readout_hero_xs":  { "size": 40, "cjk_ink_grids": 48, "latin_ink_grids": 38, "trim_grids_latin": 10, "dy_cjk_grids": 4, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 2 },
+        "readout_hero_xxs": { "size": 36, "cjk_ink_grids": 43, "latin_ink_grids": 34, "trim_grids_latin": 9,  "dy_cjk_grids": 3, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 2 },
+        "readout_real_lg":  { "size": 36, "cjk_ink_grids": 43, "latin_ink_grids": 34, "trim_grids_latin": 9,  "dy_cjk_grids": 3, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 2 },
+        "readout_real_md":  { "size": 32, "cjk_ink_grids": 39, "latin_ink_grids": 30, "trim_grids_latin": 9,  "dy_cjk_grids": 4, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 1 },
+        "readout_real_sm":  { "size": 28, "cjk_ink_grids": 34, "latin_ink_grids": 27, "trim_grids_latin": 7,  "dy_cjk_grids": 3, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 1 },
+        "readout_real_xs":  { "size": 28, "cjk_ink_grids": 34, "latin_ink_grids": 27, "trim_grids_latin": 7,  "dy_cjk_grids": 3, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 1 },
+        "readout_real_xxs": { "size": 24, "cjk_ink_grids": 29, "latin_ink_grids": 23, "trim_grids_latin": 6,  "dy_cjk_grids": 3, "dy_latin_grids": 0, "dy_digit_grids": 0, "trim_grids": 1 }
       }
     }
   }
@@ -2891,35 +2900,78 @@ pub struct Ink {
 
 #### 盒高与 trim_grids
 
-```text
-n      = (字号 − 最大实体墨迹) / grid
-trim   = (grid − top_ratio − bottom_ratio) × n
-top    = top_ratio × n
-bottom = bottom_ratio × n
-盒高   = 字号 − trim = 最大实体墨迹 + top + bottom
-```
-
-`n` 必须为整数；不是整数说明测量或字号档位有误，不得四舍五入掩盖。
-
-`n` 与 `dy` 是两套栅格数，不得混用：
+三个写死常量：
 
 ```text
-盒高 n：1 / 1 / 1 / 1 / 2 / 4
-dy 栅格：1 / 2 / 2 / 3 / 4 / 8
-
-dy = dy_cjk_grids × grid
+grid         = 0.8
+top_ratio    = 0.2
+bottom_ratio = 0.1
+step         = grid − top_ratio − bottom_ratio
 ```
+
+三个实测值（程序从字体逐档量出，属字体事实；量错一个，整表失效）：
+
+```text
+m_cjk   中文最大墨迹 = 字符集墨迹上缘到基线的最大距离 + 基线下最大下探
+m_latin 拉丁最大墨迹 = 0–9 a–z A–Z 整字剔除 g/j/p/q/y 后的最大墨迹
+dy      中文下探     = 同一份中文实测数据的基线下最大下探
+```
+
+表内只存栅格数：
+
+```text
+cjk_ink_grids   = m_cjk / grid
+latin_ink_grids = m_latin / grid
+dy_cjk_grids    = dy / grid
+
+trim_grids       = size / grid − cjk_ink_grids
+trim_grids_latin = cjk_ink_grids − latin_ink_grids
+
+h_cjk   = size − step × trim_grids
+top     = top_ratio × trim_grids
+bottom  = bottom_ratio × trim_grids
+h_latin = ceil((h_cjk − trim_grids_latin × grid) / step) × step
+```
+
+`trim_grids` 必须为整数；不是整数说明测量或档位有误，不得四舍五入掩盖。`dy_cjk_grids` 与 `trim_grids` 是两套栅格数，不得混用。
 
 `bottom` 就是盒底到文字摆放基线 `B` 的距离：`B = 盒底 − bottom`。
 
-#### 测量口径
+#### 英文 / 数字 / 英数混排盒高
 
-- 字符集：程序静态文案 + `ui.json` 去重汉字 + `a–z A–Z 0–9`。
-- 字重：regular。
-- 阈值：`alpha > 96` 实体；不用淡边，不用 bbox。
-- DPI：125%，`grid = 0.8px`。
-- `dy`：该档中文实体下探；众数与中位冲突时以覆盖主体为准。
-- 最大墨迹：全字符集实测最大值；中位只作参照，不参与 trim。
+- 三类共用 `h_latin`，`dy = 0`，基线 = 盒底 − bottom。
+- `pad = h_latin − (h_cjk − trim_grids_latin × grid)`，只会是 0 / 0.1 / 0.2 / 0.3 / 0.4，不会到 0.5；`pad` 只作补齐量记录，计算仍用 `h_latin` 的 ceil 公式。
+- 六档 `trim_grids_latin = 2 / 4 / 5 / 7 / 10 / 18`；`h_latin = 10.0 / 12.5 / 15.5 / 22.0 / 31.0 / 56.0`。
+
+#### 两个最大墨迹与 dy 的口径
+
+| 值        | 字符集        | 剔除                 | 口径                                             |
+| --------- | ------------- | -------------------- | ------------------------------------------------ |
+| `m_cjk`   | 全量程序汉字  | 无                   | `alpha > 96`；上缘最大距离 + 基线下最大下探      |
+| `m_latin` | `0–9 a–z A–Z` | 整字剔除 `g/j/p/q/y` | `alpha > 96`；剔除后的最大墨迹（上缘；下探为 0） |
+| `dy`      | 同中文        | 无                   | `alpha > 96`；基线下最大下探                     |
+
+六档基线（12/16/20/28/40/72）：
+
+```text
+cjk_ink_grids   = 14 / 19 / 24 / 34 / 48 / 86
+latin_ink_grids = 12 / 15 / 19 / 27 / 38 / 68
+dy_cjk_grids    = 1 / 2 / 2 / 3 / 4 / 8
+trim_grids      = 1 / 1 / 1 / 1 / 2 / 4
+```
+
+读数 10 档（hero 56/48/44/40/36，real 36/32/28/28/24）：
+
+```text
+cjk_ink_grids   = 67 / 57 / 53 / 48 / 43 | 43 / 39 / 34 / 34 / 29
+latin_ink_grids = 53 / 45 / 42 / 38 / 34 | 34 / 30 / 27 / 27 / 23
+dy_cjk_grids    = 5 / 4 / 4 / 4 / 3 | 3 / 4 / 3 / 3 / 3
+trim_grids      = 3 / 3 / 2 / 2 / 2 | 2 / 1 / 1 / 1 / 1
+```
+
+- 字重 regular；125% DPI，`grid = 0.8px`；不用 ascender，不用 bbox，不用淡边。
+- `m_cjk`、`m_latin` 必须整除 `grid`；出现小数说明测量口径有误，不得四舍五入。
+- 中位只作参照，不参与 trim。
 
 #### 退役清单
 
@@ -2946,8 +2998,8 @@ dy = dy_cjk_grids × grid
 
 #### 检验
 
-- 单测：每档 `盒高 = 字号 − trim`；`trim_grids = (字号 − 最大墨迹) / 0.8` 为整数；`P + dy = B`。
-- 探针：`ACCELWORLD_TEXT_MATRIX=1` + 全量字符 + `SIZES=12,16,20,28,40,72`，输出 `t96` 与 `a96`；核对 dy、最大墨迹、中位。
+- 单测：每档 `h_cjk = size − step × trim_grids`；`trim_grids = size / grid − cjk_ink_grids` 为整数；`h_latin` 落在 0.5 网格；`P + dy = B`。
+- 探针：`ACCELWORLD_TEXT_MATRIX=1` + 全量汉字与 `0–9 a–z A–Z` 两组 + `SIZES=12,16,20,28,40,72`，`t96` 取上缘、`a96` 取下探；中文 `m_cjk = 上缘 + 下探`，拉丁剔除 `g/j/p/q/y` 后取上缘。
 - 截图：520×420 / 974×678 / 1200×820，六页逐页走查。
 - 静态门：`rg` 确认代码不再出现 `TOP_RESERVE`、`BOTTOM_RESERVE`、`font.size + 0.5`、`bottom − 0.2`。
 - CI：`cargo fmt --check`、clippy `-D warnings`、`cargo test --workspace`、`ci.ps1` ALL_GREEN。

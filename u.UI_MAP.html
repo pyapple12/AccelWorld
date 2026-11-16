@@ -2139,7 +2139,7 @@
               <tr>
                 <td class="id">B18</td>
                 <td class="nm">倍率条</td>
-                <td class="ds">宽 220–360，高 87.5；6px 轨 + 量化行；1–365</td>
+                <td class="ds">宽 220–360，高 81.5；6px 轨 + 量化行；1–365</td>
               </tr>
               <tr>
                 <td class="id">B25</td>
@@ -3178,7 +3178,7 @@
               <tr>
                 <td class="id">H4</td>
                 <td class="nm">闹钟行</td>
-                <td class="ds">51.5px；开关/时刻/标签·重复/删除</td>
+                <td class="ds">46.0px；开关/时刻/标签·重复/删除</td>
               </tr>
               <tr>
                 <td class="id">H5</td>
@@ -3919,12 +3919,15 @@
               </tr>
               <tr>
                 <td>盘下读数</td>
-                <td>11.5 + 5 + max(h(hero), h(real), 19.5)（固定读数盒）</td>
+                <td>
+                  11.5 + 5 + max(h_latin(hero), h_latin(real),
+                  19.5)（固定读数盒）
+                </td>
                 <td><code>draw_readout</code></td>
               </tr>
               <tr>
                 <td>倍率条</td>
-                <td>宽 220–360，高 87.5；轨 6px；旋钮 8→9px；1–365</td>
+                <td>宽 220–360，高 81.5；轨 6px；旋钮 8→9px；1–365</td>
                 <td><code>widgets/rate_strip.rs</code></td>
               </tr>
               <tr>
@@ -3942,7 +3945,7 @@
               </tr>
               <tr>
                 <td>世界城市行 / 闹钟行</td>
-                <td>63.5 / 57.0 / 51.5</td>
+                <td>63.5 / 57.0 / 46.0</td>
                 <td><code>world.rs</code> / <code>alarm.rs</code></td>
               </tr>
               <tr>

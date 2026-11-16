@@ -39,6 +39,9 @@
         "sizes": {
           "meta": {
             "size": 12,
+            "cjk_ink_grids": 14,
+            "latin_ink_grids": 12,
+            "trim_grids_latin": 2,
             "dy_cjk_grids": 1,
             "dy_latin_grids": 0,
             "dy_digit_grids": 0,
@@ -46,6 +49,9 @@
           },
           "body": {
             "size": 16,
+            "cjk_ink_grids": 19,
+            "latin_ink_grids": 15,
+            "trim_grids_latin": 4,
             "dy_cjk_grids": 2,
             "dy_latin_grids": 0,
             "dy_digit_grids": 0,
@@ -53,6 +59,9 @@
           },
           "section": {
             "size": 20,
+            "cjk_ink_grids": 24,
+            "latin_ink_grids": 19,
+            "trim_grids_latin": 5,
             "dy_cjk_grids": 2,
             "dy_latin_grids": 0,
             "dy_digit_grids": 0,
@@ -60,6 +69,9 @@
           },
           "title": {
             "size": 28,
+            "cjk_ink_grids": 34,
+            "latin_ink_grids": 27,
+            "trim_grids_latin": 7,
             "dy_cjk_grids": 3,
             "dy_latin_grids": 0,
             "dy_digit_grids": 0,
@@ -67,6 +79,9 @@
           },
           "display": {
             "size": 40,
+            "cjk_ink_grids": 48,
+            "latin_ink_grids": 38,
+            "trim_grids_latin": 10,
             "dy_cjk_grids": 4,
             "dy_latin_grids": 0,
             "dy_digit_grids": 0,
@@ -74,38 +89,113 @@
           },
           "hero": {
             "size": 72,
+            "cjk_ink_grids": 86,
+            "latin_ink_grids": 68,
+            "trim_grids_latin": 18,
             "dy_cjk_grids": 8,
             "dy_latin_grids": 0,
             "dy_digit_grids": 0,
             "trim_grids": 4
           },
-          "readout_lg": {
+          "readout_hero_lg": {
             "size": 56,
+            "cjk_ink_grids": 67,
+            "latin_ink_grids": 53,
+            "trim_grids_latin": 14,
             "dy_cjk_grids": 5,
             "dy_latin_grids": 0,
             "dy_digit_grids": 0,
             "trim_grids": 3
           },
-          "readout_md": {
+          "readout_hero_md": {
             "size": 48,
+            "cjk_ink_grids": 57,
+            "latin_ink_grids": 45,
+            "trim_grids_latin": 12,
             "dy_cjk_grids": 4,
             "dy_latin_grids": 0,
             "dy_digit_grids": 0,
             "trim_grids": 3
           },
-          "readout_sm": {
+          "readout_hero_sm": {
             "size": 44,
+            "cjk_ink_grids": 53,
+            "latin_ink_grids": 42,
+            "trim_grids_latin": 11,
             "dy_cjk_grids": 4,
             "dy_latin_grids": 0,
             "dy_digit_grids": 0,
             "trim_grids": 2
           },
-          "readout_xs": {
+          "readout_hero_xs": {
+            "size": 40,
+            "cjk_ink_grids": 48,
+            "latin_ink_grids": 38,
+            "trim_grids_latin": 10,
+            "dy_cjk_grids": 4,
+            "dy_latin_grids": 0,
+            "dy_digit_grids": 0,
+            "trim_grids": 2
+          },
+          "readout_hero_xxs": {
             "size": 36,
+            "cjk_ink_grids": 43,
+            "latin_ink_grids": 34,
+            "trim_grids_latin": 9,
             "dy_cjk_grids": 3,
             "dy_latin_grids": 0,
             "dy_digit_grids": 0,
             "trim_grids": 2
+          },
+          "readout_real_lg": {
+            "size": 36,
+            "cjk_ink_grids": 43,
+            "latin_ink_grids": 34,
+            "trim_grids_latin": 9,
+            "dy_cjk_grids": 3,
+            "dy_latin_grids": 0,
+            "dy_digit_grids": 0,
+            "trim_grids": 2
+          },
+          "readout_real_md": {
+            "size": 32,
+            "cjk_ink_grids": 39,
+            "latin_ink_grids": 30,
+            "trim_grids_latin": 9,
+            "dy_cjk_grids": 4,
+            "dy_latin_grids": 0,
+            "dy_digit_grids": 0,
+            "trim_grids": 1
+          },
+          "readout_real_sm": {
+            "size": 28,
+            "cjk_ink_grids": 34,
+            "latin_ink_grids": 27,
+            "trim_grids_latin": 7,
+            "dy_cjk_grids": 3,
+            "dy_latin_grids": 0,
+            "dy_digit_grids": 0,
+            "trim_grids": 1
+          },
+          "readout_real_xs": {
+            "size": 28,
+            "cjk_ink_grids": 34,
+            "latin_ink_grids": 27,
+            "trim_grids_latin": 7,
+            "dy_cjk_grids": 3,
+            "dy_latin_grids": 0,
+            "dy_digit_grids": 0,
+            "trim_grids": 1
+          },
+          "readout_real_xxs": {
+            "size": 24,
+            "cjk_ink_grids": 29,
+            "latin_ink_grids": 23,
+            "trim_grids_latin": 6,
+            "dy_cjk_grids": 3,
+            "dy_latin_grids": 0,
+            "dy_digit_grids": 0,
+            "trim_grids": 1
           }
         }
       }
@@ -175,9 +265,9 @@
     "readout_hero_xxs": 36,
     "readout_real_lg": 36,
     "readout_real_md": 32,
-    "readout_real_sm": 30,
+    "readout_real_sm": 28,
     "readout_real_xs": 28,
-    "readout_real_xxs": 26,
+    "readout_real_xxs": 24,
     "rate_track_box": 24,
     "rate_track": 6,
     "rate_label_track_gap": 10,

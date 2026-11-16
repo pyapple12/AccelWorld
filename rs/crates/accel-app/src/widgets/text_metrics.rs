@@ -34,9 +34,13 @@ fn cell_key(font: &FontId) -> CellKey {
     (font.size.to_bits(), family_hash(font))
 }
 
-/// 角色盒高：查字体组合参数表；与文本/字形无关
-pub fn height(_ctx: &Context, font: &FontId, _kind: InkKind) -> f32 {
-    crate::font_profile::get().for_size(font.size).h
+/// 角色盒高：查字体组合参数表；Cjk 用中文盒高，其余用拉丁盒高
+pub fn height(_ctx: &Context, font: &FontId, kind: InkKind) -> f32 {
+    let p = crate::font_profile::get().for_size(font.size);
+    match kind {
+        InkKind::Cjk => p.h,
+        InkKind::Latin | InkKind::Digits | InkKind::Mixed => p.h_latin,
+    }
 }
 
 /// 数字槽宽：取 0–9 的最大 advance，按字号/字族缓存

@@ -119,8 +119,12 @@ fn dy_for(font: &FontId, kind: InkKind) -> f32 {
 /// 默认盒底路径：查表盒高 + 字体基线，不读文本、不读 bbox
 pub fn measure(ui: &Ui, _text: &str, font: &FontId, kind: InkKind) -> Ink {
     let p = crate::font_profile::get().for_size(font.size);
+    let h = match kind {
+        InkKind::Cjk => p.h,
+        InkKind::Latin | InkKind::Digits | InkKind::Mixed => p.h_latin,
+    };
     Ink {
-        h: p.h,
+        h,
         baseline: baseline_for(ui, font),
         bottom: p.bottom,
         dy: dy_for(font, kind),

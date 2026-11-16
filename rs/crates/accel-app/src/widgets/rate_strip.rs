@@ -1,6 +1,6 @@
 //! 短倍率条（PL023 盒子版）：360px 居中、6px 轨、1×/365× 端标、整数 1–365 档；
 //! 轨道下附「现实 1 天 = 加速 N 天」量化行。
-//! 固定盒：15.5 + 10 + 24 + 10 + 11.5 + 5 + 11.5 = 87.5；拖动 SetRate、松手/点击 ApplyRate 恰一次。
+//! 固定盒：12.5 + 10 + 24 + 10 + 10.0 + 5 + 10.0 = 81.5；拖动 SetRate、松手/点击 ApplyRate 恰一次。
 
 use egui::{Align2, Rect, Sense, Stroke};
 
@@ -9,9 +9,11 @@ use super::text_ink::{self, InkKind};
 
 /// 倍率条总高：由字体组合表与 spacing token 计算
 pub fn height() -> f32 {
-    let h = |size: f32| crate::font_profile::get().for_size(size).h;
-    let label_row_h = h(crate::theme::font_size("meta")).max(h(crate::theme::font_size("body")));
-    let tick_row_h = h(crate::theme::font_size("meta"));
+    let cjk = |size: f32| crate::font_profile::get().for_size(size).h;
+    let latin = |size: f32| crate::font_profile::get().for_size(size).h_latin;
+    let label_row_h =
+        cjk(crate::theme::font_size("meta")).max(latin(crate::theme::font_size("body")));
+    let tick_row_h = latin(crate::theme::font_size("meta"));
     label_row_h
         + crate::theme::layout_f32("rate_label_track_gap")
         + crate::theme::layout_f32("rate_track_box")
@@ -38,8 +40,9 @@ pub fn show(
     let label_track_gap = crate::theme::layout_f32("rate_label_track_gap");
     let track_ticks_gap = crate::theme::layout_f32("rate_track_ticks_gap");
     let ticks_quant_gap = crate::theme::layout_f32("rate_ticks_quant_gap");
-    let h = |size: f32| crate::font_profile::get().for_size(size).h;
-    let tick_row_h = h(crate::theme::font_size("meta"));
+    let cjk = |size: f32| crate::font_profile::get().for_size(size).h;
+    let latin = |size: f32| crate::font_profile::get().for_size(size).h_latin;
+    let tick_row_h = latin(crate::theme::font_size("meta"));
     let total_h = height();
     let (outer, _) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), total_h), Sense::hover());
@@ -47,7 +50,8 @@ pub fn show(
         egui::pos2(outer.center().x - width / 2.0, outer.top()),
         egui::vec2(width, total_h),
     );
-    let label_row_h = h(crate::theme::font_size("meta")).max(h(crate::theme::font_size("body")));
+    let label_row_h =
+        cjk(crate::theme::font_size("meta")).max(latin(crate::theme::font_size("body")));
     let label_row_bottom = inner.top() + label_row_h;
     let label_font = crate::theme::font_medium(crate::theme::font_size("meta"));
     let label_ink = text_ink::measure(ui, "倍率", &label_font, InkKind::Cjk);
@@ -302,6 +306,6 @@ mod tests {
 
     #[test]
     fn height_matches_fixed_boxes() {
-        assert!((height() - 87.5).abs() < 1e-6, "got {}", height());
+        assert!((height() - 81.5).abs() < 1e-6, "got {}", height());
     }
 }

@@ -1048,11 +1048,12 @@ fn clock_metrics(page_h: f32, label_gap: f32) -> ClockMetrics {
     } else {
         pair("readout_hero_xxs", "readout_real_xxs")
     };
-    let h = |size: f32| crate::font_profile::get().for_size(size).h;
-    let label_h = h(crate::theme::font_size("meta"));
-    let value_row_h = h(hero)
-        .max(h(real))
-        .max(h(crate::theme::font_size("section")));
+    let cjk = |size: f32| crate::font_profile::get().for_size(size).h;
+    let latin = |size: f32| crate::font_profile::get().for_size(size).h_latin;
+    let label_h = cjk(crate::theme::font_size("meta"));
+    let value_row_h = latin(hero)
+        .max(latin(real))
+        .max(cjk(crate::theme::font_size("section")));
     ClockMetrics {
         hero,
         real,

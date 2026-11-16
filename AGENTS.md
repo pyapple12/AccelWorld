@@ -56,11 +56,17 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - **三线定义**：排版基线 `P` 是字体文件给定的原始基线；优化基线 `O` 是中文实体墨迹底上移到英文/数字排版基线后的线；盒子基线 `B` 是盒底向上留出下空白后的锚点。
 - **三线关系**：`P_cjk + dy_cjk = P_latin + dy_latin = P_digit + dy_digit = O = B`。当前 `dy_latin = dy_digit = 0`，公式保留三项，未来表里填值即生效，不改代码。
 - **基线定位**：`B = 盒底 − 下空白`，`O = B`，`P = O − dy`；渲染用 `P` 定位 galley，`B` 只做对齐目标，不直接绘制。
-- **dy 独立测量**：`dy` 由中文实体墨迹底与排版基线实测差值得出，按字号存表；表里存栅格数 `dy_cjk_grids`，运行期 `dy = dy_cjk_grids × grid`；每档栅格数与盒高的 `n` 是两套数，不得混用。
-- **数值来源**：六档 `dy`、`n`、栅格、上/下空白比例只存在于 `ui.json` 的 `font_profile`，按“中文字体 + 数字字体”组合键索引；代码、注释、文档不得写死六档数值。
-- **测量口径**：全量程序字符（静态文案 + `ui.json` 去重汉字 + `a–z A–Z 0–9`）、regular、`alpha > 96` 实体；不用淡边，不用 bbox；125% DPI 下栅格 = 0.8px；`dy` 取实体下探、众数与中位冲突时以覆盖主体为准；最大墨迹用全字符集最大值，中位只作参照。
-- **新字体组合**：换字体 = 新增 profile 表，重新跑矩阵测 dy 与最大墨迹，重新算 `n`；公式与三线关系不变。
-- **教训**：不得用 bbox 代替 alpha 墨迹；不得用 g/j 的深下探作为补偿标准；不得用淡边当实体；同一盒高下英文/数字顶部余量大是 em 盒的正常现象，不是 bug；16/20px 只有两个像素落点，28px 以上墨迹高连续分布，不能按同一套“两档”理解。
+- **三个写死常量**：`grid = 0.8`、`top_ratio = 0.2`、`bottom_ratio = 0.1`；`step = grid − top_ratio − bottom_ratio`，不得再立第四个常量。
+- **三个实测值**（程序从字体逐档量出，属字体事实；量错一个，整表失效）：
+  - `m_cjk` 中文最大墨迹：全量程序汉字、regular、`alpha > 96`；口径 = 字符集墨迹上缘到基线的最大距离 + 基线下最大下探，即最大墨迹总高。
+  - `m_latin` 拉丁最大墨迹：`0–9 a–z A–Z` 整字剔除 `g/j/p/q/y`、regular、`alpha > 96`；口径 = 剔除后字符集的最大墨迹（上缘；下探为 0）。
+  - `dy` 中文下探：同一份中文 `alpha > 96` 数据的基线下最大下探。
+- **表内只存栅格数**：`cjk_ink_grids = m_cjk / grid`、`latin_ink_grids = m_latin / grid`、`dy_cjk_grids = dy / grid`。
+- **派生公式**：`trim_grids = size / grid − cjk_ink_grids`；`trim_grids_latin = cjk_ink_grids − latin_ink_grids`；`h_cjk = size − step × trim_grids`；`top = top_ratio × trim_grids`；`bottom = bottom_ratio × trim_grids`；`h_latin = ceil((h_cjk − trim_grids_latin × grid) / step) × step`。
+- **三线**：`B = 盒底 − bottom`，`O = B`，`P = O − dy`；`dy = dy_cjk_grids × grid`；英文、数字、混排 `dy = 0`。
+- **测量口径**：全量程序字符（静态文案 + `ui.json` 去重汉字 + `a–z A–Z 0–9`）、regular、`alpha > 96` 实体；不用 ascender，不用 bbox，不用淡边；125% DPI 下 `grid = 0.8px`；最大墨迹取全字符集最大值，中位只作参照。
+- **新字体组合**：换字体 = 新增 profile 表，重新跑矩阵测 `m_cjk` / `m_latin` / `dy`，重算全部栅格；公式与三线关系不变。
+- **经验**：英文墨迹上缘不是等比（12px 8.8、16px 12.0），必须每档实测；`m_cjk`、`m_latin` 必须整除 `grid`，出现小数说明测量口径有误。
 
 ## 工程原则（设计哲学，所有项目通用）
 

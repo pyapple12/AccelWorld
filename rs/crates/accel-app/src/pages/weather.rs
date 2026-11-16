@@ -373,7 +373,7 @@ fn metric(ui: &mut egui::Ui, label: &str, value: &str) {
     let label_font = crate::theme::font_regular(crate::theme::font_size("meta"));
     let value_font = crate::theme::font_medium(crate::theme::font_size("body"));
     let label_h = crate::widgets::text_metrics::height(ui.ctx(), &label_font, InkKind::Cjk);
-    let value_h = crate::widgets::text_metrics::height(ui.ctx(), &value_font, InkKind::Cjk);
+    let value_h = crate::widgets::text_metrics::height(ui.ctx(), &value_font, InkKind::Mixed);
     let label_bottom = rect.top() + 8.0 + label_h;
     let label_ink = crate::widgets::text_ink::measure(ui, label, &label_font, InkKind::Cjk);
     ui.painter().text(
@@ -539,7 +539,7 @@ fn draw_hourly(ui: &mut egui::Ui, hourly: &[HourlyPoint], ink: &crate::theme::In
         );
     }
     // 图外时间轴：四等分文字盒，盒底对齐；不再用原生 label
-    let axis_h = crate::widgets::text_metrics::height(ui.ctx(), &meta_font, InkKind::Cjk);
+    let axis_h = crate::widgets::text_metrics::height(ui.ctx(), &meta_font, InkKind::Digits);
     let (axis, _) = ui.allocate_exact_size(
         egui::vec2(ui.available_width(), axis_h),
         egui::Sense::hover(),
@@ -570,7 +570,7 @@ fn draw_week(ui: &mut egui::Ui, daily: &[accel_core::types::DailyPoint], ink: &c
     let meta_font = crate::theme::font_medium(crate::theme::font_size("meta"));
     let body_font = egui::FontId::proportional(crate::theme::font_size("body"));
     let label_h = crate::widgets::text_metrics::height(ui.ctx(), &meta_font, InkKind::Cjk);
-    let row_h = crate::widgets::text_metrics::height(ui.ctx(), &body_font, InkKind::Cjk)
+    let row_h = crate::widgets::text_metrics::height(ui.ctx(), &body_font, InkKind::Digits)
         + crate::theme::spacing_f32("sm");
     let rect = ui.max_rect();
     let label_bottom = rect.top() + label_h;
