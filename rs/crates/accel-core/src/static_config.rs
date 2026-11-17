@@ -182,7 +182,7 @@ mod tests {
         // ui 域真实 token 抽样：字体族/字号/实心色板/间距阶（UIR2 子夜星图定值）
         let s = Static::get();
         assert_eq!(s.ui_str("font_family"), "MiSans");
-        assert_eq!(s.ui_str("font_family_digits"), "Bahnschrift");
+        assert_eq!(s.ui_str("font_family_digits"), "Barlow Medium");
         assert_eq!(s.ui_nested_i64("scale", "hero"), 72);
         assert_eq!(s.ui_nested_i64("spacing", "lg"), 16);
         assert!((s.ui_nested_f64("layout", "clock_dial_tick_cap") - 0.6).abs() < 1e-9);

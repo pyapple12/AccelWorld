@@ -1101,6 +1101,9 @@ const MISANS_EMBEDDED: &[u8] = include_bytes!("../../../assets/fonts/MiSans-Regu
 const MISANS_MEDIUM: &[u8] = include_bytes!("../../../assets/fonts/MiSans-Medium-sub.ttf");
 /// 半粗字重（600）——页面标题/分区标题/强调；PL017 层级
 const MISANS_SEMIBOLD: &[u8] = include_bytes!("../../../assets/fonts/MiSans-Semibold-sub.ttf");
+/// 数字族 Barlow Medium（SIL OFL 1.1，PL026 平替 Bahnschrift）——
+/// 字宽/墨迹与旧 Bahnschrift 几乎一致，编译期嵌入实现跨机一致
+const BARLOW_MEDIUM: &[u8] = include_bytes!("../../../assets/fonts/Barlow-Medium.ttf");
 
 /// 字体注入（PL013.03 + A005 #8 接线）：族名读 ui.json token
 /// `font_family`（中文，默认族）/ `font_family_digits`（数字等宽族）
@@ -1175,9 +1178,24 @@ fn install_weight_families(fonts: &mut egui::FontDefinitions) {
     tracing::info!("中文字重加载: MiSans Medium 500 / Semibold 600（内嵌子集）");
 }
 
-/// 数字等宽族装载（FIX011.11 单源）：命中则插 Monospace 队首，未命中回退内置
+/// 数字等宽族装载（FIX011.11 单源）：Barlow Medium 内嵌优先；其他 token
+/// 保留系统字体加载回退（Bahnschrift.ttf 等）；命中则插 Monospace 队首
 fn install_digit_family(fonts: &mut egui::FontDefinitions, digit_family: &str) {
-    if let Some((path, bytes)) = load_font(digit_family, &["Bahnschrift.ttf", "bahnschrift.ttf"]) {
+    let compact = digit_family.replace(' ', "");
+    if compact.eq_ignore_ascii_case("BarlowMedium") || compact.eq_ignore_ascii_case("Barlow") {
+        fonts.font_data.insert(
+            "digits".into(),
+            egui::FontData::from_static(BARLOW_MEDIUM).into(),
+        );
+        fonts
+            .families
+            .entry(egui::FontFamily::Monospace)
+            .or_default()
+            .insert(0, "digits".into());
+        tracing::info!("数字族字体加载: Barlow Medium（内嵌，OFL 1.1）");
+    } else if let Some((path, bytes)) =
+        load_font(digit_family, &["Bahnschrift.ttf", "bahnschrift.ttf"])
+    {
         tracing::info!("数字族字体加载: {path}");
         fonts
             .font_data
@@ -1192,7 +1210,7 @@ fn install_digit_family(fonts: &mut egui::FontDefinitions, digit_family: &str) {
     }
 }
 
-/// 数字族内 CJK 回退（UIR）：等宽数字串含「天/周」等汉字——Bahnschrift 无 CJK
+/// 数字族内 CJK 回退（UIR）：等宽数字串含「天/周」等汉字——Barlow Medium 无 CJK
 /// 字形缺失时渲染 tofu；向 Monospace 族尾部追加 cjk 兜底（内置等宽 Hack 之后，
 /// 缺字形时才回落）（FIX011.11 单源：两分支原各复制一份）
 fn push_cjk_fallback(fonts: &mut egui::FontDefinitions) {

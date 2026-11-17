@@ -20,7 +20,7 @@
     "scroll_hint_blink_ms": 800
   },
   "font_family": "MiSans",
-  "font_family_digits": "Bahnschrift",
+  "font_family_digits": "Barlow Medium",
   "scale": {
     "hero": 72,
     "display": 40,

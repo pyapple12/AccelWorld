@@ -1,10 +1,10 @@
 //! 等宽数字位渲染（UIR 重塑新增，消化 y.problems#12）：逐字符固定槽宽绘制
-//! Bahnschrift 为可变字体、数字 advance 不等——时钟走秒抖动的根因；
-//! 本控件不依赖字体等宽性：槽宽取 0–9 最大 advance，冒号/点占窄槽，逐字符居中绘制
+//! 历史根因：Bahnschrift 为可变字体、数字 advance 不等；现数字族为 Barlow Medium，
+//! 槽宽制保留——不依赖字体等宽性，槽宽取 0–9 最大 advance，冒号/点占窄槽，逐字符居中绘制
 
 use egui::{Align2, Color32, FontId, Painter, Rect, Vec2};
 
-/// 数字字体（Bahnschrift 注入于 Monospace 槽位 0——window.rs install_fonts）
+/// 数字字体（Barlow Medium 注入于 Monospace 槽位 0——window.rs install_fonts）
 pub fn digit_font(size: f32) -> FontId {
     FontId::new(size, egui::FontFamily::Monospace)
 }

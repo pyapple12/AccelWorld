@@ -93,7 +93,7 @@ pub fn ui(ui: &mut egui::Ui, state: &mut UiState) {
                 ),
                 (
                     "字体",
-                    "MiSans（小米，免费商用）/ Bahnschrift".to_string(),
+                    "MiSans / Barlow Medium（OFL）".to_string(),
                     false,
                     crate::widgets::text_ink::InkKind::Cjk,
                 ),

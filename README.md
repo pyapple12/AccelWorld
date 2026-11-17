@@ -1,6 +1,6 @@
 # ACCELWORLD Clock —— 天宫时计
 
-[![Version](https://img.shields.io/badge/Version-0.6.6.0-blue.svg)](rs/config/static/base.json)
+[![Version](https://img.shields.io/badge/Version-0.6.6.1-blue.svg)](rs/config/static/base.json)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](rs/rust-toolchain.toml)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -28,12 +28,12 @@
 
 - **时间膨胀计算**：根据可配置的加速倍率（1x - 365x）计算自定义时间流速，最大档现实 1 天 = 加速 1 年
 - **实时时钟**：加速时间大字英雄区（等宽数字位不抖动）+ 标准时间对照 + 盘下读数带
-- **实心桌面 UI**：「子夜星图」深色主题（黛蓝星图底 + 雄黄金单强调）+ 悬浮仪器坞（图标 + 标签）+ 矢量图标（零字体依赖）+ MiSans Regular/Medium/Semibold 字重层级 + 三级动效（可一键减少）
+- **实心桌面 UI**：「子夜星图」深色主题（黛蓝星图底 + 雄黄金单强调）+ 悬浮仪器坞（图标 + 标签）+ 矢量图标（零字体依赖）+ MiSans Regular/Medium/Semibold 字重层级 + Barlow Medium 数字族（OFL，内嵌）+ 三级动效（可一键减少）
 - **星盘主仪**：单环 12 小时四针表盘常驻——时/分/秒走现实（米白/星紫/朱红），第四根黄针走加速时刻（12h 取模，高倍率下肉眼可见地甩开时针）；盘左右 AM/PM 胶囊跟随现实半日亮起（文字变金色）；金圈按加速日进度从 2px 长到 10px、颜色走色谱并带灯带光晕；页头左为中文日期（hover 显示周数/节日/节气）、右为农历/月相/财神（hover 显示全部宜忌）；盘下读数「第 001 天 + 当天时间」与「现实」并排；倒计时/世界/天气/闹钟为右侧抽屉页（PageHeader + 内容滚动 + 固定 Footer，开启时主仪缩让不退场）
 - **农历信息**：天干地支年、生肖、时辰、月相、节气、公历节日、拜财神方向
 - **世界时钟**：紧凑城市行走时 + 昼夜指示 + 「基准」文字标，支持增删城市与基准时区切换
 - **倒计时功能**：多目标列表（hero 与近期节日固定在上方，只有目标卡列表滚动；卡片右缘 +8px 的 4px 金色浮钮（右边距 8/4/8 居中）+ 上下 16px 渐隐 + 滚动时呼吸的小三角，视口不足一张卡整块隐藏），法定/传统节日自动派生；目标时刻支持 `2027` / `2027-2` / `2027-2-6` / `3-3` / 完整时分，过去时间拒绝；回车与「添加」等价，失败在时刻标签行右端内联提示
-- **天气显示**：Open-Meteo 免费 API，当前 / 逐小时（24 点无框曲线）/ 七日范围条，单城市可换（城市选择器，选择即持久化）；失败保留旧值 + 重试，断网重启不空白
+- **天气显示**：Open-Meteo 免费 API，当前 / 逐小时（24 点无框曲线）/ 七日范围条，单城市可换（城市选择器，选择即持久化）；先直连、失败自动走系统代理，两通道都失败保留旧值并 10 分钟后自动重试，断网重启不空白
 - **闹钟功能**：多闹钟、预设/自定义铃声、一键快捷添加、系统通知提醒、删除两步确认
 - **系统集成**：系统托盘菜单树（显示/隐藏/退出，关闭按钮隐藏驻留）+ 全局热键（Ctrl+S 保存 / Ctrl+Q 退出）
 - **配置持久化**：倍率、城市、时区、倒计时目标、闹钟、窗口几何等自动保存；窗口启动按当前显示器工作区夹取（尺寸/位置不在屏外）
@@ -118,7 +118,7 @@ rs/ # cargo workspace 根（全部命令在此执行）
 │ │ # empty/rate_strip/slider/chip/toast/text_ink）
 │ ├── tools/ # 展示运算纯函数
 │ └── platform/ # 系统集成（tray/notify/hotkey）
-├── assets/ # 托盘图标/窗口图标；fonts/（MiSans Regular/Medium/Semibold 子集）
+├── assets/ # 托盘图标/窗口图标；fonts/（MiSans Regular/Medium/Semibold 子集 + Barlow Medium 数字族）
 └── .logs/ # 运行日志（gitignore）
 
 ```
@@ -158,7 +158,7 @@ A：不会。倍率、城市、时区、闹钟等设置自动保存到 exe 同�
 
 ### Q3：支持查看哪些城市的天气？
 
-A：覆盖国内外 17 个主要城市（`rs/data/cities.json`）。天气数据来自 Open-Meteo 免费 API，无需 API Key。世界时钟页可另选 50 城看走时（`rs/config/static/world_cities.json`）。
+A：覆盖国内外 17 个主要城市（`rs/data/cities.json`）。天气数据来自 Open-Meteo 免费 API，无需 API Key。网络先直连，直连失败自动走系统代理（Windows Internet Settings / `HTTPS_PROXY`）；每次拉取前重读代理，开关代理无需重启。两通道都失败时保留上次数据，并在 10 分钟后自动重试。世界时钟页可另选 50 城看走时（`rs/config/static/world_cities.json`）。
 
 ### Q4：如何让程序在后台运行？
 
@@ -171,6 +171,10 @@ A：任意名称 + 目标时刻。时刻支持 `2027`（当年 1 月 1 日 00:00
 ### Q6：窗口很小时星盘会消失吗？
 
 A：不会。星盘常驻，最小 120px；窗口变矮时先压星盘，再按 560 界缩页头（≥560 两行、<560 一行；页头宽 <560 只留农历）。抽屉页在 <760 宽时全宽显示；启动时如果窗口宽或高超出屏幕可用值，直接用最小 560×420 启动，之后不再限制。
+
+### Q7：换一台没有 Bahnschrift 的电脑，数字会变吗？
+
+A：不会。数字族已改为 Barlow Medium（SIL OFL 1.1），与 MiSans 一样编译期内嵌，不再依赖 Windows 系统字体；设置 → 关于 → 字体可查。
 
 ## 维护者
 

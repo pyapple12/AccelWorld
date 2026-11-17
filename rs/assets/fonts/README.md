@@ -42,9 +42,19 @@ SOFTWARE.
 
 - **用途**：`widgets::icons::draw` 以字体绘制 24 网格图标；不单独分发图标库。
 
-## Bahnschrift
+## Barlow Medium（内嵌数字族）
 
-- Windows 系统自带可变字体，运行期从 `C:/Windows/Fonts/Bahnschrift.ttf` 加载；**不随仓库分发**。
+- **来源**：Google Fonts Barlow（<https://github.com/jpt/barlow>，2026-11-17 下载）。
+- **文件**：`Barlow-Medium.ttf`（weight 500，约 101KB）；许可全文 `Barlow-OFL.txt`。
+- **许可**：SIL Open Font License 1.1；Copyright 2017 The Barlow Project Authors。
+- **用途**：`ui.json` `font_family_digits = "Barlow Medium"`，`window.rs` 编译期 `include_bytes!` 内嵌到 Monospace 槽位 0；仅作应用内嵌，不单独分发。
+- **选型**：数字最大 advance 与旧 Bahnschrift 比 +0.21%；`font_profile` 数值未改（`latin_ink` 由 MiSans 决定，盒高/trim/dy 不变）。
+- **署名位置**：设置 → 关于 → 字体；本文件。
+
+## Bahnschrift（系统回退，不再默认）
+
+- 旧数字族；token 改为 Barlow Medium 后默认不再加载。
+- `install_digit_family` 仍保留系统加载分支（token 自定义时回退），从 `C:/Windows/Fonts/Bahnschrift.ttf` 读取；**不随仓库分发**。
 - 缺失时回退 egui 内置等宽族（应用仍可运行）。
 
 ## 参考

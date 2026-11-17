@@ -29,6 +29,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - **注释房规**：`///` 中文文档注释（函数/方法，1-3 行，说明用途与核心逻辑）；模块头 `//!` 一行职责；每个 `.rs` 文件末尾保留 `// ===== 说明区 =====`（输入输出 / 逻辑步骤 / 设计理由 / 异常处理 / 关联配置）
 - **视觉走查门**：UI 观感改动经 `ACCELWORLD_UI_SHOT` 截图探针（真窗逐页 PNG）自检再进用户桌面走查——功能探针抓不住纯视觉缺陷（UIR 前的玻璃时代为 render_probe 离屏断言，管线已废）
 - **平台集成降级纪律**：托盘 / 全局热键 / 通知等系统能力构造失败一律降级日志不崩（行为无损），非 Windows 平台编译期桩化
+- **天气网络策略**：直连（显式 `no_proxy`）优先；直连网络失败且探测到系统代理（`HTTPS_PROXY/ALL_PROXY` 或 Windows Internet Settings）时改走代理；每次拉取前重读代理，开关代理无需重启；两通道都网络失败由 `interface` 排 `weather_fail_retry_delay_s`（默认 600s）自动重试。相关 token 全在 `base.json`（`weather_timeout_s` / `weather_connect_timeout_s` / `weather_retries` / `weather_fail_retry_delay_s`），不得在代码写死
 - **视觉设计不得向测试环境妥协**：offscreen / 无头探针仅作功能与结构参考；视觉与材质的最终实测以用户桌面走查为准
 - 提交信息规范见下文「Commit 提交规范」节；功能开发先走 OpenSpec 提案流程
 - 工作流文档：`w.study.md` 项目分析 / `x.progress.md` 任务清单（PL011–PL018 + UIR/FIX，已完成在前、未完成在后）/ `y.problems.md` 已知问题 / `z.plan.md` 方案记录与审计附录（豁免定案清单 `A{NNN}` 递增）/ `m.milestone.md` 版本里程碑 / `t.hint.md` 经验复盘
@@ -70,6 +71,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - **三线**：`B = 盒底 − bottom`，`O = B`，`P = O − dy`；`dy = dy_cjk_grids × grid`；英文、数字、混排 `dy = 0`。
 - **测量口径**：全量程序字符（静态文案 + `ui.json` 去重汉字 + `a–z A–Z 0–9`）、regular、`alpha > 96` 实体；不用 ascender，不用 bbox，不用淡边；125% DPI 下 `grid = 0.8px`；最大墨迹取全字符集最大值，中位只作参照。
 - **新字体组合**：换字体 = 新增 profile 表，重新跑矩阵测 `m_cjk` / `m_latin` / `dy`，重算全部栅格；公式与三线关系不变。
+- **数字字形平替例外**：仅更换数字族字形、且 `latin_ink` 仍由 MiSans 决定、最大 advance 差 <0.5% 时，可保留原 profile 数值与 `dy`；须在 `z.plan` 登记只读测算（PL026 Barlow Medium）。
 - **经验**：英文墨迹上缘不是等比（12px 8.8、16px 12.0），必须每档实测；`m_cjk`、`m_latin` 必须整除 `grid`，出现小数说明测量口径有误。
 
 ## 工程原则（设计哲学，所有项目通用）

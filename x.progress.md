@@ -1,9 +1,9 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告 + Rust 重构总纲）
-> 当前版本：0.6.6.0（PL020–PL023 已收口；PL024 表盘等比 + 窗口尺寸 + 光晕探针已实施）
+> 当前版本：0.6.6.1（PL024 表盘等比 + 窗口尺寸 + 光晕探针；PL025 天气双通道；PL026 Barlow Medium 数字族）
 > 历史 UI 审核报告已于 2026-10-29 移除，原文见 git 历史；下文相关引用按历史记录理解。
-> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；PL016 已收口提交（0e2252f）；PL017 已实施（0.6.3.1；G4/G8 按用户定案不做，勾选完成）；**PL018 已实施（0.6.3.2：N9 裁决 + #9 退出自愈 + #10 落点校准 + #11 首帧门控）**；**PL019 已收口（0.6.4.0：图标系统 + 读数成组 + 反馈动效）**；**PL020 已收口（0.6.5.1：12h 双半日四针 + 金圈 + 365 倍率）**；**PL021 已收口（0.6.5.3：五页盒模型 + 倒计时输入）**；**PL022 已实施（0.6.5.4：倒计时列表独立滚动）**；**PL023 已收口（0.6.5.5：文字盒统一 + 五页盒子对齐）**；**PL024 已实施（0.6.6.0：表盘 320 母版等比 + 窗口尺寸 + GLOW/INK 探针）**
+> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；PL016 已收口提交（0e2252f）；PL017 已实施（0.6.3.1；G4/G8 按用户定案不做，勾选完成）；**PL018 已实施（0.6.3.2：N9 裁决 + #9 退出自愈 + #10 落点校准 + #11 首帧门控）**；**PL019 已收口（0.6.4.0：图标系统 + 读数成组 + 反馈动效）**；**PL020 已收口（0.6.5.1：12h 双半日四针 + 金圈 + 365 倍率）**；**PL021 已收口（0.6.5.3：五页盒模型 + 倒计时输入）**；**PL022 已实施（0.6.5.4：倒计时列表独立滚动）**；**PL023 已收口（0.6.5.5：文字盒统一 + 五页盒子对齐）**；**PL024 已实施（0.6.6.0：表盘 320 母版等比 + 窗口尺寸 + GLOW/INK 探针）**；**PL025 已实施（天气直连/系统代理双通道 + 10 分钟自动重试）**；**PL026 已实施（数字族 Barlow Medium 内嵌平替）**
 > 更新（2026-10-17）：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow——UIR 定案 wgpu 废弃）；Python 版全量归档 `.archived/`（git 忽略），本文件自 PL011 起记录 RS 任务
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
 
@@ -53,7 +53,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 
 ## 任务记录（2026-09-10 起按 DeepTransHub 工作流新规则记录）
 
-> 当前状态：635 项全部完成，无未勾选项。
+> 当前状态：645 项全部完成，无未勾选项。
 
 > 结构规则：已完成任务在上方历史区（S1-S10 重构期记录，原样保留）；任务组用 `### 编号: 标题 [来源]`，子任务格式 `- [ ]`（待办）或 `- [x]`（完成），均带 [P级]、做法与验证
 > 编号规则：功能/修复任务组 `T{NNN}` 递增；审计修复任务组 `FIX{NNN}`（与 z.plan.md 附录 `A{NNN}` 一一对应），由 `.agents/skills/audit-report` 归档时生成
@@ -961,3 +961,25 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] PL024.12 [P1] INK 探针制度化 —— `text_ink::solid_ink_bounds` 按 `alpha > 96` 读实体墨迹四边；`layout_probe::ink` 打印 `x/right/top/bottom/center/w/h`，与 `[GLOW]` 同 tag；AGENTS 探针清单改 `[BOX]/[RECT]/[GLOW]/[INK]`；验证：四个数字可在运行日志直读实体墨迹，不再用 bbox。
 - [x] PL024.13 [P1] 光圈日界过渡 —— 最小厚度 `2 × scale`，删除 `t < 0.01` 返回；目标 `max(progress × 10, 2) × scale` 经 `animate_value_with_time(1s)` 平滑，CPU 环与 GPU 光晕共用 thickness；新增 `clock_dial_ring_fade_ms`；验证：跨日不再消失，环从 10×scale 平滑收缩到 2×scale。
 - [x] PL024.14 [P1] AM/PM 文字激活金色 —— `draw_half_pills` 文字激活色改 `accent #E8B544`，胶囊填充仍 AM 橙红 / PM 淡蓝；`half_am/half_pm` 保留；同步 README / UI 术语表 / 标注图；验证：当前半日文字金色 + 柔光。
+
+### PL025: 天气网络加固——直连/系统代理双通道与 10 分钟自动重试 [plan#PL025]（2026-11-17 立项/实施）
+
+> 方案：`z.plan.md` 附录 PL025；根因是 reqwest 关闭 `system-proxy` 且无环境代理，程序直连 OVH 加拿大；方案为直连优先、系统代理回退、两通道失败 10 分钟后自动重试。
+> 本组状态：6/6 收口（2026-11-17）。
+
+- [x] PL025.01 [P0] 超时 token —— `base.json` `weather_timeout_s 10→15`、新增 `weather_connect_timeout_s=5`、`weather_fail_retry_delay_s=600`；两个 client 均接 `.connect_timeout`；验证：配置可读、构建通过。
+- [x] PL025.02 [P0] 直连/系统代理双通道 —— 直连显式 `no_proxy()` 先试；代理探测环境变量优先、Windows 读 `Internet Settings`；有代理时直连单探针、代理按 `weather_retries`；两通道网络失败合并为短 `Network`；验证：httpmock 直连 500 → 代理 200 通过。
+- [x] PL025.03 [P1] 10 分钟自动重试 —— `interface` 对 `Network`/`StaleServed(Network)` 失败排 `weather_fail_retry_delay_s` 后 `RefreshWeather { force: false }`；失败继续排、成功即停；解析类错误不排；验证：临时 5s 档实测失败后出现“天气将在 5s 后自动重试”，5s 后再次“天气拉取开始”。
+- [x] PL025.04 [P1] 失败日志 —— `fetch_once` 展开 `Error::source` 链；直连失败/代理失败/均失败/自动重试均有日志；验证：请求失败时可见底层超时或连接重置原因。
+- [x] PL025.05 [P1] 测试与文档 —— `normalize_proxy` 覆盖四种代理串；httpmock 覆盖代理回退与两通道失败；同步 `z.plan` / `x.progress` / `w.study` / `AGENTS` / `README` / `y.problems`；验证：core 120 项通过、clippy `-D warnings` 通过。
+- [x] PL025.06 [P1] 代理热更新 —— 代理通道改 `Mutex<ProxyChannel>`；每次 `fetch_by_coords` 前 `refresh_proxy()` 重读系统代理，URL 变化才重建 client；开关代理无需重启，下一次拉取/10 分钟重试即生效；验证：单测与构建通过。
+
+### PL026: 数字族平替 Barlow Medium [plan#PL026]（2026-11-17 用户定案/实施）
+
+> 方案：`z.plan.md` 附录 PL026；Barlow Medium（SIL OFL 1.1）编译期内嵌数字族，`font_profile` 数值/公式不动。
+> 本组状态：4/4 收口（2026-11-17）。
+
+- [x] PL026.01 [P1] 选型与只读测算 —— 运行时探针确认 `latin_ink` 由 MiSans 决定；Barlow 最大 advance +0.21%，数字顶 -0.8px @72，`dy`/`h_latin` 不变；验证：12–72 档测算表。
+- [x] PL026.02 [P1] 内嵌接线 —— `rs/assets/fonts/Barlow-Medium.ttf` + `Barlow-OFL.txt`；`window.rs` `BARLOW_MEDIUM` `include_bytes!`；`install_digit_family` 内嵌优先；`ui.json` token 改 `Barlow Medium`；验证：启动日志「数字族字体加载: Barlow Medium（内嵌，OFL 1.1）」。
+- [x] PL026.03 [P1] 许可与文档 —— 资产 README 增 Barlow 来源/OFL/署名；设置关于改 `MiSans / Barlow Medium（OFL）`；README / UI 术语表 / 标注图同步；验证：文档无旧默认字体表述。
+- [x] PL026.04 [P1] 构建与目测 —— `cargo build -p accel-app`；960×720 截图六页无溢出，设置字体行不重叠；拉起程序交用户目测；未跑全量回归（用户要求）。

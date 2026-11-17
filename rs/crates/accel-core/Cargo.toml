@@ -22,6 +22,10 @@ httpmock = { workspace = true }
 # chrono-tz 仅 cfg(test)（world_cities 表 IANA 解析校验），不进主依赖树（FIX010.6）
 chrono-tz = { workspace = true }
 
+[target.'cfg(windows)'.dependencies]
+# 天气系统代理探测（读 HKCU Internet Settings；非 Windows 平台走环境变量）
+windows-registry = { workspace = true }
+
 # ===== crates/accel-core/Cargo.toml 说明区 =====
 # version = "0.6.5"：随产品 minor 段人工推进（A011 订正——原 0.6.0 滞后失实）；
 #   显示版本单一来源在 config/static/base.json，经 app 侧 build.rs 注入，core 自身不感知版本

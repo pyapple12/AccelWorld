@@ -428,6 +428,7 @@ impl AppInterface {
         }
 
         // 主循环任务（panic 监控包裹：join Err 记 error 不静默——PL013.12 检验项）
+        let cmd_tx_main = cmd_tx.clone();
         let main_handle = tokio::spawn(async move {
             // A008 #1：tick 改绝对截止时间（sleep 句柄跨循环复用，倍率变化时 reset 重排）——
             // 原写法每轮循环重建 sleep，命令到达快于 tick 周期时（滑杆拖动每帧一发
@@ -485,10 +486,24 @@ impl AppInterface {
                                     let inflight_map = Arc::clone(&self.weather_inflight);
                                     let city_task = city.clone();
                                     let superseded_flag = Arc::clone(&superseded);
+                                    // 两通道都失败后的自动重试节拍（base.json token，默认 600s）
+                                    let retry_delay_s = Static::get()
+                                        .base_i64("weather_fail_retry_delay_s")
+                                        .max(1) as u64;
+                                    let cmd_tx_retry = cmd_tx_main.clone();
                                     // FIX006.4/.9 配套可观测性：拉取开始即留痕（冷启动首拉可见）
                                     tracing::info!("天气拉取开始: {city}（force={force}）");
                                     let handle = tokio::spawn(async move {
                                         let result = weather.fetch_by_city(&city_task, force).await;
+                                        // 仅网络类失败（含磁盘缓存回退包裹的网络失败）值得
+                                        // 10 分钟后自动重试；解析类错误换时间也不会自愈
+                                        let retryable = match &result {
+                                            Err(FetchErr::Network(_)) => true,
+                                            Err(FetchErr::StaleServed { source, .. }) => {
+                                                matches!(source.as_ref(), FetchErr::Network(_))
+                                            }
+                                            _ => false,
+                                        };
                                         // PL016.03（审核 #2）：StaleServed = 失败但磁盘缓存
                                         // 有历史——先发 Updated（旧值上屏）再发 Failed（角标），
                                         // bus 侧不再清旧数据
@@ -530,7 +545,28 @@ impl AppInterface {
                                             }
                                             _ => {}
                                         }
-                                        let _ = evt_tx.send(evt).await;
+                                        // UI 已关闭/事件通道断开时不再排自动重试
+                                        let delivered = evt_tx.send(evt).await.is_ok();
+                                        // 两通道均网络失败：10 分钟后自动再拉（force=false，
+                                        // 命中内存/磁盘缓存时零网络；失败会再排下一轮）
+                                        if retryable && delivered {
+                                            let city_retry = city_task.clone();
+                                            tracing::info!(
+                                                "天气将在 {retry_delay_s}s 后自动重试: {city_retry}"
+                                            );
+                                            tokio::spawn(async move {
+                                                tokio::time::sleep(Duration::from_secs(
+                                                    retry_delay_s,
+                                                ))
+                                                .await;
+                                                let _ = cmd_tx_retry
+                                                    .send(FrontendCommand::RefreshWeather {
+                                                        city: city_retry,
+                                                        force: false,
+                                                    })
+                                                    .await;
+                                            });
+                                        }
                                         let mut map =
                                             inflight_map.lock().expect("天气在飞表锁中毒");
                                         inflight_self_remove(&mut map, &city_task, &superseded_flag);
@@ -793,7 +829,9 @@ fn inflight_abort_all(map: &mut WeatherInflight) {
 //   总线供帧循环 drain（z.plan 修订一信号接口）；tick 用绝对截止时间而非
 //   每轮重建 sleep（A008 #1：命令快于 tick 周期时 sleep 重建会被饿死，
 //   截止时间与命令节奏解耦，倍率变化经比较后 reset 即刻重排）；天气拉取独立
-//   tokio 任务（重试/超时最长秒级，不得阻塞命令通道）
+//   tokio 任务（重试/超时最长秒级，不得阻塞命令通道）；两通道（直连/系统代理）
+//   均网络失败后按 weather_fail_retry_delay_s 再排一次 force=false 的 RefreshWeather，
+//   形成 10 分钟自动重试环（成功即停；解析类错误不排）
 // 异常处理：倍率非法回退默认（构造期）/拒绝 false（set/apply）；天气失败降级
 //   None + 日志（Python 对等），总线事件则回推 WeatherFailed 供 UI 提示；
 //   事件通道关闭（UI 已死）时退出主循环

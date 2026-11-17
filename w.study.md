@@ -19,7 +19,7 @@ cargo workspace 双 crate 桌面应用：基于加速倍率的时间膨胀时钟
 
 - **时间膨胀**：`TimeDilation { rate, day_hours }`，标准一天总秒数 × rate = 加速一天总秒数，整数运算拆分时分秒；`now` 全参数化（无内部时钟，测试可注入）
 - **中华元素**：lunar-rust 农历/干支/生肖/节气 + holidays.json 法定节假日 + 财神方位本地表
-- **天气**：Open-Meteo 免费 API，17 城市统一表驱动，WMO 天气代码映射，TTL 缓存 + 重试
+- **天气**：Open-Meteo 免费 API，17 城市统一表驱动，WMO 天气代码映射，TTL 缓存 + 直连/系统代理双通道 + 10 分钟自动重试
 - **闹钟**：多闹钟（上限 max_alarms）、预设/自定义铃声、系统通知、去重键触发 + `Clock` 抽象（VirtualClock 可拨钟测试）
 - **系统集成**：tray-icon 托盘菜单树、global-hotkey 全局热键、WinRT toast 通知（失败一律降级不崩）
 
@@ -39,7 +39,7 @@ rs/                              # cargo workspace 根
     src/types.rs                 # 协议类型转出（TimeInfo/WeatherData/Alarm/DTO/ThemePref）
     src/time_dilation.rs         # 时间膨胀引擎（公式对齐 Python，秒级农历缓存）
     src/chinese_calendar.rs      # 农历/干支/生肖/节气/节日（lunar-rust + 常量表 + holidays.json）
-    src/weather.rs               # 天气解析层 + 传输层（reqwest rustls + 按城 TTL 缓存 + 重试）
+    src/weather.rs               # 天气解析层 + 传输层（reqwest rustls + 按城 TTL 缓存 + 直连/系统代理双通道 + 10 分钟自动重试）
     src/alarm.rs                 # Alarm 模型 + AlarmManager + 触发状态机 + Clock 抽象
     src/settings.rs              # 用户配置读写（serde + 字段白名单过滤 + 原子写）
     src/static_config.rs         # Static 单例（include_str 嵌入 + OnceLock + 域访问器）
@@ -106,16 +106,18 @@ pub fn time_info(&self, now: DateTime<Local>) -> TimeInfo {
 - `AlarmManager`：add（上限+去重）/remove/replace/toggle/from_dict_list（截断+过期禁用）；`should_trigger_on` 状态机逐行对齐 Python（一次性顺延/星期命中/过期不触发）
 - `trait Clock`：`RealClock`（chrono::Local）/ `VirtualClock`（可拨）——调度循环经 `spawn_with_clock` 注入，拨钟即测触发
 
-### 3.5 天气服务 — TTL 缓存 + 泛型重试
+### 3.5 天气服务 — TTL 缓存 + 直连/系统代理双通道 + 10 分钟自动重试
 
 ```rust
-// 城市名 → 坐标表 → 拼 URL（host 常量白名单）→ GET → parse（经 retry）→ 写缓存
-pub async fn fetch(&self, city: &str, force: bool) -> Result<WeatherData, WeatherErr>
+// 城市名 → 坐标表 → 拼 URL（host 常量白名单）→ 直连（失败→系统代理）→ parse → 写缓存
+pub async fn fetch_by_city(&self, city: &str, force: bool) -> Result<WeatherData, FetchErr>
 ```
 
 - `WeatherClient`：reqwest(rustls，禁重定向) + 按城缓存（仅存成功）+ `force` 清该城键 + 失败不缓存
 - 解析层逐字段校验（存在→非 null→类型对→范围对），对 null/缺字段/错型整包 `Err`；hourly/daily 键缺失向后兼容空序列
-- `trait IsRetryable` 区分网络类（可重试）与解析类（立即返回）；httpmock 五路径集成断言
+- 网络策略（PL025）：直连通道显式 `no_proxy()` 先试；探测到系统代理（`HTTPS_PROXY/ALL_PROXY` → Windows Internet Settings）时，直连只做一次 15s 探针，失败立即换代理并按 `weather_retries` 重试；每次拉取前重读代理（URL 变化重建 client），开关代理无需重启；两通道都网络失败 → `interface` 排 `weather_fail_retry_delay_s`（600s）后的 `RefreshWeather { force: false }`，失败继续排、成功即停
+- 超时：`weather_timeout_s=15` + `weather_connect_timeout_s=5`；失败日志展开 `Error::source` 链，区分超时/连接重置
+- `trait IsRetryable` 区分网络类（可重试）与解析类（立即返回）；httpmock 五路径 + 代理回退/双通道失败集成断言
 
 ### 3.6 前后端解耦 — interface 七域 + 命令/事件总线
 
@@ -130,9 +132,9 @@ pub async fn fetch(&self, city: &str, force: bool) -> Result<WeatherData, Weathe
 - `pages/mod.rs`：总装配——页面区/底部坞显式分带；舞台与抽屉按宽度定宽并排（<760 全宽抽屉；≥760 舞台 ≥420、抽屉 280..400）；抽屉弹簧开合；ESC 关设置/回时钟
 - `clock.rs`：单环 12h 四针表盘（60 刻度 + 12/3/6/9 内侧；时/分/秒走现实，黄针走加速 12h；AM/PM 胶囊当前半日文字金色、填充仍橙红/淡蓝；金圈=加速日进度色谱，2–10×scale，跨日 1s 平滑）；盘内以 320 为母版严格等比（scale = dial_d / 320；指针固定 60/90/110/100；刻度/字号/线宽/光晕/尾长全乘 scale；胶囊固定）；盘下 readout 铺满页面宽、竖线居中；整数 1–365 倍率条 + 量化行（365 档显示 1 年）；页头盒子模型（高 560 分行数 / 宽 560 分文本；日期盒 15.5 与农历块 26.0/11.5 按盒中线对齐）；星盘盒边长 = min(剩余高, 页宽 − 2×82)，下限 120、无上限；82 = 内容边→药丸 10 + 药丸 52 + 药丸→盘盒 20；可见盘 = 盒 − 20
 - 抽屉页统一盒模型（PL021/PL023）：页头 20 + 标题盒 27.5 + 10 = 57.5；内容上边距 10；区域用 `BoxStack` 固定盒高 + 10 间距；盒高与基线按 `ui.json font_profile` 查表：`trim_grids = size / grid − cjk_ink_grids`，`h_cjk = size − step × trim_grids`（`step = grid − top_ratio − bottom_ratio`），`top = top_ratio × trim_grids`，`bottom = bottom_ratio × trim_grids`，`B = 盒底 − bottom`，`P = B − dy`；默认盒底对盒底，混排不拿基线做外部对齐；盒子位置不由字墨反推；滚动行用 `next` 登记整行高度
-- 字体组合参数表（PL023.36–44）：`font_profile` 按“中文字体 + 数字字体”索引，每档存 `size / cjk_ink_grids / latin_ink_grids / trim_grids_latin / dy_cjk_grids / dy_latin_grids / dy_digit_grids / trim_grids`；三个写死常量 `grid 0.8 / top_ratio 0.2 / bottom_ratio 0.1`，三个实测值 `m_cjk`（中文上缘 + 下探）、`m_latin`（`0–9 a–z A–Z` 剔除 `g/j/p/q/y` 后的最大墨迹）、`dy`（中文基线下最大下探）；`trim_grids = size / grid − cjk_ink_grids`，`trim_grids_latin = cjk_ink_grids − latin_ink_grids`，`h_cjk = size − (grid − top_ratio − bottom_ratio) × trim_grids`，`step = grid − top_ratio − bottom_ratio`，`h_latin = ceil((h_cjk − trim_grids_latin × grid) / step) × step`；三类 `dy = 0`，基线 = 盒底 − bottom；读数 10 档独立建档（hero 56/48/44/40/36，real 36/32/28/28/24），横向按表内档位跌落（≤基准、≥24，取最大可装档），不连续缩放；换字体只换表，不改公式；测量用 `ACCELWORLD_TEXT_MATRIX=1`，`t96` 为上缘、`a96` 为下探
+- 字体组合参数表（PL023.36–44）：`font_profile` 按“中文字体 + 数字字体”索引，每档存 `size / cjk_ink_grids / latin_ink_grids / trim_grids_latin / dy_cjk_grids / dy_latin_grids / dy_digit_grids / trim_grids`；三个写死常量 `grid 0.8 / top_ratio 0.2 / bottom_ratio 0.1`，三个实测值 `m_cjk`（中文上缘 + 下探）、`m_latin`（`0–9 a–z A–Z` 剔除 `g/j/p/q/y` 后的最大墨迹）、`dy`（中文基线下最大下探）；`trim_grids = size / grid − cjk_ink_grids`，`trim_grids_latin = cjk_ink_grids − latin_ink_grids`，`h_cjk = size − (grid − top_ratio − bottom_ratio) × trim_grids`，`step = grid − top_ratio − bottom_ratio`，`h_latin = ceil((h_cjk − trim_grids_latin × grid) / step) × step`；三类 `dy = 0`，基线 = 盒底 − bottom；读数 10 档独立建档（hero 56/48/44/40/36，real 36/32/28/28/24），横向按表内档位跌落（≤基准、≥24，取最大可装档），不连续缩放；换字体只换表，不改公式；仅换数字字形且 `latin_ink` 仍由 MiSans 决定、最大 advance 差 <0.5% 时可保留原表（PL026 Barlow Medium 已登记）；测量用 `ACCELWORLD_TEXT_MATRIX=1`，`t96` 为上缘、`a96` 为下探
 - 倒计时：E2 hero 与 E7 近期节日固定为页头，不参与滚动；只有 E9 目标卡列表独立滚动（卡片右缘 +8px 的 4px 金色浮钮 + 上下 16px 渐隐 + 滚动时呼吸的小三角），列表视口高不足一张卡 56.0 时整块隐藏；E9 目标卡 56.0（10 + 15.5 + 5 + 15.5 + 10）；E15 页脚 101.5（标签 11.5 + 5 + 输入 19.5 + 10 + 按钮 35.5 + 20）；空态两行盒 15.5 + 5 + 11.5 整体居中，最小 54.0；目标时刻支持 `YYYY` / `YYYY-M` / `YYYY-M-D` / `M-D` / 完整时分，回车与添加等价
-- `theme.rs`：ui.json `colors.*` 深色实心单板（仅深色定案）→ egui Visuals + 语义色（strong/body/muted/meta/success 五层，对比度全矩阵 ≥4.5:1 实测）/input_border/border_strong/字号/间距/圆角访问器；MiSans Regular/Medium/Semibold 三档字重 + Tabler 图标族；选中底 `selection` #2A3552 + `ink.strong` 文字
+- `theme.rs`：ui.json `colors.*` 深色实心单板（仅深色定案）→ egui Visuals + 语义色（strong/body/muted/meta/success 五层，对比度全矩阵 ≥4.5:1 实测）/input_border/border_strong/字号/间距/圆角访问器；MiSans Regular/Medium/Semibold 三档字重 + Barlow Medium 数字族（内嵌）+ Tabler 图标族；选中底 `selection` #2A3552 + `ink.strong` 文字
 - `widgets/`：digits（等宽数字位）/ icons（Tabler 子集字体绘制）/ icon_button / dock（悬浮带标签）/ page_header / field（show_fixed）/ switch / empty / rate_strip / slider / chip / toast / select / primary_button / spinner / motion / box_stack / scroll_kit（列表浮杆/渐隐/三角）
 - 高 DPI 纪律：面/文本坐标一律逻辑点；标题栏底色经 DWMWA_CAPTION_COLOR 恒钉深色；默认 960×720、最小 560×420、无上限；启动任一方向超屏 → 560×420；位置夹进可见区
 - 走查门：`ACCELWORLD_UI_SHOT` 截图探针（真窗逐页 PrintWindow PNG，`PW_CLIENTONLY` 已消除底部白带；固定 `ACCELWORLD_UI_SHOT_GEOMETRY` 测试几何）+ 用户桌面终审

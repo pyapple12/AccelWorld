@@ -20,6 +20,8 @@ thiserror = "2.0.21"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tracing-appender = "0.2.5"
+# 天气网络：Windows 系统代理探测（阅读 Internet Settings；非 Windows 平台不编译）
+windows-registry = "0.6"
 httpmock = "0.8.3"
 # PL013 GUI 栈（app 侧；wayland/x11 为 eframe default-features 组件，Linux CI 兼容）
 eframe = { version = "0.37.0", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }

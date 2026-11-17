@@ -1,7 +1,7 @@
 # AccelWorld 重构方案与进度（z.plan.md）
 
 > 依据：2026-08-08 项目审计（对照 AGENTS.md 规范，参考 DeepTransHub 分层结构）
-> 状态：**Rust 重构进行中**——Python 时代 S1-S10（ver 0.46）与 UI 2.0/3.0（0.5.x–0.6.0.0）已定版留档；Rust 重构 PL011–PL017 已完成（core 全量 parity + egui 外壳 + 五页 + 系统集成 + UI 精修 + UI 结构重排），PL018 已实施（退出自愈/落点校准/首帧门控/N9 裁决），PL019 已收口（图标/自适应/反馈动效），PL020–PL023 已实施，**PL024 已实施（表盘 320 母版等比 + 窗口尺寸 + GLOW/INK 探针）**，当前版本 **V0.6.6.0**
+> 状态：**Rust 重构进行中**——Python 时代 S1-S10（ver 0.46）与 UI 2.0/3.0（0.5.x–0.6.0.0）已定版留档；Rust 重构 PL011–PL017 已完成（core 全量 parity + egui 外壳 + 五页 + 系统集成 + UI 精修 + UI 结构重排），PL018 已实施（退出自愈/落点校准/首帧门控/N9 裁决），PL019 已收口（图标/自适应/反馈动效），PL020–PL023 已实施，**PL024 已实施（表盘 320 母版等比 + 窗口尺寸 + GLOW/INK 探针）**，**PL025 已实施（天气直连/系统代理双通道 + 10 分钟自动重试）**，**PL026 已实施（数字族 Barlow Medium 内嵌平替）**，当前版本 **V0.6.6.1**
 > 历史 UI 审核报告已于 2026-10-29 移除，原文见 git 历史；下文相关引用按历史记录理解。
 > 更新（2026-09-10）：接入 DeepTransHub 工作流体系；本文件新增「审计观察项豁免定案清单」与「附录（审计报告归档区）」，旧内容原样保留
 > 更新（2026-10-16）：新增「Rust 重构总纲：AccelWorld RS」节（见下文），Python 版全量归档 `.archived/`
@@ -3177,3 +3177,124 @@ CPU 传 `u_glow = 1.6 × scale`；金圈 bloom 7、数字底光 12 同样乘 sca
 - CPU 实环与 GPU 光晕共用平滑后的 thickness；颜色仍按 progress 取 spectrum，跨日颜色跳变未做过渡。
 - 新增 token：`clock_dial_ring_fade_ms = 1000`。
 - AM/PM 胶囊文字激活色改金色 `#E8B544`，胶囊填充仍 AM 橙红 / PM 淡蓝；`half_am/half_pm` 两键保留。
+
+## 附录 PL025：天气网络加固——直连/系统代理双通道与 10 分钟自动重试（2026-11-17 立项/实施）
+
+#### 背景
+
+2026-11-17 用户日志出现高频天气失败：
+
+```text
+WARN 天气获取失败: 北京（网络请求失败: error sending request for url (...)
+     ；正在显示 11 小时前 的缓存，点刷新重试）
+```
+
+同日实测（本机）：
+
+```text
+系统代理：已开，127.0.0.1:10808（HTTP CONNECT 可用）
+走代理：  同 URL 10 次全部成功，0.8–1.0s
+直连：    9 次里 1 次 TCP 连不上（>15s）
+          1 次 TLS 3.6s 后 20s 零字节
+          1 次 14.5s 才返回 200
+          正常时 0.8–3.8s
+```
+
+#### 根因
+
+- `api.open-meteo.com` 解析到 OVH 加拿大（51.81.167.44），跨境直连时段性拥塞。
+- `rs/Cargo.toml` 的 reqwest 使用 `default-features = false` + `rustls/json`，
+  `system-proxy` 特性被关闭；运行环境又无 `HTTP(S)_PROXY`，因此程序永远直连。
+- 浏览器走 Windows 系统代理，所以浏览器正常、程序失败。
+- `weather_timeout_s = 10` 把跨境抖动直接判为失败；3 次即时重试可能全部落在同一拥塞段。
+
+#### 方案
+
+1. **双通道客户端**：
+   - 直连通道显式 `no_proxy()`，永远先试。
+   - 系统代理通道：环境变量 `HTTPS_PROXY/ALL_PROXY` 优先，其次 Windows
+     `HKCU\...\Internet Settings` 的 `ProxyEnable/ProxyServer`；仅 http/https，
+     socks 不启用。
+   - 有代理回退时直连只做一次探针（15s 级），失败立即换代理；无代理时直连
+     按 `weather_retries` 跑满。
+   - 代理通道按 `weather_retries` 重试；两通道都网络失败合并为短错误
+     `直连与系统代理均失败`，详情写日志。
+2. **超时加固**：新增 `weather_connect_timeout_s = 5`；`weather_timeout_s` 10 → 15。
+3. **10 分钟自动重试**：两通道都网络失败后，`interface` 按
+   `weather_fail_retry_delay_s = 600` 再发一次 `RefreshWeather { force: false }`；
+   失败会继续排下一轮，成功即停。解析类错误不排（换时间不会自愈）。
+4. **日志**：每次失败展开 `std::error::Error::source` 链（reqwest Display 只有
+   “error sending request for url”，底层超时/连接重置不可见）；两通道失败时
+   同时打印直连与代理原因。
+5. **测试**：`normalize_proxy` 覆盖纯 host:port / 带 scheme / Windows 分协议串 /
+   socks 拒绝；httpmock 覆盖“直连 500 → 代理 200”与“两通道 500 → 合并错误”。
+
+#### 配置（base.json）
+
+```text
+weather_timeout_s           15
+weather_connect_timeout_s    5
+weather_retries              3
+weather_retry_delay          1.0
+weather_fail_retry_delay_s 600
+```
+
+#### 行为矩阵
+
+```text
+直连成功                → 用直连，不碰代理
+直连失败、有代理、代理成功 → 用代理，日志记直连失败原因
+两通道都网络失败          → UI 保留旧值 + 错误角标；600s 后自动重试
+解析错误                 → 不换时间重试；日志保留原因链
+无系统代理               → 仅直连；失败同样排 600s 自动重试
+```
+
+#### 风险与偏移
+
+- Windows 静态 `ProxyServer` 支持；PAC（`AutoConfigURL`）不支持。
+- 每次拉取前重读系统代理（URL 变化才重建 client），开关代理无需重启；下一次拉取/10 分钟重试即生效。
+- 自动重试以 inflight 去抖合并，手动刷新与定时重试可能同批触发，缓存命中时零网络。
+- 代理 URL 只支持 http/https（reqwest 未启用 socks 特性）。
+
+#### 执行记录（2026-11-17）
+
+- 本机启动日志确认探测：`天气启用系统代理回退: http://127.0.0.1:10808`。
+- 正常启动：拉取开始 → 3.3s 内 `天气更新完成: 北京`（直连成功，未触发代理）。
+- 临时把 `weather_fail_retry_delay_s` 改 5s、base 指向不可达地址验证失败链：
+  - 直连失败日志带 `client error (Connect) <- tcp connect error <- ... (os error 10061)`；
+  - 代理 3 次均失败，合并为“直连与系统代理均失败”；
+  - 5s 后重新出现“天气拉取开始”，自动重试环成立。
+- 验证后已恢复 `600s` 与 `https://api.open-meteo.com`。
+
+## 附录 PL026：数字族平替 Barlow Medium（2026-11-17 用户定案/实施）
+
+#### 决策
+
+- 数字族从 Bahnschrift（Windows 系统字体）换为 **Barlow Medium**（SIL OFL 1.1），编译期内嵌，跨机一致。
+- 不动 `font_profile` 任何数值/公式（用户明确：其余方程参数不要动）。
+
+#### 只读测算（125% DPI）
+
+- 运行时探针：MiSans regular 72 号 `t96=-54.40px` = 68 grids；表内 `latin_ink_grids` 是 **MiSans 拉丁**，不是 Bahnschrift。
+- 数字最大 advance：Bahnschrift 0.5688 em vs Barlow Medium 0.5700 em（+0.21%）；72 号槽宽 40.95 → 41.04（+0.09px）。
+- 数字墨迹顶：72 号 52.00 → 约 51.19（-0.81px）；40 及以下 ≤0.36px。
+- `dy_digit=0` / `dy_latin=0` 继续适用；`dy_cjk` 仍 MiSans；`h_latin` 10.0 / 12.5 / 15.5 / 22.0 / 31.0 / 56.0 不变。
+- 数字基线下探约 -0.53px → -0.72px @72，允许画出盒底，不裁切。
+
+#### 实施
+
+- 资产：`rs/assets/fonts/Barlow-Medium.ttf` + `Barlow-OFL.txt`。
+- `window.rs`：`BARLOW_MEDIUM` 编译期内嵌；`install_digit_family` 命中 Barlow Medium 时走内嵌，其他 token 保留系统加载回退。
+- `ui.json`：`font_family_digits = "Barlow Medium"`；`font_profile` 数值与 `active` 键未改。
+- 设置 → 关于：`MiSans / Barlow Medium（OFL）`；资产 README、UI 术语表、标注图同步。
+
+#### 验证
+
+- 构建通过；启动日志 `数字族字体加载: Barlow Medium（内嵌，OFL 1.1）`。
+- 960×720 截图六页：时钟 / 倒计时 / 世界 / 天气 / 闹钟 / 设置无溢出；设置字体行不与标签重叠。
+- 未跑全量回归（用户要求不复测）。
+
+#### 风险
+
+- Barlow Medium 为 500 字重，视觉比 Bahnschrift 默认略重；数字顶低约 0.8px @72。
+- `font_profile.active` 键名 `misans_bahnschrift` 保留为历史标识（数值不变，改名不影响行为）。
