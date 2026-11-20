@@ -77,6 +77,8 @@ pub struct AppHandle {
     /// PL018.06 首帧门控：隐藏创建，完成 1 帧（或 250ms 看门狗）后再显示
     first_show_done: bool,
     frames_seen: u32,
+    /// PL027：首帧后只发一次天气首拉（不阻塞启动）
+    startup_weather_sent: bool,
     /// 托盘句柄（构造失败降级 None——无托盘环境行为无损）
     tray: Option<crate::platform::tray::TrayHandles>,
     /// 全局热键句柄（注册失败降级 None）
@@ -246,6 +248,14 @@ impl eframe::App for AppHandle {
         }
         ctx.request_repaint_after(interval);
         self.frames_seen = self.frames_seen.saturating_add(1);
+        // PL027：首帧已出（缓存天气已上屏）后再发起网络首拉，避开启动关键路径
+        if !self.startup_weather_sent && self.first_show_done {
+            self.startup_weather_sent = true;
+            self.bus.send(FrontendCommand::RefreshWeather {
+                city: self.state.prefs.last_city.clone(),
+                force: false,
+            });
+        }
         // PL018.06：首帧完成后立刻再跑一帧，把“显示”压到 ~1 帧内（不等 tick 间隔）
         if !self.first_show_done {
             ctx.request_repaint();
@@ -723,6 +733,11 @@ fn fill_startup_snapshot(iface: &AppInterface, state: &mut UiState) {
     state.world_pins = iface.get_world_pins();
     state.countdown_targets = iface.get_countdown_targets();
     state.base_timezone = Some(state.prefs.last_timezone.clone());
+    // PL027：冷启动先上磁盘缓存天气，首帧不空白；网络更新在首帧后异步发起
+    if let Some((age, data)) = iface.get_cached_weather(&state.prefs.last_city) {
+        tracing::info!("天气首屏缓存: {}（{}s 前）", state.prefs.last_city, age);
+        state.weather.insert(state.prefs.last_city.clone(), data);
+    }
     refresh_festivals(iface, state);
 }
 
@@ -1018,12 +1033,7 @@ pub fn run_with_counter(
             let bus =
                 tokio::task::block_in_place(|| Bus::spawn_on(Arc::clone(&iface), &rt_for_app));
 
-            // FIX006.4：冷启动天气首拉——core spawn 首帧只推 Tick，不推天气；装配期按
-            // 持久化的 last_city 拉一次（否则天气页在用户手动刷新前整段空白）
-            bus.send(FrontendCommand::RefreshWeather {
-                city: state.prefs.last_city.clone(),
-                force: false,
-            });
+            // PL027：天气首拉改到首帧后异步触发（不参与启动关键路径；缓存已先上屏）
 
             // 平台集成（PL015.01/.02）：托盘 + 全局热键（主线程创建，winit 泵消息；
             // 失败降级 None 继续运行——无托盘/热键环境行为无损）
@@ -1067,6 +1077,7 @@ pub fn run_with_counter(
                 early_shot_done: false,
                 first_show_done: false,
                 frames_seen: 0,
+                startup_weather_sent: false,
                 tray,
                 hotkeys,
                 quit_requested: false,

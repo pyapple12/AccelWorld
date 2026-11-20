@@ -19,7 +19,7 @@ cargo workspace 双 crate 桌面应用：基于加速倍率的时间膨胀时钟
 
 - **时间膨胀**：`TimeDilation { rate, day_hours }`，标准一天总秒数 × rate = 加速一天总秒数，整数运算拆分时分秒；`now` 全参数化（无内部时钟，测试可注入）
 - **中华元素**：lunar-rust 农历/干支/生肖/节气 + holidays.json 法定节假日 + 财神方位本地表
-- **天气**：Open-Meteo 免费 API，17 城市统一表驱动，WMO 天气代码映射，TTL 缓存 + 直连/系统代理双通道 + 10 分钟自动重试
+- **天气**：Open-Meteo 免费 API，17 城市统一表驱动，WMO 天气代码映射，TTL 缓存 + 直连/代理双通道（设置可关代理/指定地址）+ 冷启动缓存首屏 + 10 分钟自动重试
 - **闹钟**：多闹钟（上限 max_alarms）、预设/自定义铃声、系统通知、去重键触发 + `Clock` 抽象（VirtualClock 可拨钟测试）
 - **系统集成**：tray-icon 托盘菜单树、global-hotkey 全局热键、WinRT toast 通知（失败一律降级不崩）
 
@@ -39,7 +39,7 @@ rs/                              # cargo workspace 根
     src/types.rs                 # 协议类型转出（TimeInfo/WeatherData/Alarm/DTO/ThemePref）
     src/time_dilation.rs         # 时间膨胀引擎（公式对齐 Python，秒级农历缓存）
     src/chinese_calendar.rs      # 农历/干支/生肖/节气/节日（lunar-rust + 常量表 + holidays.json）
-    src/weather.rs               # 天气解析层 + 传输层（reqwest rustls + 按城 TTL 缓存 + 直连/系统代理双通道 + 10 分钟自动重试）
+    src/weather.rs               # 天气解析层 + 传输层（reqwest rustls + 按城 TTL 缓存 + 直连/代理双通道 + 冷启动缓存 + 10 分钟自动重试）
     src/alarm.rs                 # Alarm 模型 + AlarmManager + 触发状态机 + Clock 抽象
     src/settings.rs              # 用户配置读写（serde + 字段白名单过滤 + 原子写）
     src/static_config.rs         # Static 单例（include_str 嵌入 + OnceLock + 域访问器）
@@ -51,8 +51,8 @@ rs/                              # cargo workspace 根
     src/window.rs                # 主窗装配器（AppHandle：drain→窗口夹取→仪器坞→页总装→平台→节奏 + 截图/几何探针）
     src/bus.rs                   # 信号总线（UiState 快照 + drain/apply + 命令出口）
     src/theme.rs                 # 设计系统（ui.json colors 实心色板 → Visuals 深色单板，仅深色定案）
-    src/logging.rs               # tracing 每日滚动 + panic hook 崩溃栈
-    src/pages/                   # 五页（clock/countdown/world/weather/alarm）+ 设置抽屉
+    src/logging.rs               # tracing 本地日期滚动 + 本地时间戳 + panic hook 崩溃栈
+    src/pages/                   # 五页（clock/countdown/world/weather/alarm）+ 设置抽屉（外观/动效/网络/关于）
     src/widgets/                 # 自绘控件（digits/icons/icon_button/dock/page_header/field/switch/empty/rate_strip/chip/slider/toast）
     src/tools/                   # 展示运算纯函数（clock/countdown/alarm_text）
     src/platform/                # 系统集成（tray/notify/hotkey，非 Windows 桩化）
@@ -115,7 +115,8 @@ pub async fn fetch_by_city(&self, city: &str, force: bool) -> Result<WeatherData
 
 - `WeatherClient`：reqwest(rustls，禁重定向) + 按城缓存（仅存成功）+ `force` 清该城键 + 失败不缓存
 - 解析层逐字段校验（存在→非 null→类型对→范围对），对 null/缺字段/错型整包 `Err`；hourly/daily 键缺失向后兼容空序列
-- 网络策略（PL025）：直连通道显式 `no_proxy()` 先试；探测到系统代理（`HTTPS_PROXY/ALL_PROXY` → Windows Internet Settings）时，直连只做一次 15s 探针，失败立即换代理并按 `weather_retries` 重试；每次拉取前重读代理（URL 变化重建 client），开关代理无需重启；两通道都网络失败 → `interface` 排 `weather_fail_retry_delay_s`（600s）后的 `RefreshWeather { force: false }`，失败继续排、成功即停
+- 网络策略（PL025/PL027）：用户设置优先（设置 → 网络：关=仅直连；开+空=系统探测；开+地址=指定代理）；直连通道显式 `no_proxy()` 先试，有代理时直连只做一次 15s 探针，失败立即换代理并按 `weather_retries` 重试；每次拉取前重读策略（URL 变化重建 client），开关/改地址无需重启；两通道都网络失败 → `interface` 排 `weather_fail_retry_delay_s`（600s）后的 `RefreshWeather { force: false }`，失败继续排、成功即停
+- 冷启动（PL027）：`fill_startup_snapshot` 先读 `weather_cache/` 磁盘快照上屏；首帧 `ui` 末尾才发首拉，天气不占启动关键路径；缓存缺失时首帧空白，等异步首拉
 - 超时：`weather_timeout_s=15` + `weather_connect_timeout_s=5`；失败日志展开 `Error::source` 链，区分超时/连接重置
 - `trait IsRetryable` 区分网络类（可重试）与解析类（立即返回）；httpmock 五路径 + 代理回退/双通道失败集成断言
 
@@ -140,10 +141,11 @@ pub async fn fetch_by_city(&self, city: &str, force: bool) -> Result<WeatherData
 - 走查门：`ACCELWORLD_UI_SHOT` 截图探针（真窗逐页 PrintWindow PNG，`PW_CLIENTONLY` 已消除底部白带；固定 `ACCELWORLD_UI_SHOT_GEOMETRY` 测试几何）+ 用户桌面终审
 - 历史：玻璃渲染（WGSL + GlassScene + Acrylic）废弃（UIR）；UIR 初代灰石板金调（UIR2 子夜星图换装）；UIR2 侧栏五页模型（UIR4 改星盘主仪+仪器坞+抽屉）；PL017 结构重排（图标坞/盘下读数/抽屉三段式/字重/短倍率条）；PL019 图标字体/自适应分栏/自绘 Select/反馈动效；PL021 五页盒模型/倒计时输入与错误内联/滚动登记修复；PL023 文字盒统一（默认零 bbox）/五页盒子对齐/原生控件进盒
 
-### 3.8 日志 — 每日滚动 + 崩溃栈
+### 3.8 日志 — 本地日期滚动 + 崩溃栈
 
-- `tracing_subscriber` + `tracing_appender::rolling::daily("logs","accel")`（对齐 Python 每日独立文件）
-- panic hook → `.logs/crash-YYYY-MM-DD.log`（含 location + backtrace）
+- `tracing_subscriber` + `LocalDailyWriter`（`chrono::Local` 日期切文件，`accel-.log.YYYY-MM-DD`；对齐 Python 每日独立文件）
+- 时间戳 `ChronoLocal`，带本地偏移（如 `+08:00`）；不用 tracing-appender 的 UTC daily
+- panic hook → `.logs/crash-YYYY-MM-DD.log`（含本地时间 + location + backtrace）
 - 级别读 base.json `log_level` token；后台任务 spawn 统一 join 监控（panic 记 error 不静默）
 
 ## 4. 代码风格观察
@@ -172,7 +174,7 @@ pub async fn fetch_by_city(&self, city: &str, force: bool) -> Result<WeatherData
 | 重试       | `util/retry.rs` 泛型 `retry()` + `IsRetryable`           | `utils/error_handler.py` `retry_call()`   |
 | 并发模型   | tokio 后台 runtime + mpsc 命令/事件总线                  | 串行 + Ctrl+Q 文件信号优雅退出            |
 | 数据存储   | JSON 用户配置 + data/ 静态数据表                         | Excel 状态机 + SQLite 词汇库              |
-| 日志系统   | tracing 每日滚动 + panic hook 崩溃栈                     | 按天+序号 usage 日志 + 分析工具链         |
+| 日志系统   | tracing 本地日期滚动 + 本地时间戳 + panic hook 崩溃栈    | 按天+序号 usage 日志 + 分析工具链         |
 | 代码规范   | AGENTS.md 成文（`///`+`//!`+说明区房规）                 | AGENTS.md 成文（同源，DeepTransHub 更早） |
 | 工作流体系 | 2026-09-10 接入（本文档交接）                            | w/x/y/z 四件套 + skills + 审计流程        |
 

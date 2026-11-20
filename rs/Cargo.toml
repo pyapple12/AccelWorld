@@ -18,7 +18,7 @@ lunar_rust = "1.0.1"
 rodio = "0.23.0"
 thiserror = "2.0.21"
 tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "chrono"] }
 tracing-appender = "0.2.5"
 # 天气网络：Windows 系统代理探测（阅读 Internet Settings；非 Windows 平台不编译）
 windows-registry = "0.6"

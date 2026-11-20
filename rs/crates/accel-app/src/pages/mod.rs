@@ -179,7 +179,7 @@ impl Pages {
                         });
                         content.show(area, |body| {
                             if self.drawer_settings {
-                                settings::ui(body, state);
+                                settings::ui(body, state, bus);
                             } else {
                                 let page: &mut dyn Page = match self.drawer_page {
                                     PageId::Clock => &mut self.clock,

@@ -62,6 +62,12 @@ pub struct UserConfig {
     /// 倒计时目标列表（PL014.06 新字段；旧 countdown_target 字段保留读兼容）
     #[serde(default)]
     pub countdown_targets: Vec<CountdownTarget>,
+    /// 天气是否允许使用代理（PL027；false=仅直连）
+    #[serde(default)]
+    pub weather_use_proxy: bool,
+    /// 天气代理服务器（PL027；空=跟随系统代理，支持 host:port 或 http(s)://）
+    #[serde(default)]
+    pub weather_proxy: String,
 }
 
 impl Default for UserConfig {
@@ -83,6 +89,8 @@ impl Default for UserConfig {
             countdown_targets: Vec::new(),
             window_geometry: None,
             alarms: Vec::new(),
+            weather_use_proxy: base.base_i64("default_weather_use_proxy") != 0,
+            weather_proxy: base.base_str("default_weather_proxy").to_string(),
         }
     }
 }
@@ -109,6 +117,10 @@ struct UserConfigRaw {
     alarms: Option<Value>,
     #[serde(default)]
     countdown_targets: Option<Value>,
+    #[serde(default)]
+    weather_use_proxy: Option<Value>,
+    #[serde(default)]
+    weather_proxy: Option<Value>,
 }
 
 impl UserConfig {
@@ -152,6 +164,11 @@ impl UserConfig {
                 Some(Value::Array(arr)) => arr,
                 _ => d.alarms,
             },
+            weather_use_proxy: raw
+                .weather_use_proxy
+                .and_then(|v| v.as_bool())
+                .unwrap_or(d.weather_use_proxy),
+            weather_proxy: str_field(raw.weather_proxy, d.weather_proxy),
             // 倒计时目标迁移链（PL014.06）：新格式优先 → Legacy 串迁移 → 空
             countdown_targets: match raw.countdown_targets {
                 Some(Value::Array(arr)) => {
@@ -345,6 +362,8 @@ mod tests {
         assert_eq!(d.countdown_target, "");
         assert_eq!(d.window_geometry, None);
         assert!(d.alarms.is_empty());
+        assert!(d.weather_use_proxy);
+        assert_eq!(d.weather_proxy, "");
     }
 
     #[test]
@@ -375,6 +394,8 @@ mod tests {
             ("countdown_target", json!(42)),
             ("window_geometry", json!(std::f64::consts::PI)),
             ("alarms", json!("nope")),
+            ("weather_use_proxy", json!("yes")),
+            ("weather_proxy", json!(42)),
         ] {
             let v = serde_json::json!({ field: bad });
             let cfg = UserConfig::from_json_value(&v);
@@ -384,6 +405,8 @@ mod tests {
                 "countdown_target" => assert_eq!(cfg.countdown_target, ""),
                 "window_geometry" => assert_eq!(cfg.window_geometry, None),
                 "alarms" => assert!(cfg.alarms.is_empty()),
+                "weather_use_proxy" => assert_eq!(cfg.weather_use_proxy, d.weather_use_proxy),
+                "weather_proxy" => assert_eq!(cfg.weather_proxy, ""),
                 _ => unreachable!(),
             }
         }
@@ -445,6 +468,8 @@ mod tests {
             window_geometry: Some("SGVsbG8=".into()),
             alarms: vec![serde_json::json!({"label": "起床", "time": "07:30"})],
             countdown_targets: Vec::new(),
+            weather_use_proxy: true,
+            weather_proxy: String::new(),
         };
         assert!(save(&path, &cfg));
         assert_eq!(load(&path), cfg);

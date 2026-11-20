@@ -1,11 +1,12 @@
 //! 设置页（PL017）：不再是右下三行“关于”浮窗；作为右侧抽屉页与时钟/四页同级。
 //! 分区：外观（主题只读）/ 动效（减少动效 switch）/ 关于（版本/数据源/字体）。
 
-use crate::bus::UiState;
-use crate::widgets::{icons, switch};
+use crate::bus::{Bus, UiState};
+use crate::widgets::{field, icons, switch};
+use accel_core::types::FrontendCommand;
 
 /// 设置页正文（页头由 pages::Pages 统一绘制）
-pub fn ui(ui: &mut egui::Ui, state: &mut UiState) {
+pub fn ui(ui: &mut egui::Ui, state: &mut UiState, bus: &Bus) {
     let ink = crate::theme::ink();
     // 盒高查 font_profile（不是当前字符串）
     let section_font = crate::theme::font_semibold(crate::theme::font_size("section"));
@@ -34,6 +35,7 @@ pub fn ui(ui: &mut egui::Ui, state: &mut UiState) {
     let row_h = body_h + crate::theme::spacing_f32("lg");
     let switch_h =
         body_h + crate::theme::spacing_f32("xs") + meta_h + crate::theme::spacing_f32("lg");
+    let field_h = field::fixed_height(ui);
     let brand_h = meta_h + crate::theme::spacing_f32("sm");
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
@@ -71,6 +73,50 @@ pub fn ui(ui: &mut egui::Ui, state: &mut UiState) {
                 .inner;
             if clicked {
                 state.reduce_motion = !state.reduce_motion;
+            }
+
+            // 网络（PL027）：天气代理开关 + 代理服务器地址
+            let rect = stack.next(ui, section_h);
+            section_box(ui, rect, "网络", "天气拉取与代理", &ink);
+            let rect = stack.next(ui, switch_h);
+            let toggled = ui
+                .scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+                    switch_row(
+                        ui,
+                        rect,
+                        "使用代理服务器",
+                        "关闭后天气只直连；打开后直连失败走代理",
+                        "settings_weather_use_proxy",
+                        state.prefs.weather_use_proxy,
+                        &ink,
+                    )
+                })
+                .inner;
+            if toggled {
+                state.prefs.weather_use_proxy = !state.prefs.weather_use_proxy;
+                bus.send(FrontendCommand::SetWeatherProxy {
+                    enabled: state.prefs.weather_use_proxy,
+                    server: state.prefs.weather_proxy.clone(),
+                });
+            }
+            let rect = stack.next(ui, field_h);
+            let proxy_resp = ui
+                .scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+                    field::show_fixed(
+                        ui,
+                        "代理服务器",
+                        "留空=跟随系统代理",
+                        &mut state.prefs.weather_proxy,
+                        rect.width(),
+                    )
+                })
+                .inner;
+            let enter = proxy_resp.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            if proxy_resp.lost_focus() || enter {
+                bus.send(FrontendCommand::SetWeatherProxy {
+                    enabled: state.prefs.weather_use_proxy,
+                    server: state.prefs.weather_proxy.clone(),
+                });
             }
 
             // 关于
@@ -244,6 +290,27 @@ fn switch_box(
     state: &UiState,
     ink: &crate::theme::Ink,
 ) -> bool {
+    switch_row(
+        ui,
+        rect,
+        "减少动效",
+        "直取终态，不做过渡",
+        "settings_reduce_motion",
+        state.reduce_motion,
+        ink,
+    )
+}
+
+/// 通用开关行：标题 + 描述 + 右侧开关（PL027 复用给天气代理）
+fn switch_row(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    title: &str,
+    desc: &str,
+    id: &str,
+    value: bool,
+    ink: &crate::theme::Ink,
+) -> bool {
     let title_font = crate::theme::font_medium(crate::theme::font_size("body"));
     let desc_font = crate::theme::font_regular(crate::theme::font_size("meta"));
     let title_h = crate::widgets::text_metrics::height(
@@ -262,7 +329,7 @@ fn switch_box(
     );
     let title_ink = crate::widgets::text_ink::measure(
         ui,
-        "减少动效",
+        title,
         &title_font,
         crate::widgets::text_ink::InkKind::Cjk,
     );
@@ -272,7 +339,7 @@ fn switch_box(
             title_ink.top_for_bottom(title_box.bottom()),
         ),
         egui::Align2::LEFT_TOP,
-        "减少动效",
+        title,
         title_font,
         ink.body,
     );
@@ -285,14 +352,14 @@ fn switch_box(
     );
     let desc_ink = crate::widgets::text_ink::measure(
         ui,
-        "直取终态，不做过渡",
+        desc,
         &desc_font,
         crate::widgets::text_ink::InkKind::Cjk,
     );
     ui.painter().text(
         egui::pos2(desc_box.left(), desc_ink.top_for_bottom(desc_box.bottom())),
         egui::Align2::LEFT_TOP,
-        "直取终态，不做过渡",
+        desc,
         desc_font,
         ink.muted,
     );
@@ -301,16 +368,12 @@ fn switch_box(
         egui::vec2(switch::width(), switch::height()),
     );
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(sw_rect));
-    switch::show(
-        &mut child,
-        egui::Id::unique("settings_reduce_motion"),
-        state.reduce_motion,
-    )
+    switch::show(&mut child, egui::Id::unique(id), value)
 }
 
 // ===== src/pages/settings.rs 说明区 =====
-// 输入：UiState（reduce_motion）；输出：reduce_motion 翻转 + 只读信息
-// 逻辑步骤：ScrollArea → 外观（只读）→ 动效（自定义 switch）→ 关于（版本/数据源/字体）
+// 输入：UiState（reduce_motion / weather 代理偏好）；输出：UI 偏好与 SetWeatherProxy 命令
+// 逻辑步骤：ScrollArea → 外观（只读）→ 动效（switch）→ 网络（代理开关 + 地址）→ 关于（版本/数据源/字体）
 // 设计理由（PL017）：原 `egui::Window` title_bar(false) 只有三行、无标题/关闭，像
 //   调试浮窗；改为与四页同构的抽屉页（页头由 Pages 统一给），设置成为真正的页面
 // 异常处理：无 panic 面；版本经 Static 单源

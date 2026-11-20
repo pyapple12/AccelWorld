@@ -127,6 +127,8 @@ impl Default for UiState {
                 last_city: base.base_str("default_city").to_string(),
                 last_timezone: base.base_str("default_timezone").to_string(),
                 countdown_target: String::new(),
+                weather_use_proxy: base.base_i64("default_weather_use_proxy") != 0,
+                weather_proxy: base.base_str("default_weather_proxy").to_string(),
             },
             settings_open: false,
             countdown_targets: Vec::new(),

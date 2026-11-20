@@ -1,7 +1,7 @@
 # AccelWorld 重构方案与进度（z.plan.md）
 
 > 依据：2026-08-08 项目审计（对照 AGENTS.md 规范，参考 DeepTransHub 分层结构）
-> 状态：**Rust 重构进行中**——Python 时代 S1-S10（ver 0.46）与 UI 2.0/3.0（0.5.x–0.6.0.0）已定版留档；Rust 重构 PL011–PL017 已完成（core 全量 parity + egui 外壳 + 五页 + 系统集成 + UI 精修 + UI 结构重排），PL018 已实施（退出自愈/落点校准/首帧门控/N9 裁决），PL019 已收口（图标/自适应/反馈动效），PL020–PL023 已实施，**PL024 已实施（表盘 320 母版等比 + 窗口尺寸 + GLOW/INK 探针）**，**PL025 已实施（天气直连/系统代理双通道 + 10 分钟自动重试）**，**PL026 已实施（数字族 Barlow Medium 内嵌平替）**，当前版本 **V0.6.6.1**
+> 状态：**Rust 重构进行中**——Python 时代 S1-S10（ver 0.46）与 UI 2.0/3.0（0.5.x–0.6.0.0）已定版留档；Rust 重构 PL011–PL017 已完成（core 全量 parity + egui 外壳 + 五页 + 系统集成 + UI 精修 + UI 结构重排），PL018 已实施（退出自愈/落点校准/首帧门控/N9 裁决），PL019 已收口（图标/自适应/反馈动效），PL020–PL023 已实施，**PL024 已实施（表盘 320 母版等比 + 窗口尺寸 + GLOW/INK 探针）**，**PL025 已实施（天气直连/系统代理双通道 + 10 分钟自动重试）**，**PL026 已实施（数字族 Barlow Medium 内嵌平替）**，**PL027 已实施（天气代理开关/地址 + 冷启动缓存首屏）**，当前版本 **V0.6.6.2**
 > 历史 UI 审核报告已于 2026-10-29 移除，原文见 git 历史；下文相关引用按历史记录理解。
 > 更新（2026-09-10）：接入 DeepTransHub 工作流体系；本文件新增「审计观察项豁免定案清单」与「附录（审计报告归档区）」，旧内容原样保留
 > 更新（2026-10-16）：新增「Rust 重构总纲：AccelWorld RS」节（见下文），Python 版全量归档 `.archived/`
@@ -3298,3 +3298,78 @@ weather_fail_retry_delay_s 600
 
 - Barlow Medium 为 500 字重，视觉比 Bahnschrift 默认略重；数字顶低约 0.8px @72。
 - `font_profile.active` 键名 `misans_bahnschrift` 保留为历史标识（数值不变，改名不影响行为）。
+
+## 附录 PL027：天气代理设置与冷启动缓存首屏（2026-11-20 立项/实施）
+
+#### 目标
+
+1. 设置页新增「网络」：**使用代理服务器**开关 + **代理服务器**地址输入。
+2. 开关打开 = 现有方案（直连优先，失败走代理）；关闭 = 仅直连。
+3. 天气不参与启动关键路径：冷启动先显示磁盘缓存天气，首帧后异步拉取更新。
+
+#### 设置口径
+
+```text
+默认            开关 ON，地址空 → 跟随系统代理
+开关 ON + 地址   只用该地址（host:port、http://、https:// 均可，socks 不支持）
+开关 OFF         清除代理通道，只走直连；地址仍保存但不生效
+修改时机         下一次拉取生效，无需重启（WeatherClient::set_proxy_policy）
+```
+
+- 配置落盘：`user_config.json` 新增 `weather_use_proxy` / `weather_proxy`。
+- 默认值：`base.json` 新增 `default_weather_use_proxy = 1`、`default_weather_proxy = ""`。
+- 总线：`FrontendCommand::SetWeatherProxy { enabled, server }`；落盘结果回 `ConfigSaved`。
+- UI：设置 → 网络 → 开关 + 字段；字段失焦或 Enter 保存；空地址占位「留空=跟随系统代理」。
+- 代理地址非法：清空代理通道、仅直连并记 WARN，不阻塞天气主流程。
+
+#### 代理行为矩阵
+
+```text
+开关 OFF                         → 直连
+开关 ON + 地址空                 → 直连；失败 → 系统代理
+开关 ON + 地址非空               → 直连；失败 → 指定代理
+两通道网络失败                   → 保留旧值；interface 排 10 分钟自动重试
+代理地址非法                     → 仅直连 + WARN
+```
+
+有代理通道时直连只做一次 15s 级探针；无代理时直连按 `weather_retries` 跑满（PL025 定案不变）。
+
+#### 冷启动首屏
+
+- `WeatherClient::cached_by_city`：只读 `weather_cache/` 磁盘快照，不发网络。
+- `AppInterface::get_cached_weather`：供装配期同步读取。
+- `fill_startup_snapshot`：把 `last_city` 的磁盘缓存写入 `state.weather`，首帧天气页直接有数据。
+- 删除 `create_app` 中启动期 `bus.send(RefreshWeather)`；`AppHandle` 增 `startup_weather_sent`，在首帧 `ui` 末尾发一次 `RefreshWeather { force: false }`。
+- 首拉晚于首帧门控，不占启动关键路径；缓存缺失时首帧天气页仍为空，等首拉。
+- 首拉失败沿用 PL025 的 `StaleServed`/`WeatherFailed`；已上屏缓存不被清空。
+
+#### 文件
+
+```text
+settings.rs        UserConfig 增 weather_use_proxy/weather_proxy + lenient 装载
+base.json          default_weather_use_proxy / default_weather_proxy
+types.rs           UiPreferences 两字段 + SetWeatherProxy 命令
+interface.rs       set_weather_proxy / get_cached_weather / 命令分发
+weather.rs         WeatherProxyPolicy / set_proxy_policy / refresh_proxy / cached_by_city
+pages/settings.rs  网络分区 + switch_row + 代理字段
+window.rs          fill_startup_snapshot 缓存 + 首帧后异步首拉
+```
+
+#### 验证
+
+- 单测：设置默认/脏值、`SetWeatherProxy` 落盘与偏好快照、代理开关控制通道、磁盘缓存快照。
+- 设置页 960×720 截图：网络分区与字段可见、无溢出。
+- 运行日志顺序：`首帧门控显示` 在 `天气拉取开始` 之前（首拉不占启动）。
+- 关闭开关后仅直连；打开且填地址后下一次拉取走指定代理（由策略单测 + 命令落盘覆盖）。
+- 发布前跑 `cargo test --workspace` / `ci.ps1`（本轮按用户要求只做定向构建与目测）。
+
+#### 执行记录（2026-11-20）
+
+- `cargo test -p accel-core` 122 通过；`cargo test --workspace` 94 app + 1 bin + 122 core 通过；`clippy -D warnings` 通过。
+- 960×720 设置页截图：网络分区（开关 ON + 代理字段占位）可见，无溢出/重叠。
+- 正常启动日志：`23:58:32.991 天气首屏缓存（131s 前）` → `23:58:33.417 首帧门控` → `23:58:33.424 天气拉取开始`（缓存先上屏，首拉晚于首帧）。
+- 冷启动回归（清空 `weather_cache/` 3 次）：首帧 194–224ms，天气更新 0.9 / 3.0 / 4.7s，均无 `天气获取失败`、无代理告警。
+- 有缓存冷启动：缓存 22s → 首帧 197ms → 首拉后 6.8s 更新，无失败。
+- 测试配置 `weather_use_proxy=false`：启动日志 `天气代理已关闭或不可用，天气改为仅直连`，随后天气直连更新成功。
+- 当前程序 PID 6132，天气已更新；本轮未提交。
+- 同批日志时间戳/文件滚动改本地时区（`ChronoLocal` + `LocalDailyWriter`），随 0.6.6.2 提交。

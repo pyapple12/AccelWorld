@@ -347,22 +347,31 @@ pub fn humanize_age(age_secs: u64) -> String {
     }
 }
 
-/// 系统代理通道（运行期可换：每次拉取前重读系统设置，开关代理无需重启）
+/// 系统代理通道（运行期可换：每次拉取前重读策略，开关代理无需重启）
 struct ProxyChannel {
     url: Option<String>,
     client: Option<reqwest::Client>,
 }
 
-/// 天气客户端：按城缓存 TTL + 重试 + force 穿透 + 直连/系统代理双通道
+/// 天气代理策略（PL027）：enabled=false 仅直连；server 空=跟随系统代理
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WeatherProxyPolicy {
+    enabled: bool,
+    server: String,
+}
+
+/// 天气客户端：按城缓存 TTL + 重试 + force 穿透 + 直连/代理双通道
 /// SSRF 防线（结构性）：base 构造期固定（生产 = https://api.open-meteo.com 常量），
 /// 运行期 URL 全部由 base + 已校验坐标派生，用户输入永不进入 host 部分；
 /// 禁跟随重定向（reqwest Policy::none，Python no-redirect opener 对等）
 pub struct WeatherClient {
     /// 直连通道（显式 no_proxy；先尝试）
     direct: reqwest::Client,
-    /// 系统代理通道（探测到代理才构建；每次拉取前可热更新）
+    /// 代理通道（探测/配置存在才构建；每次拉取前热更新）
     proxy: Mutex<ProxyChannel>,
-    /// 是否自动跟随系统代理（生产 true；测试注入 false，避免测试被本机代理劫持）
+    /// 代理策略（用户设置；运行期可改）
+    proxy_policy: Mutex<WeatherProxyPolicy>,
+    /// 是否自动跟随策略（生产 true；测试注入 false，避免测试被本机代理劫持）
     proxy_auto: bool,
     base: String,
     cache: Mutex<HashMap<String, (Instant, WeatherData)>>,
@@ -566,6 +575,10 @@ impl WeatherClient {
                 url: proxy_url,
                 client: proxy_client,
             }),
+            proxy_policy: Mutex::new(WeatherProxyPolicy {
+                enabled: cfg.proxy_auto,
+                server: String::new(),
+            }),
             proxy_auto: cfg.proxy_auto,
             base: cfg.base,
             cache: Mutex::new(HashMap::new()),
@@ -601,18 +614,47 @@ impl WeatherClient {
         self
     }
 
-    /// 拉取前重读系统代理：URL 变化才重建客户端（开关代理无需重启程序）。
-    /// 生产专用（proxy_auto=true）；测试注入的代理通道不被本机系统代理覆盖。
+    /// 更新代理策略（设置页）：false=仅直连；server 空=跟随系统代理。
+    /// 立即重建代理通道，下一次拉取生效（无需重启）
+    pub fn set_proxy_policy(&self, enabled: bool, server: &str) {
+        {
+            let mut policy = self.proxy_policy.lock().expect("天气代理策略锁中毒");
+            policy.enabled = enabled;
+            policy.server = server.trim().to_string();
+        }
+        self.refresh_proxy();
+    }
+
+    /// 拉取前重读代理策略：目标变化才重建客户端（开关/改地址无需重启程序）。
+    /// 生产专用（proxy_auto=true）；测试注入的代理通道不被本机策略覆盖。
     fn refresh_proxy(&self) {
         if !self.proxy_auto {
             return;
         }
-        let detected = detect_system_proxy();
+        let policy = self
+            .proxy_policy
+            .lock()
+            .expect("天气代理策略锁中毒")
+            .clone();
+        let mut invalid = false;
+        let target = if !policy.enabled {
+            None
+        } else if policy.server.trim().is_empty() {
+            detect_system_proxy()
+        } else {
+            match normalize_proxy(&policy.server) {
+                Some(url) => Some(url),
+                None => {
+                    invalid = true;
+                    None
+                }
+            }
+        };
         let mut channel = self.proxy.lock().expect("天气代理锁中毒");
-        if channel.url == detected {
+        if channel.url == target {
             return;
         }
-        match detected {
+        match target {
             Some(url) => match http_client(self.timeout, self.connect_timeout, Some(&url)) {
                 Ok(client) => {
                     tracing::info!("天气代理已更新: {}", proxy_label(&url));
@@ -620,20 +662,20 @@ impl WeatherClient {
                     channel.client = Some(client);
                 }
                 Err(e) => {
-                    tracing::warn!(
-                        "系统代理配置不可用，天气改为仅直连: {}（{e}）",
-                        proxy_label(&url)
-                    );
+                    tracing::warn!("天气代理配置不可用，仅直连: {}（{e}）", proxy_label(&url));
                     channel.url = None;
                     channel.client = None;
                 }
             },
             None => {
                 if channel.url.is_some() {
-                    tracing::info!("系统代理已关闭，天气改为仅直连");
+                    tracing::info!("天气代理已关闭或不可用，天气改为仅直连");
                 }
                 channel.url = None;
                 channel.client = None;
+                if invalid {
+                    tracing::warn!("天气代理地址非法，仅直连: {}", policy.server);
+                }
             }
         }
     }
@@ -679,6 +721,11 @@ impl WeatherClient {
                 None => Err(e),
             },
         }
+    }
+
+    /// 磁盘缓存快照（PL027 冷启动首屏）：只读磁盘，不发网络；返回 (年龄秒, 数据)
+    pub fn cached_by_city(&self, city: &str) -> Option<(u64, WeatherData)> {
+        self.disk_cache_read(city)
     }
 
     /// 缓存命中读取：未过 TTL 才有效
@@ -843,13 +890,14 @@ fn error_chain(err: &(dyn std::error::Error + 'static)) -> String {
 //   内存缓存仅存成功、命中未过 TTL 直返、force 清键穿透、失败可立即重试；磁盘缓存
 //   （exe 旁 weather_cache/，30 天上限）成功落盘、失败尽力回退静默降级——
 //   Python 缓存语义逐条对齐
-// 网络策略（PL025）：直连通道显式 no_proxy，先尝试；探测到系统代理
-//   （HTTPS_PROXY/ALL_PROXY → Windows Internet Settings）时直连只探一次，失败后
-//   代理通道按 weather_retries 重试；每次拉取前重读系统代理（URL 变化才重建
-//   client），开关代理无需重启；无代理时直连按 weather_retries 跑满。
-//   两通道都网络失败合并为短 Network 错误，由 interface 排
+// 网络策略（PL025/PL027）：用户设置优先（WeatherProxyPolicy：关=仅直连；
+//   开+空=系统探测；开+地址=指定代理）；直连通道显式 no_proxy 先尝试；
+//   允许代理时直连只探一次，失败后代理通道按 weather_retries 重试；每次拉取前
+//   重读策略（URL 变化才重建 client），开关/改地址无需重启；无代理时直连按
+//   weather_retries 跑满。两通道都网络失败合并为短 Network 错误，由 interface 排
 //   weather_fail_retry_delay_s（默认 600s）后的自动重试；解析类错误不自动重试
-//   （换时间不会改变响应结构）
+//   （换时间不会改变响应结构）。冷启动由 UI 先读 cached_by_city 磁盘快照上屏，
+//   首帧后才发起网络首拉
 // 设计理由：Python 把全部失败降级 None + 日志；Rust 以 Result 保留拒绝原因供
 //   传输层/UI 层决策。SSRF 防线结构性强化：base 构造期固定（生产 https 常量），
 //   URL 全由 base + 已过定义域校验的坐标派生，用户输入永不进入 host——Python 的
@@ -1148,6 +1196,10 @@ mod tests {
             .fetch_by_city("北京", false)
             .await
             .expect("首拉应成功");
+        // PL027：冷启动首屏只读磁盘快照
+        let (age, cached) = client.cached_by_city("北京").expect("磁盘缓存快照应可用");
+        assert_eq!(cached.temperature, fresh.temperature);
+        assert!(age < 60, "刚写入缓存年龄应很小: {age}s");
         mock.delete();
         server.mock(|when, then| {
             when.method(Method::GET)
@@ -1242,6 +1294,23 @@ mod tests {
         assert!(
             err.to_string().contains("长度不一致") || err.to_string().contains("缺失"),
             "{err}"
+        );
+    }
+
+    #[test]
+    fn proxy_policy_switch_controls_channel() {
+        // PL027：关闭=仅直连；打开+地址=用该地址；测试只建 client，不发网络
+        let client = WeatherClient::new();
+        client.set_proxy_policy(false, "http://127.0.0.1:10808");
+        assert!(
+            client.proxy.lock().expect("代理锁").url.is_none(),
+            "关闭代理应清空代理通道"
+        );
+        client.set_proxy_policy(true, "http://127.0.0.1:9");
+        assert_eq!(
+            client.proxy.lock().expect("代理锁").url.as_deref(),
+            Some("http://127.0.0.1:9"),
+            "打开代理应使用配置地址"
         );
     }
 

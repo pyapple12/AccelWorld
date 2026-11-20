@@ -1,10 +1,12 @@
 //! tracing 日志体系（utils/logger.py + utils/monitor.py 的 Rust 对等物）
-//! 每日滚动文件 + 控制台双订阅；panic hook → crash-YYYY-MM-DD.log；级别 token 化
+//! 每日滚动文件（本地日期）+ 控制台双订阅；时间戳本地时区；panic hook → crash-YYYY-MM-DD.log；级别 token 化
 
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use accel_core::static_config::Static;
+use tracing_subscriber::fmt::time::ChronoLocal;
 
 // 非 blocking writer 的守卫必须活到进程结束（drop 时冲刷）——静态持有
 // A005 #6 修正：文件与控制台两个 guard 须各占一槽（单槽 OnceLock 第二次 set 必失败，
@@ -12,6 +14,54 @@ use accel_core::static_config::Static;
 static LOG_GUARD_FILE: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
 static LOG_GUARD_CONSOLE: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
 static PANIC_LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
+
+/// 本地日期滚动文件：按 `chrono::Local` 的日期切文件（tracing-appender 的
+/// daily 按 UTC 切日，本地 08:00 才换文件——不符合本项目“全本地时间”口径）
+struct LocalDailyWriter {
+    dir: PathBuf,
+    prefix: String,
+    current: Option<(chrono::NaiveDate, std::fs::File)>,
+}
+
+impl LocalDailyWriter {
+    /// 构造（目录已由 init 创建；文件在首次写入时懒建）
+    fn new(dir: PathBuf, prefix: impl Into<String>) -> Self {
+        Self {
+            dir,
+            prefix: prefix.into(),
+            current: None,
+        }
+    }
+
+    /// 确保当前文件是本地今天；跨日时打开新文件
+    fn ensure(&mut self) -> std::io::Result<&mut std::fs::File> {
+        let today = chrono::Local::now().date_naive();
+        if !matches!(&self.current, Some((date, _)) if *date == today) {
+            let name = format!("{}.{}", self.prefix, today.format("%Y-%m-%d"));
+            let file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(self.dir.join(name))?;
+            self.current = Some((today, file));
+        }
+        Ok(&mut self.current.as_mut().expect("刚写入的本地日志文件").1)
+    }
+}
+
+impl Write for LocalDailyWriter {
+    /// 写入当前本地日期文件（跨日由 ensure 切文件）
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.ensure()?.write(buf)
+    }
+
+    /// 冲刷当前文件（守卫 drop 时由 non_blocking worker 调用）
+    fn flush(&mut self) -> std::io::Result<()> {
+        match self.current.as_mut() {
+            Some((_, file)) => file.flush(),
+            None => Ok(()),
+        }
+    }
+}
 
 /// 初始化日志（main 启动首步调用一次）：文件每日滚动 + 控制台双路
 /// 级别/目录读 base.json token（log_level/logs_dir）
@@ -24,9 +74,9 @@ pub fn init() {
     let logs_dir = accel_core::util::paths::exe_dir().join(base.base_str("logs_dir"));
     let _ = std::fs::create_dir_all(&logs_dir);
 
-    // 每日滚动文件（.logs/accel-YYYY-MM-DD.log，对齐 Python 每日独立文件约定）
-    let file_appender = tracing_appender::rolling::daily(&logs_dir, "accel-.log");
-    let (file_writer, guard) = tracing_appender::non_blocking(file_appender);
+    // 每日滚动文件（.logs/accel-YYYY-MM-DD.log，本地日期；对齐 Python 每日独立文件约定）
+    let file_writer = LocalDailyWriter::new(logs_dir.clone(), "accel-.log");
+    let (file_writer, guard) = tracing_appender::non_blocking(file_writer);
     if LOG_GUARD_FILE.set(guard).is_err() {
         tracing::warn!("文件日志 guard 已存在（重复 init？）");
     }
@@ -41,6 +91,8 @@ pub fn init() {
     use tracing_subscriber::fmt::writer::MakeWriterExt;
     tracing_subscriber::fmt()
         .with_env_filter(filter)
+        // 本地时区时间戳（带 +08:00 偏移；替代默认 SystemTime 的 UTC/Z）
+        .with_timer(ChronoLocal::new("%Y-%m-%dT%H:%M:%S%.6f%:z".to_string()))
         .with_writer(file_writer.and(console_writer))
         .with_target(false)
         .try_init()
@@ -92,7 +144,6 @@ fn write_crash_log(location: &str, message: &str) {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    use std::io::Write;
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -131,15 +182,17 @@ fn parse_level(text: &str) -> tracing::Level {
 
 // ===== logging 模块说明区 =====
 // 输入：base.json token（log_level/logs_dir）；输出：双路日志订阅 + panic hook
-// 逻辑步骤：rolling::daily 每日文件 → non_blocking 双 writer → fmt 订阅 →
-//   panic hook 追加 crash 文件（时间/位置/消息）
-// 设计理由：对齐 Python 版三件——每日独立文件（accel-YYYY-MM-DD.log）、崩溃栈
+// 逻辑步骤：LocalDailyWriter 按本地日期切文件 → non_blocking 双 writer → fmt 订阅
+//   （ChronoLocal 本地时间戳）→ panic hook 追加 crash 文件（本地时间/位置/消息）
+// 设计理由：对齐 Python 版三件——每日独立文件（accel-.log.YYYY-MM-DD）、崩溃栈
 //   独立文件（crash-YYYY-MM-DD.log）、级别 token 化非法回退 INFO；非阻塞 writer
-//   防日志 IO 阻塞渲染帧循环（tracing_appender 惯用法，guard 静态保活防冲刷丢失）
+//   防日志 IO 阻塞渲染帧循环（tracing_appender 惯用法，guard 静态保活防冲刷丢失）。
+//   时区口径：程序面向本地用户，日志行与文件日期一律本地时区；不用
+//   tracing-appender 的 UTC daily（本地 08:00 才换日），也不使用默认 SystemTime 的 Z。
 // 异常处理：目录创建/文件打开失败静默（日志不可用不阻断应用）；try_init 幂等
-// 已知偏移：①文件名 accel-.log 滚动后缀由 tracing_appender 自动补日期；②保留
-//   天数由外部清理承接（安装器/脚本），运行期不删档（A005 #8：log_backup_days token 已删）
-// 关联依赖：tracing/tracing-subscriber/tracing-appender；消费方：main.rs 首步
+// 已知偏移：①日志行带本地偏移（+08:00），不再是 UTC 的 Z；②保留天数由外部清理
+//   承接（安装器/脚本），运行期不删档（A005 #8：log_backup_days token 已删）
+// 关联依赖：tracing/tracing-subscriber/tracing-appender/chrono；消费方：main.rs 首步
 
 #[cfg(test)]
 mod tests {
@@ -152,6 +205,21 @@ mod tests {
         assert_eq!(parse_level("debug"), tracing::Level::DEBUG);
         assert_eq!(parse_level("WARNING"), tracing::Level::WARN);
         assert_eq!(parse_level("nonsense"), tracing::Level::INFO);
+    }
+
+    #[test]
+    fn local_daily_writer_uses_local_date() {
+        // 文件名日期取 chrono::Local（不是 tracing-appender 的 UTC 日期）
+        let dir = std::env::temp_dir().join(format!("accel_local_log_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("临时目录创建失败");
+        let mut writer = LocalDailyWriter::new(dir.clone(), "accel-.log");
+        writer.write_all(b"x").expect("写入失败");
+        writer.flush().expect("冲刷失败");
+        let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let path = dir.join(format!("accel-.log.{date}"));
+        assert!(path.exists(), "应生成本地日期文件: {}", path.display());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -14,7 +14,7 @@ use crate::data::{cities, timezones, world_cities};
 use crate::settings;
 use crate::static_config::Static;
 use crate::time_dilation::TimeDilation;
-use crate::types::{BackendEvent, FrontendCommand, TimeInfo, UiPreferences};
+use crate::types::{BackendEvent, FrontendCommand, TimeInfo, UiPreferences, WeatherData};
 use crate::weather::{FetchErr, WeatherClient};
 
 // 信号总线通道容量（命令/事件各一路，背压上限）
@@ -67,9 +67,12 @@ impl AppInterface {
         };
         let mut manager = AlarmManager::new();
         manager.from_value_list(&config.alarms);
+        let weather = Arc::new(WeatherClient::new());
+        // PL027：启动即应用用户配置的代理策略（false=仅直连；空地址=系统探测）
+        weather.set_proxy_policy(config.weather_use_proxy, &config.weather_proxy);
         AppInterface {
             world: Arc::new(Mutex::new(world)),
-            weather: Arc::new(WeatherClient::new()),
+            weather,
             alarms: Arc::new(Mutex::new(manager)),
             config_path,
             weather_inflight: Arc::new(Mutex::new(std::collections::HashMap::new())),
@@ -224,7 +227,24 @@ impl AppInterface {
             last_city: config.last_city,
             last_timezone: config.last_timezone,
             countdown_target: config.countdown_target,
+            weather_use_proxy: config.weather_use_proxy,
+            weather_proxy: config.weather_proxy,
         }
+    }
+
+    /// 天气代理设置（PL027）：写配置 + 立即更新客户端策略；返回落盘结果
+    pub fn set_weather_proxy(&self, enabled: bool, server: &str) -> bool {
+        let server = server.trim().to_string();
+        let mut config = settings::load(&self.config_path);
+        config.weather_use_proxy = enabled;
+        config.weather_proxy = server.clone();
+        self.weather.set_proxy_policy(enabled, &server);
+        settings::save(&self.config_path, &config)
+    }
+
+    /// 冷启动磁盘缓存快照（PL027）：只读磁盘，不触发网络
+    pub fn get_cached_weather(&self, city: &str) -> Option<(u64, WeatherData)> {
+        self.weather.cached_by_city(city)
     }
 
     /// 汇总落盘（SaveNow/退出保存路径：整体写回，含闹钟列表）
@@ -700,6 +720,11 @@ impl AppInterface {
                                 let ok = settings::save(&self.config_path, &config);
                                 let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
                             }
+                            Some(FrontendCommand::SetWeatherProxy { enabled, server }) => {
+                                // PL027：保存 + 立即更新代理策略（下一次拉取生效）
+                                let ok = self.set_weather_proxy(enabled, &server);
+                                let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                            }
                             Some(FrontendCommand::SaveNow) => {
                                 let ok = self.save_config_now();
                                 let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
@@ -816,8 +841,9 @@ fn inflight_abort_all(map: &mut WeatherInflight) {
 
 // ===== src/interface.rs 说明区 =====
 // 输入：FrontendCommand 流（UI 写意图）；输出：同步查询 DTO 快照 + BackendEvent 流
-// 逻辑步骤：spawn 主循环 select——命令分支（17 变体逐一接线，match 穷尽无兜底——
-//   A005 #4 起新增变体不接线即编译失败；UIR.7 扩 SetWindowGeometry 为协议 v1.1）
+// 逻辑步骤：spawn 主循环 select——命令分支（18 变体逐一接线，match 穷尽无兜底——
+//   A005 #4 起新增变体不接线即编译失败；UIR.7 扩 SetWindowGeometry 为协议 v1.1；
+//   PL027 扩 SetWeatherProxy 为 v1.2）
 //   与 tick 分支（绝对截止时间，倍率变化比较后 reset 重排）并发
 // 设计理由：对齐 Python AppInterface 七域契约方法名（get_time_info/get_rate/
 //   set_rate/apply_rate/get_city_names/get_ui_preferences/...；fetch_weather
@@ -1240,6 +1266,38 @@ mod tests {
             }
         }
         assert!(emptied, "删除后应回推空列表");
+    }
+
+    #[tokio::test]
+    async fn bus_weather_proxy_settings_persist() {
+        // PL027：开关 + 代理地址落盘，并同步到 UI 偏好快照
+        let sandbox = SandboxDir::new("weatherproxy");
+        let path = sandbox.path();
+        let itf = Arc::new(iface(&path));
+        let (cmd_tx, mut evt_rx) = AppInterface::spawn(Arc::clone(&itf));
+        cmd_tx
+            .send(FrontendCommand::SetWeatherProxy {
+                enabled: false,
+                server: "http://127.0.0.1:10808".into(),
+            })
+            .await
+            .expect("发送失败");
+        let mut saved = false;
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            if matches!(evt_rx.recv().await, Some(BackendEvent::ConfigSaved(true))) {
+                saved = true;
+                break;
+            }
+        }
+        assert!(saved, "代理设置应落盘成功");
+        let config = settings::load(&path);
+        assert!(!config.weather_use_proxy);
+        assert_eq!(config.weather_proxy, "http://127.0.0.1:10808");
+        let prefs = itf.get_ui_preferences();
+        assert!(!prefs.weather_use_proxy);
+        assert_eq!(prefs.weather_proxy, "http://127.0.0.1:10808");
+        cmd_tx.send(FrontendCommand::Quit).await.expect("退出失败");
     }
 
     #[tokio::test]

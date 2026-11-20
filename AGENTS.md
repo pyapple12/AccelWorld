@@ -10,6 +10,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - GUI 冒烟（真窗出血，会弹窗）：`cargo run -p accel-app`；UI 截图探针（逐页 PNG 后自动退出）：`$env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app`
 - 探针环境变量（正常模式零影响）：`ACCELWORLD_FPS_PROBE=<秒>` 静置测帧；`ACCELWORLD_UI_SHOT_GEOMETRY=WxH` 固定测试几何；`ACCELWORLD_TEST_NO_SAVE=1` 退出不写窗口存档；`ACCELWORLD_TEST_POS="x,y"` + `ACCELWORLD_EXPECT_POS="x,y"` 落点对照；`ACCELWORLD_EARLY_SHOT_MS=<ms>` 早期帧；`ACCELWORLD_TEST_CLOSE_LOSS=n` 丢弃前 n 次 Close（验证退出自愈）；`ACCELWORLD_LAYOUT_PROBE=1` 布局盒/光晕/实体墨迹 `[BOX]/[RECT]/[GLOW]/[INK]`；`ACCELWORLD_TEXT_PROBE=1` 文字盒/基线/alpha 墨迹 `[TEXT]`；`ACCELWORLD_TEXT_MATRIX=1` 字体下探矩阵 `[GLYPH]/[GLYPHMAX]`（可用 `ACCELWORLD_TEXT_PROBE_TEXT` / `ACCELWORLD_TEXT_PROBE_SIZES` 覆盖样本与字号）
 - **版本单一来源**：`rs/config/static/base.json` 的 `version` 字段（以该字段为准，不在文档写死当前值）；app 侧 `build.rs` 编译期注入 `ACCELWORLD_VERSION`，窗口标题/关于页/托盘 tooltip 一律经运行期 `Static::get().version()` 读取，代码中不得出现版本字符串
+- **时间口径**：程序面向本地用户，所有用户可见时间与日志一律本地时区（`chrono::Local` / `ChronoLocal` / `LocalDailyWriter` 本地日期滚动）；世界时钟按 IANA 时区显示属跨时区功能，内部 UTC 仅作换算中间值。禁止使用 tracing-subscriber 默认 UTC 时间戳或 tracing-appender 的 UTC 日滚
 - **版本体系**：四段式纯数字 `X.Y.Z.P`（无 `ver ` 前缀）；`feat`/`fix`/`refactor`/`perf` 提交前 bump patch 位；bump 以 **HEAD 已提交版本**为基准，同一批未提交改动只加一次，不得在工作区已 bump 的值上再加一；历史存量 `ver 0.4x` 三段式仅存于历史文档与提交记录，不回溯改写
 
 ## 环境陷阱
@@ -29,7 +30,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - **注释房规**：`///` 中文文档注释（函数/方法，1-3 行，说明用途与核心逻辑）；模块头 `//!` 一行职责；每个 `.rs` 文件末尾保留 `// ===== 说明区 =====`（输入输出 / 逻辑步骤 / 设计理由 / 异常处理 / 关联配置）
 - **视觉走查门**：UI 观感改动经 `ACCELWORLD_UI_SHOT` 截图探针（真窗逐页 PNG）自检再进用户桌面走查——功能探针抓不住纯视觉缺陷（UIR 前的玻璃时代为 render_probe 离屏断言，管线已废）
 - **平台集成降级纪律**：托盘 / 全局热键 / 通知等系统能力构造失败一律降级日志不崩（行为无损），非 Windows 平台编译期桩化
-- **天气网络策略**：直连（显式 `no_proxy`）优先；直连网络失败且探测到系统代理（`HTTPS_PROXY/ALL_PROXY` 或 Windows Internet Settings）时改走代理；每次拉取前重读代理，开关代理无需重启；两通道都网络失败由 `interface` 排 `weather_fail_retry_delay_s`（默认 600s）自动重试。相关 token 全在 `base.json`（`weather_timeout_s` / `weather_connect_timeout_s` / `weather_retries` / `weather_fail_retry_delay_s`），不得在代码写死
+- **天气网络策略**：用户设置优先（设置 → 网络：代理开关 + 地址；关=仅直连，开+空=系统探测，开+地址=指定代理）；直连（显式 `no_proxy`）优先，直连网络失败且允许代理时改走代理；每次拉取前重读策略，开关/改地址无需重启；两通道都网络失败由 `interface` 排 `weather_fail_retry_delay_s`（默认 600s）自动重试。冷启动先读磁盘缓存上屏，首帧后才发起网络首拉（不得阻塞启动）。相关 token 全在 `base.json`（`weather_timeout_s` / `weather_connect_timeout_s` / `weather_retries` / `weather_fail_retry_delay_s` / `default_weather_use_proxy` / `default_weather_proxy`），不得在代码写死
 - **视觉设计不得向测试环境妥协**：offscreen / 无头探针仅作功能与结构参考；视觉与材质的最终实测以用户桌面走查为准
 - 提交信息规范见下文「Commit 提交规范」节；功能开发先走 OpenSpec 提案流程
 - 工作流文档：`w.study.md` 项目分析 / `x.progress.md` 任务清单（PL011–PL018 + UIR/FIX，已完成在前、未完成在后）/ `y.problems.md` 已知问题 / `z.plan.md` 方案记录与审计附录（豁免定案清单 `A{NNN}` 递增）/ `m.milestone.md` 版本里程碑 / `t.hint.md` 经验复盘
@@ -142,6 +143,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - **版本递增**：`feat`/`fix`/`refactor`/`perf` 提交前先 bump version（patch 位 +1）；`docs`/`test`/`style`/`chore` 不强制
 - **type 全集**（conventional 风格）：`feat` 新功能 / `fix` 修复 / `refactor` 重构（行为不变）/ `perf` 性能 / `docs` 文档 / `test` 测试 / `style` 格式 / `build` 构建依赖 / `ci` CI / `chore` 杂项 / `revert` 回滚
 - **正文**（改动大时可选）：`- ` 列表，按主题分组、分组下子条目缩进，每个功能块一行自然中文描述，每行 ≤ 100 字符
+- **正文范围**：只写代码与行为变化；文档同步（README / AGENTS / w.study / UI 文档等）不单独列条，文档随版本提交
 - **禁止项**：内部编号（A0.1/B1.5/FIX1.1/PL015.01 等任务编号）、验证/回归数字（如"全量回归 44 项通过"）、英文混排描述
 - **提交范围**：一个版本的所有连带改动一次提交（源码 + 配置 + 文档同步）
 - **流程**：由 AI 根据 `git status`/`git diff` 核对清单并草拟 commit 内容（git add 清单 + message）→ 用户审阅后自行执行 `git add`/`git commit`/`git push`（AI 不执行 git 写操作）

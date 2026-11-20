@@ -1,9 +1,9 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告 + Rust 重构总纲）
-> 当前版本：0.6.6.1（PL024 表盘等比 + 窗口尺寸 + 光晕探针；PL025 天气双通道；PL026 Barlow Medium 数字族）
+> 当前版本：0.6.6.2（PL024 表盘等比 + 窗口尺寸 + 光晕探针；PL025 天气双通道；PL026 Barlow Medium 数字族；PL027 天气代理/冷启动缓存）
 > 历史 UI 审核报告已于 2026-10-29 移除，原文见 git 历史；下文相关引用按历史记录理解。
-> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；PL016 已收口提交（0e2252f）；PL017 已实施（0.6.3.1；G4/G8 按用户定案不做，勾选完成）；**PL018 已实施（0.6.3.2：N9 裁决 + #9 退出自愈 + #10 落点校准 + #11 首帧门控）**；**PL019 已收口（0.6.4.0：图标系统 + 读数成组 + 反馈动效）**；**PL020 已收口（0.6.5.1：12h 双半日四针 + 金圈 + 365 倍率）**；**PL021 已收口（0.6.5.3：五页盒模型 + 倒计时输入）**；**PL022 已实施（0.6.5.4：倒计时列表独立滚动）**；**PL023 已收口（0.6.5.5：文字盒统一 + 五页盒子对齐）**；**PL024 已实施（0.6.6.0：表盘 320 母版等比 + 窗口尺寸 + GLOW/INK 探针）**；**PL025 已实施（天气直连/系统代理双通道 + 10 分钟自动重试）**；**PL026 已实施（数字族 Barlow Medium 内嵌平替）**
+> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；PL016 已收口提交（0e2252f）；PL017 已实施（0.6.3.1；G4/G8 按用户定案不做，勾选完成）；**PL018 已实施（0.6.3.2：N9 裁决 + #9 退出自愈 + #10 落点校准 + #11 首帧门控）**；**PL019 已收口（0.6.4.0：图标系统 + 读数成组 + 反馈动效）**；**PL020 已收口（0.6.5.1：12h 双半日四针 + 金圈 + 365 倍率）**；**PL021 已收口（0.6.5.3：五页盒模型 + 倒计时输入）**；**PL022 已实施（0.6.5.4：倒计时列表独立滚动）**；**PL023 已收口（0.6.5.5：文字盒统一 + 五页盒子对齐）**；**PL024 已实施（0.6.6.0：表盘 320 母版等比 + 窗口尺寸 + GLOW/INK 探针）**；**PL025 已实施（天气直连/系统代理双通道 + 10 分钟自动重试）**；**PL026 已实施（数字族 Barlow Medium 内嵌平替）**；**PL027 已实施（天气代理开关/地址 + 冷启动缓存首屏）**
 > 更新（2026-10-17）：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow——UIR 定案 wgpu 废弃）；Python 版全量归档 `.archived/`（git 忽略），本文件自 PL011 起记录 RS 任务
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
 
@@ -53,7 +53,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 
 ## 任务记录（2026-09-10 起按 DeepTransHub 工作流新规则记录）
 
-> 当前状态：645 项全部完成，无未勾选项。
+> 当前状态：651 项全部完成，无未勾选项。
 
 > 结构规则：已完成任务在上方历史区（S1-S10 重构期记录，原样保留）；任务组用 `### 编号: 标题 [来源]`，子任务格式 `- [ ]`（待办）或 `- [x]`（完成），均带 [P级]、做法与验证
 > 编号规则：功能/修复任务组 `T{NNN}` 递增；审计修复任务组 `FIX{NNN}`（与 z.plan.md 附录 `A{NNN}` 一一对应），由 `.agents/skills/audit-report` 归档时生成
@@ -983,3 +983,15 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] PL026.02 [P1] 内嵌接线 —— `rs/assets/fonts/Barlow-Medium.ttf` + `Barlow-OFL.txt`；`window.rs` `BARLOW_MEDIUM` `include_bytes!`；`install_digit_family` 内嵌优先；`ui.json` token 改 `Barlow Medium`；验证：启动日志「数字族字体加载: Barlow Medium（内嵌，OFL 1.1）」。
 - [x] PL026.03 [P1] 许可与文档 —— 资产 README 增 Barlow 来源/OFL/署名；设置关于改 `MiSans / Barlow Medium（OFL）`；README / UI 术语表 / 标注图同步；验证：文档无旧默认字体表述。
 - [x] PL026.04 [P1] 构建与目测 —— `cargo build -p accel-app`；960×720 截图六页无溢出，设置字体行不重叠；拉起程序交用户目测；未跑全量回归（用户要求）。
+
+### PL027: 天气代理设置与冷启动缓存首屏 [plan#PL027]（2026-11-20 立项/实施）
+
+> 方案：`z.plan.md` 附录 PL027；设置页增加代理开关/地址；冷启动先上磁盘缓存，首帧后异步拉取天气。
+> 本组状态：6/6 收口（2026-11-20）。
+
+- [x] PL027.01 [P1] 配置域 —— `UserConfig` 增 `weather_use_proxy` / `weather_proxy`（lenient 装载 + 默认值），`base.json` 增 `default_weather_use_proxy=1` / `default_weather_proxy=""`；验证：settings 默认/脏值单测通过。
+- [x] PL027.02 [P1] 代理策略 —— `WeatherClient` 增 `WeatherProxyPolicy` 与 `set_proxy_policy`；关闭清空代理、打开空地址跟随系统、打开非空地址用指定代理；每次拉取前热更新；验证：`proxy_policy_switch_controls_channel` 通过。
+- [x] PL027.03 [P1] 设置 UI —— 设置 → 网络：使用代理服务器开关 + 代理服务器字段（失焦/Enter 保存）；`SetWeatherProxy` 落盘并回 `ConfigSaved`；验证：`bus_weather_proxy_settings_persist` 通过，960×720 截图可见。
+- [x] PL027.04 [P1] 冷启动首屏 —— `cached_by_city` / `get_cached_weather`；`fill_startup_snapshot` 先上磁盘缓存；删除装配期首拉，首帧 `ui` 末尾异步发 `RefreshWeather`；验证：日志 `天气首屏缓存（131s 前）` → `首帧门控` → `天气拉取开始`；清空缓存冷启动 3 次首帧 194–224ms、更新 0.9–4.7s，无失败；有缓存冷启动 22s → 首帧 197ms → 6.8s 更新。
+- [x] PL027.05 [P1] 测试 —— 设置默认/脏值、命令落盘/偏好、代理开关通道、磁盘缓存快照；`cargo test -p accel-core` 122 通过，`cargo clippy --workspace --all-targets -D warnings` 通过。
+- [x] PL027.06 [P1] 文档与目测 —— z.plan PL027、x.progress、README / AGENTS / w.study / UI 术语与标注同步；960×720 设置页截图；拉起程序交用户目测。

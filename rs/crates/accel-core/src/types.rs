@@ -124,6 +124,10 @@ pub struct UiPreferences {
     pub last_timezone: String,
     /// 上次设置的倒计时目标文本（未设置为空串）
     pub countdown_target: String,
+    /// 天气是否允许使用代理（PL027；false=仅直连）
+    pub weather_use_proxy: bool,
+    /// 天气代理服务器（PL027；空=跟随系统代理）
+    pub weather_proxy: String,
 }
 
 /// 主题偏好枚举（SetTheme 命令负载；serde 小写形态与配置存储一致）
@@ -186,6 +190,11 @@ pub enum FrontendCommand {
     RemoveWorldCity(String),
     SetBaseTimezone(String),
     SetTheme(ThemePref),
+    /// 天气代理设置（PL027）：enabled=false 仅直连；server 空=系统探测
+    SetWeatherProxy {
+        enabled: bool,
+        server: String,
+    },
     /// 窗口几何存档（UIR：退出前保存 "x,y,w,h"，启动恢复——UIR.7 几何记忆）
     SetWindowGeometry {
         geometry: String,
@@ -229,6 +238,7 @@ pub enum BackendEvent {
 //   变体不接线即编译失败（协议演进由编译器强制）
 // 协议 v1.1（2026-10-23，UIR.7）：FrontendCommand 扩 SetWindowGeometry（窗口
 //   几何记忆契约，17 变体——「协议 v1 定死」自本条起为「演进须登记」口径）
+// 协议 v1.2（2026-11-20，PL027）：FrontendCommand 扩 SetWeatherProxy（18 变体）
 // 关联依赖：serde/chrono/alarm（数据形状）；消费方：interface（分发）/ app bus
 #[cfg(test)]
 mod tests {

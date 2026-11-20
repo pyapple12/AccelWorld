@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ACCELWORLD Clock UI 标注指南 · V0.6.6.1</title>
+    <title>ACCELWORLD Clock UI 标注指南 · V0.6.6.2</title>
     <style>
       :root {
         --bg: #0b0f19;
@@ -1814,8 +1814,8 @@
         token。目标只有一个：你指着屏幕说“这里”，我们指的是同一个东西。
       </p>
       <div class="meta-row">
-        <span class="badge gold">基线 V0.6.6.1</span>
-        <span class="badge">V0.6.6.1</span>
+        <span class="badge gold">基线 V0.6.6.2</span>
+        <span class="badge">V0.6.6.2</span>
         <span class="badge">窗口 960×720 · min 560×420 · 无上限</span>
         <span>配套：<code>u.UI_GLOSSARY.md</code></span>
       </div>
@@ -3266,7 +3266,7 @@
                     <div class="drawer-head">
                       <span class="tag" style="left: 6px; top: 6px">D2</span>
                       <span class="drawer-title">设置</span>
-                      <span class="drawer-sub">外观 · 动效 · 关于</span>
+                      <span class="drawer-sub">外观 · 动效 · 网络 · 关于</span>
                       <span class="close"
                         ><svg class="ico"><use href="#i-close" /></svg
                       ></span>
@@ -3309,6 +3309,35 @@
                       </div>
 
                       <div class="settings-section">
+                        <span class="tag" style="left: 8px; top: -8px"
+                          >I12</span
+                        >
+                        <h4>网络</h4>
+                        <p class="sdesc">天气拉取与代理</p>
+                        <div class="setting-row">
+                          <span class="tag" style="left: 8px; top: -8px"
+                            >I13</span
+                          >
+                          <div>
+                            <div class="slabel">使用代理服务器</div>
+                            <div class="sdesc2">
+                              关闭后天气只直连；打开后直连失败走代理
+                            </div>
+                          </div>
+                          <span class="switch on"></span>
+                        </div>
+                        <div class="setting-row">
+                          <span class="tag" style="left: 8px; top: -8px"
+                            >I14</span
+                          >
+                          <span class="slabel">代理服务器</span>
+                          <span class="svalue" style="font-size: 9.5px"
+                            >留空=跟随系统代理</span
+                          >
+                        </div>
+                      </div>
+
+                      <div class="settings-section">
                         <span class="tag" style="left: 8px; top: -8px">I7</span>
                         <h4>关于</h4>
                         <p class="sdesc">版本与数据来源</p>
@@ -3316,7 +3345,7 @@
                           <span class="tag" style="left: 8px; top: -8px"
                             >I8</span
                           ><span class="slabel">版本</span
-                          ><span class="svalue">0.6.4.2</span>
+                          ><span class="svalue">0.6.6.2</span>
                         </div>
                         <div class="setting-row">
                           <span class="tag" style="left: 8px; top: -8px"
@@ -3371,7 +3400,7 @@
             </div>
             <figcaption>
               设置页。分区标题 20/600 + 说明 12 muted；只读行右值
-              muted；动效开关与闹钟共用同一组件。
+              muted；动效开关与闹钟共用同一组件；网络分区管天气代理开关与地址。
             </figcaption>
           </figure>
           <aside class="legend-panel">
@@ -3408,6 +3437,21 @@
                 <td class="ds">layout.switch_w/h；on=success 绿</td>
               </tr>
               <tr>
+                <td class="id">I12</td>
+                <td class="nm">网络分区</td>
+                <td class="ds">天气拉取与代理</td>
+              </tr>
+              <tr>
+                <td class="id">I13</td>
+                <td class="nm">使用代理行</td>
+                <td class="ds">关=仅直连；开+空=系统；开+地址=指定</td>
+              </tr>
+              <tr>
+                <td class="id">I14</td>
+                <td class="nm">代理服务器字段</td>
+                <td class="ds">空=系统代理；失焦/Enter 保存</td>
+              </tr>
+              <tr>
                 <td class="id">I7</td>
                 <td class="nm">关于分区</td>
                 <td class="ds">版本 / 数据来源 / 字体</td>
@@ -3415,7 +3459,7 @@
               <tr>
                 <td class="id">I8</td>
                 <td class="nm">版本行</td>
-                <td class="ds">只读；当前 0.6.4.2</td>
+                <td class="ds">只读；当前 0.6.6.2</td>
               </tr>
               <tr>
                 <td class="id">I9</td>
@@ -4306,7 +4350,7 @@
     </main>
 
     <footer class="wrap footer">
-      <span>ACCELWORLD Clock UI 标注指南 · 基线 V0.6.6.1</span>
+      <span>ACCELWORLD Clock UI 标注指南 · 基线 V0.6.6.2</span>
       <span
         >配套：<code>u.UI_GLOSSARY.md</code> · 窗口图按 820px
         宽绘制，仅示意结构，不替代真机截图</span
