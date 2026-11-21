@@ -1,7 +1,7 @@
 # AccelWorld 重构方案与进度（z.plan.md）
 
 > 依据：2026-08-08 项目审计（对照 AGENTS.md 规范，参考 DeepTransHub 分层结构）
-> 状态：**Rust 重构进行中**——Python 时代 S1-S10（ver 0.46）与 UI 2.0/3.0（0.5.x–0.6.0.0）已定版留档；Rust 重构 PL011–PL017 已完成（core 全量 parity + egui 外壳 + 五页 + 系统集成 + UI 精修 + UI 结构重排），PL018 已实施（退出自愈/落点校准/首帧门控/N9 裁决），PL019 已收口（图标/自适应/反馈动效），PL020–PL023 已实施，**PL024 已实施（表盘 320 母版等比 + 窗口尺寸 + GLOW/INK 探针）**，**PL025 已实施（天气直连/系统代理双通道 + 10 分钟自动重试）**，**PL026 已实施（数字族 Barlow Medium 内嵌平替）**，**PL027 已实施（天气代理开关/地址 + 冷启动缓存首屏）**，当前版本 **V0.6.6.2**
+> 状态：**Rust 重构进行中**——Python 时代 S1-S10（ver 0.46）与 UI 2.0/3.0（0.5.x–0.6.0.0）已定版留档；Rust 重构 PL011–PL017 已完成（core 全量 parity + egui 外壳 + 五页 + 系统集成 + UI 精修 + UI 结构重排），PL018 已实施（退出自愈/落点校准/首帧门控/N9 裁决），PL019 已收口（图标/自适应/反馈动效），PL020–PL023 已实施，**PL024 已实施（表盘 320 母版等比 + 窗口尺寸 + GLOW/INK 探针）**，**PL025 已实施（天气直连/系统代理双通道 + 10 分钟自动重试）**，**PL026 已实施（数字族 Barlow Medium 内嵌平替）**，**PL027 已实施（天气代理开关/地址 + 冷启动缓存首屏）**，**PL028 已实施（世界时钟 hero/共享滚动/城市搜索缓存）**，当前版本 **V0.6.6.3**
 > 历史 UI 审核报告已于 2026-10-29 移除，原文见 git 历史；下文相关引用按历史记录理解。
 > 更新（2026-09-10）：接入 DeepTransHub 工作流体系；本文件新增「审计观察项豁免定案清单」与「附录（审计报告归档区）」，旧内容原样保留
 > 更新（2026-10-16）：新增「Rust 重构总纲：AccelWorld RS」节（见下文），Python 版全量归档 `.archived/`
@@ -2942,6 +2942,7 @@ h_latin = ceil((h_cjk − trim_grids_latin × grid) / step) × step
 - 三类共用 `h_latin`，`dy = 0`，基线 = 盒底 − bottom。
 - `pad = h_latin − (h_cjk − trim_grids_latin × grid)`，只会是 0 / 0.1 / 0.2 / 0.3 / 0.4，不会到 0.5；`pad` 只作补齐量记录，计算仍用 `h_latin` 的 ceil 公式。
 - 六档 `trim_grids_latin = 2 / 4 / 5 / 7 / 10 / 18`；`h_latin = 10.0 / 12.5 / 15.5 / 22.0 / 31.0 / 56.0`。
+- 2026-11-21 后续修订：英文/数字不再走 `trim_grids_latin`，改用文末「英文/数字盒高与数字墨迹参数」的 `m_latin / m_digit` 公式；上面保留为历史记录。
 
 #### 两个最大墨迹与 dy 的口径
 
@@ -3373,3 +3374,170 @@ window.rs          fill_startup_snapshot 缓存 + 首帧后异步首拉
 - 测试配置 `weather_use_proxy=false`：启动日志 `天气代理已关闭或不可用，天气改为仅直连`，随后天气直连更新成功。
 - 当前程序 PID 6132，天气已更新；本轮未提交。
 - 同批日志时间戳/文件滚动改本地时区（`ChronoLocal` + `LocalDailyWriter`），随 0.6.6.2 提交。
+
+## 附录 PL028：世界时钟 hero、滚动组件与城市搜索缓存（2026-11-21 立项/实施）
+
+#### 目标
+
+1. 世界时钟改为与倒计时一致的「固定 hero → 可滚动列表 → 固定底部添加区」。
+2. 抽取倒计时的滚动套件为公共组件，世界时钟复用，不再复制 `draw_list_scroll`。
+3. 退役“设为基准”/`base_timezone`/`last_timezone`，改为用户 pin 一个城市作为 hero。
+4. 城市输入支持现有 50 城 + 任意城市 geocoding；中文、英文、拼音搜索；结果落盘 SQLite，下次不再请求 geocoding。
+
+#### 布局（照抄倒计时）
+
+```text
+[固定 hero]                          —— 不参与滚动
+[可滚动城市列表]                     —— 只列 hero 之外的城市
+[固定底部：添加/选择城市]             —— footer_bottom = 20px
+```
+
+- 页脚高度/间距直接用倒计时同款：`footer_gap = 10`、`footer_bottom = 20`。
+- 20px 指底部添加区内容底边 → 抽屉底边，不是列表与页脚间距。
+- hero 与列表之间沿用倒计时的固定头边界，不额外加 20px。
+
+#### Hero
+
+两行，24 小时制：
+
+```text
+城市名                         HH:MM:SS   ← 大号 digits
+2026-11-21 周五                +8 时区     ← 日期带周几 + UTC 偏移
+```
+
+- 第一行：城市名（semibold）+ 时间（hero digits，大号）。
+- 第二行：该城市本地日期（带“周五”式周几）+ 时区偏移。
+- 时区文案：整点偏移 `+8 时区` / `-7 时区`；半小时等非整点用 `+5:30 时区`。
+- hero 每 tick 更新；时区按 `chrono-tz` 当前 UTC 偏移计算（含夏令时）。
+- hero 不参与滚动。
+
+#### Pin / 删除
+
+- 城市行 hover 才显示 pin 图标；pin 在删除图标左侧，先 pin 后删除。
+- 点击 pin：该城市成为新 hero，带过渡动效；原 hero 回到下方列表，新 hero 从列表移除（不重复）。
+- **hero 不能直接删除**；必须先 pin 另一个城市，再删除旧 hero。
+- 删除仍走现有的 Trash 两步确认；hero 行的删除按钮禁用/隐藏，直到有新 pin。
+- 持久化：`world_hero_city`（城市名，避免同 tz 多城身份丢失）。
+
+#### 基准退役
+
+- 删除世界页“点击设为基准”交互与“基准”badge。
+- 删除 `SetBaseTimezone`、`base_timezone`、`UiPreferences.last_timezone` 与 `default_timezone` 使用。
+- 旧配置中的 `last_timezone` 忽略；首次升级可用 `world_cities::name_of_tz` 映射为 `world_hero_city` 候选，否则取 `world_pins` 第一项。
+- 新增 `world_hero_city` 配置键；默认 `world_pins` 第一项。
+
+#### 滚动组件
+
+新增 `widgets/list_scroll.rs`：
+
+```text
+ListScrollState {
+    last_offset: Option<f32>,
+    blink_until: f64,
+    override_offset: Option<f32>,
+}
+
+show_list_scroll(
+    ui,
+    rect,
+    id_salt,       // countdown_list / world_list
+    probe_tag,     // [LAYOUT_COUNTDOWN_LIST] / [LAYOUT_WORLD_LIST]
+    state,
+    add_contents,
+)
+```
+
+- 组件负责 `apply_style`、`ScrollArea`、隐藏原生滑杆、上下渐隐、上下金色三角、右侧金色浮钮、拖拽回写 offset。
+- 倒计时用原 `id_salt` 保持滚动位置；世界页用 `world_list`。
+- `scroll_kit.rs` 只保留渐隐/三角的纯绘制原语，不复制业务状态。
+- 倒计时现有 `scroll_last_offset`/`scroll_blink_until`/`scroll_override` 收敛进 `ListScrollState`。
+
+#### 城市输入与缓存
+
+底部下拉替换为**搜索输入**：
+
+```text
+本地 50 城：中文名 / 英文别名 / 拼音 / 拼音首字母 直接过滤
+新输入：Open-Meteo Geocoding API
+        https://geocoding-api.open-meteo.com/v1/search
+        name=...&count=8&language=zh&format=json
+        返回 name / lat / lon / timezone
+```
+
+- 50 城不请求 geocoding；本地表命中即用。
+- 新输入走 geocoding，拿到候选列表；用户选择后才加入世界时钟。
+- 结果缓存到 SQLite：下次相同查询/城市不再请求 API。
+- 支持中文、英文、拼音；geocoding 结果补英文名/拼音（拼音由本地库生成），供后续搜索。
+- 多个结果必须给候选列表（名称/国家/一级行政区/时区），用户点选；不自动取第一个。
+- 缓存目录：exe 同目录 `world_cache.sqlite`（与 `weather_cache/` 同级）。
+- SQLite 方案：`rusqlite` + `bundled`（不依赖系统 sqlite3）；拼音用 `pinyin` crate。
+- 表结构草案：
+
+```sql
+geo_cache(query TEXT PRIMARY KEY, fetched_at INTEGER);
+geo_result(query TEXT, rank INTEGER, name TEXT, name_en TEXT, pinyin TEXT,
+           country TEXT, admin1 TEXT, lat REAL, lon REAL, tz TEXT,
+           PRIMARY KEY(query, rank));
+custom_city(name TEXT PRIMARY KEY, tz TEXT, lat REAL, lon REAL,
+            source TEXT, created_at INTEGER);
+```
+
+- `world_pins` 仍保存城市名；内置 50 城查本地表，自定义城市查 `custom_city`。
+- 删除自定义城市只删 pin/自定义记录，保留 geocode 缓存；缓存暂不设 TTL（城市时区极少变化，后续可加清理）。
+- 网络失败/无结果：显示“未找到/无法解析”，不影响已有列表；不阻塞页面渲染。
+
+#### 文件
+
+```text
+pages/world.rs        hero + pin + 搜索 footer + 列表
+pages/countdown.rs    scroll 状态收敛到 ListScrollState
+widgets/list_scroll.rs 新公共滚动组件
+widgets/scroll_kit.rs  保留纯视觉原语
+data/world_cities.rs  50 城英文/拼音别名（或启动生成）
+core/settings.rs      world_hero_city；last_timezone 退役
+core/types.rs         UI 偏好字段调整
+core/interface.rs     SetBaseTimezone 退役；自定义城市/hero 写入
+app/bus.rs            world 状态字段
+Cargo.toml            rusqlite(bundled) / pinyin
+```
+
+#### 待实施步骤
+
+1. 抽 `ListScrollState`/`show_list_scroll`，倒计时迁移，截图确认滚动行为不变。
+2. 世界页改固定 hero + 列表 + 底部搜索；退役基准；hero pin/删除守卫。
+3. 50 城搜索索引（中文/英文/拼音/首字母）与底部候选列表。
+4. SQLite 缓存层 + Open-Meteo geocoding + 自定义城市持久化。
+5. 文档同步与六页截图/交互目测。
+
+#### 验收
+
+- 世界页布局与倒计时同构：hero 固定、列表独立滚动、底部添加区固定、内容底边 20px。
+- hero 两行、大号 24h、日期带周几、`+8 时区`式偏移。
+- hover 行出现 pin（删除左侧）；pin 替换 hero 有动效；hero 不能无替代删除。
+- 50 城中文/英文/拼音搜索命中，不触发 geocoding；任意城市 geocoding 后有候选、可选、落库；重启后不再请求。
+- 未提交代码前不改版本；实施完成再按规则 bump。
+
+#### 状态
+
+- 2026-11-21：已实施；95 app + 1 bin + 129 core 通过，clippy 通过；世界页 960×720 截图通过；实际 geocoding 苏州 1.01s 成功并落 SQLite。
+- 未提交；版本待按提交规则 bump。
+
+## 附录：英文/数字盒高与数字墨迹参数（2026-11-21 定案）
+
+- 新增 `digit_ink_grids`，每档独立实测数字 `0–9` 最大墨迹；`m_digit = digit_ink_grids × grid`。
+- 英文：`m_latin = latin_ink_grids × grid`；数字：`m_digit`。两者共用公式，不再使用 `trim_grids_latin` / `h_latin` 旧推导。
+- 盒高：`raw = m + 0.2 + 0.1`；`h = ceil(raw / step) × step`；`pad = h − raw`。
+- 白边：基础下 `0.1`、上 `0.2`；`pad` 按 0.1px 单位 `u = round(pad / 0.1)`，`top_extra = floor(u / 2) × 0.1`，`bottom_extra = pad − top_extra`；`bottom_class = 0.1 + bottom_extra`。
+- 分配结果：`0.1 → 下`、`0.2/0.4 → 上下均分`、`0.3 → 上 0.1 / 下 0.2`。
+- 中文不套固定白边，保持 `trim_grids` 缩放与 `dy_cjk`；英文/数字 `dy = 0`。
+- 实测 16px：数字 0–9 最大墨迹 `11.2`；旧 `h_latin` 数字盒 `12.5`，新 `h_digit = 11.5`、`bottom = 0.1`。
+- 影响：`font_profile` 新增 `h_digit / bottom_latin / bottom_digit`；`text_metrics`、`text_ink` 按 `Latin / Digits / Mixed` 分开取盒高与下空白。
+
+### 倒计时卡片 / Hero / 抽屉后续修订（2026-11-21）
+
+- 倒计时卡片改三列：第一列名称 + 日期定卡高；第二列剩余（section 20）盒中心对卡中线；第三列垃圾桶 14×14，右边距 14。卡高 = `2×card_pad_y + 名称 15.5 + card_line_gap 5 + 日期 9.5 = 50.0`。
+- 新增 `card_trash_gap=10`（时间列 ↔ 垃圾桶）；删除 `countdown_time_reserve`，时间列右缘 = `卡右 − card_pad_x − card_icon_size − card_trash_gap`。
+- Hero 剩余拆四盒：还剩 / 天数 / 天 / 时间；盒中线对齐；还剩与天盒内字墨中心；天数/时间 Barlow title。移除宽度不足缩放。
+- Hero 到期日拆 `到期日：`（MiSans）+ 数字（Barlow meta 固定槽宽），两段各自中线；卡片日期也改固定槽宽。
+- 日期 `-` 槽宽前后各 1px；`11/00` 同宽。
+- 抽屉固定 `drawer_width_fixed=350`；窗口 <760 仍全宽左扩。

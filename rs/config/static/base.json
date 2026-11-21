@@ -1,5 +1,5 @@
 {
-  "version": "0.6.6.2",
+  "version": "0.6.6.3",
   "rate_min": 1.0,
   "rate_max": 365.0,
   "rate_step": 1.0,
@@ -13,7 +13,6 @@
   },
   "default_theme": "auto",
   "default_city": "北京",
-  "default_timezone": "Asia/Shanghai",
   "default_weather_use_proxy": 1,
   "default_weather_proxy": "",
   "default_world_pins": [

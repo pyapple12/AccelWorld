@@ -116,17 +116,30 @@ fn dy_for(font: &FontId, kind: InkKind) -> f32 {
     }
 }
 
+/// 按字面类型取盒高与下空白：Cjk / Latin / Digits / Mixed
+fn class_box(p: crate::font_profile::SizeProfile, kind: InkKind) -> (f32, f32) {
+    match kind {
+        InkKind::Cjk => (p.h, p.bottom),
+        InkKind::Latin => (p.h_latin, p.bottom_latin),
+        InkKind::Digits => (p.h_digit, p.bottom_digit),
+        InkKind::Mixed => {
+            if p.h_digit >= p.h_latin {
+                (p.h_digit, p.bottom_digit)
+            } else {
+                (p.h_latin, p.bottom_latin)
+            }
+        }
+    }
+}
+
 /// 默认盒底路径：查表盒高 + 字体基线，不读文本、不读 bbox
 pub fn measure(ui: &Ui, _text: &str, font: &FontId, kind: InkKind) -> Ink {
     let p = crate::font_profile::get().for_size(font.size);
-    let h = match kind {
-        InkKind::Cjk => p.h,
-        InkKind::Latin | InkKind::Digits | InkKind::Mixed => p.h_latin,
-    };
+    let (h, bottom) = class_box(p, kind);
     Ink {
         h,
         baseline: baseline_for(ui, font),
-        bottom: p.bottom,
+        bottom,
         dy: dy_for(font, kind),
     }
 }
@@ -213,10 +226,7 @@ fn ink_bounds(galley: &Galley, baseline: f32) -> Option<(f32, f32)> {
 /// 由 galley 构造盒度量；按 kind 取盒高与 dy，不读任何字形 bbox
 pub(crate) fn metrics_from_galley(galley: &Galley, font: &FontId, kind: InkKind) -> Ink {
     let p = crate::font_profile::get().for_size(font.size);
-    let h = match kind {
-        InkKind::Cjk => p.h,
-        InkKind::Latin | InkKind::Digits | InkKind::Mixed => p.h_latin,
-    };
+    let (h, bottom) = class_box(p, kind);
     let baseline = galley
         .rows
         .first()
@@ -225,7 +235,7 @@ pub(crate) fn metrics_from_galley(galley: &Galley, font: &FontId, kind: InkKind)
     Ink {
         h,
         baseline,
-        bottom: p.bottom,
+        bottom,
         dy: dy_for(font, kind),
     }
 }
@@ -233,10 +243,7 @@ pub(crate) fn metrics_from_galley(galley: &Galley, font: &FontId, kind: InkKind)
 /// 由 galley 构造“明确居中”的字墨中线；整串 glyph uv_rect 并集
 pub(crate) fn center_from_galley(galley: &Galley, font: &FontId, kind: InkKind) -> InkCenter {
     let p = crate::font_profile::get().for_size(font.size);
-    let h = match kind {
-        InkKind::Cjk => p.h,
-        InkKind::Latin | InkKind::Digits | InkKind::Mixed => p.h_latin,
-    };
+    let (h, _) = class_box(p, kind);
     let baseline = galley
         .rows
         .first()

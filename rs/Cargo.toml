@@ -20,6 +20,10 @@ thiserror = "2.0.21"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "chrono"] }
 tracing-appender = "0.2.5"
+# 世界时钟城市搜索缓存（SQLite 落盘；bundled 不依赖系统 sqlite3）
+rusqlite = { version = "0.43.0", features = ["bundled"] }
+# 中文城市名 → 拼音（世界时钟中英文拼音搜索）
+pinyin = "0.11.0"
 # 天气网络：Windows 系统代理探测（阅读 Internet Settings；非 Windows 平台不编译）
 windows-registry = "0.6"
 httpmock = "0.8.3"

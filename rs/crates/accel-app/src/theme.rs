@@ -326,14 +326,9 @@ pub fn layout_f64(key: &str) -> f32 {
     })
 }
 
-/// 抽屉全开宽度（FIX011.03：比例与钳界 layout token 单源——原 0.46/[280,420]
-/// 魔法数三处内联；纯函数可测）
-pub fn drawer_width(avail_w: f32) -> f32 {
-    let ratio = layout_i64("drawer_width_ratio_x100") as f32 / 100.0;
-    (avail_w * ratio).clamp(
-        layout_i64("drawer_width_min") as f32,
-        layout_i64("drawer_width_max") as f32,
-    )
+/// 抽屉全开宽度：固定 `layout.drawer_width_fixed`，不再按窗口比例缩放
+pub fn drawer_width(_avail_w: f32) -> f32 {
+    layout_i64("drawer_width_fixed") as f32
 }
 
 /// 圆角（ui.json radius.*；结果缓存）
@@ -492,18 +487,10 @@ mod tests {
     }
 
     #[test]
-    fn drawer_width_ratio_and_clamp() {
-        // FIX012.10（A012 #10）锚定：比例换算与钳界（ui.json layout 域 token）——
-        // 宽窗走钳界上限、窄窗走钳界下限、中段走比例
-        let max = layout_i64("drawer_width_max") as f32;
-        let min = layout_i64("drawer_width_min") as f32;
-        let ratio = layout_i64("drawer_width_ratio_x100") as f32 / 100.0;
-        assert_eq!(drawer_width(2000.0), max, "宽窗应钳上限");
-        assert_eq!(drawer_width(400.0), min, "窄窗应钳下限");
-        let mid = 1000.0;
-        assert!(
-            (drawer_width(mid) - (mid * ratio).clamp(min, max)).abs() < 1e-4,
-            "中段应等于比例值"
-        );
+    fn drawer_width_is_fixed() {
+        // 固定抽屉宽：任何窗口宽度都返回同一 token
+        let fixed = layout_i64("drawer_width_fixed") as f32;
+        assert_eq!(drawer_width(2000.0), fixed);
+        assert_eq!(drawer_width(560.0), fixed);
     }
 }

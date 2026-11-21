@@ -732,7 +732,20 @@ fn fill_startup_snapshot(iface: &AppInterface, state: &mut UiState) {
     state.alarms = iface.get_alarms();
     state.world_pins = iface.get_world_pins();
     state.countdown_targets = iface.get_countdown_targets();
-    state.base_timezone = Some(state.prefs.last_timezone.clone());
+    state.world_hero_city = if state
+        .world_pins
+        .iter()
+        .any(|p| p == &state.prefs.world_hero_city)
+    {
+        state.prefs.world_hero_city.clone()
+    } else {
+        state.world_pins.first().cloned().unwrap_or_default()
+    };
+    state.world_custom_cities = iface
+        .get_world_custom_cities()
+        .into_iter()
+        .map(|e| (e.name.clone(), e))
+        .collect();
     // PL027：冷启动先上磁盘缓存天气，首帧不空白；网络更新在首帧后异步发起
     if let Some((age, data)) = iface.get_cached_weather(&state.prefs.last_city) {
         tracing::info!("天气首屏缓存: {}（{}s 前）", state.prefs.last_city, age);
@@ -1413,7 +1426,7 @@ mod tests {
         let path = dir.join("user_config.json");
         let cfg = accel_core::settings::UserConfig {
             world_pins: vec!["东京".to_string(), "巴黎".to_string()],
-            last_timezone: "Europe/Paris".to_string(),
+            world_hero_city: "巴黎".to_string(),
             alarms: vec![serde_json::json!({
                 "label": "起床", "time": "07:30", "repeat_days": [1],
                 "enabled": true, "id": "a1", "created_at": "2026-10-17T06:00:00",
@@ -1443,11 +1456,7 @@ mod tests {
         assert_eq!(state.alarms.len(), 1, "持久化闹钟应入启动快照");
         assert_eq!(state.world_pins.len(), 2, "常驻城市应入启动快照");
         assert_eq!(state.countdown_targets.len(), 1, "倒计时目标应入启动快照");
-        assert_eq!(
-            state.base_timezone.as_deref(),
-            Some("Europe/Paris"),
-            "基准时区应入启动快照"
-        );
+        assert_eq!(state.world_hero_city, "巴黎", "hero 城市应入启动快照");
     }
 
     #[test]

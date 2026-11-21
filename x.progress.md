@@ -1,9 +1,9 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告 + Rust 重构总纲）
-> 当前版本：0.6.6.2（PL024 表盘等比 + 窗口尺寸 + 光晕探针；PL025 天气双通道；PL026 Barlow Medium 数字族；PL027 天气代理/冷启动缓存）
+> 当前版本：0.6.6.3（PL024 表盘等比 + 窗口尺寸 + 光晕探针；PL025 天气双通道；PL026 Barlow Medium 数字族；PL027 天气代理/冷启动缓存；PL028 世界时钟 hero/搜索缓存）
 > 历史 UI 审核报告已于 2026-10-29 移除，原文见 git 历史；下文相关引用按历史记录理解。
-> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；PL016 已收口提交（0e2252f）；PL017 已实施（0.6.3.1；G4/G8 按用户定案不做，勾选完成）；**PL018 已实施（0.6.3.2：N9 裁决 + #9 退出自愈 + #10 落点校准 + #11 首帧门控）**；**PL019 已收口（0.6.4.0：图标系统 + 读数成组 + 反馈动效）**；**PL020 已收口（0.6.5.1：12h 双半日四针 + 金圈 + 365 倍率）**；**PL021 已收口（0.6.5.3：五页盒模型 + 倒计时输入）**；**PL022 已实施（0.6.5.4：倒计时列表独立滚动）**；**PL023 已收口（0.6.5.5：文字盒统一 + 五页盒子对齐）**；**PL024 已实施（0.6.6.0：表盘 320 母版等比 + 窗口尺寸 + GLOW/INK 探针）**；**PL025 已实施（天气直连/系统代理双通道 + 10 分钟自动重试）**；**PL026 已实施（数字族 Barlow Medium 内嵌平替）**；**PL027 已实施（天气代理开关/地址 + 冷启动缓存首屏）**
+> 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；PL016 已收口提交（0e2252f）；PL017 已实施（0.6.3.1；G4/G8 按用户定案不做，勾选完成）；**PL018 已实施（0.6.3.2：N9 裁决 + #9 退出自愈 + #10 落点校准 + #11 首帧门控）**；**PL019 已收口（0.6.4.0：图标系统 + 读数成组 + 反馈动效）**；**PL020 已收口（0.6.5.1：12h 双半日四针 + 金圈 + 365 倍率）**；**PL021 已收口（0.6.5.3：五页盒模型 + 倒计时输入）**；**PL022 已实施（0.6.5.4：倒计时列表独立滚动）**；**PL023 已收口（0.6.5.5：文字盒统一 + 五页盒子对齐）**；**PL024 已实施（0.6.6.0：表盘 320 母版等比 + 窗口尺寸 + GLOW/INK 探针）**；**PL025 已实施（天气直连/系统代理双通道 + 10 分钟自动重试）**；**PL026 已实施（数字族 Barlow Medium 内嵌平替）**；**PL027 已实施（天气代理开关/地址 + 冷启动缓存首屏）**；**PL028 已实施（世界时钟 hero/共享滚动/城市搜索缓存）**
 > 更新（2026-10-17）：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow——UIR 定案 wgpu 废弃）；Python 版全量归档 `.archived/`（git 忽略），本文件自 PL011 起记录 RS 任务
 > 执行原则：每阶段完成后运行验证命令确认无回归，再进入下一阶段
 
@@ -53,7 +53,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 
 ## 任务记录（2026-09-10 起按 DeepTransHub 工作流新规则记录）
 
-> 当前状态：651 项全部完成，无未勾选项。
+> 当前状态：663 项全部完成，无未勾选项。
 
 > 结构规则：已完成任务在上方历史区（S1-S10 重构期记录，原样保留）；任务组用 `### 编号: 标题 [来源]`，子任务格式 `- [ ]`（待办）或 `- [x]`（完成），均带 [P级]、做法与验证
 > 编号规则：功能/修复任务组 `T{NNN}` 递增；审计修复任务组 `FIX{NNN}`（与 z.plan.md 附录 `A{NNN}` 一一对应），由 `.agents/skills/audit-report` 归档时生成
@@ -995,3 +995,21 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] PL027.04 [P1] 冷启动首屏 —— `cached_by_city` / `get_cached_weather`；`fill_startup_snapshot` 先上磁盘缓存；删除装配期首拉，首帧 `ui` 末尾异步发 `RefreshWeather`；验证：日志 `天气首屏缓存（131s 前）` → `首帧门控` → `天气拉取开始`；清空缓存冷启动 3 次首帧 194–224ms、更新 0.9–4.7s，无失败；有缓存冷启动 22s → 首帧 197ms → 6.8s 更新。
 - [x] PL027.05 [P1] 测试 —— 设置默认/脏值、命令落盘/偏好、代理开关通道、磁盘缓存快照；`cargo test -p accel-core` 122 通过，`cargo clippy --workspace --all-targets -D warnings` 通过。
 - [x] PL027.06 [P1] 文档与目测 —— z.plan PL027、x.progress、README / AGENTS / w.study / UI 术语与标注同步；960×720 设置页截图；拉起程序交用户目测。
+
+### PL028: 世界时钟 hero、共享滚动组件与城市搜索缓存 [plan#PL028]（2026-11-21 实施）
+
+> 方案：`z.plan.md` 附录 PL028；世界页固定 hero + 滚动列表 + 底部搜索；倒计时滚动套件抽公共组件；退役基准；50 城本地 + geocoding SQLite 缓存。
+> 本组状态：12/12 收口（2026-11-21）。
+
+- [x] PL028.01 [P1] 共享滚动组件 —— 新增 `widgets/list_scroll.rs`（ListScrollState + show + 渐隐/三角/浮钮/拖拽）；倒计时改用组件，滚动位置保留；验证：倒计时截图正常、滚动件仍在。
+- [x] PL028.02 [P1] 世界 hero/布局 —— 固定 hero（城市名 + 大号 24h + 日期周几 + `+8 时区`）+ 下方列表 + 底部搜索；`footer_bottom=20`；验证：960×720 截图布局正确。
+- [x] PL028.03 [P1] Pin 与基准退役 —— hover pin 在删除左侧、点击替换 hero；hero 不重复进列表、无新 pin 不可删；删除 `SetBaseTimezone`/`base_timezone`/`last_timezone`/`default_timezone`，新增 `world_hero_city`；验证：hero/custom flow 单测通过。
+- [x] PL028.04 [P1] 本地城市搜索 —— 50 城中文/英文/拼音/首字母索引（`world_cities::english_of` + pinyin crate），50 城不触发 geocoding；验证：local search / pinyin 单测通过。
+- [x] PL028.05 [P1] SQLite/geocoding —— `world_search.rs`（rusqlite bundled；geo_cache/geo_result/custom_city）；Open-Meteo geocoding 多候选；自定义城市持久化；验证：缓存/解析/自定义城市单测 + 实际 geocoding 苏州 1.01s 成功。
+- [x] PL028.06 [P1] 测试与文档 —— 95 app + 1 bin + 129 core 通过；clippy `-D warnings`；README / AGENTS / w.study / UI 术语与标注同步；960×720 世界页截图。
+- [x] PL028.07 [P1] 倒计时卡片三列 —— 第一列名称/日期定卡高（50.0 = 2×10 + 15.5 + 5 + 9.5）；第二列剩余 section 20、盒中心对卡中线；第三列垃圾桶 14×14、右边距 14；新增 `card_trash_gap=10`，删除 `countdown_time_reserve`。
+- [x] PL028.08 [P1] Hero 剩余拆盒 —— 还剩/天数/天/时间四独立盒；盒中线对齐；还剩/天盒内字墨中心；数字 Barlow title；到期日拆前缀 + 数字固定槽宽，前缀/数字各自中线；移除宽度不足缩放。
+- [x] PL028.09 [P1] 数字盒公式 —— 新增每档 `digit_ink_grids`；英文/数字共用 `raw=m+0.2+0.1`、`h=ceil(raw/step)×step`；`pad` 按 0.1 补下、0.2/0.4 均分、0.3 上 0.1 下 0.2；新增 `h_digit/bottom_latin/bottom_digit`，删除 `trim_grids_latin` 与旧 `h_latin` 推导；中文公式与 `dy_cjk` 不变。
+- [x] PL028.10 [P1] 日期定宽 —— 卡片日期与 hero 到期日数字改 `digits` 固定槽宽，`11/00` 同宽；`-` 前后各 1px；日期 Barlow meta，hero 前缀 MiSans。
+- [x] PL028.11 [P1] 抽屉固定宽 —— `drawer_width_fixed=350`，删除比例/min/max token；窗口 <760 仍全宽左扩；世界/倒计时 hero 使用共同 `hero_pad_*/hero_line_gap/hero_border`。
+- [x] PL028.12 [P1] 文档与规范 —— AGENTS 数字盒/白边公式、w.study 参数与公式、z.plan 附录、UI 术语/标注卡高与三列、m.milestone 0.6.6.3、README/当前版本同步；`cargo build` 通过。

@@ -47,6 +47,75 @@ pub fn name_of_tz(tz: &str) -> Option<&'static str> {
     all().iter().find(|c| c.tz == tz).map(|c| c.name)
 }
 
+/// 城市英文别名（PL028 世界时钟搜索；50 城本地索引，不跑 geocoding）
+pub fn english_of(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "北京" => "Beijing",
+        "上海" => "Shanghai",
+        "广州" => "Guangzhou",
+        "深圳" => "Shenzhen",
+        "杭州" => "Hangzhou",
+        "成都" => "Chengdu",
+        "武汉" => "Wuhan",
+        "西安" => "Xi'an",
+        "重庆" => "Chongqing",
+        "南京" => "Nanjing",
+        "香港" => "Hong Kong",
+        "台北" => "Taipei",
+        "东京" => "Tokyo",
+        "大阪" => "Osaka",
+        "首尔" => "Seoul",
+        "新加坡" => "Singapore",
+        "曼谷" => "Bangkok",
+        "吉隆坡" => "Kuala Lumpur",
+        "雅加达" => "Jakarta",
+        "马尼拉" => "Manila",
+        "孟买" => "Mumbai",
+        "新德里" => "New Delhi",
+        "迪拜" => "Dubai",
+        "利雅得" => "Riyadh",
+        "伦敦" => "London",
+        "巴黎" => "Paris",
+        "柏林" => "Berlin",
+        "罗马" => "Rome",
+        "马德里" => "Madrid",
+        "阿姆斯特丹" => "Amsterdam",
+        "苏黎世" => "Zurich",
+        "莫斯科" => "Moscow",
+        "伊斯坦布尔" => "Istanbul",
+        "雅典" => "Athens",
+        "纽约" => "New York",
+        "洛杉矶" => "Los Angeles",
+        "旧金山" => "San Francisco",
+        "芝加哥" => "Chicago",
+        "多伦多" => "Toronto",
+        "温哥华" => "Vancouver",
+        "墨西哥城" => "Mexico City",
+        "圣保罗" => "Sao Paulo",
+        "布宜诺斯艾利斯" => "Buenos Aires",
+        "悉尼" => "Sydney",
+        "墨尔本" => "Melbourne",
+        "珀斯" => "Perth",
+        "奥克兰" => "Auckland",
+        "开罗" => "Cairo",
+        "约翰内斯堡" => "Johannesburg",
+        "内罗毕" => "Nairobi",
+        _ => return None,
+    })
+}
+
+/// 中文城市名 → (全拼, 首字母串)（PL028 本地搜索；不依赖网络）
+pub fn pinyin_of(name: &str) -> (String, String) {
+    use pinyin::ToPinyin;
+    let mut full = String::new();
+    let mut initials = String::new();
+    for p in name.to_pinyin().flatten() {
+        full.push_str(p.plain());
+        initials.push_str(p.first_letter());
+    }
+    (full, initials)
+}
+
 // ===== src/data/world_cities.rs 说明区 =====
 // 输入：rs/config/static/world_cities.json（50 城静态表）；输出：强类型检索
 //   （by_name/tz_of 名域 + name_of_tz 迁移辅助）

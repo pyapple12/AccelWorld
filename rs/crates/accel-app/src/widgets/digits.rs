@@ -18,16 +18,26 @@ fn slot_ratio(c: char) -> f32 {
     }
 }
 
+/// 连字符左右各留 1px，避免和相邻数字粘连
+fn slot_extra(c: char) -> f32 {
+    if c == '-' { 2.0 } else { 0.0 }
+}
+
+/// 单字符槽宽：槽宽系数 × cell + 额外间隙
+fn slot_w(cell: f32, c: char) -> f32 {
+    cell * slot_ratio(c) + slot_extra(c)
+}
+
 /// 槽宽基准：查启动指标表（0–9 最大字形宽），不随当前数字变化；
 /// 表缺失时现场补测，下限 = 字号×0.5
 pub fn cell_width(painter: &Painter, font: &FontId) -> f32 {
     super::text_metrics::digit_cell(painter.ctx(), font)
 }
 
-/// 总占用宽度（纯函数）：Σ(槽宽×系数)——页面布局据此预留
+/// 总占用宽度（纯函数）：Σ(槽宽×系数 + 连字符间隙)——页面布局据此预留
 pub fn text_width(painter: &Painter, text: &str, font: &FontId) -> f32 {
     let cell = cell_width(painter, font);
-    text.chars().map(|c| cell * slot_ratio(c)).sum()
+    text.chars().map(|c| slot_w(cell, c)).sum()
 }
 
 /// 盒子底对齐绘制等宽数字串；返回盒子矩形
@@ -93,10 +103,10 @@ fn draw_slots(
     y: f32,
 ) -> f32 {
     let cell = cell_width(painter, font);
-    let total: f32 = text.chars().map(|c| cell * slot_ratio(c)).sum();
+    let total: f32 = text.chars().map(|c| slot_w(cell, c)).sum();
     let mut cursor = center_x - total / 2.0;
     for c in text.chars() {
-        let w = cell * slot_ratio(c);
+        let w = slot_w(cell, c);
         painter.text(
             egui::pos2(cursor + w / 2.0, y),
             Align2::CENTER_TOP,
@@ -173,7 +183,7 @@ mod tests {
     fn draw_bottom_and_center_use_box_values() {
         let painter = test_painter();
         let font = digit_font(TEST_SIZE);
-        let want_h = crate::font_profile::get().for_size(TEST_SIZE).h_latin;
+        let want_h = crate::font_profile::get().for_size(TEST_SIZE).h_digit;
         let bottom = draw_bottom(&painter, 100.0, 50.0, "12", &font, Color32::WHITE);
         assert!((bottom.bottom() - 100.0).abs() < 1e-4);
         assert!((bottom.height() - want_h).abs() < 1e-4);

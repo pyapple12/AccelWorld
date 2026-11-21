@@ -752,15 +752,15 @@
       }
       .target-row {
         position: relative;
-        height: 56px;
-        flex: 0 0 56px;
+        height: 50px;
+        flex: 0 0 50px;
         border: 1px solid var(--border);
         border-radius: 8px;
         background: var(--card);
         display: flex;
         align-items: center;
-        padding: 0 8px 0 12px;
-        gap: 8px;
+        padding: 0 14px;
+        gap: 10px;
       }
       .target-row .tname {
         font-size: 12px;
@@ -776,7 +776,7 @@
       .target-row .tremain {
         margin-left: auto;
         font-family: var(--font-mono);
-        font-size: 13px;
+        font-size: 16px;
         color: var(--muted);
         font-variant-numeric: tabular-nums;
         white-space: nowrap;
@@ -2361,15 +2361,16 @@
                 <td class="id">E9</td>
                 <td class="nm">目标行卡</td>
                 <td class="ds">
-                  56.0px（10 + 名称 15.5 + 5 + 第二行 15.5 +
-                  10）；列表视口唯一滚动内容
+                  50.0px（2×10 + 名称 15.5 + 5 + 日期
+                  9.5）；三列：名称/日期、剩余、垃圾桶；列表视口唯一滚动内容
                 </td>
               </tr>
               <tr>
                 <td class="id">E12</td>
                 <td class="nm">目标行删除</td>
                 <td class="ds">
-                  贴右、垂直中心对卡中心；两步武装（Check，4s）
+                  14×14；贴右、垂直中心对卡中心；与时间列间隔
+                  10px；两步武装（Check，4s）
                 </td>
               </tr>
               <tr>
@@ -2417,8 +2418,9 @@
           <div>
             <h2>世界时钟页</h2>
             <p>
-              抽屉页。城市行是 60px
-              紧凑行：名称、基准标记、昼夜、右对齐走时、删除。页脚只有一个下拉，选择即添加——没有“添加”按钮。
+              抽屉页。固定 hero：城市名 + 大号 24 小时时间 + 日期周几 + 「+8
+              时区」；下方城市列表可滚动；底部固定搜索框与“搜索”按钮。 hero
+              城市不在列表重复；hover 行出现 pin（删除左侧），点击替换 hero。
             </p>
           </div>
         </div>
@@ -2442,31 +2444,42 @@
                       ></span>
                     </div>
                     <div class="drawer-body">
-                      <div class="city-row base">
+                      <div
+                        style="
+                          border: 1px solid var(--gold);
+                          border-radius: 8px;
+                          background: var(--card);
+                          padding: 10px 12px 8px;
+                          margin-bottom: 10px;
+                        "
+                      >
                         <span class="tag" style="left: 8px; top: -8px">F2</span>
-                        <span class="tag" style="left: 52px; top: -8px"
-                          >F5</span
+                        <div
+                          style="
+                            display: flex;
+                            align-items: baseline;
+                            justify-content: space-between;
+                            gap: 8px;
+                          "
                         >
-                        <span class="tag" style="left: 96px; top: -8px"
-                          >F4</span
-                        >
-                        <span class="base-line"></span>
-                        <div>
-                          <div class="cname">北京</div>
-                          <div class="cmeta">
-                            <span class="base-chip"
-                              ><svg class="ico"><use href="#i-pin" /></svg
-                              >基准</span
-                            >
-                          </div>
+                          <span class="cname">北京</span>
+                          <span
+                            class="ctime"
+                            style="font-size: 22px; color: var(--ink)"
+                            >10:24:36</span
+                          >
                         </div>
-                        <span class="cday"
-                          ><svg class="ico"><use href="#i-sun" /></svg
-                        ></span>
-                        <span class="ctime">10:24:36</span>
-                        <span class="trash"
-                          ><svg class="ico"><use href="#i-trash" /></svg
-                        ></span>
+                        <div
+                          style="
+                            display: flex;
+                            justify-content: space-between;
+                            margin-top: 4px;
+                            font-size: 9px;
+                            color: var(--muted);
+                          "
+                        >
+                          <span>2026-11-21 周五</span><span>+8 时区</span>
+                        </div>
                       </div>
                       <div class="city-row">
                         <div>
@@ -2474,9 +2487,7 @@
                           <div
                             class="cmeta"
                             style="color: var(--meta); font-size: 9px"
-                          >
-                            点击设为基准
-                          </div>
+                          ></div>
                         </div>
                         <span class="cday"
                           ><svg class="ico"><use href="#i-sun" /></svg
@@ -2492,9 +2503,7 @@
                           <div
                             class="cmeta"
                             style="color: var(--meta); font-size: 9px"
-                          >
-                            点击设为基准
-                          </div>
+                          ></div>
                         </div>
                         <span class="cday"
                           ><svg class="ico"><use href="#i-moon" /></svg
@@ -2510,9 +2519,7 @@
                           <div
                             class="cmeta"
                             style="color: var(--meta); font-size: 9px"
-                          >
-                            点击设为基准
-                          </div>
+                          ></div>
                         </div>
                         <span class="cday"
                           ><svg class="ico"><use href="#i-moon" /></svg
@@ -2534,16 +2541,27 @@
                       </div>
                     </div>
                     <div class="drawer-foot">
-                      <span class="tag" style="left: 8px; top: -8px">F10</span>
-                      <div class="world-foot">
-                        <span class="flabel">添加城市</span>
-                        <span class="tag" style="left: 62px; top: -12px"
-                          >F11</span
+                      <span class="tag" style="left: 8px; top: -8px">F9</span>
+                      <div
+                        class="world-foot"
+                        style="
+                          flex-direction: column;
+                          align-items: stretch;
+                          gap: 6px;
+                        "
+                      >
+                        <div class="field">
+                          <span class="flabel">添加城市</span>
+                          <div class="fbox">中文 / 英文 / 拼音</div>
+                        </div>
+                        <span class="tag" style="left: 8px; top: 30px"
+                          >F10</span
                         >
-                        <div class="select" style="flex: 1">
-                          选择城市…<svg class="ico">
-                            <use href="#i-chevron-down" />
-                          </svg>
+                        <div
+                          class="btn-primary"
+                          style="justify-content: center"
+                        >
+                          搜索
                         </div>
                       </div>
                     </div>
@@ -2576,8 +2594,8 @@
               </div>
             </div>
             <figcaption>
-              世界时钟页。基准行的金线 + “基准” chip
-              是双重冗余；“点击设为基准”只在非基准行 hover 时出现。
+              世界时钟页。hero 固定显示 pin 的城市；列表只列 hero 之外的城市；
+              hover 行出现 pin（删除左侧），点击替换 hero；底部搜索 + 候选弹层。
             </figcaption>
           </figure>
           <aside class="legend-panel">
@@ -2590,18 +2608,23 @@
               </tr>
               <tr>
                 <td class="id">F2</td>
+                <td class="nm">Hero 固定时区</td>
+                <td class="ds">城市名 + 大号 24h + 日期周几 + 时区偏移</td>
+              </tr>
+              <tr>
+                <td class="id">F3</td>
                 <td class="nm">城市行</td>
-                <td class="ds">63.5px；整行可点，点击设基准</td>
+                <td class="ds">名称 + 英文/时区副行 + 走时；hero 不进列表</td>
               </tr>
               <tr>
                 <td class="id">F4</td>
-                <td class="nm">基准标记</td>
-                <td class="ds">左侧 2px 金线；只做状态标记</td>
+                <td class="nm">Pin 固定</td>
+                <td class="ds">hover 出现，删除左侧；点击替换 hero</td>
               </tr>
               <tr>
                 <td class="id">F5</td>
-                <td class="nm">基准 chip</td>
-                <td class="ds">Pin + “基准”；52×18</td>
+                <td class="nm">城市删除</td>
+                <td class="ds">Trash；两步武装；hero 无删除入口</td>
               </tr>
               <tr>
                 <td class="id">F7</td>
@@ -2610,36 +2633,33 @@
               </tr>
               <tr>
                 <td class="id">F8</td>
-                <td class="nm">城市走时</td>
-                <td class="ds">28px digits；基准行更亮</td>
+                <td class="nm">滚动套件</td>
+                <td class="ds">渐隐 + 金三角 + 4px 浮钮；与倒计时共用</td>
               </tr>
               <tr>
                 <td class="id">F9</td>
-                <td class="nm">城市删除</td>
-                <td class="ds">Trash；仅城市数 &gt;1 时显示</td>
+                <td class="nm">添加/搜索页脚</td>
+                <td class="ds">字段 + 搜索按钮；内容底边 20px</td>
               </tr>
               <tr>
                 <td class="id">F10</td>
-                <td class="nm">添加城市页脚</td>
-                <td class="ds">标签 + 下拉；没有添加按钮</td>
+                <td class="nm">搜索候选弹层</td>
+                <td class="ds">多结果点选添加；不自动取第一</td>
               </tr>
               <tr>
                 <td class="id">F11</td>
-                <td class="nm">城市下拉</td>
-                <td class="ds">Select；候选项排除已添加城市</td>
-              </tr>
-              <tr>
-                <td class="id">F12</td>
                 <td class="nm">世界空态</td>
-                <td class="ds">“还没有城市 / 从下方添加…”</td>
+                <td class="ds">“还没有其他城市 / 从下方搜索…”</td>
               </tr>
             </table>
             <h3>目测检查点</h3>
             <ul class="checklist">
-              <li>基准不只靠金色：金线 + Pin + “基准”文字同时存在。</li>
-              <li>删除城市至少保留 1 个；只剩 1 城时 Trash 消失。</li>
-              <li>窄行（≤280 宽）跳过昼夜图标，避免压住走时。</li>
-              <li>下拉选择即添加，不应再找一个“添加”按钮。</li>
+              <li>Hero 两行：城市名 + 大号 24h；日期周几 + `+8 时区` 偏移。</li>
+              <li>
+                Hero 城市不出现在列表；hover 行 pin 在删除左侧，点击替换 hero。
+              </li>
+              <li>Hero 不能直接删；先 pin 新城市，旧 hero 回列表后删除。</li>
+              <li>底部搜索支持中文/英文/拼音；多结果先选后加。</li>
             </ul>
           </aside>
         </div>
@@ -3990,7 +4010,7 @@
               </tr>
               <tr>
                 <td>倒计时 Hero / 目标行</td>
-                <td>90.5 / 56.0</td>
+                <td>90.5 / 50.0</td>
                 <td><code>countdown.rs</code></td>
               </tr>
               <tr>
@@ -4003,7 +4023,7 @@
               </tr>
               <tr>
                 <td>世界城市行 / 闹钟行</td>
-                <td>63.5 / 57.0 / 46.0</td>
+                <td>64.5 / 46.0</td>
                 <td><code>world.rs</code> / <code>alarm.rs</code></td>
               </tr>
               <tr>

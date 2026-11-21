@@ -34,12 +34,14 @@ fn cell_key(font: &FontId) -> CellKey {
     (font.size.to_bits(), family_hash(font))
 }
 
-/// 角色盒高：查字体组合参数表；Cjk 用中文盒高，其余用拉丁盒高
+/// 角色盒高：Cjk 用中文盒高，Latin 用英文盒高，Digits 用数字盒高，Mixed 取两者较大
 pub fn height(_ctx: &Context, font: &FontId, kind: InkKind) -> f32 {
     let p = crate::font_profile::get().for_size(font.size);
     match kind {
         InkKind::Cjk => p.h,
-        InkKind::Latin | InkKind::Digits | InkKind::Mixed => p.h_latin,
+        InkKind::Latin => p.h_latin,
+        InkKind::Digits => p.h_digit,
+        InkKind::Mixed => p.h_latin.max(p.h_digit),
     }
 }
 

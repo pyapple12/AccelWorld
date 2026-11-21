@@ -53,7 +53,6 @@ pub struct UserConfig {
     pub time_dilation_rate: f64,
     pub theme: String,
     pub last_city: String,
-    pub last_timezone: String,
     pub world_pins: Vec<String>,
     pub countdown_target: String,
     pub window_geometry: Option<String>,
@@ -62,6 +61,9 @@ pub struct UserConfig {
     /// 倒计时目标列表（PL014.06 新字段；旧 countdown_target 字段保留读兼容）
     #[serde(default)]
     pub countdown_targets: Vec<CountdownTarget>,
+    /// 世界时钟 hero 城市（PL028；城市名，默认 world_pins 第一项）
+    #[serde(default)]
+    pub world_hero_city: String,
     /// 天气是否允许使用代理（PL027；false=仅直连）
     #[serde(default)]
     pub weather_use_proxy: bool,
@@ -79,7 +81,6 @@ impl Default for UserConfig {
             time_dilation_rate: base.base_f64("default_rate"),
             theme: base.base_str("default_theme").to_string(),
             last_city: base.base_str("default_city").to_string(),
-            last_timezone: base.base_str("default_timezone").to_string(),
             world_pins: base
                 .base_str_list("default_world_pins")
                 .into_iter()
@@ -89,6 +90,12 @@ impl Default for UserConfig {
             countdown_targets: Vec::new(),
             window_geometry: None,
             alarms: Vec::new(),
+            world_hero_city: base
+                .base_str_list("default_world_pins")
+                .first()
+                .copied()
+                .unwrap_or("")
+                .to_string(),
             weather_use_proxy: base.base_i64("default_weather_use_proxy") != 0,
             weather_proxy: base.base_str("default_weather_proxy").to_string(),
         }
@@ -106,8 +113,6 @@ struct UserConfigRaw {
     #[serde(default)]
     last_city: Option<Value>,
     #[serde(default)]
-    last_timezone: Option<Value>,
-    #[serde(default)]
     world_pins: Option<Value>,
     #[serde(default)]
     countdown_target: Option<Value>,
@@ -117,6 +122,8 @@ struct UserConfigRaw {
     alarms: Option<Value>,
     #[serde(default)]
     countdown_targets: Option<Value>,
+    #[serde(default)]
+    world_hero_city: Option<Value>,
     #[serde(default)]
     weather_use_proxy: Option<Value>,
     #[serde(default)]
@@ -149,7 +156,6 @@ impl UserConfig {
                 .unwrap_or(d.time_dilation_rate),
             theme: str_field(raw.theme, d.theme),
             last_city: str_field(raw.last_city, d.last_city),
-            last_timezone: str_field(raw.last_timezone, d.last_timezone),
             // world_pins 容器校验 + 元素过滤（非串剔除，FIX003.3 对等）
             world_pins: match raw.world_pins {
                 Some(Value::Array(arr)) => arr
@@ -164,6 +170,7 @@ impl UserConfig {
                 Some(Value::Array(arr)) => arr,
                 _ => d.alarms,
             },
+            world_hero_city: str_field(raw.world_hero_city, d.world_hero_city),
             weather_use_proxy: raw
                 .weather_use_proxy
                 .and_then(|v| v.as_bool())
@@ -263,6 +270,15 @@ pub fn load(path: &Path) -> UserConfig {
             BACKUP_DONE.store(false, Ordering::SeqCst);
             let mut config = UserConfig::from_json_value(&v);
             normalize_world_pins(&mut config.world_pins);
+            // PL028：hero 必须落在 pins 内；旧存档无该字段（默认取 base 首项）或
+            // 城市被手改移除时回落到第一项，防止 hero 城市被当作普通行删除
+            if !config
+                .world_pins
+                .iter()
+                .any(|p| p == &config.world_hero_city)
+            {
+                config.world_hero_city = config.world_pins.first().cloned().unwrap_or_default();
+            }
             config
         }
         _ => {
@@ -350,13 +366,13 @@ mod tests {
 
     #[test]
     fn defaults_match_python_snapshot_shape() {
-        // 默认值锚点：rate 2.0 / theme auto / 北京 / last_timezone Asia/Shanghai /
+        // 默认值锚点：rate 2.0 / theme auto / 北京 / hero=首个默认常驻城市 /
         // 8 pins（FIX007.2：常驻集权威域 = 城市名）/ 空 target
         let d = UserConfig::default();
         assert_eq!(d.time_dilation_rate, 2.0);
         assert_eq!(d.theme, "auto");
         assert_eq!(d.last_city, "北京");
-        assert_eq!(d.last_timezone, "Asia/Shanghai");
+        assert_eq!(d.world_hero_city, "北京");
         assert_eq!(d.world_pins.len(), 8);
         assert_eq!(d.world_pins[0], "北京");
         assert_eq!(d.countdown_target, "");
@@ -444,6 +460,21 @@ mod tests {
             ],
             "IANA 应迁移为城市名；未知值原样保留"
         );
+        assert_eq!(cfg.world_hero_city, "北京", "旧档无 hero 时取迁移后第一项");
+    }
+
+    #[test]
+    fn world_hero_falls_back_into_pins_on_load() {
+        // PL028：旧档无 world_hero_city 而 pins 已改过时，hero 不得停留在 base 首项
+        let sandbox = SandboxDir::new("heromigrate");
+        let path = sandbox.path();
+        let legacy = serde_json::json!({"world_pins": ["东京"]});
+        std::fs::write(&path, legacy.to_string()).expect("写旧存档失败");
+        assert_eq!(load(&path).world_hero_city, "东京");
+
+        let empty = serde_json::json!({"world_pins": []});
+        std::fs::write(&path, empty.to_string()).expect("写空列表失败");
+        assert_eq!(load(&path).world_hero_city, "");
     }
 
     #[test]
@@ -462,8 +493,8 @@ mod tests {
             time_dilation_rate: 3.5,
             theme: "dark".into(),
             last_city: "上海".into(),
-            last_timezone: "Europe/Paris".into(),
             world_pins: vec!["北京".into(), "纽约".into()],
+            world_hero_city: "北京".into(),
             countdown_target: "春节".into(),
             window_geometry: Some("SGVsbG8=".into()),
             alarms: vec![serde_json::json!({"label": "起床", "time": "07:30"})],

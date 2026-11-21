@@ -129,7 +129,10 @@ impl crate::pages::Page for crate::pages::CountdownPage {
         let body_h = (avail.height() - footer_h - crate::theme::layout_f32("footer_gap")).max(0.0);
         let body_rect = egui::Rect::from_min_size(avail.min, egui::vec2(avail.width(), body_h));
         let footer_rect = egui::Rect::from_min_size(
-            egui::pos2(avail.left(), body_rect.bottom() + 10.0),
+            egui::pos2(
+                avail.left(),
+                body_rect.bottom() + crate::theme::layout_f32("footer_gap"),
+            ),
             egui::vec2(avail.width(), footer_h),
         );
 
@@ -161,7 +164,7 @@ impl crate::pages::Page for crate::pages::CountdownPage {
             body_rect.max,
         );
 
-        if header_h > 0.5 {
+        if header_h > crate::theme::layout_f64("list_visible_eps") {
             ui.scope_builder(egui::UiBuilder::new().max_rect(header_rect), |ui| {
                 ui.set_clip_rect(header_rect);
                 let mut stack = crate::widgets::box_stack::BoxStack::new(ui);
@@ -245,7 +248,7 @@ impl crate::pages::Page for crate::pages::CountdownPage {
         }
         if targets.is_empty() {
             // 空态与滚动无关：不建 ScrollArea，CTA + 虚线框静态占列表矩形
-            if list_rect.height() > 0.5 {
+            if list_rect.height() > crate::theme::layout_f64("list_visible_eps") {
                 ui.scope_builder(egui::UiBuilder::new().max_rect(list_rect), |ui| {
                     ui.set_clip_rect(list_rect);
                     let mut stack = crate::widgets::box_stack::BoxStack::new(ui);
@@ -269,39 +272,31 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                     }
                 });
             }
-        } else if list_rect.height() + 0.5 >= row_h {
+        } else if list_rect.height() + crate::theme::layout_f64("list_visible_eps") >= row_h {
             // 兜底通过：列表视口只装目标卡；滑杆/渐隐/三角贴视口，不跨固定头与页脚
-            ui.scope_builder(egui::UiBuilder::new().max_rect(list_rect), |ui| {
-                crate::widgets::scroll_kit::apply_style(ui);
-                let mut area = egui::ScrollArea::vertical()
-                    .id_salt("countdown_list")
-                    .auto_shrink([false, false])
-                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden);
-                if let Some(y) = self.scroll_override.take() {
-                    area = area.vertical_scroll_offset(y);
-                }
-                let out = area.show(ui, |ui| {
+            crate::widgets::list_scroll::show(
+                ui,
+                list_rect,
+                "countdown_list",
+                "LAYOUT_COUNTDOWN_LIST",
+                &mut self.list_scroll,
+                |ui| {
                     let mut stack = crate::widgets::box_stack::BoxStack::new(ui);
                     let pulse = crate::widgets::motion::list_pulse(state, "countdown");
+                    let pulse_base = crate::theme::layout_f64("list_pulse_base");
+                    let pulse_span = crate::theme::layout_f64("list_pulse_span");
                     let last = targets.len().saturating_sub(1);
                     for (i, (name, at)) in targets.iter().enumerate() {
                         let rect = stack.next(ui, row_h);
                         ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
                             if i == last && pulse < 1.0 {
-                                ui.set_opacity(0.55 + 0.45 * pulse);
+                                ui.set_opacity(pulse_base + pulse_span * pulse);
                             }
                             draw_target_row(ui, rect, state, bus, name, *at, now, &ink);
                         });
                     }
-                });
-                self.scroll_override = draw_list_scroll(
-                    ui,
-                    &out,
-                    list_rect,
-                    &mut self.scroll_last_offset,
-                    &mut self.scroll_blink_until,
-                );
-            });
+                },
+            );
         }
 
         // E15 页脚盒
@@ -382,7 +377,7 @@ fn draw_festivals(
             ui.ctx(),
             egui::Id::unique(("festival_hover", i)),
             resp.hovered() || is_sel,
-            140.0,
+            crate::theme::motion_ms("card_hover_ms"),
         );
         let accent = crate::theme::accent_color();
         ui.painter().text(
@@ -454,7 +449,9 @@ fn hero_name_line_h(ui: &egui::Ui) -> f32 {
 fn hero_height(ui: &egui::Ui) -> f32 {
     let remain_font = crate::theme::font_regular(crate::theme::font_size("title"));
     let value_font = crate::theme::font_semibold(crate::theme::font_size("title"));
+    let digit_font = digits::digit_font(crate::theme::font_size("title"));
     let date_font = crate::theme::font_regular(crate::theme::font_size("meta"));
+    let date_digit_font = digits::digit_font(crate::theme::font_size("meta"));
     let name_h = hero_name_line_h(ui);
     let line3 = crate::widgets::text_metrics::height(ui.ctx(), &remain_font, InkKind::Cjk)
         .max(crate::widgets::text_metrics::height(
@@ -464,11 +461,15 @@ fn hero_height(ui: &egui::Ui) -> f32 {
         ))
         .max(crate::widgets::text_metrics::height(
             ui.ctx(),
-            &value_font,
+            &digit_font,
             InkKind::Digits,
         ));
-    let date_h = crate::widgets::text_metrics::height(ui.ctx(), &date_font, InkKind::Cjk);
-    10.0 + name_h + 10.0 + line3 + 10.0 + date_h + 10.0
+    let date_h = crate::widgets::text_metrics::height(ui.ctx(), &date_font, InkKind::Cjk).max(
+        crate::widgets::text_metrics::height(ui.ctx(), &date_digit_font, InkKind::Digits),
+    );
+    let pad_y = crate::theme::layout_f32("hero_pad_y");
+    let line_gap = crate::theme::layout_f32("hero_line_gap");
+    2.0 * pad_y + name_h + line_gap + line3 + line_gap + date_h
 }
 
 /// hero 卡：四行——下一个节日/春节、还剩 + 剩余（32px 右对齐）、到期日
@@ -482,11 +483,22 @@ fn draw_hero(
 ) -> bool {
     let label_font = crate::theme::font_medium(crate::theme::font_size("meta"));
     let name_font = crate::theme::font_semibold(crate::theme::font_size("meta"));
-    let date_font = crate::theme::font_regular(crate::theme::font_size("meta"));
+    let date_prefix_font = crate::theme::font_regular(crate::theme::font_size("meta"));
+    let date_digit_font = digits::digit_font(crate::theme::font_size("meta"));
+    let pad_x = crate::theme::layout_f32("hero_pad_x");
+    let pad_y = crate::theme::layout_f32("hero_pad_y");
+    let line_gap = crate::theme::layout_f32("hero_line_gap");
+    let text_gap = crate::theme::spacing_f32("sm");
     let label_ink = text_ink::measure(ui, "下一个节日", &label_font, InkKind::Cjk);
     let name_ink = text_ink::measure(ui, name, &name_font, InkKind::Cjk);
-    let date_text = format!("到期日：{}", at.format("%Y-%m-%d %H:%M"));
-    let date_ink = text_ink::measure(ui, &date_text, &date_font, InkKind::Cjk);
+    let date_prefix = "到期日：";
+    let date_value = at.format("%Y-%m-%d %H:%M").to_string();
+    let date_prefix_w = ui
+        .painter()
+        .layout_no_wrap(date_prefix.to_string(), date_prefix_font.clone(), ink.meta)
+        .rect
+        .width();
+    let date_value_w = digits::text_width(ui.painter(), &date_value, &date_digit_font);
 
     let (value_text, ended) = format_remaining(at, now);
     let (day_text, time_text) = if ended {
@@ -497,47 +509,23 @@ fn draw_hero(
             .map(|(d, t)| (d, t.trim()))
             .unwrap_or((value_text.as_str(), ""))
     };
-    let mut remain_font = crate::theme::font_regular(crate::theme::font_size("title"));
-    let mut value_font = crate::theme::font_semibold(crate::theme::font_size("title"));
-    let mut remain_ink = text_ink::measure(ui, "还剩", &remain_font, InkKind::Cjk);
-    let mut tian_ink = text_ink::measure(ui, "天", &value_font, InkKind::Cjk);
-    let mut remain_w = ui
+    let remain_font = crate::theme::font_regular(crate::theme::font_size("title"));
+    let value_font = crate::theme::font_semibold(crate::theme::font_size("title"));
+    let digit_font = digits::digit_font(crate::theme::font_size("title"));
+    let remain_w = ui
         .painter()
         .layout_no_wrap("还剩".to_string(), remain_font.clone(), ink.strong)
         .rect
         .width();
     // 固定留 3 位：天数槽宽按 000 算死，2 位时左侧空 1 槽，秒数变化不抖
-    let mut day_template_w = digits::text_width(ui.painter(), "000", &value_font);
-    let mut day_actual_w = digits::text_width(ui.painter(), day_text, &value_font);
-    let mut time_w = digits::text_width(ui.painter(), "00:00:00", &value_font);
-    let mut tian_w = ui
+    let day_template_w = digits::text_width(ui.painter(), "000", &digit_font);
+    let day_actual_w = digits::text_width(ui.painter(), day_text, &digit_font);
+    let time_w = digits::text_width(ui.painter(), "00:00:00", &digit_font);
+    let tian_w = ui
         .painter()
         .layout_no_wrap("天".to_string(), value_font.clone(), ink.strong)
         .rect
         .width();
-    let mut value_w = day_template_w + 5.0 + tian_w + 5.0 + time_w;
-    let avail = (rect.width() - 20.0).max(1.0);
-    if remain_w + 6.0 + value_w > avail {
-        let scale = avail / (remain_w + 6.0 + value_w);
-        remain_font = crate::theme::font_regular(crate::theme::font_size("title") * scale);
-        value_font = crate::theme::font_semibold(crate::theme::font_size("title") * scale);
-        remain_ink = text_ink::measure(ui, "还剩", &remain_font, InkKind::Cjk);
-        tian_ink = text_ink::measure(ui, "天", &value_font, InkKind::Cjk);
-        remain_w = ui
-            .painter()
-            .layout_no_wrap("还剩".to_string(), remain_font.clone(), ink.strong)
-            .rect
-            .width();
-        day_template_w = digits::text_width(ui.painter(), "000", &value_font);
-        day_actual_w = digits::text_width(ui.painter(), day_text, &value_font);
-        time_w = digits::text_width(ui.painter(), "00:00:00", &value_font);
-        tian_w = ui
-            .painter()
-            .layout_no_wrap("天".to_string(), value_font.clone(), ink.strong)
-            .rect
-            .width();
-        value_w = day_template_w + 5.0 + tian_w + 5.0 + time_w;
-    }
 
     let painter = ui.painter().with_clip_rect(rect);
     painter.rect_filled(
@@ -548,13 +536,16 @@ fn draw_hero(
     painter.rect_stroke(
         rect,
         egui::epaint::CornerRadius::same(crate::theme::radius_px("md") as u8),
-        egui::Stroke::new(1.2, crate::theme::accent_color()),
+        egui::Stroke::new(
+            crate::theme::layout_f64("hero_border"),
+            crate::theme::accent_color(),
+        ),
         egui::StrokeKind::Inside,
     );
 
     // 第一行：固定行高，两个字号共用同一条基线
     let line_h = hero_name_line_h(ui);
-    let top = rect.top() + 10.0;
+    let top = rect.top() + pad_y;
     let line_bottom = top + line_h;
     let name_y = name_ink.top_for_bottom(line_bottom);
     let label_y = label_ink.top_for_bottom(line_bottom);
@@ -570,7 +561,7 @@ fn draw_hero(
         "下一个节日",
         &label_font,
         InkKind::Cjk,
-        egui::pos2(rect.left() + 10.0, label_y),
+        egui::pos2(rect.left() + pad_x, label_y),
         egui::Align2::LEFT_TOP,
     );
     crate::layout_probe::text(
@@ -579,113 +570,135 @@ fn draw_hero(
         name,
         &name_font,
         InkKind::Cjk,
-        egui::pos2(rect.left() + 10.0 + label_w + 8.0, name_y),
+        egui::pos2(rect.left() + pad_x + label_w + text_gap, name_y),
         egui::Align2::LEFT_TOP,
     );
     painter.text(
-        egui::pos2(rect.left() + 10.0, label_y),
+        egui::pos2(rect.left() + pad_x, label_y),
         egui::Align2::LEFT_TOP,
         "下一个节日",
         label_font,
         crate::theme::accent_color(),
     );
     painter.text(
-        egui::pos2(rect.left() + 10.0 + label_w + 8.0, name_y),
+        egui::pos2(rect.left() + pad_x + label_w + text_gap, name_y),
         egui::Align2::LEFT_TOP,
         name,
         name_font,
         ink.strong,
     );
 
-    // 第二行：还剩（28 常规 + accent） + 剩余（28 粗体 + strong），共用数值行盒底
-    let third_top = top + line_h + 10.0;
-    let line3 = crate::widgets::text_metrics::height(
-        ui.ctx(),
-        &crate::theme::font_regular(crate::theme::font_size("title")),
-        InkKind::Cjk,
-    )
-    .max(crate::widgets::text_metrics::height(
-        ui.ctx(),
-        &crate::theme::font_semibold(crate::theme::font_size("title")),
-        InkKind::Cjk,
-    ))
-    .max(crate::widgets::text_metrics::height(
-        ui.ctx(),
-        &crate::theme::font_semibold(crate::theme::font_size("title")),
-        InkKind::Digits,
-    ));
-    let line3_bottom = third_top + line3;
-    let right = rect.right() - 10.0;
-    let value_left = right - value_w;
-    painter.text(
+    // 第二行：四个独立盒：还剩 / 天数 / 天 / 时间，盒中心对同一水平中线
+    let third_top = top + line_h + line_gap;
+    let remain_h = crate::widgets::text_metrics::height(ui.ctx(), &remain_font, InkKind::Cjk);
+    let tian_h = crate::widgets::text_metrics::height(ui.ctx(), &value_font, InkKind::Cjk);
+    let time_h = crate::widgets::text_metrics::height(ui.ctx(), &digit_font, InkKind::Digits);
+    let line3 = remain_h.max(tian_h).max(time_h);
+    let center_y = third_top + line3 / 2.0;
+    let right = rect.right() - pad_x;
+    let time_box = egui::Rect::from_min_size(
+        egui::pos2(right - time_w, center_y - time_h / 2.0),
+        egui::vec2(time_w, time_h),
+    );
+    let gap = 5.0;
+    let tian_box = egui::Rect::from_min_size(
+        egui::pos2(time_box.left() - gap - tian_w, center_y - tian_h / 2.0),
+        egui::vec2(tian_w, tian_h),
+    );
+    let day_box = egui::Rect::from_min_size(
         egui::pos2(
-            value_left - 6.0 - remain_w,
-            remain_ink.top_for_bottom(line3_bottom),
+            tian_box.left() - gap - day_template_w,
+            center_y - time_h / 2.0,
         ),
-        egui::Align2::LEFT_TOP,
-        "还剩",
-        remain_font,
-        crate::theme::accent_color(),
+        egui::vec2(day_template_w, time_h),
+    );
+    let remain_box = egui::Rect::from_min_size(
+        egui::pos2(day_box.left() - 6.0 - remain_w, center_y - remain_h / 2.0),
+        egui::vec2(remain_w, remain_h),
     );
     if ended {
-        let ended_ink = text_ink::measure(ui, &value_text, &value_font, InkKind::Cjk);
         let text_w = ui
             .painter()
             .layout_no_wrap(value_text.clone(), value_font.clone(), ink.danger)
             .rect
             .width();
+        let y = text_ink::top_for_center(ui, &value_text, &value_font, InkKind::Cjk, center_y);
         painter.text(
-            egui::pos2(right - text_w, ended_ink.top_for_bottom(line3_bottom)),
+            egui::pos2(right - text_w, y),
             egui::Align2::LEFT_TOP,
             &value_text,
             value_font,
             ink.danger,
         );
     } else {
-        // 天数在 3 位模板区内右对齐；数字与天 5px；天与时间 5px
-        let start = right - value_w;
-        let day_x = start + day_template_w - day_actual_w;
+        let remain_y = text_ink::top_for_center(ui, "还剩", &remain_font, InkKind::Cjk, center_y);
+        painter.text(
+            egui::pos2(remain_box.left(), remain_y),
+            egui::Align2::LEFT_TOP,
+            "还剩",
+            remain_font,
+            crate::theme::accent_color(),
+        );
         digits::draw_bottom(
             &painter,
-            line3_bottom,
-            day_x + day_actual_w / 2.0,
+            day_box.bottom(),
+            day_box.right() - day_actual_w / 2.0,
             day_text,
-            &value_font,
+            &digit_font,
             ink.strong,
         );
-        let tian_x = start + day_template_w + 5.0;
+        let tian_y = text_ink::top_for_center(ui, "天", &value_font, InkKind::Cjk, center_y);
         painter.text(
-            egui::pos2(tian_x, tian_ink.top_for_bottom(line3_bottom)),
+            egui::pos2(tian_box.left(), tian_y),
             egui::Align2::LEFT_TOP,
             "天",
             value_font.clone(),
             ink.strong,
         );
-        let time_x = tian_x + tian_w + 5.0;
         digits::draw_bottom(
             &painter,
-            line3_bottom,
-            time_x + time_w / 2.0,
+            time_box.bottom(),
+            time_box.center().x,
             time_text,
-            &value_font,
+            &digit_font,
             ink.strong,
         );
     }
 
-    // 第三行：到期日（盒底对齐）
-    let date_top = third_top + line3 + 10.0;
-    let date_h = crate::widgets::text_metrics::height(ui.ctx(), &date_font, InkKind::Cjk);
-    let date_bottom = date_top + date_h;
+    // 第三行：到期日；前缀中文与数字各自字墨中线对同一行中心
+    let date_top = third_top + line3 + line_gap;
+    let date_h =
+        crate::widgets::text_metrics::height(ui.ctx(), &date_prefix_font, InkKind::Cjk).max(
+            crate::widgets::text_metrics::height(ui.ctx(), &date_digit_font, InkKind::Digits),
+        );
+    let date_center = date_top + date_h / 2.0;
     painter.text(
-        egui::pos2(rect.left() + 10.0, date_ink.top_for_bottom(date_bottom)),
+        egui::pos2(
+            rect.left() + pad_x,
+            text_ink::top_for_center(
+                ui,
+                date_prefix,
+                &date_prefix_font,
+                InkKind::Cjk,
+                date_center,
+            ),
+        ),
         egui::Align2::LEFT_TOP,
-        &date_text,
-        date_font,
+        date_prefix,
+        date_prefix_font,
+        ink.meta,
+    );
+    digits::draw_center(
+        &painter,
+        date_center,
+        rect.left() + pad_x + date_prefix_w + date_value_w / 2.0,
+        &date_value,
+        &date_digit_font,
         ink.meta,
     );
 
     // 中国结：第一行右对齐；点击恢复默认春节
-    let icon_center = egui::pos2(rect.right() - 10.0 - 8.0, top + line_h / 2.0);
+    let icon_center = egui::pos2(rect.right() - pad_x - text_gap, top + line_h / 2.0);
     let icon_resp = ui.interact(
         egui::Rect::from_center_size(icon_center, egui::vec2(24.0, 24.0)),
         egui::Id::unique("countdown_hero_reset"),
@@ -721,15 +734,23 @@ fn draw_target_row(
     ink: &crate::theme::Ink,
 ) {
     let name_font = crate::theme::font_medium(crate::theme::font_size("body"));
-    let date_font = crate::theme::font_regular(crate::theme::font_size("meta"));
+    let date_font = digits::digit_font(crate::theme::font_size("meta"));
     let name_ink = text_ink::measure(ui, name, &name_font, InkKind::Cjk);
     let date_text = at.format("%Y-%m-%d %H:%M").to_string();
-    let date_ink = text_ink::measure(ui, &date_text, &date_font, InkKind::Cjk);
+    let date_w = digits::text_width(ui.painter(), &date_text, &date_font);
     let name_h = crate::widgets::text_metrics::height(ui.ctx(), &name_font, InkKind::Cjk);
-    let date_h = crate::widgets::text_metrics::height(ui.ctx(), &date_font, InkKind::Cjk);
-    let time_font = digits::digit_font(crate::theme::font_size("body"));
+    let time_font = digits::digit_font(crate::theme::font_size("section"));
     let time_h = crate::widgets::text_metrics::height(ui.ctx(), &time_font, InkKind::Digits);
-    let line2_h = date_h.max(time_h);
+    let tian_font = crate::theme::font_semibold(crate::theme::font_size("section"));
+    let tian_h = crate::widgets::text_metrics::height(ui.ctx(), &tian_font, InkKind::Cjk);
+    let pad_x = crate::theme::layout_f32("card_pad_x");
+    let pad_y = crate::theme::layout_f32("card_pad_y");
+    let icon_size = crate::theme::layout_f32("card_icon_size");
+    let focus_size = crate::theme::layout_f32("card_focus_size");
+    let focus_radius = crate::theme::layout_f32("card_focus_radius");
+    let focus_stroke = crate::theme::layout_f64("card_focus_stroke");
+    let border = crate::theme::layout_f64("card_border");
+    let trash_gap = crate::theme::layout_f32("card_trash_gap");
     let resp = ui.interact(
         rect,
         egui::Id::unique(("countdown_row", name)),
@@ -754,7 +775,7 @@ fn draw_target_row(
         rect,
         egui::epaint::CornerRadius::same(crate::theme::radius_px("md") as u8),
         egui::Stroke::new(
-            1.0,
+            border,
             crate::widgets::motion::lerp_color(
                 crate::theme::border_color(),
                 crate::theme::border_strong_color(),
@@ -764,8 +785,8 @@ fn draw_target_row(
         egui::StrokeKind::Inside,
     );
     let name_box = egui::Rect::from_min_size(
-        egui::pos2(rect.left() + 14.0, rect.top() + 10.0),
-        egui::vec2(rect.width() - 28.0, name_h),
+        egui::pos2(rect.left() + pad_x, rect.top() + pad_y),
+        egui::vec2(rect.width() - 2.0 * pad_x, name_h),
     );
     crate::layout_probe::rect(ui, "cd.row", rect);
     crate::layout_probe::text(
@@ -784,34 +805,46 @@ fn draw_target_row(
         name_font,
         ink.body,
     );
-    let line2_top = name_box.bottom() + 5.0;
-    let line2_bottom = line2_top + line2_h;
-    crate::layout_probe::text(
-        ui,
-        "cd.row_date",
+    let value_center = rect.center().y;
+    let date_bottom = rect.bottom() - pad_y;
+    digits::draw_bottom(
+        ui.painter(),
+        date_bottom,
+        rect.left() + pad_x + date_w / 2.0,
         &date_text,
         &date_font,
-        InkKind::Cjk,
-        egui::pos2(rect.left() + 14.0, date_ink.top_for_bottom(line2_bottom)),
-        egui::Align2::LEFT_TOP,
-    );
-    ui.painter().text(
-        egui::pos2(rect.left() + 14.0, date_ink.top_for_bottom(line2_bottom)),
-        egui::Align2::LEFT_TOP,
-        &date_text,
-        date_font,
         ink.meta,
     );
+    if crate::layout_probe::layout_on() {
+        let y = text_ink::measure(ui, &date_text, &date_font, InkKind::Digits)
+            .top_for_bottom(date_bottom);
+        crate::layout_probe::ink(
+            ui,
+            "cd.row_date_ink",
+            &date_text,
+            &date_font,
+            egui::pos2(rect.left() + pad_x, y),
+            egui::Align2::LEFT_TOP,
+        );
+    }
     let (text, ended) = format_remaining(at, now);
-    let value_right = rect.right() - 36.0;
+    let value_right = rect.right() - pad_x - icon_size - trash_gap;
     if ended {
-        let w = digits::text_width(ui.painter(), &text, &time_font);
-        digits::draw_bottom(
-            ui.painter(),
-            line2_bottom,
-            value_right - w / 2.0,
+        let ended_w = ui
+            .painter()
+            .layout_no_wrap(text.clone(), tian_font.clone(), ink.danger)
+            .rect
+            .width();
+        let ended_box = egui::Rect::from_min_size(
+            egui::pos2(value_right - ended_w, value_center - tian_h / 2.0),
+            egui::vec2(ended_w, tian_h),
+        );
+        let y = text_ink::top_for_center(ui, &text, &tian_font, InkKind::Cjk, ended_box.center().y);
+        ui.painter().text(
+            egui::pos2(ended_box.left(), y),
+            egui::Align2::LEFT_TOP,
             &text,
-            &time_font,
+            tian_font.clone(),
             ink.danger,
         );
     } else {
@@ -819,62 +852,109 @@ fn draw_target_row(
             .split_once('天')
             .map(|(d, t)| (d, t.trim()))
             .unwrap_or((text.as_str(), ""));
-        let gap = 3.0;
+        let gap = crate::theme::layout_f32("countdown_unit_gap");
         let day_template_w = digits::text_width(ui.painter(), "000", &time_font);
         let day_actual_w = digits::text_width(ui.painter(), day_text, &time_font);
         let time_w = digits::text_width(ui.painter(), "00:00:00", &time_font);
-        let tian_font = crate::theme::font_semibold(crate::theme::font_size("body"));
         let tian_w = ui
             .painter()
             .layout_no_wrap("天".to_string(), tian_font.clone(), ink.muted)
             .rect
             .width();
-        let tian_ink = text_ink::measure(ui, "天", &tian_font, InkKind::Cjk);
-        let value_w = day_template_w + gap + tian_w + gap + time_w;
-        let start = value_right - value_w;
-        let day_x = start + day_template_w - day_actual_w;
+        let time_box = egui::Rect::from_min_size(
+            egui::pos2(value_right - time_w, value_center - time_h / 2.0),
+            egui::vec2(time_w, time_h),
+        );
+        let tian_box = egui::Rect::from_min_size(
+            egui::pos2(time_box.left() - gap - tian_w, value_center - tian_h / 2.0),
+            egui::vec2(tian_w, tian_h),
+        );
+        let day_box = egui::Rect::from_min_size(
+            egui::pos2(
+                tian_box.left() - gap - day_template_w,
+                value_center - time_h / 2.0,
+            ),
+            egui::vec2(day_template_w, time_h),
+        );
         digits::draw_bottom(
             ui.painter(),
-            line2_bottom,
-            day_x + day_actual_w / 2.0,
+            day_box.bottom(),
+            day_box.right() - day_actual_w / 2.0,
             day_text,
             &time_font,
             ink.muted,
         );
-        let tian_x = start + day_template_w + gap;
+        if crate::layout_probe::layout_on() {
+            let y = text_ink::measure(ui, day_text, &time_font, InkKind::Digits)
+                .top_for_bottom(day_box.bottom());
+            crate::layout_probe::ink(
+                ui,
+                "cd.row_day_ink",
+                day_text,
+                &time_font,
+                egui::pos2(day_box.right() - day_actual_w, y),
+                egui::Align2::LEFT_TOP,
+            );
+        }
+        let tian_y =
+            text_ink::top_for_center(ui, "天", &tian_font, InkKind::Cjk, tian_box.center().y);
         ui.painter().text(
-            egui::pos2(tian_x, tian_ink.top_for_bottom(line2_bottom)),
+            egui::pos2(tian_box.left(), tian_y),
             egui::Align2::LEFT_TOP,
             "天",
             tian_font,
             ink.muted,
         );
-        let time_x = tian_x + tian_w + gap;
+        if crate::layout_probe::layout_on() {
+            crate::layout_probe::ink(
+                ui,
+                "cd.row_tian_ink",
+                "天",
+                &crate::theme::font_semibold(crate::theme::font_size("body")),
+                egui::pos2(tian_box.left(), tian_y),
+                egui::Align2::LEFT_TOP,
+            );
+        }
         digits::draw_bottom(
             ui.painter(),
-            line2_bottom,
-            time_x + time_w / 2.0,
+            time_box.bottom(),
+            time_box.center().x,
             time_text,
             &time_font,
             ink.muted,
         );
+        if crate::layout_probe::layout_on() {
+            let y = text_ink::measure(ui, time_text, &time_font, InkKind::Digits)
+                .top_for_bottom(time_box.bottom());
+            crate::layout_probe::ink(
+                ui,
+                "cd.row_time_ink",
+                time_text,
+                &time_font,
+                egui::pos2(time_box.left(), y),
+                egui::Align2::LEFT_TOP,
+            );
+        }
     }
     // 删除：Trash + 两步武装（Check），常显但低对比，悬停转 danger
     let del_key = format!("cd:{name}");
     let armed = matches!(&state.armed_delete, Some((k, _)) if *k == del_key);
-    let del_rect = egui::Rect::from_center_size(
-        egui::pos2(rect.right() - 18.0, rect.center().y),
-        egui::vec2(24.0, 24.0),
+    let del_box = egui::Rect::from_min_size(
+        egui::pos2(
+            rect.right() - pad_x - icon_size,
+            rect.center().y - icon_size / 2.0,
+        ),
+        egui::vec2(icon_size, icon_size),
     );
     let del = ui.interact(
-        del_rect,
+        del_box,
         egui::Id::unique(("cd_del", name)),
         egui::Sense::click(),
     );
     icons::draw(
         ui.painter(),
-        del_rect.center(),
-        14.0,
+        del_box.center(),
+        icon_size,
         if armed {
             icons::Icon::Check
         } else {
@@ -887,10 +967,12 @@ fn draw_target_row(
         },
     );
     if del.has_focus() {
+        let focus_box =
+            egui::Rect::from_center_size(del_box.center(), egui::vec2(focus_size, focus_size));
         ui.painter().rect_stroke(
-            del_rect,
-            egui::epaint::CornerRadius::same(6),
-            egui::Stroke::new(1.5, ink.knob),
+            focus_box,
+            egui::epaint::CornerRadius::same(focus_radius as u8),
+            egui::Stroke::new(focus_stroke, ink.knob),
             egui::StrokeKind::Inside,
         );
     }
@@ -911,146 +993,16 @@ fn draw_target_row(
     }
 }
 
-/// 目标卡固定盒高：10 + 名称盒 + 5 + 第二行（日期/剩余取高）+ 10。
-/// 绘制与“不足一张卡就整块隐藏”的兜底共用，避免两处各算一遍。
+/// 目标卡高度：上下 padding + 第一列（名称 + 行距 + 日期）；时间/垃圾桶列不参与
 fn target_row_height(ui: &egui::Ui) -> f32 {
     let name_font = crate::theme::font_medium(crate::theme::font_size("body"));
-    let date_font = crate::theme::font_regular(crate::theme::font_size("meta"));
-    let time_font = digits::digit_font(crate::theme::font_size("body"));
+    let date_font = digits::digit_font(crate::theme::font_size("meta"));
     let name_h = crate::widgets::text_metrics::height(ui.ctx(), &name_font, InkKind::Cjk);
-    let date_h = crate::widgets::text_metrics::height(ui.ctx(), &date_font, InkKind::Cjk);
-    let time_h = crate::widgets::text_metrics::height(ui.ctx(), &time_font, InkKind::Digits);
-    10.0 + name_h + 5.0 + date_h.max(time_h) + 10.0
-}
-
-/// 列表滚动视觉件：上下 16px 渐隐、上下金色三角（滚动期呼吸、静止常亮）、
-/// 卡片右缘 +8px 的 4px 金色浮钮（右边距 8/4/8 居中）；返回拖拽浮钮时下一帧要写回的滚动偏移。
-fn draw_list_scroll(
-    ui: &egui::Ui,
-    out: &egui::scroll_area::ScrollAreaOutput<()>,
-    list_rect: egui::Rect,
-    scroll_last_offset: &mut Option<f32>,
-    scroll_blink_until: &mut f64,
-) -> Option<f32> {
-    let viewport = out.inner_rect;
-    if viewport.height() <= 0.5 {
-        return None;
-    }
-    let offset = out.state.clamped_offset().y;
-    let max_offset = (out.content_size.y - viewport.height()).max(0.0);
-    let scrollable = max_offset > 1.0;
-    if std::env::var("ACCELWORLD_LAYOUT_PROBE").is_ok() {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static FRAME: AtomicU64 = AtomicU64::new(0);
-        if FRAME.fetch_add(1, Ordering::Relaxed).is_multiple_of(30) {
-            eprintln!(
-                "[LAYOUT_COUNTDOWN_LIST] viewport=({:.1},{:.1},{:.1},{:.1}) content=({:.1},{:.1}) scrollable={} offset={:.1} max={:.1}",
-                viewport.left(),
-                viewport.top(),
-                viewport.width(),
-                viewport.height(),
-                out.content_size.x,
-                out.content_size.y,
-                scrollable,
-                offset,
-                max_offset
-            );
-        }
-    }
-    let at_top = offset <= 0.5;
-    let at_bottom = offset >= max_offset - 0.5;
-
-    // 滚动判定：偏移变化即刷新呼吸截止；停手后回到常亮
-    let now = ui.input(|i| i.time);
-    let blink_s = crate::theme::motion_ms("scroll_hint_blink_ms") as f64 / 1000.0;
-    if let Some(prev) = *scroll_last_offset
-        && (offset - prev).abs() > 0.1
-    {
-        *scroll_blink_until = now + blink_s;
-    }
-    *scroll_last_offset = Some(offset);
-    let reduce = crate::theme::reduce_motion(ui.ctx());
-    let blinking = scrollable && !reduce && now < *scroll_blink_until;
-    if blinking {
-        ui.ctx().request_repaint();
-    }
-    let base_alpha = crate::theme::layout_f32("scroll_hint_alpha_x100") / 100.0;
-    // 1s 呼吸：1 → 0.35 → 1；静止时保持常亮，不闪
-    let hint_alpha = if blinking {
-        let phase = (now * std::f64::consts::TAU).cos() as f32;
-        base_alpha * (0.675 + 0.325 * phase)
-    } else {
-        base_alpha
-    };
-
-    let fade = crate::theme::layout_f32("scroll_fade");
-    let top_t = fade_t(ui, "countdown_fade_top", scrollable && !at_top);
-    let bottom_t = fade_t(ui, "countdown_fade_bottom", scrollable && !at_bottom);
-    crate::widgets::scroll_kit::paint_fade(ui, viewport, fade * top_t, fade * bottom_t);
-    crate::widgets::scroll_kit::paint_hints(
-        ui,
-        viewport,
-        scrollable && !at_top,
-        scrollable && !at_bottom,
-        hint_alpha,
-    );
-
-    // 金色浮钮：卡片右缘 +8px（右边距 8/4/8 居中），4px 宽；拖拽命中域左右各放宽 6px
-    if !scrollable {
-        return None;
-    }
-    let gap = crate::theme::layout_f32("scroll_bar_gap");
-    let width = crate::theme::layout_f32("scroll_bar_w");
-    let track_h = viewport.height();
-    let thumb_h = (track_h * (viewport.height() / out.content_size.y.max(1.0)))
-        .max(crate::theme::layout_f32("scroll_handle_min"))
-        .min(track_h);
-    let travel = (track_h - thumb_h).max(0.0);
-    let range = max_offset.max(1.0);
-    let ratio = (offset / range).clamp(0.0, 1.0);
-    let x = list_rect.right() + gap;
-    let hit = egui::Rect::from_min_max(
-        egui::pos2(x - 6.0, viewport.top()),
-        egui::pos2(x + width + 6.0, viewport.bottom()),
-    );
-    let resp = ui
-        .interact(
-            hit,
-            egui::Id::unique("countdown_scroll_thumb"),
-            egui::Sense::drag(),
-        )
-        .on_hover_cursor(egui::CursorIcon::PointingHand);
-    let mut thumb_ratio = ratio;
-    let mut next_override = None;
-    if resp.dragged() && travel > 0.0 {
-        let dy = ui.input(|i| i.pointer.delta().y);
-        let new_offset = (offset + dy / travel * max_offset).clamp(0.0, max_offset);
-        thumb_ratio = (new_offset / range).clamp(0.0, 1.0);
-        next_override = Some(new_offset);
-    }
-    let y = viewport.top() + thumb_ratio * travel;
-    let radius = ((width / 2.0).max(1.0)) as u8;
-    ui.painter().rect_filled(
-        egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(width, thumb_h)),
-        egui::epaint::CornerRadius::same(radius),
-        crate::theme::accent_color(),
-    );
-    next_override
-}
-
-/// 渐隐显隐动画：出现走 scroll_fade_ms，收走边走 scroll_edge_ms；减少动效直接落位。
-fn fade_t(ui: &egui::Ui, id: &str, visible: bool) -> f32 {
-    let target = if visible { 1.0 } else { 0.0 };
-    if crate::theme::reduce_motion(ui.ctx()) {
-        return target;
-    }
-    let ms = if visible {
-        crate::theme::motion_ms("scroll_fade_ms")
-    } else {
-        crate::theme::motion_ms("scroll_edge_ms")
-    };
-    ui.ctx()
-        .animate_value_with_time(egui::Id::unique(id), target, ms / 1000.0)
+    let date_h = crate::widgets::text_metrics::height(ui.ctx(), &date_font, InkKind::Digits);
+    2.0 * crate::theme::layout_f32("card_pad_y")
+        + name_h
+        + crate::theme::layout_f32("card_line_gap")
+        + date_h
 }
 
 /// 页脚高度：字段实际高度 + footer_gap + 按钮实际高度 + footer_bottom

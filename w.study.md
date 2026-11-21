@@ -14,7 +14,7 @@ cargo workspace 双 crate 桌面应用：基于加速倍率的时间膨胀时钟
 [引擎]   accel-core::time_dilation 按倍率换算：加速时钟 1 秒 = 现实 1/rate 秒
 [展示]   accel-app（egui + eframe/glow）：单环双针星盘主仪恒驻 + 悬浮仪器坞 + 抽屉页（页头/滚动/页脚）+ 设置抽屉（单强调色）
 [周边]   农历干支节气 / 世界时钟 / 倒计时 / 天气（Open-Meteo）/ 闹钟 / 托盘 / 全局热键
-[持久化] 用户配置 config/user_config.json（exe 同目录，FIX007.15 基准；倍率/主题/城市/时区/倒计时/窗口几何/闹钟）
+[持久化] 用户配置 config/user_config.json（exe 同目录，FIX007.15 基准；倍率/主题/城市/世界 hero/倒计时/窗口几何/闹钟）；世界城市缓存 world_cache.sqlite（同目录）
 ```
 
 - **时间膨胀**：`TimeDilation { rate, day_hours }`，标准一天总秒数 × rate = 加速一天总秒数，整数运算拆分时分秒；`now` 全参数化（无内部时钟，测试可注入）
@@ -133,7 +133,7 @@ pub async fn fetch_by_city(&self, city: &str, force: bool) -> Result<WeatherData
 - `pages/mod.rs`：总装配——页面区/底部坞显式分带；舞台与抽屉按宽度定宽并排（<760 全宽抽屉；≥760 舞台 ≥420、抽屉 280..400）；抽屉弹簧开合；ESC 关设置/回时钟
 - `clock.rs`：单环 12h 四针表盘（60 刻度 + 12/3/6/9 内侧；时/分/秒走现实，黄针走加速 12h；AM/PM 胶囊当前半日文字金色、填充仍橙红/淡蓝；金圈=加速日进度色谱，2–10×scale，跨日 1s 平滑）；盘内以 320 为母版严格等比（scale = dial_d / 320；指针固定 60/90/110/100；刻度/字号/线宽/光晕/尾长全乘 scale；胶囊固定）；盘下 readout 铺满页面宽、竖线居中；整数 1–365 倍率条 + 量化行（365 档显示 1 年）；页头盒子模型（高 560 分行数 / 宽 560 分文本；日期盒 15.5 与农历块 26.0/11.5 按盒中线对齐）；星盘盒边长 = min(剩余高, 页宽 − 2×82)，下限 120、无上限；82 = 内容边→药丸 10 + 药丸 52 + 药丸→盘盒 20；可见盘 = 盒 − 20
 - 抽屉页统一盒模型（PL021/PL023）：页头 20 + 标题盒 27.5 + 10 = 57.5；内容上边距 10；区域用 `BoxStack` 固定盒高 + 10 间距；盒高与基线按 `ui.json font_profile` 查表：`trim_grids = size / grid − cjk_ink_grids`，`h_cjk = size − step × trim_grids`（`step = grid − top_ratio − bottom_ratio`），`top = top_ratio × trim_grids`，`bottom = bottom_ratio × trim_grids`，`B = 盒底 − bottom`，`P = B − dy`；默认盒底对盒底，混排不拿基线做外部对齐；盒子位置不由字墨反推；滚动行用 `next` 登记整行高度
-- 字体组合参数表（PL023.36–44）：`font_profile` 按“中文字体 + 数字字体”索引，每档存 `size / cjk_ink_grids / latin_ink_grids / trim_grids_latin / dy_cjk_grids / dy_latin_grids / dy_digit_grids / trim_grids`；三个写死常量 `grid 0.8 / top_ratio 0.2 / bottom_ratio 0.1`，三个实测值 `m_cjk`（中文上缘 + 下探）、`m_latin`（`0–9 a–z A–Z` 剔除 `g/j/p/q/y` 后的最大墨迹）、`dy`（中文基线下最大下探）；`trim_grids = size / grid − cjk_ink_grids`，`trim_grids_latin = cjk_ink_grids − latin_ink_grids`，`h_cjk = size − (grid − top_ratio − bottom_ratio) × trim_grids`，`step = grid − top_ratio − bottom_ratio`，`h_latin = ceil((h_cjk − trim_grids_latin × grid) / step) × step`；三类 `dy = 0`，基线 = 盒底 − bottom；读数 10 档独立建档（hero 56/48/44/40/36，real 36/32/28/28/24），横向按表内档位跌落（≤基准、≥24，取最大可装档），不连续缩放；换字体只换表，不改公式；仅换数字字形且 `latin_ink` 仍由 MiSans 决定、最大 advance 差 <0.5% 时可保留原表（PL026 Barlow Medium 已登记）；测量用 `ACCELWORLD_TEXT_MATRIX=1`，`t96` 为上缘、`a96` 为下探
+- 字体组合参数表（PL023.36–44）：`font_profile` 按“中文字体 + 数字字体”索引，每档存 `size / cjk_ink_grids / latin_ink_grids / digit_ink_grids / dy_cjk_grids / dy_latin_grids / dy_digit_grids / trim_grids`；三个写死常量 `grid 0.8 / top_ratio 0.2 / bottom_ratio 0.1`，四个实测值 `m_cjk`（中文上缘 + 下探）、`m_latin`（`a–z A–Z` 剔除 `g/j/p/q/y` 后的最大墨迹）、`m_digit`（`0–9` 最大墨迹）、`dy`（中文基线下最大下探）；`trim_grids = size / grid − cjk_ink_grids`，`h_cjk = size − (grid − top_ratio − bottom_ratio) × trim_grids`，`step = grid − top_ratio − bottom_ratio`；英文/数字按各自最大墨迹 `m_latin / m_digit` 走 `raw = m + 0.2 + 0.1`、`h = ceil(raw / step) × step`，`pad = h − raw` 按 0.1 单位分配（0.1 补下、0.2/0.4 均分、0.3 上 0.1 下 0.2），`bottom_latin / bottom_digit` 随之下移；英文/数字/混排 `dy = 0`，中文保留 `dy_cjk`，基线 = 盒底 − bottom；读数 10 档独立建档（hero 56/48/44/40/36，real 36/32/28/28/24），横向按表内档位跌落（≤基准、≥24，取最大可装档），不连续缩放；换字体只换表，不改公式；仅换数字字形且 `latin_ink` 仍由 MiSans 决定、`digit_ink` 仍按同一 `0–9` 口径、最大 advance 差 <0.5% 时可保留原表（PL026 Barlow Medium 已登记）；测量用 `ACCELWORLD_TEXT_MATRIX=1`，`t96` 为上缘、`a96` 为下探
 - 倒计时：E2 hero 与 E7 近期节日固定为页头，不参与滚动；只有 E9 目标卡列表独立滚动（卡片右缘 +8px 的 4px 金色浮钮 + 上下 16px 渐隐 + 滚动时呼吸的小三角），列表视口高不足一张卡 56.0 时整块隐藏；E9 目标卡 56.0（10 + 15.5 + 5 + 15.5 + 10）；E15 页脚 101.5（标签 11.5 + 5 + 输入 19.5 + 10 + 按钮 35.5 + 20）；空态两行盒 15.5 + 5 + 11.5 整体居中，最小 54.0；目标时刻支持 `YYYY` / `YYYY-M` / `YYYY-M-D` / `M-D` / 完整时分，回车与添加等价
 - `theme.rs`：ui.json `colors.*` 深色实心单板（仅深色定案）→ egui Visuals + 语义色（strong/body/muted/meta/success 五层，对比度全矩阵 ≥4.5:1 实测）/input_border/border_strong/字号/间距/圆角访问器；MiSans Regular/Medium/Semibold 三档字重 + Barlow Medium 数字族（内嵌）+ Tabler 图标族；选中底 `selection` #2A3552 + `ink.strong` 文字
 - `widgets/`：digits（等宽数字位）/ icons（Tabler 子集字体绘制）/ icon_button / dock（悬浮带标签）/ page_header / field（show_fixed）/ switch / empty / rate_strip / slider / chip / toast / select / primary_button / spinner / motion / box_stack / scroll_kit（列表浮杆/渐隐/三角）
@@ -147,6 +147,14 @@ pub async fn fetch_by_city(&self, city: &str, force: bool) -> Result<WeatherData
 - 时间戳 `ChronoLocal`，带本地偏移（如 `+08:00`）；不用 tracing-appender 的 UTC daily
 - panic hook → `.logs/crash-YYYY-MM-DD.log`（含本地时间 + location + backtrace）
 - 级别读 base.json `log_level` token；后台任务 spawn 统一 join 监控（panic 记 error 不静默）
+
+### 3.9 世界时钟 — hero + 滚动组件 + 城市搜索缓存
+
+- 布局同倒计时：固定 hero（城市名 + 大号 24h 时间；日期周几 + `+8 时区` 偏移）→ `widgets/list_scroll` 可滚动列表 → 固定底部搜索；`footer_bottom = 20`。
+- 滚动套件与倒计时共用：`ListScrollState` + `show(id_salt, probe_tag, …)`；渐隐/金色三角/4px 浮钮/拖拽统一。
+- hero 城市不进入列表；hover 行出现 pin（删除左侧），点击替换 hero；hero 不能直接删，先 pin 新城市。
+- 50 城本地索引（中文/英文/拼音/首字母，不跑 geocoding）；任意城市走 Open-Meteo geocoding，多结果用户选择；结果/自定义城市落 `world_cache.sqlite`（rusqlite bundled），下次命中缓存。
+- `SetBaseTimezone` / `base_timezone` / `last_timezone` / `default_timezone` 已退役； persisted `world_hero_city`（城市名）。
 
 ## 4. 代码风格观察
 

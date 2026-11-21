@@ -852,19 +852,70 @@ impl WeatherClient {
         url: &str,
         via: &str,
     ) -> Result<WeatherData, FetchErr> {
+        let body = Self::fetch_json_once(client, url, "天气", via).await?;
+        parse_open_meteo(&body).map_err(FetchErr::from)
+    }
+
+    /// 通用 JSON GET（直连/代理与天气共用；PL028 geocoding 复用）
+    async fn fetch_json_once(
+        client: &reqwest::Client,
+        url: &str,
+        label: &str,
+        via: &str,
+    ) -> Result<Value, FetchErr> {
         let resp = client.get(url).send().await.map_err(|e| {
-            tracing::warn!("天气{via}请求失败: {}", error_chain(&e));
+            tracing::warn!("{label}{via}请求失败: {}", error_chain(&e));
             FetchErr::Network(e.to_string())
         })?;
         let resp = resp.error_for_status().map_err(|e| {
-            tracing::warn!("天气{via}响应状态异常: {}", error_chain(&e));
+            tracing::warn!("{label}{via}响应状态异常: {}", error_chain(&e));
             FetchErr::Network(e.to_string())
         })?;
-        let body: Value = resp.json().await.map_err(|e| {
-            tracing::warn!("天气{via}响应解析失败: {}", error_chain(&e));
+        resp.json().await.map_err(|e| {
+            tracing::warn!("{label}{via}响应解析失败: {}", error_chain(&e));
             FetchErr::Parse(e.to_string())
-        })?;
-        parse_open_meteo(&body).map_err(FetchErr::from)
+        })
+    }
+
+    /// 外部 JSON GET（PL028 geocoding）：复用天气直连/代理双通道与代理策略
+    pub async fn fetch_json_url(&self, url: &str) -> Result<Value, FetchErr> {
+        self.refresh_proxy();
+        let proxy_client = self.proxy.lock().expect("天气代理锁中毒").client.clone();
+        let direct_spec = if proxy_client.is_some() {
+            RetrySpec {
+                retries: 1,
+                delay: self.retry_spec.delay,
+            }
+        } else {
+            self.retry_spec
+        };
+        let direct_err = match retry(direct_spec, || {
+            Self::fetch_json_once(&self.direct, url, "城市", "直连")
+        })
+        .await
+        {
+            Ok(v) => return Ok(v),
+            Err(e) => e,
+        };
+        let Some(proxy) = proxy_client.as_ref() else {
+            return Err(direct_err);
+        };
+        if !matches!(direct_err, FetchErr::Network(_)) {
+            return Err(direct_err);
+        }
+        tracing::warn!("城市搜索直连失败，改走系统代理重试: {direct_err}");
+        match retry(self.retry_spec, || {
+            Self::fetch_json_once(proxy, url, "城市", "系统代理")
+        })
+        .await
+        {
+            Ok(v) => Ok(v),
+            Err(FetchErr::Network(proxy_err)) => {
+                tracing::warn!("城市搜索直连与系统代理均失败: 直连={direct_err}; 代理={proxy_err}");
+                Err(FetchErr::Network("直连与系统代理均失败".to_string()))
+            }
+            Err(e) => Err(e),
+        }
     }
 }
 

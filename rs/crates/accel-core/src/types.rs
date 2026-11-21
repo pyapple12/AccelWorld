@@ -5,6 +5,7 @@ use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 
 use crate::alarm::{Alarm, AlarmDraft};
+use crate::world_search::WorldCityEntry;
 
 /// 时间信息快照（Python TimeInfo dataclass 镜像）
 /// 时间域字段随 PL011.10 落地；chinese_date/lunar_info 农历域字段随 PL012 扩入
@@ -120,10 +121,10 @@ pub struct UiPreferences {
     pub theme: String,
     /// 上次选择的城市（缺省回退 default_city）
     pub last_city: String,
-    /// 上次选择的时区（缺省回退 default_timezone）
-    pub last_timezone: String,
     /// 上次设置的倒计时目标文本（未设置为空串）
     pub countdown_target: String,
+    /// 世界时钟 hero 城市（PL028）
+    pub world_hero_city: String,
     /// 天气是否允许使用代理（PL027；false=仅直连）
     pub weather_use_proxy: bool,
     /// 天气代理服务器（PL027；空=跟随系统代理）
@@ -177,6 +178,14 @@ pub enum FrontendCommand {
     },
     /// 切换天气城市（A005 #4：单城市模型下的城市选择——持久化 last_city）
     SetWeatherCity(String),
+    /// 世界时钟城市搜索（PL028；本地命中/缓存/geocoding 异步回推）
+    SearchWorldCity(String),
+    /// 添加世界城市（内置 50 城）
+    AddWorldCity(String),
+    /// 添加 geocoding 自定义城市（PL028；落 SQLite custom_city + world_pins）
+    AddWorldCityEntry(WorldCityEntry),
+    /// 设置世界时钟 hero 城市（PL028）
+    SetWorldHero(String),
     AddAlarm(AlarmDraft),
     RemoveAlarm(String),
     ReplaceAlarm(Alarm),
@@ -186,9 +195,7 @@ pub enum FrontendCommand {
         at: DateTime<Local>,
     },
     RemoveCountdownTarget(String),
-    AddWorldCity(String),
     RemoveWorldCity(String),
-    SetBaseTimezone(String),
     SetTheme(ThemePref),
     /// 天气代理设置（PL027）：enabled=false 仅直连；server 空=系统探测
     SetWeatherProxy {
@@ -216,6 +223,12 @@ pub enum BackendEvent {
     WeatherFailed {
         city: String,
         reason: String,
+    },
+    /// 世界时钟搜索候选（PL028；本地/缓存/geocoding 结果）
+    WorldCityCandidates {
+        query: String,
+        results: Vec<WorldCityEntry>,
+        error: Option<String>,
     },
     AlarmTriggered(Alarm),
     /// 列表变更后回推全量（UI 无状态重建）

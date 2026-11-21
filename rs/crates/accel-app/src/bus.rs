@@ -3,6 +3,7 @@
 
 use accel_core::interface::AppInterface;
 use accel_core::types::{BackendEvent, TimeInfo, UiPreferences, WeatherData};
+use accel_core::world_search::WorldCityEntry;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -78,8 +79,15 @@ pub struct UiState {
     pub list_pulse: Option<(String, std::time::Instant)>,
     /// 世界时钟常驻城市（ConfigSaved 后由 drain 重拉）
     pub world_pins: Vec<String>,
-    /// 选中基准时区（IANA）
-    pub base_timezone: Option<String>,
+    /// 世界时钟 hero 城市（PL028）
+    pub world_hero_city: String,
+    /// 世界时钟自定义城市（SQLite custom_city 快照）
+    pub world_custom_cities: HashMap<String, WorldCityEntry>,
+    /// 世界城市搜索输入/结果（PL028）
+    pub world_search_query: String,
+    pub world_search_results: Vec<WorldCityEntry>,
+    pub world_search_error: Option<String>,
+    pub world_searching: bool,
     /// 闹钟自定义添加草稿
     pub alarm_draft_label: String,
     pub alarm_draft_time: String,
@@ -125,8 +133,13 @@ impl Default for UiState {
             prefs: UiPreferences {
                 theme: base.base_str("default_theme").to_string(),
                 last_city: base.base_str("default_city").to_string(),
-                last_timezone: base.base_str("default_timezone").to_string(),
                 countdown_target: String::new(),
+                world_hero_city: base
+                    .base_str_list("default_world_pins")
+                    .first()
+                    .copied()
+                    .unwrap_or("")
+                    .to_string(),
                 weather_use_proxy: base.base_i64("default_weather_use_proxy") != 0,
                 weather_proxy: base.base_str("default_weather_proxy").to_string(),
             },
@@ -140,7 +153,12 @@ impl Default for UiState {
             focus_countdown_name: false,
             list_pulse: None,
             world_pins: Vec::new(),
-            base_timezone: None,
+            world_hero_city: String::new(),
+            world_custom_cities: HashMap::new(),
+            world_search_query: String::new(),
+            world_search_results: Vec::new(),
+            world_search_error: None,
+            world_searching: false,
             alarm_draft_label: String::new(),
             alarm_draft_time: String::new(),
             save_ack: false,
@@ -163,6 +181,17 @@ impl UiState {
                 // 清数据致断网刷新一次即整页空白；错误角标与数据并存
                 self.weather_errors.insert(city.clone(), reason);
                 self.weather_loading.remove(&city);
+            }
+            BackendEvent::WorldCityCandidates {
+                query,
+                results,
+                error,
+            } => {
+                if query == self.world_search_query {
+                    self.world_search_results = results;
+                    self.world_search_error = error;
+                    self.world_searching = false;
+                }
             }
             BackendEvent::AlarmTriggered(alarm) => {
                 tracing::info!("闹钟触发: {}（{}）", alarm.label, alarm.time);
@@ -449,7 +478,13 @@ impl Bus {
             state.countdown_targets = self.iface.get_countdown_targets();
             state.world_pins = self.iface.get_world_pins();
             let prefs = self.iface.get_ui_preferences();
-            state.base_timezone = Some(prefs.last_timezone);
+            state.world_hero_city = prefs.world_hero_city.clone();
+            state.world_custom_cities = self
+                .iface
+                .get_world_custom_cities()
+                .into_iter()
+                .map(|e| (e.name.clone(), e))
+                .collect();
             // A005 #4：单城模型下 last_city 由 SetWeatherCity 持久化，重拉同步
             state.prefs.last_city = prefs.last_city;
         }

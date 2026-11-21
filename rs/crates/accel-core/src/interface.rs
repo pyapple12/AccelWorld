@@ -16,6 +16,7 @@ use crate::static_config::Static;
 use crate::time_dilation::TimeDilation;
 use crate::types::{BackendEvent, FrontendCommand, TimeInfo, UiPreferences, WeatherData};
 use crate::weather::{FetchErr, WeatherClient};
+use crate::world_search::{self, WorldCityEntry, WorldSearch};
 
 // 信号总线通道容量（命令/事件各一路，背压上限）
 const BUS_CAPACITY: usize = 64;
@@ -29,6 +30,8 @@ pub struct AppInterface {
     config_path: PathBuf,
     /// 天气在飞任务表（FIX006.9：同城去抖 + Quit 统一 abort；键 = 城市名）
     weather_inflight: Arc<Mutex<WeatherInflight>>,
+    /// 世界城市搜索缓存（PL028；SQLite + 50 城本地索引）
+    world_search: Arc<WorldSearch>,
 }
 
 impl Default for AppInterface {
@@ -76,6 +79,7 @@ impl AppInterface {
             alarms: Arc::new(Mutex::new(manager)),
             config_path,
             weather_inflight: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            world_search: Arc::new(WorldSearch::new()),
         }
     }
 
@@ -225,8 +229,8 @@ impl AppInterface {
         UiPreferences {
             theme,
             last_city: config.last_city,
-            last_timezone: config.last_timezone,
             countdown_target: config.countdown_target,
+            world_hero_city: config.world_hero_city,
             weather_use_proxy: config.weather_use_proxy,
             weather_proxy: config.weather_proxy,
         }
@@ -290,35 +294,106 @@ impl AppInterface {
             return true;
         }
         config.world_pins.push(name.to_string());
+        if config.world_hero_city.is_empty() {
+            config.world_hero_city = name.to_string();
+        }
         settings::save(&self.config_path, &config)
     }
 
     /// 移除常驻城市（入参域与添加侧统一为城市名；不存在记日志返 false——
     /// 移除类无变更可报，与「已存在 = true」互补）
+    /// PL028：hero 不能直接移除（必须先 pin 新 hero）
     pub fn remove_world_city(&self, name: &str) -> bool {
         let mut config = settings::load(&self.config_path);
+        if config.world_hero_city == name {
+            tracing::warn!("hero 城市不能直接移除，先 pin 新城市: {name}");
+            return false;
+        }
         let before = config.world_pins.len();
         config.world_pins.retain(|p| p != name);
         if config.world_pins.len() == before {
             tracing::info!("常驻城市不存在，移除无变更: {name}");
             return false;
         }
+        self.world_search.remove_custom(name);
         settings::save(&self.config_path, &config)
     }
 
-    /// 设置基准时区（合法 IANA 且在世界时钟城市表内才收；roundtrip 持久化）
-    /// FIX011.13：同值幂等短路（「已存在 = true 不重复落盘」，对照 set_weather_city）
-    pub fn set_base_timezone(&self, tz: &str) -> bool {
-        if world_cities::all().iter().all(|c| c.tz != tz) {
-            tracing::warn!("未知时区标识，拒绝设置: {tz}");
+    /// 设置世界时钟 hero（PL028）：必须是已 pin 的城市；同值幂等
+    pub fn set_world_hero(&self, name: &str) -> bool {
+        let mut config = settings::load(&self.config_path);
+        if !config.world_pins.iter().any(|p| p == name) {
+            tracing::warn!("hero 城市不在世界时钟列表，拒绝设置: {name}");
+            return false;
+        }
+        if self.world_search.entry_by_name(name).is_none() {
+            tracing::warn!("hero 城市无法解析时区，拒绝设置: {name}");
+            return false;
+        }
+        if config.world_hero_city == name {
+            return true;
+        }
+        config.world_hero_city = name.to_string();
+        settings::save(&self.config_path, &config)
+    }
+
+    /// 添加 geocoding 自定义城市（PL028）：落 custom_city + world_pins
+    pub fn add_world_city_entry(&self, entry: &WorldCityEntry) -> bool {
+        if entry.name.is_empty() || !world_search::valid_timezone(&entry.tz) {
+            tracing::warn!("自定义城市名/时区非法，拒绝添加: {}", entry.name);
+            return false;
+        }
+        if !self.world_search.add_custom(entry) {
             return false;
         }
         let mut config = settings::load(&self.config_path);
-        if config.last_timezone == tz {
-            return true;
+        if !config.world_pins.iter().any(|p| p == &entry.name) {
+            config.world_pins.push(entry.name.clone());
         }
-        config.last_timezone = tz.to_string();
+        if config.world_hero_city.is_empty() {
+            config.world_hero_city = entry.name.clone();
+        }
         settings::save(&self.config_path, &config)
+    }
+
+    /// 世界时钟城市条目（内置 50 城 + 用户自定义；按当前 pins 顺序）
+    pub fn get_world_city_entries(&self) -> Vec<WorldCityEntry> {
+        self.get_world_pins()
+            .iter()
+            .filter_map(|name| self.world_search.entry_by_name(name))
+            .collect()
+    }
+
+    /// 用户自定义城市快照（PL028；bus 启动/ConfigSaved 后同步）
+    pub fn get_world_custom_cities(&self) -> Vec<WorldCityEntry> {
+        self.world_search.custom_cities()
+    }
+
+    /// 世界时钟搜索：本地 50 城 → SQLite 缓存 → Open-Meteo geocoding
+    pub async fn search_world_cities(&self, query: &str) -> Result<Vec<WorldCityEntry>, String> {
+        let query = query.trim();
+        if query.is_empty() {
+            return Ok(Vec::new());
+        }
+        let local = self.world_search.local_matches(query);
+        if !local.is_empty() {
+            return Ok(local);
+        }
+        if let Some(cached) = self.world_search.cached(query) {
+            return Ok(cached);
+        }
+        let url = world_search::geocode_url(query);
+        let value = self
+            .weather
+            .fetch_json_url(&url)
+            .await
+            .map_err(|e| e.to_string())?;
+        let results = world_search::parse_geocode(&value);
+        if results.is_empty() {
+            return Err("未找到匹配城市".to_string());
+        }
+        self.world_search.store_candidates(query, &results);
+        Ok(results)
     }
 
     // ===== 窗口几何域（UIR.7：位置/大小记忆）=====
@@ -649,6 +724,24 @@ impl AppInterface {
                                     tracing::warn!("未知天气城市，拒绝设置: {city}");
                                 }
                             }
+                            Some(FrontendCommand::SearchWorldCity(query)) => {
+                                let itf = Arc::clone(&self);
+                                let evt = evt_tx.clone();
+                                tokio::spawn(async move {
+                                    let outcome = itf.search_world_cities(&query).await;
+                                    let (results, error) = match outcome {
+                                        Ok(v) => (v, None),
+                                        Err(e) => (Vec::new(), Some(e)),
+                                    };
+                                    let _ = evt
+                                        .send(BackendEvent::WorldCityCandidates {
+                                            query,
+                                            results,
+                                            error,
+                                        })
+                                        .await;
+                                });
+                            }
                             Some(FrontendCommand::AddWorldCity(name)) => {
                                 // FIX011.01（A011 #1）：拒绝不发 ConfigSaved（同 AddAlarm
                                 // 口径）——前置校验后 false 只剩 IO 失败一种语义
@@ -659,6 +752,28 @@ impl AppInterface {
                                     tracing::warn!("未知城市，拒绝添加常驻: {name}");
                                 }
                             }
+                            Some(FrontendCommand::AddWorldCityEntry(entry)) => {
+                                // PL028：geocoding 选中后落 custom_city + pins；非法不发 ConfigSaved
+                                if !entry.name.trim().is_empty()
+                                    && world_search::valid_timezone(&entry.tz)
+                                {
+                                    let ok = self.add_world_city_entry(&entry);
+                                    let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                                } else {
+                                    tracing::warn!("自定义城市名/时区非法，拒绝添加");
+                                }
+                            }
+                            Some(FrontendCommand::SetWorldHero(name)) => {
+                                // PL028：hero 必须是已 pin 且可解析的城市；拒绝不发 ConfigSaved
+                                if self.get_world_pins().iter().any(|p| p == &name)
+                                    && self.world_search.entry_by_name(&name).is_some()
+                                {
+                                    let ok = self.set_world_hero(&name);
+                                    let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
+                                } else {
+                                    tracing::warn!("hero 城市不在列表或无法解析，拒绝设置: {name}");
+                                }
+                            }
                             Some(FrontendCommand::RemoveWorldCity(name)) => {
                                 // FIX011.01：不存在拒绝不发（同上口径）
                                 if self.get_world_pins().iter().any(|p| p == &name) {
@@ -666,15 +781,6 @@ impl AppInterface {
                                     let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
                                 } else {
                                     tracing::warn!("常驻城市不存在，移除无变更: {name}");
-                                }
-                            }
-                            Some(FrontendCommand::SetBaseTimezone(tz)) => {
-                                // FIX011.01：未知时区拒绝不发（同上口径）
-                                if world_cities::all().iter().any(|c| c.tz == tz) {
-                                    let ok = self.set_base_timezone(&tz);
-                                    let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
-                                } else {
-                                    tracing::warn!("未知时区标识，拒绝设置: {tz}");
                                 }
                             }
                             Some(FrontendCommand::SetWindowGeometry { geometry }) => {
@@ -1301,9 +1407,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn bus_world_search_local_hits_builtin() {
+        // PL028：本地 50 城搜索不触发 geocoding（无需网络桩）
+        let sandbox = SandboxDir::new("worldsearch");
+        let path = sandbox.path();
+        let itf = Arc::new(iface(&path));
+        let (cmd_tx, mut evt_rx) = AppInterface::spawn(Arc::clone(&itf));
+        cmd_tx
+            .send(FrontendCommand::SearchWorldCity("beijing".into()))
+            .await
+            .expect("发送失败");
+        let mut hit = false;
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            match evt_rx.recv().await {
+                Some(BackendEvent::WorldCityCandidates { results, .. }) => {
+                    hit = results.iter().any(|e| e.name == "北京");
+                    break;
+                }
+                Some(_) => {}
+                None => break,
+            }
+        }
+        assert!(hit, "beijing 应在本地命中北京");
+        cmd_tx.send(FrontendCommand::Quit).await.expect("退出失败");
+    }
+
+    #[tokio::test]
+    async fn world_hero_and_custom_city_flow() {
+        // PL028：自定义城市落库/入 pins；hero 不可直接删，pin 新 hero 后可删
+        let sandbox = SandboxDir::new("worldhero");
+        let path = sandbox.path();
+        let itf = Arc::new(iface(&path));
+        let entry = WorldCityEntry {
+            name: "测试城PL028".to_string(),
+            name_en: "Test City".to_string(),
+            pinyin: "ceshicheng".to_string(),
+            initials: "csc".to_string(),
+            country: "测试国".to_string(),
+            admin1: String::new(),
+            tz: "Asia/Shanghai".to_string(),
+            lat: 31.0,
+            lon: 121.0,
+        };
+        assert!(itf.add_world_city_entry(&entry));
+        assert!(itf.get_world_pins().iter().any(|p| p == "测试城PL028"));
+        assert!(itf.set_world_hero("测试城PL028"));
+        assert_eq!(
+            settings::load(&path).world_hero_city,
+            "测试城PL028",
+            "hero 应落盘"
+        );
+        assert!(!itf.remove_world_city("测试城PL028"), "hero 不能直接删除");
+        assert!(itf.set_world_hero("北京"), "pin 新 hero");
+        assert!(itf.remove_world_city("测试城PL028"), "换 hero 后可删");
+        assert!(
+            itf.get_world_custom_cities()
+                .iter()
+                .all(|e| e.name != "测试城PL028"),
+            "自定义城市记录应删除"
+        );
+    }
+
+    #[tokio::test]
     async fn bus_city_and_theme_commands() {
         // .10 验收 + FIX007.2 域验收：AddWorldCity 按城市名落盘（大阪独立于东京——
-        // 同 tz 多城共存，不再被表序首城吞并）+ 重复添加幂等 + SetBaseTimezone
+        // 同 tz 多城共存，不再被表序首城吞并）+ 重复添加幂等 + SetWorldHero
         // roundtrip + SetTheme 落盘
         let sandbox = SandboxDir::new("citycmd");
         let path = sandbox.path();
@@ -1314,7 +1483,7 @@ mod tests {
             .await
             .expect("发送失败");
         cmd_tx
-            .send(FrontendCommand::SetBaseTimezone("Asia/Tokyo".into()))
+            .send(FrontendCommand::SetWorldHero("大阪".into()))
             .await
             .expect("发送失败");
         cmd_tx
@@ -1338,7 +1507,7 @@ mod tests {
             config.world_pins.contains(&"东京".to_string()),
             "同 tz 的东京身份保留（默认常驻集不受大阪吞并）"
         );
-        assert_eq!(config.last_timezone, "Asia/Tokyo", "时区 roundtrip");
+        assert_eq!(config.world_hero_city, "大阪", "hero 城市 roundtrip");
         assert_eq!(config.theme, "dark", "主题落盘");
         // 重复添加幂等 true 且不重复落盘（FIX007.2：已存在分支补日志非静默）
         assert!(itf.add_world_city("大阪"), "重复添加应幂等 true");
@@ -1352,7 +1521,7 @@ mod tests {
         );
         // 非法值拒绝
         assert!(!itf.add_world_city("不存在城"));
-        assert!(!itf.set_base_timezone("Mars/Olympus"));
+        assert!(!itf.set_world_hero("Mars/Olympus"));
     }
 
     #[tokio::test]
@@ -1667,7 +1836,7 @@ mod tests {
         let rejections = [
             FrontendCommand::AddWorldCity("不存在城".into()),
             FrontendCommand::RemoveWorldCity("幽灵城".into()),
-            FrontendCommand::SetBaseTimezone("Not/AZone".into()),
+            FrontendCommand::SetWorldHero("不存在城".into()),
             FrontendCommand::SetWindowGeometry {
                 geometry: "bad".into(),
             },

@@ -12,15 +12,16 @@ serde_json = { workspace = true }
 tokio = { workspace = true }
 reqwest = { workspace = true }
 chrono = { workspace = true }
+chrono-tz = { workspace = true }
 lunar_rust = { workspace = true }
 rodio = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+rusqlite = { workspace = true }
+pinyin = { workspace = true }
 
 [dev-dependencies]
 httpmock = { workspace = true }
-# chrono-tz 仅 cfg(test)（world_cities 表 IANA 解析校验），不进主依赖树（FIX010.6）
-chrono-tz = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 # 天气系统代理探测（读 HKCU Internet Settings；非 Windows 平台走环境变量）

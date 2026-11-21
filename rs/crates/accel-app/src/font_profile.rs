@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 use accel_core::static_config::Static;
 use serde_json::Value;
 
-/// 单档参数：盒高、上下空白、三类字的 dy、拉丁盒高（全部由表算出）
+/// 单档参数：盒高、上下空白、三类字的 dy、拉丁/数字盒高与下空白
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SizeProfile {
     pub size: f32,
@@ -17,6 +17,9 @@ pub struct SizeProfile {
     pub bottom: f32,
     pub h: f32,
     pub h_latin: f32,
+    pub bottom_latin: f32,
+    pub h_digit: f32,
+    pub bottom_digit: f32,
 }
 
 /// 当前激活的字体组合
@@ -92,10 +95,11 @@ fn build() -> Profile {
     for value in sizes.values() {
         let size = read_i64(value, "size") as f32;
         let trim = read_i64(value, "trim_grids") as f32;
-        let trim_latin = read_i64(value, "trim_grids_latin") as f32;
         let h = size - step * trim;
-        let h_latin_raw = h - trim_latin * grid;
-        let h_latin = (h_latin_raw / step).ceil() * step;
+        let m_latin = read_i64(value, "latin_ink_grids") as f32 * grid;
+        let m_digit = read_i64(value, "digit_ink_grids") as f32 * grid;
+        let (h_latin, bottom_latin) = box_from_ink(m_latin, step);
+        let (h_digit, bottom_digit) = box_from_ink(m_digit, step);
         list.push(SizeProfile {
             size,
             dy_cjk: read_i64(value, "dy_cjk_grids") as f32 * grid,
@@ -105,10 +109,24 @@ fn build() -> Profile {
             bottom: bottom_ratio * trim,
             h,
             h_latin,
+            bottom_latin,
+            h_digit,
+            bottom_digit,
         });
     }
     list.sort_by(|a, b| a.size.total_cmp(&b.size));
     Profile { grid, sizes: list }
+}
+
+/// 英文/数字盒高：最大墨迹 + 上 0.2 + 下 0.1，按 0.5 步长向上取整；
+/// 取整余量按上 floor(pad/2)、下剩余分配（0.1 补下，0.2/0.4 均分，0.3 上 1 下 2）
+fn box_from_ink(m: f32, step: f32) -> (f32, f32) {
+    let raw = m + 0.2 + 0.1;
+    let h = (raw / step).ceil() * step;
+    let units = ((h - raw) / 0.1).round().max(0.0) as i32;
+    let top_units = units / 2;
+    let bottom_units = units - top_units;
+    (h, 0.1 + bottom_units as f32 * 0.1)
 }
 
 /// 单例入口：首次调用解析表，此后零开销
@@ -151,7 +169,7 @@ mod tests {
             (20.0, 15.5),
             (28.0, 22.0),
             (40.0, 31.0),
-            (72.0, 56.0),
+            (72.0, 55.0),
         ] {
             let p = get().for_size(size);
             assert!(
@@ -165,11 +183,11 @@ mod tests {
     #[test]
     fn hero_readout_heights_close() {
         for (size, want_h, want_latin) in [
-            (56.0, 54.5, 43.5),
-            (48.0, 46.5, 37.0),
-            (44.0, 43.0, 34.5),
+            (56.0, 54.5, 43.0),
+            (48.0, 46.5, 36.5),
+            (44.0, 43.0, 34.0),
             (40.0, 39.0, 31.0),
-            (36.0, 35.0, 28.0),
+            (36.0, 35.0, 27.5),
         ] {
             let p = get().for_size(size);
             assert_eq!(p.size, size);
@@ -189,7 +207,7 @@ mod tests {
     #[test]
     fn real_readout_heights_close() {
         for (size, want_h, want_latin) in [
-            (36.0, 35.0, 28.0),
+            (36.0, 35.0, 27.5),
             (32.0, 31.5, 24.5),
             (28.0, 27.5, 22.0),
             (24.0, 23.5, 19.0),
@@ -216,10 +234,12 @@ mod tests {
     }
 }
 
-// ===== src/font_profile.rs 说明区 =====// 输入：ui.json `font_profile`（active + profiles[combo]）
-// 输出：按字号查到的 SizeProfile（h/top/bottom/dy）与栅格单位
+// ===== src/font_profile.rs 说明区 =====
+// 输入：ui.json `font_profile`（active + profiles[combo]）
+// 输出：按字号查到 SizeProfile（CJK h/top/bottom；Latin h_latin/bottom_latin；Digit h_digit/bottom_digit；dy）
 // 逻辑步骤：读 active 组合 → grid/top_ratio/bottom_ratio → 遍历 sizes →
-//   dy = grids × grid；h = size − (grid − top_ratio − bottom_ratio) × trim_grids
-// 设计理由（PL023.37）：数值只进表；公式共用；换字体只换表
+//   CJK：h = size − (grid − top_ratio − bottom_ratio) × trim_grids；
+//   Latin/Digit：raw = m + 0.2 + 0.1，h = ceil(raw / step) × step，pad 按 0.1 单位分配
+// 设计理由（PL023.37 / 2026-11-21）：数值只进表；英文/数字共用公式，中文保持 trim 缩放与 dy
 // 异常处理：缺键/错型 panic（构建产物损坏级），不回退错表
 // 关联配置：ui.json font_profile；消费方：text_metrics / text_ink

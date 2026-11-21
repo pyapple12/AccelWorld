@@ -7,6 +7,19 @@
 
 ---
 
+## 版本 0.6.6.3 的 MileStone（PL028 世界时钟 hero、共享滚动与城市搜索缓存，2026-11-21 发布）
+
+1. 世界页改为固定 hero（城市名 + 大号 24h + 日期周几 + 时区偏移）+ 可滚动城市列表 + 固定底部搜索；内容底边 20px ✅
+2. 倒计时滚动套件抽为 `widgets/list_scroll.rs`，渐隐 / 金色三角 / 4px 浮钮 / 拖拽两页共用 ✅
+3. hover 城市行出现 pin（删除左侧），点击替换 hero；hero 不重复进列表，未 pin 新城市不可删 ✅
+4. 50 城本地中文 / 英文 / 拼音 / 首字母搜索，不触发 geocoding；任意城市走 Open-Meteo geocoding，多候选先选后加 ✅
+5. 搜索结果与自定义城市落 exe 同目录 `world_cache.sqlite`（rusqlite bundled），重启命中缓存 ✅
+6. 退役基准时区：`SetBaseTimezone` / `base_timezone` / `last_timezone` / `default_timezone` 删除，持久化改 `world_hero_city` ✅
+7. 95 app + 1 bin + 129 core 通过；clippy `-D warnings`；960×720 世界页截图 ✅
+8. 新增每档 `digit_ink_grids`；英文/数字共用最大墨迹盒高公式与 `pad` 白边分配，删除 `trim_grids_latin` 旧推导 ✅
+9. 倒计时卡片改三列（名称/日期、剩余、垃圾桶），卡高 50；Hero 剩余拆四盒，日期改固定槽宽 ✅
+10. 抽屉固定 350 宽（<760 仍全宽左扩）；日期 `-` 前后各 1px ✅
+
 ## 版本 0.6.6.2 的 MileStone（天气代理设置、冷启动缓存与本地时间日志，2026-11-21 发布）
 
 1. 设置 → 网络：使用代理服务器开关 + 代理地址；关=仅直连，开+空=系统探测，开+地址=指定代理 ✅

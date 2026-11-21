@@ -31,6 +31,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - **视觉走查门**：UI 观感改动经 `ACCELWORLD_UI_SHOT` 截图探针（真窗逐页 PNG）自检再进用户桌面走查——功能探针抓不住纯视觉缺陷（UIR 前的玻璃时代为 render_probe 离屏断言，管线已废）
 - **平台集成降级纪律**：托盘 / 全局热键 / 通知等系统能力构造失败一律降级日志不崩（行为无损），非 Windows 平台编译期桩化
 - **天气网络策略**：用户设置优先（设置 → 网络：代理开关 + 地址；关=仅直连，开+空=系统探测，开+地址=指定代理）；直连（显式 `no_proxy`）优先，直连网络失败且允许代理时改走代理；每次拉取前重读策略，开关/改地址无需重启；两通道都网络失败由 `interface` 排 `weather_fail_retry_delay_s`（默认 600s）自动重试。冷启动先读磁盘缓存上屏，首帧后才发起网络首拉（不得阻塞启动）。相关 token 全在 `base.json`（`weather_timeout_s` / `weather_connect_timeout_s` / `weather_retries` / `weather_fail_retry_delay_s` / `default_weather_use_proxy` / `default_weather_proxy`），不得在代码写死
+- **世界时钟**：单 hero（城市名 + 大号 24h + 日期周几 + 时区偏移）+ 下方滚动列表；hero 城市不在列表重复，hero 不能直接删，先 pin 新城市；50 城本地中文/英文/拼音/首字母索引，任意城市走 Open-Meteo geocoding，结果与自定义城市落 exe 同目录 `world_cache.sqlite`；`SetBaseTimezone`/`last_timezone`/`default_timezone` 已退役，不再新增“基准”状态
 - **视觉设计不得向测试环境妥协**：offscreen / 无头探针仅作功能与结构参考；视觉与材质的最终实测以用户桌面走查为准
 - 提交信息规范见下文「Commit 提交规范」节；功能开发先走 OpenSpec 提案流程
 - 工作流文档：`w.study.md` 项目分析 / `x.progress.md` 任务清单（PL011–PL018 + UIR/FIX，已完成在前、未完成在后）/ `y.problems.md` 已知问题 / `z.plan.md` 方案记录与审计附录（豁免定案清单 `A{NNN}` 递增）/ `m.milestone.md` 版本里程碑 / `t.hint.md` 经验复盘
@@ -63,17 +64,19 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - **三线关系**：`P_cjk + dy_cjk = P_latin + dy_latin = P_digit + dy_digit = O = B`。当前 `dy_latin = dy_digit = 0`，公式保留三项，未来表里填值即生效，不改代码。
 - **基线定位**：`B = 盒底 − 下空白`，`O = B`，`P = O − dy`；渲染用 `P` 定位 galley，`B` 只做对齐目标，不直接绘制。
 - **三个写死常量**：`grid = 0.8`、`top_ratio = 0.2`、`bottom_ratio = 0.1`；`step = grid − top_ratio − bottom_ratio`，不得再立第四个常量。
-- **三个实测值**（程序从字体逐档量出，属字体事实；量错一个，整表失效）：
+- **四个实测值**（程序从字体逐档量出，属字体事实；量错一个，整表失效）：
   - `m_cjk` 中文最大墨迹：全量程序汉字、regular、`alpha > 96`；口径 = 字符集墨迹上缘到基线的最大距离 + 基线下最大下探，即最大墨迹总高。
-  - `m_latin` 拉丁最大墨迹：`0–9 a–z A–Z` 整字剔除 `g/j/p/q/y`、regular、`alpha > 96`；口径 = 剔除后字符集的最大墨迹（上缘；下探为 0）。
+  - `m_latin` 英文最大墨迹：`a–z A–Z` 整字剔除 `g/j/p/q/y`、regular、`alpha > 96`；口径 = 剔除后字符集的最大墨迹（上缘；下探为 0）。
+  - `m_digit` 数字最大墨迹：`0–9`、regular 数字字体、`alpha > 96`；口径 = 0–9 最大墨迹（上缘；下探为 0）。
   - `dy` 中文下探：同一份中文 `alpha > 96` 数据的基线下最大下探。
-- **表内只存栅格数**：`cjk_ink_grids = m_cjk / grid`、`latin_ink_grids = m_latin / grid`、`dy_cjk_grids = dy / grid`。
-- **派生公式**：`trim_grids = size / grid − cjk_ink_grids`；`trim_grids_latin = cjk_ink_grids − latin_ink_grids`；`h_cjk = size − step × trim_grids`；`top = top_ratio × trim_grids`；`bottom = bottom_ratio × trim_grids`；`h_latin = ceil((h_cjk − trim_grids_latin × grid) / step) × step`。
+- **表内只存栅格数**：`cjk_ink_grids = m_cjk / grid`、`latin_ink_grids = m_latin / grid`、`digit_ink_grids = m_digit / grid`、`dy_cjk_grids = dy / grid`。
+- **派生公式**：中文 `trim_grids = size / grid − cjk_ink_grids`；`h_cjk = size − step × trim_grids`；`top = top_ratio × trim_grids`；`bottom = bottom_ratio × trim_grids`。英文/数字按各自最大墨迹：`raw = m + 0.2 + 0.1`；`h = ceil(raw / step) × step`；`pad = h − raw`；按 0.1px 单位 `u = round(pad / 0.1)`，`top_extra = floor(u / 2) × 0.1`，`bottom_extra = pad − top_extra`；`bottom_class = 0.1 + bottom_extra`；`dy_latin = dy_digit = 0`。
+- **白边分配**：英文/数字基础白边固定上 `0.2`、下 `0.1`；取整余量 `pad` 按 `0.1 → 下`、`0.2/0.4 → 上下均分`、`0.3 → 上 0.1 / 下 0.2` 分配。中文不使用这套固定白边，仍按 `trim_grids` 缩放，并保留 `dy_cjk`。
 - **三线**：`B = 盒底 − bottom`，`O = B`，`P = O − dy`；`dy = dy_cjk_grids × grid`；英文、数字、混排 `dy = 0`。
-- **测量口径**：全量程序字符（静态文案 + `ui.json` 去重汉字 + `a–z A–Z 0–9`）、regular、`alpha > 96` 实体；不用 ascender，不用 bbox，不用淡边；125% DPI 下 `grid = 0.8px`；最大墨迹取全字符集最大值，中位只作参照。
-- **新字体组合**：换字体 = 新增 profile 表，重新跑矩阵测 `m_cjk` / `m_latin` / `dy`，重算全部栅格；公式与三线关系不变。
-- **数字字形平替例外**：仅更换数字族字形、且 `latin_ink` 仍由 MiSans 决定、最大 advance 差 <0.5% 时，可保留原 profile 数值与 `dy`；须在 `z.plan` 登记只读测算（PL026 Barlow Medium）。
-- **经验**：英文墨迹上缘不是等比（12px 8.8、16px 12.0），必须每档实测；`m_cjk`、`m_latin` 必须整除 `grid`，出现小数说明测量口径有误。
+- **测量口径**：全量程序字符（静态文案 + `ui.json` 去重汉字 + `a–z A–Z 0–9`）、regular、`alpha > 96` 实体；不用 ascender，不用 bbox，不用淡边；125% DPI 下 `grid = 0.8px`；最大墨迹取全字符集最大值，中位只作参照；数字单独以 `0–9` 测量 `m_digit`，不并入 `m_latin`。
+- **新字体组合**：换字体 = 新增 profile 表，重新跑矩阵测 `m_cjk` / `m_latin` / `m_digit` / `dy`，重算全部栅格；公式与三线关系不变。
+- **数字字形平替例外**：仅更换数字族字形、`latin_ink` 仍由 MiSans 决定、`digit_ink` 仍按同一 `0–9` 口径、最大 advance 差 <0.5% 时，可保留原 profile 数值与 `dy`；须在 `z.plan` 登记只读测算（PL026 Barlow Medium）。
+- **经验**：英文墨迹上缘不是等比（12px 8.8、16px 12.0），必须每档实测；`m_cjk`、`m_latin`、`m_digit` 必须整除 `grid`，出现小数说明测量口径有误。
 
 ## 工程原则（设计哲学，所有项目通用）
 

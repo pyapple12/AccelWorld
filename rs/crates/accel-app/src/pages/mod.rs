@@ -47,14 +47,14 @@ impl Pages {
             drawer_settings: false,
             clock: ClockPage,
             countdown: CountdownPage::default(),
-            world: WorldPage,
+            world: WorldPage::default(),
             weather: WeatherPage,
             alarm: AlarmPage,
         }
     }
 
     /// 总装配（PL017）：非时钟页/设置占右侧抽屉（PageHeader + Scroll + Footer），
-    /// 星盘主仪恒驻中央 CentralPanel；<760 抽屉全宽（compact），开合只缩让不遮挡。
+    /// 星盘主仪恒驻中央 CentralPanel；抽屉固定 350 宽，<760 时全宽左扩，开合只缩让不遮挡。
     pub fn ui(&mut self, ui: &mut egui::Ui, state: &mut UiState, bus: &Bus) {
         self.current = state.current_page;
         // ESC：优先关设置，否则回时钟（页头关闭的键盘等价）
@@ -76,15 +76,14 @@ impl Pages {
             }
         }
 
-        // 自适应分栏（PL019）：页面区 = 窗口高 − 底部坞；宽度按断点显式分配，
-        // 主仪与抽屉并排（不再依赖嵌套 Panel 的宽度同步）
+        // 抽屉固定宽 350；窗口 <760 时全宽左扩，不再保留主仪缩让
         let page_h = ui.available_height().max(0.0);
         let page_w = ui.available_width();
         let compact = page_w < 760.0;
         let drawer_target_w = if compact {
             page_w
         } else {
-            crate::theme::drawer_width(page_w).min((page_w - 420.0).max(280.0))
+            crate::theme::drawer_width(page_w)
         };
 
         // 抽屉开合动效（PL021）：弹簧值 t 同时驱动抽屉宽度与舞台宽度——
@@ -237,17 +236,16 @@ pub struct CountdownPage {
     pub selected_festival: Option<(chrono::NaiveDate, String)>,
     /// 目标时刻输入错误标记（点添加失败后显示，输入变化清除）
     pub time_error: bool,
-    /// 列表金色浮钮拖拽时，下一帧要写回的滚动偏移（PL022）
-    pub scroll_override: Option<f32>,
-    /// 上一帧列表滚动偏移（判断是否在滚动；None = 还没采样过）
-    pub scroll_last_offset: Option<f32>,
-    /// 三角呼吸截止时刻（秒；滚动时向后刷新，停手后回到常亮）
-    pub scroll_blink_until: f64,
+    /// 列表滚动状态（PL028 公共组件）
+    pub list_scroll: crate::widgets::list_scroll::ListScrollState,
 }
 
 /// 世界时钟页（impl 在 pages/world.rs——抽屉页）
 #[derive(Default)]
-pub struct WorldPage;
+pub struct WorldPage {
+    /// 列表滚动状态（PL028 公共组件）
+    pub list_scroll: crate::widgets::list_scroll::ListScrollState,
+}
 
 /// 天气页（impl 在 pages/weather.rs——抽屉页）
 #[derive(Default)]
