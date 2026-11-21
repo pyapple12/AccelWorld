@@ -33,7 +33,7 @@ rs/                              # cargo workspace 根
     base.json                    # 应用参数 + version（版本单一来源）
     ui.json                      # 字体/布局 tokens/颜色
     holidays.json                # 法定节假日（历年导出）
-    world_cities.json            # 世界时钟城市表（名称/坐标/IANA 时区；天气候选另用 rs/data/cities.json）
+  assets/world_cache.sqlite      # 世界时钟城市主表（预置 SQLite，291 城；天气候选另用 rs/data/cities.json）
   crates/accel-core/             # 纯业务 crate（零 GUI 依赖，CI 机器强制）
     src/interface.rs             # AppInterface（七域契约）+ FrontendCommand/BackendEvent 总线 + spawn
     src/types.rs                 # 协议类型转出（TimeInfo/WeatherData/Alarm/DTO/ThemePref）
@@ -153,7 +153,7 @@ pub async fn fetch_by_city(&self, city: &str, force: bool) -> Result<WeatherData
 - 布局同倒计时：固定 hero（城市名 + 大号 24h 时间；日期周几 + `+8 时区` 偏移）→ `widgets/list_scroll` 可滚动列表 → 固定底部搜索；`footer_bottom = 20`。
 - 滚动套件与倒计时共用：`ListScrollState` + `show(id_salt, probe_tag, …)`；渐隐/金色三角/4px 浮钮/拖拽统一。
 - hero 城市不进入列表；hover 行出现 pin（删除左侧），点击替换 hero；hero 不能直接删，先 pin 新城市。
-- 50 城本地索引（中文/英文/拼音/首字母，不跑 geocoding）；任意城市走 Open-Meteo geocoding，多结果用户选择；结果/自定义城市落 `world_cache.sqlite`（rusqlite bundled），下次命中缓存。
+- 291 城 SQLite 主表（预置 db；12 中国 + 279 境外；中文/英文/拼音/首字母，不跑 geocoding）；国内表外城市走 Open-Meteo geocoding（英文名用拼音），境外只用本地表；多结果用户选择；结果/自定义城市落 `world_cache.sqlite`（rusqlite bundled），下次命中缓存；候选第一行 `中文名 + 10px + 英文名 + 右对齐 [昨天/今天/明天 + 5px + 当地时间]`，第一/第二行盒间距 10px；第二行 `大陆 · 国家 · admin1 · 时区 · N 万`，大陆由 `continents.json`（ISO2）映射。搜索仅保留 `PPL*` 居民点且人口 ≥5 万，机场/县级乡级驻地/小地方不出现。
 - `SetBaseTimezone` / `base_timezone` / `last_timezone` / `default_timezone` 已退役； persisted `world_hero_city`（城市名）。
 
 ## 4. 代码风格观察

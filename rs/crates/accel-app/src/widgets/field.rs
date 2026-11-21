@@ -29,12 +29,24 @@ pub fn show_fixed(
     text: &mut String,
     width: f32,
 ) -> Response {
+    show_fixed_with_label(ui, label, hint, text, width).0
+}
+
+/// 同 `show_fixed`，额外返回 label 文字盒（供弹层锚定）
+pub fn show_fixed_with_label(
+    ui: &mut egui::Ui,
+    label: &str,
+    hint: &str,
+    text: &mut String,
+    width: f32,
+) -> (Response, egui::Rect) {
     let ink = theme::ink();
     let label_font = theme::font_medium(theme::font_size("meta"));
     let input_font = theme::font_regular(theme::font_size("meta"));
     let (label_h, gap, input_h) = fixed_parts(ui);
     let total = label_h + gap + input_h;
     let (rect, _) = ui.allocate_exact_size(egui::vec2(width, total), Sense::hover());
+    let label_box = egui::Rect::from_min_size(rect.min, egui::vec2(width, label_h));
 
     let label_ink = super::text_ink::measure(ui, label, &label_font, super::text_ink::InkKind::Cjk);
     let label_y = label_ink.top_for_bottom(rect.top() + label_h);
@@ -86,11 +98,11 @@ pub fn show_fixed(
             egui::StrokeKind::Inside,
         );
     }
-    resp
+    (resp, label_box)
 }
 
 // ===== src/widgets/field.rs 说明区 =====
-// 输入：Ui + label/hint/文本/宽度；输出：输入框 Response
+// 输入：Ui + label/hint/文本/宽度；输出：输入框 Response（show_fixed_with_label 另返 label 盒）
 // 逻辑步骤：字段 = label 盒 12.5 + field_label_gap + 输入盒 20.5（文字盒 12.5 + 上下各 4）；
 //   show 先按该高度精确分配 rect，再在子 Ui 内放 label 与输入框
 // 设计理由（PL023）：label 盒底对齐；输入框是原生 TextEdit 的外盒，原生尺寸可以不变，

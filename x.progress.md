@@ -1,7 +1,7 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告 + Rust 重构总纲）
-> 当前版本：0.6.6.3（PL024 表盘等比 + 窗口尺寸 + 光晕探针；PL025 天气双通道；PL026 Barlow Medium 数字族；PL027 天气代理/冷启动缓存；PL028 世界时钟 hero/搜索缓存）
+> 当前版本：0.6.6.4（PL024 表盘等比 + 窗口尺寸 + 光晕探针；PL025 天气双通道；PL026 Barlow Medium 数字族；PL027 天气代理/冷启动缓存；PL028 世界时钟 hero/291 城 SQLite/搜索弹层）
 > 历史 UI 审核报告已于 2026-10-29 移除，原文见 git 历史；下文相关引用按历史记录理解。
 > 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；PL016 已收口提交（0e2252f）；PL017 已实施（0.6.3.1；G4/G8 按用户定案不做，勾选完成）；**PL018 已实施（0.6.3.2：N9 裁决 + #9 退出自愈 + #10 落点校准 + #11 首帧门控）**；**PL019 已收口（0.6.4.0：图标系统 + 读数成组 + 反馈动效）**；**PL020 已收口（0.6.5.1：12h 双半日四针 + 金圈 + 365 倍率）**；**PL021 已收口（0.6.5.3：五页盒模型 + 倒计时输入）**；**PL022 已实施（0.6.5.4：倒计时列表独立滚动）**；**PL023 已收口（0.6.5.5：文字盒统一 + 五页盒子对齐）**；**PL024 已实施（0.6.6.0：表盘 320 母版等比 + 窗口尺寸 + GLOW/INK 探针）**；**PL025 已实施（天气直连/系统代理双通道 + 10 分钟自动重试）**；**PL026 已实施（数字族 Barlow Medium 内嵌平替）**；**PL027 已实施（天气代理开关/地址 + 冷启动缓存首屏）**；**PL028 已实施（世界时钟 hero/共享滚动/城市搜索缓存）**
 > 更新（2026-10-17）：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow——UIR 定案 wgpu 废弃）；Python 版全量归档 `.archived/`（git 忽略），本文件自 PL011 起记录 RS 任务
@@ -53,7 +53,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 
 ## 任务记录（2026-09-10 起按 DeepTransHub 工作流新规则记录）
 
-> 当前状态：663 项全部完成，无未勾选项。
+> 当前状态：671 项全部完成，无未勾选项。
 
 > 结构规则：已完成任务在上方历史区（S1-S10 重构期记录，原样保留）；任务组用 `### 编号: 标题 [来源]`，子任务格式 `- [ ]`（待办）或 `- [x]`（完成），均带 [P级]、做法与验证
 > 编号规则：功能/修复任务组 `T{NNN}` 递增；审计修复任务组 `FIX{NNN}`（与 z.plan.md 附录 `A{NNN}` 一一对应），由 `.agents/skills/audit-report` 归档时生成
@@ -1013,3 +1013,11 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] PL028.10 [P1] 日期定宽 —— 卡片日期与 hero 到期日数字改 `digits` 固定槽宽，`11/00` 同宽；`-` 前后各 1px；日期 Barlow meta，hero 前缀 MiSans。
 - [x] PL028.11 [P1] 抽屉固定宽 —— `drawer_width_fixed=350`，删除比例/min/max token；窗口 <760 仍全宽左扩；世界/倒计时 hero 使用共同 `hero_pad_*/hero_line_gap/hero_border`。
 - [x] PL028.12 [P1] 文档与规范 —— AGENTS 数字盒/白边公式、w.study 参数与公式、z.plan 附录、UI 术语/标注卡高与三列、m.milestone 0.6.6.3、README/当前版本同步；`cargo build` 通过。
+- [x] PL028.13 [P1] 间距与命中收口 —— Hero 四盒统一 `hero_box_gap=6`；日历图标 16×16 图标盒；节日/CTA 直接点击文字盒，删除额外命中扩展；节日间距/下划线 token；页脚最小宽 80 删除。
+- [x] PL028.14 [P1] 搜索弹层第二行 —— 英文名双 geocoding（zh/en 按坐标匹配，拼音不再冒充）；新增 `country_code` 与 `continents.json`（ISO2→大陆）；内置 50 城补国家；第二行 `英文名 · 国家 · 大陆 · 偏移`；旧缓存自动刷新、网络失败回退；弹层高度 `set_height(content_h)` 修复视口少 8px。
+- [x] PL028.15 [P1] 搜索筛选与信息行 —— 仅保留 `PPL*` 居民点，排除机场/区/小地方/农场/废弃/县级乡级驻地；人口阈值 5 万（`world_search_min_population`）；第二行改 `大陆 · 国家 · admin1 · 偏移 · 人口`；内置 50 城补 `admin1/population`；缓存加 `feature_code/population` 列并自动刷新。
+- [x] PL028.16 [P1] 第二行浮动分隔 —— `·` 左右间距 `search_popup_sep_gap=5`；整行放不下时按 1px 递减到 0。
+- [x] PL028.17 [P1] 弹层英文名 —— 中文城市名后 10px 显示英文名（`search_popup_name_gap=10`，meta 12，底对齐；放不下省略）。
+- [x] PL028.18 [P1] 291 城与搜索收口 —— 世界城市表扩到 291（12 中国 + 279 境外，日韩 50），主数据全量进 SQLite `city` 表（预置 `assets/world_cache.sqlite`；删除 `world_cities.json`/`english_of`）；境外只用本地表，国内表外城市 geocoding + 拼音英文；第二行人口 `N 万`（A 方案）配合间距递减全部 ≤286；第一/第二行间距 10px；旧 custom_city 迁移；font_profile 浮点边界修复；全量测试通过。
+- [x] PL028.19 [P1] 弹层整行与当地时间 —— 条目改为 `row_h = item_h + 2×pad_y` 的整行盒，hover 覆盖左右到卡片边/上下含 `pad_y`；Frame 内边距归零；第一行右端显示当地时间（Barlow body 16，右对齐），英文名不得压时间；弹窗高度随行高调整。
+- [x] PL028.20 [P1] 日期标签 —— 时间左侧 5px 显示昨天/今天/明天（`search_popup_day_gap=5`，meta 12）；第一行右组 `日期 + 5px + 时间` 整体右对齐。

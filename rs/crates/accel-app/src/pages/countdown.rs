@@ -351,20 +351,22 @@ fn draw_festivals(
         })
         .collect();
     let sum: f32 = widths.iter().sum();
+    let label_gap = crate::theme::layout_f32("festival_label_gap");
+    let gap_min = crate::theme::layout_f32("festival_item_gap_min");
+    let gap_max = crate::theme::layout_f32("festival_item_gap_max");
     let gap = if items.len() > 1 {
-        ((rect.width() - label_w - 10.0 - sum) / (items.len() - 1) as f32).clamp(4.0, 10.0)
+        ((rect.width() - label_w - label_gap - sum) / (items.len() - 1) as f32)
+            .clamp(gap_min, gap_max)
     } else {
         0.0
     };
 
-    let mut x = rect.left() + label_w + 10.0;
+    let mut x = rect.left() + label_w + label_gap;
     let mut clicked = None;
     for (i, ((date, name), w)) in items.iter().zip(widths.iter()).enumerate() {
         let w = *w;
-        let item = egui::Rect::from_min_max(
-            egui::pos2(x, rect.top() - 2.0),
-            egui::pos2(x + w, rect.bottom() + 4.0),
-        );
+        let item =
+            egui::Rect::from_min_max(egui::pos2(x, rect.top()), egui::pos2(x + w, rect.bottom()));
         let resp = ui
             .interact(
                 item,
@@ -392,8 +394,11 @@ fn draw_festivals(
             let line_x = x + (w - line_w) / 2.0;
             ui.painter().rect_filled(
                 egui::Rect::from_min_size(
-                    egui::pos2(line_x, rect.bottom() + 2.0),
-                    egui::vec2(line_w, 2.0),
+                    egui::pos2(
+                        line_x,
+                        rect.bottom() + crate::theme::layout_f32("festival_underline_gap"),
+                    ),
+                    egui::vec2(line_w, crate::theme::layout_f32("festival_underline_h")),
                 ),
                 0,
                 accent,
@@ -417,7 +422,7 @@ fn draw_empty_cta(
     let font = crate::theme::font_medium(crate::theme::font_size("body"));
     let cta_ink = text_ink::measure(ui, "添加第一个目标", &font, InkKind::Cjk);
     let resp = ui.interact(
-        rect.expand2(egui::vec2(0.0, 6.0)),
+        rect,
         egui::Id::unique("countdown_empty_cta"),
         egui::Sense::click(),
     );
@@ -600,7 +605,7 @@ fn draw_hero(
         egui::pos2(right - time_w, center_y - time_h / 2.0),
         egui::vec2(time_w, time_h),
     );
-    let gap = 5.0;
+    let gap = crate::theme::layout_f32("hero_box_gap");
     let tian_box = egui::Rect::from_min_size(
         egui::pos2(time_box.left() - gap - tian_w, center_y - tian_h / 2.0),
         egui::vec2(tian_w, tian_h),
@@ -613,7 +618,7 @@ fn draw_hero(
         egui::vec2(day_template_w, time_h),
     );
     let remain_box = egui::Rect::from_min_size(
-        egui::pos2(day_box.left() - 6.0 - remain_w, center_y - remain_h / 2.0),
+        egui::pos2(day_box.left() - gap - remain_w, center_y - remain_h / 2.0),
         egui::vec2(remain_w, remain_h),
     );
     if ended {
@@ -699,15 +704,17 @@ fn draw_hero(
 
     // 中国结：第一行右对齐；点击恢复默认春节
     let icon_center = egui::pos2(rect.right() - pad_x - text_gap, top + line_h / 2.0);
+    let icon_size = crate::theme::layout_f32("hero_icon_size");
+    let icon_box = egui::Rect::from_center_size(icon_center, egui::vec2(icon_size, icon_size));
     let icon_resp = ui.interact(
-        egui::Rect::from_center_size(icon_center, egui::vec2(24.0, 24.0)),
+        icon_box,
         egui::Id::unique("countdown_hero_reset"),
         egui::Sense::click(),
     );
     icons::draw(
         &painter,
         icon_center,
-        16.0,
+        icon_size,
         icons::Icon::Calendar,
         if icon_resp.hovered() {
             ink.strong
@@ -1027,8 +1034,8 @@ fn draw_footer(
     let gap = crate::theme::layout_f32("footer_gap");
     let button_w = crate::theme::layout_f32("button_width");
     // 名称:时刻 = 4:6（间距 10 从总宽扣除）
-    let name_w = ((avail - gap) * 0.4).max(80.0);
-    let at_w = ((avail - gap) * 0.6).max(80.0);
+    let name_w = (avail - gap) * 0.4;
+    let at_w = (avail - gap) * 0.6;
     ui.spacing_mut().item_spacing.y = 0.0;
     let draft_at_empty = state.countdown_draft_at.is_empty();
     let draft_name_empty = state.countdown_draft_name.is_empty();

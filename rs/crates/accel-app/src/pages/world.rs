@@ -59,6 +59,15 @@ fn tz_offset_label(utc: DateTime<Utc>, tz: &str) -> Option<String> {
     tz_offset_value(utc, tz).map(|v| format!("{v} 时区"))
 }
 
+/// 人口文案：300000 → 30 万（四舍五入到万；标签前不再带“人口”二字）
+fn population_label(population: i64) -> String {
+    if population <= 0 {
+        return String::new();
+    }
+    let wan = ((population as f64 / 10_000.0).round() as i64).max(1);
+    format!("{wan} 万")
+}
+
 /// 城市当地日期相对本机本地日期：昨天 / 今天 / 明天
 fn day_label(utc: DateTime<Utc>, tz: &str) -> &'static str {
     let Ok(tz_parsed) = tz.parse::<chrono_tz::Tz>() else {
@@ -167,10 +176,12 @@ impl crate::pages::Page for crate::pages::WorldPage {
             }
         }
 
-        ui.scope_builder(egui::UiBuilder::new().max_rect(footer_rect), |ui| {
-            draw_footer(ui, footer_rect, state, bus);
-        });
-        draw_search_results(ui, footer_rect, state, bus, &ink);
+        let label_box = ui
+            .scope_builder(egui::UiBuilder::new().max_rect(footer_rect), |ui| {
+                draw_footer(ui, footer_rect, state, bus)
+            })
+            .inner;
+        draw_search_results(ui, footer_rect, label_box.top(), state, bus, &ink);
     }
 }
 
@@ -339,7 +350,6 @@ struct CardMetrics {
     pad_y: f32,
     line_gap: f32,
     text_gap: f32,
-    middle_gap: f32,
     icon_size: f32,
     icon_gap: f32,
     focus_size: f32,
@@ -377,7 +387,6 @@ fn card_metrics(ui: &egui::Ui) -> CardMetrics {
         pad_y: crate::theme::layout_f32("card_pad_y"),
         line_gap: crate::theme::layout_f32("card_line_gap"),
         text_gap: crate::theme::layout_f32("card_text_gap"),
-        middle_gap: crate::theme::layout_f32("card_middle_gap"),
         icon_size,
         icon_gap: crate::theme::layout_f32("card_icon_gap"),
         focus_size,
@@ -512,16 +521,14 @@ fn draw_city_row(
         ink.meta,
     );
 
-    // 第二行中间：时间 + 偏移作为一组，在 day 与 pin 之间双轴居中
+    // 第二行中间：时间 + 偏移作为一组，水平中线对卡片中线，组内双轴居中
     let walk_w = digits::text_width(ui.painter(), &walk, &m.walk_font);
     let offset_text = tz_offset_value(utc_now, &entry.tz).unwrap_or_else(|| "--".to_string());
     let offset_w = galley_width(ui, &offset_text, &m.day_font);
     let offset_gap = m.text_gap;
     let time_offset_w = walk_w + offset_gap + offset_w;
     let time_offset_h = m.walk_h.max(m.day_h);
-    let middle_left = day_box.right() + m.middle_gap;
-    let middle_right = pin_box.left() - m.middle_gap;
-    let group_left = (middle_left + middle_right) * 0.5 - time_offset_w / 2.0;
+    let group_left = rect.center().x - time_offset_w / 2.0;
     let group_bottom = row2_center + time_offset_h / 2.0;
     let time_box = egui::Rect::from_min_size(
         egui::pos2(group_left, group_bottom - m.walk_h),
@@ -667,10 +674,10 @@ fn popup_text_row(
     );
     let ink = text_ink::measure(ui, text, &font, InkKind::Cjk);
     let text_h = crate::widgets::text_metrics::height(ui.ctx(), &font, InkKind::Cjk);
-    let inset = crate::theme::layout_f32("search_popup_margin") * 2.0;
-    let text_box = egui::Rect::from_center_size(
-        rect.center(),
-        egui::vec2((rect.width() - inset).max(1.0), text_h),
+    let pad_x = crate::theme::layout_f32("search_popup_pad_x");
+    let text_box = egui::Rect::from_min_size(
+        egui::pos2(rect.left() + pad_x, rect.center().y - text_h / 2.0),
+        egui::vec2((rect.width() - 2.0 * pad_x).max(1.0), text_h),
     );
     ui.painter().text(
         egui::pos2(text_box.left(), ink.top_for_bottom(text_box.bottom())),
@@ -690,13 +697,18 @@ fn world_footer_height(ui: &egui::Ui) -> f32 {
         + crate::theme::layout_f32("footer_bottom")
 }
 
-/// 底部搜索：字段 + 搜索按钮（照抄倒计时页脚三段）
-fn draw_footer(ui: &mut egui::Ui, rect: egui::Rect, state: &mut UiState, bus: &crate::bus::Bus) {
+/// 底部搜索：字段 + 搜索按钮（照抄倒计时页脚三段）；返回按钮盒供弹层锚定
+fn draw_footer(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    state: &mut UiState,
+    bus: &crate::bus::Bus,
+) -> egui::Rect {
     // 与倒计时页脚同规则：清零 egui 隐式纵向间距，否则默认 3px 会吃掉 footer_bottom
     ui.spacing_mut().item_spacing.y = 0.0;
     crate::layout_probe::rect(ui, "world.footer", rect);
     let mut query = state.world_search_query.clone();
-    let field_resp = field::show_fixed(
+    let (field_resp, label_box) = field::show_fixed_with_label(
         ui,
         "添加城市",
         "中文 / 英文 / 拼音",
@@ -710,12 +722,21 @@ fn draw_footer(ui: &mut egui::Ui, rect: egui::Rect, state: &mut UiState, bus: &c
         state.world_searching = false;
     }
     ui.add_space(crate::theme::layout_f32("footer_gap"));
-    let button = primary_button::show(ui, "搜索", rect.width());
+    // 与倒计时“添加”同尺寸：button_width 宽，右对齐
+    let button_w = crate::theme::layout_f32("button_width");
+    let button = ui
+        .horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            ui.add_space((rect.width() - button_w).max(0.0));
+            primary_button::show(ui, "搜索", button_w)
+        })
+        .inner;
     crate::layout_probe::rect(ui, "world.footer_button", button.rect);
     let enter = field_resp.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
     if button.clicked() || enter {
         start_search(state, bus);
     }
+    label_box
 }
 
 /// 发起搜索（本地/缓存/geocoding 由 core 决定）
@@ -728,6 +749,7 @@ fn start_search(state: &mut UiState, bus: &crate::bus::Bus) {
     state.world_search_results.clear();
     state.world_search_error = None;
     state.world_searching = true;
+    state.world_search_seq = state.world_search_seq.wrapping_add(1);
     bus.send(FrontendCommand::SearchWorldCity(query));
 }
 
@@ -735,6 +757,7 @@ fn start_search(state: &mut UiState, bus: &crate::bus::Bus) {
 fn draw_search_results(
     ui: &egui::Ui,
     footer_rect: egui::Rect,
+    anchor_top: f32,
     state: &mut UiState,
     bus: &crate::bus::Bus,
     ink: &crate::theme::Ink,
@@ -744,31 +767,48 @@ fn draw_search_results(
     if !has_results && !has_error && !state.world_searching {
         return;
     }
-    let row_h = crate::theme::layout_f32("search_popup_row_h");
-    let margin = crate::theme::layout_f32("search_popup_margin");
-    let max_h = crate::theme::layout_f32("search_popup_max_h");
+    let now = Utc::now();
+    let pad_x = crate::theme::layout_f32("search_popup_pad_x");
+    let pad_y = crate::theme::layout_f32("search_popup_pad_y");
+    let text_gap = crate::theme::layout_f32("search_popup_text_gap");
+    let item_gap = crate::theme::layout_f32("search_popup_item_gap");
     let min_w = crate::theme::layout_f32("search_popup_min_w");
     let status_h = crate::theme::layout_f32("search_popup_status_h");
     let max_results = crate::theme::layout_i64("search_popup_max_results").max(1) as usize;
-    let gap = crate::theme::spacing_f32("xs");
-    let row_pad_x = crate::theme::spacing_f32("sm");
-    let title_gap = crate::theme::spacing_f32("xs");
+    let gap = crate::theme::layout_f32("search_popup_footer_gap");
     let row_radius = crate::theme::layout_f32("search_row_radius");
+    let title_font = crate::theme::font_medium(crate::theme::font_size("body"));
+    let sub_font = crate::theme::font_regular(crate::theme::font_size("meta"));
+    let time_font = crate::widgets::digits::digit_font(crate::theme::font_size("body"));
+    let title_h = crate::widgets::text_metrics::height(ui.ctx(), &title_font, InkKind::Cjk);
+    let sub_h = crate::widgets::text_metrics::height(ui.ctx(), &sub_font, InkKind::Cjk);
+    let time_h = crate::widgets::text_metrics::height(ui.ctx(), &time_font, InkKind::Digits);
+    let item_h = title_h + text_gap + sub_h;
+    let row_h = item_h + 2.0 * pad_y;
+    let status_row_h = status_h + 2.0 * pad_y;
     let result_count = state.world_search_results.len().min(max_results);
+    // 最多两行结果：单条按单条高，两条按两条高，超过两条固定两条高并滚动
+    let visible = result_count.min(2);
     let content_h = if has_results {
-        result_count as f32 * row_h
+        if visible == 0 {
+            0.0
+        } else {
+            visible as f32 * row_h + visible.saturating_sub(1) as f32 * item_gap
+        }
     } else {
-        status_h
+        status_row_h
     };
-    let menu_h = (content_h + 2.0 * margin).min(max_h);
+    let menu_h = content_h;
     let width = footer_rect.width().max(min_w);
-    let y = (footer_rect.top() - menu_h - gap).max(ui.max_rect().top() + gap);
+    let inner_w = width;
+    let y = anchor_top - gap - menu_h;
     let mut picked: Option<(String, bool)> = None;
     let mut close = false;
     egui::Area::new(egui::Id::unique("world_search_results"))
         .order(egui::Order::Foreground)
         .fixed_pos(egui::pos2(footer_rect.left(), y))
         .show(ui.ctx(), |ui| {
+            ui.set_opacity(crate::theme::layout_f64("search_popup_opacity"));
             egui::Frame::new()
                 .fill(crate::theme::card_bg())
                 .stroke(egui::Stroke::new(
@@ -778,111 +818,239 @@ fn draw_search_results(
                 .corner_radius(egui::epaint::CornerRadius::same(
                     crate::theme::radius_px("sm") as u8,
                 ))
-                .inner_margin(egui::Margin::same(margin as i8))
+                .inner_margin(egui::Margin::ZERO)
                 .show(ui, |ui| {
-                    ui.set_width(width - 2.0 * margin);
+                    ui.set_width(inner_w);
+                    ui.set_height(content_h);
+                    ui.spacing_mut().item_spacing.y = 0.0;
                     if state.world_searching {
                         let font = crate::theme::font_regular(crate::theme::font_size("body"));
-                        popup_text_row(ui, status_h, "搜索中…", font, ink.muted);
+                        popup_text_row(ui, status_row_h, "搜索中…", font, ink.muted);
                         return;
                     }
                     if let Some(err) = &state.world_search_error {
                         let font = crate::theme::font_regular(crate::theme::font_size("body"));
-                        let resp = popup_text_row(ui, status_h, err, font, ink.danger)
+                        let resp = popup_text_row(ui, status_row_h, err, font, ink.danger)
                             .on_hover_text("点击关闭");
                         if resp.clicked() {
                             close = true;
                         }
                         return;
                     }
-                    egui::ScrollArea::vertical()
-                        .max_height(max_h - 2.0 * margin)
-                        .auto_shrink([false, true])
-                        .show(ui, |ui| {
-                            for entry in state.world_search_results.iter().take(max_results) {
-                                let (row, resp) = ui.allocate_exact_size(
-                                    egui::vec2(ui.available_width(), row_h),
-                                    egui::Sense::click(),
-                                );
-                                if resp.hovered() {
-                                    ui.painter().rect_filled(
-                                        row,
-                                        egui::epaint::CornerRadius::same(row_radius as u8),
-                                        crate::theme::hover_bg(),
-                                    );
-                                }
-                                let title_font =
-                                    crate::theme::font_medium(crate::theme::font_size("body"));
-                                let sub_font =
-                                    crate::theme::font_regular(crate::theme::font_size("meta"));
-                                let title_h = crate::widgets::text_metrics::height(
-                                    ui.ctx(),
-                                    &title_font,
-                                    InkKind::Cjk,
-                                );
-                                let sub_h = crate::widgets::text_metrics::height(
-                                    ui.ctx(),
-                                    &sub_font,
-                                    InkKind::Cjk,
-                                );
-                                let sub = format!(
-                                    "{}{}{}",
-                                    if entry.name_en.is_empty() {
-                                        String::new()
-                                    } else {
-                                        format!("{} · ", entry.name_en)
-                                    },
-                                    entry.tz,
-                                    if entry.admin1.is_empty() {
-                                        String::new()
-                                    } else {
-                                        format!(" · {}", entry.admin1)
-                                    }
-                                );
-                                let block_h = title_h + title_gap + sub_h;
-                                let block_top = row.center().y - block_h / 2.0;
-                                let title_box = egui::Rect::from_min_size(
-                                    egui::pos2(row.left() + row_pad_x, block_top),
-                                    egui::vec2(row.width() - 2.0 * row_pad_x, title_h),
-                                );
-                                let sub_box = egui::Rect::from_min_size(
-                                    egui::pos2(
-                                        row.left() + row_pad_x,
-                                        title_box.bottom() + title_gap,
-                                    ),
-                                    egui::vec2(row.width() - 2.0 * row_pad_x, sub_h),
-                                );
-                                let title_ink =
-                                    text_ink::measure(ui, &entry.name, &title_font, InkKind::Cjk);
+                    let draw_item = |ui: &mut egui::Ui, entry: &WorldCityEntry| -> bool {
+                        let (row, resp) = ui.allocate_exact_size(
+                            egui::vec2(ui.available_width(), row_h),
+                            egui::Sense::click(),
+                        );
+                        if resp.hovered() {
+                            ui.painter().rect_filled(
+                                row,
+                                egui::epaint::CornerRadius::same(row_radius as u8),
+                                crate::theme::hover_bg(),
+                            );
+                        }
+                        let title_box = egui::Rect::from_min_size(
+                            egui::pos2(row.left() + pad_x, row.top() + pad_y),
+                            egui::vec2(row.width() - 2.0 * pad_x, title_h),
+                        );
+                        let sub_box = egui::Rect::from_min_size(
+                            egui::pos2(title_box.left(), title_box.bottom() + text_gap),
+                            egui::vec2(title_box.width(), sub_h),
+                        );
+                        let title_ink =
+                            text_ink::measure(ui, &entry.name, &title_font, InkKind::Cjk);
+                        ui.painter().text(
+                            egui::pos2(
+                                title_box.left(),
+                                title_ink.top_for_bottom(title_box.bottom()),
+                            ),
+                            egui::Align2::LEFT_TOP,
+                            &entry.name,
+                            title_font.clone(),
+                            ink.strong,
+                        );
+                        // 第一行右端：当地时间，字号与中文城市名一致
+                        let time_text = now_in_tz(now, &entry.tz)
+                            .map(|(t, _)| t)
+                            .unwrap_or_else(|| "--:--:--".to_string());
+                        let time_w = digits::text_width(ui.painter(), &time_text, &time_font);
+                        let time_box = egui::Rect::from_min_size(
+                            egui::pos2(title_box.right() - time_w, title_box.bottom() - time_h),
+                            egui::vec2(time_w, time_h),
+                        );
+                        // 时间左侧 5px：昨天/今天/明天（meta 12）
+                        let day_text = day_label(now, &entry.tz);
+                        let day_w = galley_width(ui, day_text, &sub_font);
+                        let day_gap = crate::theme::layout_f32("search_popup_day_gap");
+                        let day_box = egui::Rect::from_min_size(
+                            egui::pos2(
+                                time_box.left() - day_gap - day_w,
+                                title_box.bottom() - sub_h,
+                            ),
+                            egui::vec2(day_w, sub_h),
+                        );
+                        let day_ink = text_ink::measure(ui, day_text, &sub_font, InkKind::Cjk);
+                        ui.painter().text(
+                            egui::pos2(day_box.left(), day_ink.top_for_bottom(day_box.bottom())),
+                            egui::Align2::LEFT_TOP,
+                            day_text,
+                            sub_font.clone(),
+                            ink.meta,
+                        );
+                        digits::draw_bottom(
+                            ui.painter(),
+                            time_box.bottom(),
+                            time_box.center().x,
+                            &time_text,
+                            &time_font,
+                            ink.body,
+                        );
+                        // 英文名跟在中文后，间距 10px；不得压到右侧日期/时间
+                        let show_en = !entry.name_en.is_empty() && entry.name_en != entry.pinyin;
+                        if show_en {
+                            let name_w = galley_width(ui, &entry.name, &title_font);
+                            let en_w = galley_width(ui, &entry.name_en, &sub_font);
+                            let name_gap = crate::theme::layout_f32("search_popup_name_gap");
+                            if title_box.left() + name_w + name_gap + en_w
+                                <= day_box.left() - name_gap
+                            {
+                                let en_x = title_box.left() + name_w + name_gap;
+                                let en_ink =
+                                    text_ink::measure(ui, &entry.name_en, &sub_font, InkKind::Cjk);
                                 ui.painter().text(
-                                    egui::pos2(
-                                        title_box.left(),
-                                        title_ink.top_for_bottom(title_box.bottom()),
-                                    ),
+                                    egui::pos2(en_x, en_ink.top_for_bottom(title_box.bottom())),
                                     egui::Align2::LEFT_TOP,
-                                    &entry.name,
-                                    title_font,
-                                    ink.strong,
-                                );
-                                let sub_ink = text_ink::measure(ui, &sub, &sub_font, InkKind::Cjk);
-                                ui.painter().text(
-                                    egui::pos2(
-                                        sub_box.left(),
-                                        sub_ink.top_for_bottom(sub_box.bottom()),
-                                    ),
-                                    egui::Align2::LEFT_TOP,
-                                    sub,
-                                    sub_font,
+                                    &entry.name_en,
+                                    sub_font.clone(),
                                     ink.meta,
                                 );
-                                if resp.clicked() {
-                                    picked = Some((
-                                        entry.name.clone(),
-                                        world_search::builtin_entry(&entry.name).is_some(),
-                                    ));
+                            }
+                        }
+                        let parts: Vec<String> = {
+                            let continent = accel_core::data::continents::continent_label(
+                                &entry.country_code,
+                                &entry.tz,
+                            );
+                            let offset = tz_offset_value(now, &entry.tz).unwrap_or_default();
+                            let population = population_label(entry.population);
+                            let mut parts: Vec<String> = Vec::new();
+                            if !continent.is_empty() {
+                                parts.push(continent.to_string());
+                            }
+                            if !entry.country.is_empty() {
+                                parts.push(entry.country.clone());
+                            }
+                            if !entry.admin1.is_empty() {
+                                parts.push(entry.admin1.clone());
+                            }
+                            if !offset.is_empty() {
+                                parts.push(offset);
+                            }
+                            if !population.is_empty() {
+                                parts.push(population);
+                            }
+                            parts
+                        };
+                        if !parts.is_empty() {
+                            let dot = "·";
+                            let dot_w = galley_width(ui, dot, &sub_font);
+                            let widths: Vec<f32> = parts
+                                .iter()
+                                .map(|p| galley_width(ui, p, &sub_font))
+                                .collect();
+                            let sep_gap = crate::theme::layout_f32("search_popup_sep_gap");
+                            let total_width = |gap: f32| {
+                                widths.iter().sum::<f32>()
+                                    + (parts.len().saturating_sub(1)) as f32 * (2.0 * gap + dot_w)
+                            };
+                            // `·` 左右各 gap；整行放不下时从 5px 递减到 0
+                            let mut gap = sep_gap;
+                            while gap > 0.0 && total_width(gap) > sub_box.width() {
+                                gap -= 1.0;
+                            }
+                            let mut x = sub_box.left();
+                            for (i, part) in parts.iter().enumerate() {
+                                let part_ink = text_ink::measure(ui, part, &sub_font, InkKind::Cjk);
+                                ui.painter().text(
+                                    egui::pos2(x, part_ink.top_for_bottom(sub_box.bottom())),
+                                    egui::Align2::LEFT_TOP,
+                                    part,
+                                    sub_font.clone(),
+                                    ink.meta,
+                                );
+                                x += widths[i];
+                                if i + 1 < parts.len() {
+                                    x += gap;
+                                    let dot_ink =
+                                        text_ink::measure(ui, dot, &sub_font, InkKind::Cjk);
+                                    ui.painter().text(
+                                        egui::pos2(x, dot_ink.top_for_bottom(sub_box.bottom())),
+                                        egui::Align2::LEFT_TOP,
+                                        dot,
+                                        sub_font.clone(),
+                                        ink.meta,
+                                    );
+                                    x += dot_w + gap;
                                 }
                             }
-                        });
+                        }
+                        resp.clicked()
+                    };
+                    if result_count <= 2 {
+                        for (i, entry) in state
+                            .world_search_results
+                            .iter()
+                            .take(result_count)
+                            .enumerate()
+                        {
+                            if i > 0 {
+                                ui.add_space(item_gap);
+                            }
+                            if draw_item(ui, entry) {
+                                picked = Some((
+                                    entry.name.clone(),
+                                    world_search::builtin_entry(&entry.name).is_some(),
+                                ));
+                            }
+                        }
+                    } else {
+                        let scroll = &mut ui.style_mut().spacing.scroll;
+                        scroll.floating = false;
+                        scroll.bar_width = 4.0;
+                        scroll.bar_inner_margin = 2.0;
+                        scroll.bar_outer_margin = 2.0;
+                        scroll.foreground_color = true;
+                        egui::ScrollArea::vertical()
+                            .max_height(content_h)
+                            .auto_shrink([false, false])
+                            .scroll_bar_visibility(
+                                egui::scroll_area::ScrollBarVisibility::AlwaysVisible,
+                            )
+                            .id_salt((
+                                "world_search_results_scroll",
+                                state.world_search_seq,
+                                state.world_search_query.clone(),
+                            ))
+                            .show(ui, |ui| {
+                                ui.spacing_mut().item_spacing.y = 0.0;
+                                for (i, entry) in state
+                                    .world_search_results
+                                    .iter()
+                                    .take(result_count)
+                                    .enumerate()
+                                {
+                                    if i > 0 {
+                                        ui.add_space(item_gap);
+                                    }
+                                    if draw_item(ui, entry) {
+                                        picked = Some((
+                                            entry.name.clone(),
+                                            world_search::builtin_entry(&entry.name).is_some(),
+                                        ));
+                                    }
+                                }
+                            });
+                    }
                 });
         });
     if close {
@@ -922,8 +1090,15 @@ fn draw_search_results(
 mod tests {
     use super::*;
 
+    fn init_cities() {
+        let dir = std::env::temp_dir().join(format!("accel_world_page_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = accel_core::world_search::WorldSearch::with_path(dir.join("world_cache.sqlite"));
+    }
+
     #[test]
     fn default_pins_are_unique_city_names_with_walk() {
+        init_cities();
         let pins = accel_core::static_config::Static::get().base_str_list("default_world_pins");
         assert!(pins.len() >= 4);
         let mut sorted = pins.clone();
@@ -931,7 +1106,7 @@ mod tests {
         sorted.dedup();
         assert_eq!(sorted.len(), pins.len());
         for name in &pins {
-            let tz = accel_core::data::world_cities::tz_of(name)
+            let tz = accel_core::world_search::tz_of(name)
                 .unwrap_or_else(|| panic!("默认常驻应为表内城市: {name}"));
             let (text, _) = now_in_tz(chrono::Utc::now(), tz)
                 .unwrap_or_else(|| panic!("走时应可解析: {name} → {tz}"));
@@ -941,12 +1116,10 @@ mod tests {
 
     #[test]
     fn tz_of_is_name_domain_only() {
-        assert_eq!(
-            accel_core::data::world_cities::tz_of("东京"),
-            Some("Asia/Tokyo")
-        );
+        init_cities();
+        assert_eq!(accel_core::world_search::tz_of("东京"), Some("Asia/Tokyo"));
         assert!(
-            accel_core::data::world_cities::tz_of("Asia/Tokyo").is_none(),
+            accel_core::world_search::tz_of("Asia/Tokyo").is_none(),
             "IANA 串不是城市名"
         );
     }

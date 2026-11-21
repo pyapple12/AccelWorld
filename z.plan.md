@@ -1,7 +1,7 @@
 # AccelWorld 重构方案与进度（z.plan.md）
 
 > 依据：2026-08-08 项目审计（对照 AGENTS.md 规范，参考 DeepTransHub 分层结构）
-> 状态：**Rust 重构进行中**——Python 时代 S1-S10（ver 0.46）与 UI 2.0/3.0（0.5.x–0.6.0.0）已定版留档；Rust 重构 PL011–PL017 已完成（core 全量 parity + egui 外壳 + 五页 + 系统集成 + UI 精修 + UI 结构重排），PL018 已实施（退出自愈/落点校准/首帧门控/N9 裁决），PL019 已收口（图标/自适应/反馈动效），PL020–PL023 已实施，**PL024 已实施（表盘 320 母版等比 + 窗口尺寸 + GLOW/INK 探针）**，**PL025 已实施（天气直连/系统代理双通道 + 10 分钟自动重试）**，**PL026 已实施（数字族 Barlow Medium 内嵌平替）**，**PL027 已实施（天气代理开关/地址 + 冷启动缓存首屏）**，**PL028 已实施（世界时钟 hero/共享滚动/城市搜索缓存）**，当前版本 **V0.6.6.3**
+> 状态：**Rust 重构进行中**——Python 时代 S1-S10（ver 0.46）与 UI 2.0/3.0（0.5.x–0.6.0.0）已定版留档；Rust 重构 PL011–PL017 已完成（core 全量 parity + egui 外壳 + 五页 + 系统集成 + UI 精修 + UI 结构重排），PL018 已实施（退出自愈/落点校准/首帧门控/N9 裁决），PL019 已收口（图标/自适应/反馈动效），PL020–PL023 已实施，**PL024 已实施（表盘 320 母版等比 + 窗口尺寸 + GLOW/INK 探针）**，**PL025 已实施（天气直连/系统代理双通道 + 10 分钟自动重试）**，**PL026 已实施（数字族 Barlow Medium 内嵌平替）**，**PL027 已实施（天气代理开关/地址 + 冷启动缓存首屏）**，**PL028 已实施（世界时钟 hero/共享滚动/291 城 SQLite/搜索弹层）**，当前版本 **V0.6.6.4**
 > 历史 UI 审核报告已于 2026-10-29 移除，原文见 git 历史；下文相关引用按历史记录理解。
 > 更新（2026-09-10）：接入 DeepTransHub 工作流体系；本文件新增「审计观察项豁免定案清单」与「附录（审计报告归档区）」，旧内容原样保留
 > 更新（2026-10-16）：新增「Rust 重构总纲：AccelWorld RS」节（见下文），Python 版全量归档 `.archived/`
@@ -3541,3 +3541,17 @@ Cargo.toml            rusqlite(bundled) / pinyin
 - Hero 到期日拆 `到期日：`（MiSans）+ 数字（Barlow meta 固定槽宽），两段各自中线；卡片日期也改固定槽宽。
 - 日期 `-` 槽宽前后各 1px；`11/00` 同宽。
 - 抽屉固定 `drawer_width_fixed=350`；窗口 <760 仍全宽左扩。
+- Hero 四盒间距统一 `hero_box_gap=6`；Hero 日历图标改 16×16 图标盒（`hero_icon_size`），删除 24 命中盒；节日项/CTA 点击区就是文字盒，删除 `-2/+4` 与 `expand(0,6)` 命中扩展；节日标签/项目间距/下划线高度与偏移全部 token 化；页脚字段最小宽 80 删除。
+- 世界卡第二行删除无效 `card_middle_gap`（左右各加/减在取中点时抵消）；`card_icon_gap` 由 6 改 10；时间 + 偏移组水平中线对卡片中线（`rect.center().x`），与第一行中文+英文整体居中同一条中线。
+- 世界页搜索按钮与倒计时“添加”按钮同尺寸：`button_width=88`、右对齐。
+- 搜索候选弹层距页脚改 `search_popup_footer_gap=10`；整体不透明度 `search_popup_opacity=0.9`。
+- 搜索弹层改为锚定“添加城市”标签盒顶上方 5px；每条两行（中文城市名 + 英文城市名），单条/两条按内容定高，超过两条固定两条高并显示滑杆；新增 `search_popup_pad_x/pad_y/text_gap/item_gap`，删除 `search_popup_row_h/margin/max_h`。
+- 搜索弹层第二行改 `英文名 · 国家 · 大陆 · 偏移`：英文名走 zh/en 双 geocoding 按坐标匹配，`WorldCityEntry` 新增 `country_code`；内置 50 城补国家代码；新增 `continents.json`（ISO2→中文大陆，约 190 项）；时区偏移复用 `tz_offset_value`（+8/-7/+5:30）；旧缓存（缺 `country_code` 或 `name_en==pinyin`）自动刷新，网络失败回退旧缓存。
+- 搜索筛选：`feature_code` 仅保留 `PPL*`，排除 `PPLX/PPLL/PPLS/PPLF/PPLH/PPLQ/PPLW/PPLR/PPLA3/PPLA4`；人口阈值 `base.world_search_min_population=50000`；第二行改 `大陆 · 国家 · admin1 · 偏移 · 人口`；内置 50 城补 `admin1/population`；缓存加 `feature_code/population` 列，旧缓存自动刷新。
+- 第二行 `·` 左右改为浮动间距 `search_popup_sep_gap=5`；整行超出盒子宽时按 1px 递减到 0。
+- 弹层第一行中文城市名后 10px 显示英文名（`search_popup_name_gap=10`，meta 12，底对齐；放不下省略）。
+- 世界城市表扩到 291 城（12 中国 + 279 境外，日韩 50）：境外只用本地表，国内表外城市走 Open-Meteo geocoding + 拼音英文名；第二行人口改 `N 万`（A 方案），配合 `·` 间距递减全部 ≤286；旧 `custom_city` 迁移（本地表覆盖、国内补国家代码/拼音）；`font_profile::box_from_ink` 加 1e-4 epsilon 修复 f32 假进位（36 档 27.5→28）。
+- 城市主数据全量进 SQLite：`city` 表 291 行（启动 JSON seed → SQLite → 内存快照），`local_matches`/`entry_by_name` 读快照；删除 `english_of` 旧 50 城映射；弹窗第一/第二行盒间距 10px（`search_popup_text_gap=10`）。
+- 城市主表改为预置 SQLite：新增 `rs/assets/world_cache.sqlite`（291 城，空缓存/自定义），删除 `world_cities.json` 与 `english_of`；启动文件不存在写出预置库、旧库 `city` 行数不符则重建 `city` 表；`Interface` 先加载城市快照再读配置，IANA 迁移走 SQLite 快照。
+- 弹层条目改整行盒：Frame 内边距 0，`row_h = item_h + 2×pad_y`，hover 覆盖整条（左右到卡片边、上下含 `pad_y`）；第一行右端显示当地时间（Barlow body 16，右对齐），英文名不得压时间；弹窗高度 = 行高（含 `pad_y`）。
+- 当地时间左侧 5px 增加昨天/今天/明天（`search_popup_day_gap=5`，meta 12）；第一行右组 `日期标签 + 5px + 时间` 整体右对齐。

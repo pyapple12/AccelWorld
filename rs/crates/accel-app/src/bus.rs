@@ -88,6 +88,8 @@ pub struct UiState {
     pub world_search_results: Vec<WorldCityEntry>,
     pub world_search_error: Option<String>,
     pub world_searching: bool,
+    /// 搜索轮次：每次发起搜索 +1，用于重置弹层滚动位置
+    pub world_search_seq: u64,
     /// 闹钟自定义添加草稿
     pub alarm_draft_label: String,
     pub alarm_draft_time: String,
@@ -159,6 +161,7 @@ impl Default for UiState {
             world_search_results: Vec::new(),
             world_search_error: None,
             world_searching: false,
+            world_search_seq: 0,
             alarm_draft_label: String::new(),
             alarm_draft_time: String::new(),
             save_ack: false,

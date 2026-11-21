@@ -1,4 +1,4 @@
-//! 世界时钟城市搜索（PL028）：50 城本地索引 + Open-Meteo geocoding 缓存。
+//! 世界时钟城市搜索（PL028）：291 城 SQLite 主表（预置 db）+ Open-Meteo geocoding 缓存。
 //! SQLite 落盘（exe 同目录 world_cache.sqlite）；中文/英文/拼音/首字母匹配。
 
 use std::path::PathBuf;
@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use crate::data::world_cities;
 
-/// 城市条目（内置 50 城 / geocoding 结果 / 用户自定义城市共用）
+/// 城市条目（内置 291 城 / geocoding 结果 / 用户自定义城市共用）
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WorldCityEntry {
     pub name: String,
@@ -18,15 +18,119 @@ pub struct WorldCityEntry {
     pub pinyin: String,
     pub initials: String,
     pub country: String,
+    pub country_code: String,
     pub admin1: String,
     pub tz: String,
     pub lat: f64,
     pub lon: f64,
+    /// GeoNames 地点类型（PPLC/PPLA/PPL/AIRP…；搜索过滤用）
+    pub feature_code: String,
+    /// 人口（搜索过滤 + 弹层显示）
+    pub population: i64,
 }
 
-/// 搜索缓存（SQLite；geocode 结果 + 自定义城市）
+/// 预置城市库（291 城 city 表；首次启动写到 exe 同目录）
+const SEED_DB: &[u8] = include_bytes!("../../../assets/world_cache.sqlite");
+/// 预置 city 行数（旧库检测）
+const CITY_SEED_COUNT: i64 = 291;
+
+/// 城市主表内存快照（来源 SQLite `city` 表；启动时加载）
+static CITIES: OnceLock<Vec<WorldCityEntry>> = OnceLock::new();
+
+/// 全局城市快照（未初始化时为空）
+fn global_cities() -> &'static [WorldCityEntry] {
+    CITIES.get_or_init(Vec::new)
+}
+
+/// 旧 50 城优先序（IANA → 城市名迁移时优先选这些，避免扩表后首匹配漂移）
+const PREFERRED: &[&str] = &[
+    "北京",
+    "上海",
+    "广州",
+    "深圳",
+    "杭州",
+    "成都",
+    "武汉",
+    "西安",
+    "重庆",
+    "南京",
+    "香港",
+    "台北",
+    "东京",
+    "大阪",
+    "首尔",
+    "新加坡",
+    "曼谷",
+    "吉隆坡",
+    "雅加达",
+    "马尼拉",
+    "孟买",
+    "新德里",
+    "迪拜",
+    "利雅得",
+    "伦敦",
+    "巴黎",
+    "柏林",
+    "罗马",
+    "马德里",
+    "阿姆斯特丹",
+    "苏黎世",
+    "莫斯科",
+    "伊斯坦布尔",
+    "雅典",
+    "纽约",
+    "洛杉矶",
+    "旧金山",
+    "芝加哥",
+    "多伦多",
+    "温哥华",
+    "墨西哥城",
+    "圣保罗",
+    "布宜诺斯艾利斯",
+    "悉尼",
+    "墨尔本",
+    "珀斯",
+    "奥克兰",
+    "开罗",
+    "约翰内斯堡",
+    "内罗毕",
+];
+
+/// IANA 时区串 → 城市名（旧存档迁移；旧 50 城优先，再全表首匹配）
+pub fn name_of_tz(tz: &str) -> Option<&'static str> {
+    for name in PREFERRED {
+        if let Some(c) = global_cities()
+            .iter()
+            .find(|c| c.name == *name && c.tz == tz)
+        {
+            return Some(c.name.as_str());
+        }
+    }
+    global_cities()
+        .iter()
+        .find(|c| c.tz == tz)
+        .map(|c| c.name.as_str())
+}
+
+/// 全部城市名（默认 pins 校验/测试用）
+pub fn all_names() -> Vec<&'static str> {
+    global_cities().iter().map(|c| c.name.as_str()).collect()
+}
+
+/// 名称 → 城市（SQLite 快照）
+pub fn by_name(name: &str) -> Option<&'static WorldCityEntry> {
+    global_cities().iter().find(|c| c.name == name)
+}
+
+/// 名称 → IANA 时区
+pub fn tz_of(name: &str) -> Option<&'static str> {
+    by_name(name).map(|c| c.tz.as_str())
+}
+
+/// 搜索缓存（SQLite；城市主表 + geocode 结果 + 自定义城市）
 pub struct WorldSearch {
     path: PathBuf,
+    cities: Vec<WorldCityEntry>,
 }
 
 impl Default for WorldSearch {
@@ -38,21 +142,100 @@ impl Default for WorldSearch {
 impl WorldSearch {
     /// 生产路径：exe 同目录 world_cache.sqlite（与 weather_cache/ 同级）
     pub fn new() -> Self {
-        Self::with_path(crate::util::paths::exe_dir().join("world_cache.sqlite"))
+        let search = Self::with_path(crate::util::paths::exe_dir().join("world_cache.sqlite"));
+        search.migrate_custom_cities();
+        search
     }
 
-    /// 测试注入路径
+    /// 测试/指定路径：确保预置库存在，加载 city 表快照
     pub fn with_path(path: PathBuf) -> Self {
-        Self { path }
+        let mut search = Self {
+            path,
+            cities: Vec::new(),
+        };
+        search.cities = search.load_cities_or_seed();
+        let _ = CITIES.set(search.cities.clone());
+        search
     }
 
-    /// 内置 50 城 + 自定义城市的本地匹配（中文/英文/拼音/首字母）
+    fn load_cities_or_seed(&self) -> Vec<WorldCityEntry> {
+        let _ = self.ensure_seed_db();
+        self.load_cities().unwrap_or_default()
+    }
+
+    /// 预置库：文件不存在则写出嵌入 db；旧库 city 行数不符则重建 city 表
+    fn ensure_seed_db(&self) -> rusqlite::Result<()> {
+        if !self.path.exists() {
+            if let Some(parent) = self.path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            std::fs::write(&self.path, SEED_DB)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        }
+        let conn = self.open()?;
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM city", [], |r| r.get(0))
+            .unwrap_or(0);
+        if count == CITY_SEED_COUNT {
+            return Ok(());
+        }
+        let tmp = self.path.with_extension("seed.tmp");
+        std::fs::write(&tmp, SEED_DB)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        conn.execute(
+            "ATTACH DATABASE ?1 AS seed",
+            params![tmp.to_string_lossy().to_string()],
+        )?;
+        conn.execute("DELETE FROM city", [])?;
+        conn.execute("INSERT INTO city SELECT * FROM seed.city", [])?;
+        conn.execute("DETACH DATABASE seed", [])?;
+        let _ = std::fs::remove_file(&tmp);
+        Ok(())
+    }
+
+    fn load_cities(&self) -> rusqlite::Result<Vec<WorldCityEntry>> {
+        let conn = self.open()?;
+        let mut stmt = conn.prepare(
+            "SELECT name,name_en,pinyin,initials,country,country_code,admin1,population,tz,lat,lon \
+             FROM city ORDER BY sort_order",
+        )?;
+        let rows = stmt.query_map([], row_to_city)?;
+        rows.collect()
+    }
+
+    /// 旧自定义城市补全：本地表同名覆盖；国内城市补国家代码与拼音英文名
+    pub fn migrate_custom_cities(&self) {
+        for mut e in self.custom_cities() {
+            if let Some(b) = builtin_entry(&e.name) {
+                let _ = self.add_custom(&b);
+                continue;
+            }
+            let mut changed = false;
+            if e.country_code.is_empty() && e.country == "中国" {
+                e.country_code = "CN".to_string();
+                changed = true;
+            }
+            if matches!(e.country_code.as_str(), "CN" | "HK" | "TW" | "MO") {
+                let (pinyin, _) = world_cities::pinyin_of(&e.name);
+                if e.name_en != pinyin {
+                    e.name_en = pinyin;
+                    changed = true;
+                }
+            }
+            if changed {
+                let _ = self.add_custom(&e);
+            }
+        }
+    }
+
+    /// 内置 291 城 + 自定义城市的本地匹配（中文/英文/拼音/首字母）
     pub fn local_matches(&self, query: &str) -> Vec<WorldCityEntry> {
         let q = normalize_query(query);
         if q.is_empty() {
             return Vec::new();
         }
-        let mut out: Vec<WorldCityEntry> = builtin_entries()
+        let mut out: Vec<WorldCityEntry> = self
+            .cities
             .iter()
             .filter(|e| matches_entry(e, &q))
             .cloned()
@@ -69,7 +252,7 @@ impl WorldSearch {
 
     /// 名称 → 内置或自定义条目
     pub fn entry_by_name(&self, name: &str) -> Option<WorldCityEntry> {
-        if let Some(e) = builtin_entries().iter().find(|e| e.name == name) {
+        if let Some(e) = self.cities.iter().find(|e| e.name == name) {
             return Some(e.clone());
         }
         self.custom_by_name(name)
@@ -92,7 +275,7 @@ impl WorldSearch {
         has?;
         let mut stmt = conn
             .prepare(
-                "SELECT name,name_en,pinyin,initials,country,admin1,tz,lat,lon \
+                "SELECT name,name_en,pinyin,initials,country,country_code,admin1,tz,lat,lon,feature_code,population \
                  FROM geo_result WHERE query=?1 ORDER BY rank",
             )
             .ok()?;
@@ -126,8 +309,8 @@ impl WorldSearch {
         for (rank, e) in results.iter().enumerate() {
             let _ = tx.execute(
                 "INSERT OR REPLACE INTO geo_result(
-                    query,rank,name,name_en,pinyin,initials,country,admin1,tz,lat,lon
-                 ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+                    query,rank,name,name_en,pinyin,initials,country,country_code,admin1,tz,lat,lon,feature_code,population
+                 ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)",
                 params![
                     q,
                     rank as i64,
@@ -136,10 +319,13 @@ impl WorldSearch {
                     e.pinyin,
                     e.initials,
                     e.country,
+                    e.country_code,
                     e.admin1,
                     e.tz,
                     e.lat,
-                    e.lon
+                    e.lon,
+                    e.feature_code,
+                    e.population
                 ],
             );
         }
@@ -154,7 +340,7 @@ impl WorldSearch {
             return Vec::new();
         };
         let Ok(mut stmt) = conn.prepare(
-            "SELECT name,name_en,pinyin,initials,country,admin1,tz,lat,lon \
+            "SELECT name,name_en,pinyin,initials,country,country_code,admin1,tz,lat,lon,feature_code,population \
              FROM custom_city ORDER BY created_at",
         ) else {
             return Vec::new();
@@ -168,7 +354,7 @@ impl WorldSearch {
     pub fn custom_by_name(&self, name: &str) -> Option<WorldCityEntry> {
         let conn = self.open().ok()?;
         conn.query_row(
-            "SELECT name,name_en,pinyin,initials,country,admin1,tz,lat,lon \
+            "SELECT name,name_en,pinyin,initials,country,country_code,admin1,tz,lat,lon,feature_code,population \
              FROM custom_city WHERE name=?1",
             params![name],
             row_to_entry,
@@ -183,18 +369,21 @@ impl WorldSearch {
         };
         conn.execute(
             "INSERT OR REPLACE INTO custom_city(
-                name,name_en,pinyin,initials,country,admin1,tz,lat,lon,created_at
-             ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+                name,name_en,pinyin,initials,country,country_code,admin1,tz,lat,lon,feature_code,population,created_at
+             ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
             params![
                 entry.name,
                 entry.name_en,
                 entry.pinyin,
                 entry.initials,
                 entry.country,
+                entry.country_code,
                 entry.admin1,
                 entry.tz,
                 entry.lat,
                 entry.lon,
+                entry.feature_code,
+                entry.population,
                 epoch_secs()
             ],
         )
@@ -211,7 +400,21 @@ impl WorldSearch {
     fn open(&self) -> rusqlite::Result<Connection> {
         let conn = Connection::open(&self.path)?;
         conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS geo_cache(
+            "CREATE TABLE IF NOT EXISTS city(
+                name TEXT PRIMARY KEY,
+                name_en TEXT NOT NULL DEFAULT '',
+                pinyin TEXT NOT NULL DEFAULT '',
+                initials TEXT NOT NULL DEFAULT '',
+                country TEXT NOT NULL DEFAULT '',
+                country_code TEXT NOT NULL DEFAULT '',
+                admin1 TEXT NOT NULL DEFAULT '',
+                population INTEGER NOT NULL DEFAULT 0,
+                tz TEXT NOT NULL,
+                lat REAL NOT NULL,
+                lon REAL NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0
+             );
+             CREATE TABLE IF NOT EXISTS geo_cache(
                 query TEXT PRIMARY KEY,
                 fetched_at INTEGER NOT NULL
              );
@@ -222,7 +425,7 @@ impl WorldSearch {
                 name_en TEXT NOT NULL DEFAULT '',
                 pinyin TEXT NOT NULL DEFAULT '',
                 initials TEXT NOT NULL DEFAULT '',
-                country TEXT NOT NULL DEFAULT '',
+                country TEXT NOT NULL DEFAULT '', country_code TEXT NOT NULL DEFAULT '', feature_code TEXT NOT NULL DEFAULT '', population INTEGER NOT NULL DEFAULT 0,
                 admin1 TEXT NOT NULL DEFAULT '',
                 tz TEXT NOT NULL,
                 lat REAL NOT NULL,
@@ -234,7 +437,7 @@ impl WorldSearch {
                 name_en TEXT NOT NULL DEFAULT '',
                 pinyin TEXT NOT NULL DEFAULT '',
                 initials TEXT NOT NULL DEFAULT '',
-                country TEXT NOT NULL DEFAULT '',
+                country TEXT NOT NULL DEFAULT '', country_code TEXT NOT NULL DEFAULT '', feature_code TEXT NOT NULL DEFAULT '', population INTEGER NOT NULL DEFAULT 0,
                 admin1 TEXT NOT NULL DEFAULT '',
                 tz TEXT NOT NULL,
                 lat REAL NOT NULL,
@@ -242,37 +445,38 @@ impl WorldSearch {
                 created_at INTEGER NOT NULL
              );",
         )?;
+        // 旧库补列（列已存在时报错，忽略即可）
+        let _ = conn.execute(
+            "ALTER TABLE geo_result ADD COLUMN country_code TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE custom_city ADD COLUMN country_code TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE geo_result ADD COLUMN feature_code TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE custom_city ADD COLUMN feature_code TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE geo_result ADD COLUMN population INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE custom_city ADD COLUMN population INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
         Ok(conn)
     }
 }
 
-/// 内置 50 城条目（拼音/英文别名只生成一次）
-fn builtin_entries() -> &'static [WorldCityEntry] {
-    static ENTRIES: OnceLock<Vec<WorldCityEntry>> = OnceLock::new();
-    ENTRIES.get_or_init(|| {
-        world_cities::all()
-            .iter()
-            .map(|c| {
-                let (pinyin, initials) = world_cities::pinyin_of(c.name);
-                WorldCityEntry {
-                    name: c.name.to_string(),
-                    name_en: world_cities::english_of(c.name).unwrap_or("").to_string(),
-                    pinyin,
-                    initials,
-                    country: String::new(),
-                    admin1: String::new(),
-                    tz: c.tz.to_string(),
-                    lat: c.lat,
-                    lon: c.lon,
-                }
-            })
-            .collect()
-    })
-}
-
-/// 内置城市按名查（世界页 hero/list 渲染用）
+/// 内置城市按名查（世界页 hero/list 渲染用；生产来自 SQLite 快照）
 pub fn builtin_entry(name: &str) -> Option<WorldCityEntry> {
-    builtin_entries().iter().find(|e| e.name == name).cloned()
+    global_cities().iter().find(|e| e.name == name).cloned()
 }
 
 /// IANA 时区是否可解析（自定义城市落库前校验）
@@ -280,14 +484,14 @@ pub fn valid_timezone(tz: &str) -> bool {
     tz.parse::<chrono_tz::Tz>().is_ok()
 }
 
-/// Open-Meteo geocoding URL（调用方用天气/代理通道取 JSON）
-pub fn geocode_url(query: &str) -> String {
+/// Open-Meteo geocoding URL（调用方用天气/代理通道取 JSON；language 决定返回名称语言）
+pub fn geocode_url(query: &str, language: &str) -> String {
     let mut url = reqwest::Url::parse("https://geocoding-api.open-meteo.com/v1/search")
         .expect("geocoding base URL 合法");
     url.query_pairs_mut()
         .append_pair("name", query)
         .append_pair("count", "8")
-        .append_pair("language", "zh")
+        .append_pair("language", language)
         .append_pair("format", "json");
     url.to_string()
 }
@@ -312,10 +516,18 @@ pub fn parse_geocode(value: &Value) -> Vec<WorldCityEntry> {
             continue;
         };
         let (pinyin, initials) = world_cities::pinyin_of(name);
-        let name_en = if name.is_ascii() {
+        let country_code = item
+            .get("country_code")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        // 国内城市英文名直接用拼音；国外表外城市不靠 Open-Meteo 补英文
+        let name_en = if matches!(country_code.as_str(), "CN" | "HK" | "TW" | "MO") {
+            pinyin.clone()
+        } else if name.is_ascii() {
             name.to_string()
         } else {
-            pinyin.clone()
+            String::new()
         };
         out.push(WorldCityEntry {
             name: name.to_string(),
@@ -327,6 +539,7 @@ pub fn parse_geocode(value: &Value) -> Vec<WorldCityEntry> {
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string(),
+            country_code,
             admin1: item
                 .get("admin1")
                 .and_then(Value::as_str)
@@ -335,9 +548,29 @@ pub fn parse_geocode(value: &Value) -> Vec<WorldCityEntry> {
             tz: tz.to_string(),
             lat,
             lon,
+            feature_code: item
+                .get("feature_code")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            population: item.get("population").and_then(Value::as_i64).unwrap_or(0),
         });
     }
     out
+}
+
+/// 城市筛选：仅居民点；排除区/小地方/农场/废弃/县级乡级驻地；人口需达阈值
+pub fn passes_city_filter(e: &WorldCityEntry, min_population: i64) -> bool {
+    if !e.feature_code.starts_with("PPL") {
+        return false;
+    }
+    if matches!(
+        e.feature_code.as_str(),
+        "PPLX" | "PPLL" | "PPLS" | "PPLF" | "PPLH" | "PPLQ" | "PPLW" | "PPLR" | "PPLA3" | "PPLA4"
+    ) {
+        return false;
+    }
+    e.population >= min_population
 }
 
 /// 搜索串归一：小写、去空白/撇号/连字符/点（拼音/英文/中文共用）
@@ -371,6 +604,23 @@ fn search_rank(e: &WorldCityEntry, q: &str) -> u8 {
     }
 }
 
+fn row_to_city(row: &rusqlite::Row<'_>) -> rusqlite::Result<WorldCityEntry> {
+    Ok(WorldCityEntry {
+        name: row.get(0)?,
+        name_en: row.get(1)?,
+        pinyin: row.get(2)?,
+        initials: row.get(3)?,
+        country: row.get(4)?,
+        country_code: row.get(5)?,
+        admin1: row.get(6)?,
+        population: row.get(7)?,
+        tz: row.get(8)?,
+        lat: row.get(9)?,
+        lon: row.get(10)?,
+        feature_code: String::new(),
+    })
+}
+
 fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<WorldCityEntry> {
     Ok(WorldCityEntry {
         name: row.get(0)?,
@@ -378,10 +628,13 @@ fn row_to_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<WorldCityEntry> {
         pinyin: row.get(2)?,
         initials: row.get(3)?,
         country: row.get(4)?,
-        admin1: row.get(5)?,
-        tz: row.get(6)?,
-        lat: row.get(7)?,
-        lon: row.get(8)?,
+        country_code: row.get(5)?,
+        admin1: row.get(6)?,
+        tz: row.get(7)?,
+        lat: row.get(8)?,
+        lon: row.get(9)?,
+        feature_code: row.get(10)?,
+        population: row.get(11)?,
     })
 }
 
@@ -406,12 +659,16 @@ mod tests {
 
     #[test]
     fn pinyin_and_english_aliases() {
+        let (_search, _dir) = temp_search("aliases");
         assert_eq!(
             world_cities::pinyin_of("北京"),
             ("beijing".to_string(), "bj".to_string())
         );
-        assert_eq!(world_cities::english_of("东京"), Some("Tokyo"));
-        assert_eq!(world_cities::english_of("纽约"), Some("New York"));
+        assert_eq!(builtin_entry("东京").expect("东京应在表").name_en, "Tokyo");
+        assert_eq!(
+            builtin_entry("纽约").expect("纽约应在表").name_en,
+            "New York"
+        );
     }
 
     #[test]
@@ -456,7 +713,10 @@ mod tests {
             pinyin: "ceshicheng".to_string(),
             initials: "csc".to_string(),
             country: "测试国".to_string(),
+            country_code: "TT".to_string(),
             admin1: String::new(),
+            feature_code: "PPLC".to_string(),
+            population: 1_000_000,
             tz: "Asia/Shanghai".to_string(),
             lat: 1.0,
             lon: 2.0,
@@ -471,10 +731,10 @@ mod tests {
 
 // ===== src/world_search.rs 说明区 =====
 // 输入：搜索串 / geocoding JSON / 自定义城市条目；输出：WorldCityEntry 列表/缓存
-// 逻辑步骤：50 城本地索引（中文/英文/拼音/首字母）→ 未命中查 SQLite geo_cache →
+// 逻辑步骤：291 城 SQLite 主表（预置 db；中文/英文/拼音/首字母）→ 未命中查 geo_cache →
 //   调用方用 WeatherClient 代理通道取 geocoding JSON → parse_geocode → 落库
-// 设计理由（PL028）：内置 50 城不跑网络；任意城市只在首次搜索请求 geocoding，
-//   结果落 exe 同目录 SQLite，下次命中缓存；拼音由 pinyin crate 本地生成。
+// 设计理由（PL028）：城市主表启动从预置 world_cache.sqlite 加载；境内表外城市
+//   才请求 geocoding，结果落 exe 同目录 SQLite；拼音由 pinyin crate 本地生成。
 // 异常处理：SQLite 打开/写入失败仅日志并降级空；geocoding 缺字段条目跳过；
 //   无结果返回空列表，不 panic。
 // 关联配置：world_cache.sqlite（exe 同目录）；消费方：interface/world page

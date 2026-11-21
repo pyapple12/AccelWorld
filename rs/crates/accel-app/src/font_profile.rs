@@ -122,7 +122,9 @@ fn build() -> Profile {
 /// 取整余量按上 floor(pad/2)、下剩余分配（0.1 补下，0.2/0.4 均分，0.3 上 1 下 2）
 fn box_from_ink(m: f32, step: f32) -> (f32, f32) {
     let raw = m + 0.2 + 0.1;
-    let h = (raw / step).ceil() * step;
+    // 参数表按栅格整数推导，raw 理论上正好落在 0.5 倍数；f32 累积误差会让它
+    // 略大于边界（如 27.500001），先减 epsilon 再向上取整，避免假进位。
+    let h = ((raw / step) - 1e-4).ceil() * step;
     let units = ((h - raw) / 0.1).round().max(0.0) as i32;
     let top_units = units / 2;
     let bottom_units = units - top_units;

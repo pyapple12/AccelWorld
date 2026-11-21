@@ -170,26 +170,31 @@ impl Pages {
                                 state.current_page = PageId::Clock;
                             }
                         }
+                        let content_pad_x = crate::theme::layout_f32("drawer_content_pad_x");
+                        let content_min_w = crate::theme::layout_f32("drawer_content_min_w");
                         let content = egui::Frame::new().inner_margin(egui::Margin {
-                            left: 20,
-                            right: 20,
+                            left: content_pad_x as i8,
+                            right: content_pad_x as i8,
                             top: 10,
                             bottom: 0,
                         });
-                        content.show(area, |body| {
-                            if self.drawer_settings {
-                                settings::ui(body, state, bus);
-                            } else {
-                                let page: &mut dyn Page = match self.drawer_page {
-                                    PageId::Clock => &mut self.clock,
-                                    PageId::Countdown => &mut self.countdown,
-                                    PageId::World => &mut self.world,
-                                    PageId::Weather => &mut self.weather,
-                                    PageId::Alarm => &mut self.alarm,
-                                };
-                                page.ui(body, state, bus);
-                            }
-                        });
+                        // 抽屉开合动画早期宽度不足：内容不画，避免负宽度触发 egui panic
+                        if drawer_w > 2.0 * content_pad_x + content_min_w {
+                            content.show(area, |body| {
+                                if self.drawer_settings {
+                                    settings::ui(body, state, bus);
+                                } else {
+                                    let page: &mut dyn Page = match self.drawer_page {
+                                        PageId::Clock => &mut self.clock,
+                                        PageId::Countdown => &mut self.countdown,
+                                        PageId::World => &mut self.world,
+                                        PageId::Weather => &mut self.weather,
+                                        PageId::Alarm => &mut self.alarm,
+                                    };
+                                    page.ui(body, state, bus);
+                                }
+                            });
+                        }
                     },
                 );
             }

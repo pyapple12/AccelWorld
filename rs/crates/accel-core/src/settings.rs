@@ -295,10 +295,10 @@ pub fn load(path: &Path) -> UserConfig {
 /// （显示侧回显、走时占位）——迁移幂等，下次落盘即固化
 fn normalize_world_pins(pins: &mut [String]) {
     for pin in pins.iter_mut() {
-        if crate::data::world_cities::by_name(pin).is_some() {
+        if crate::world_search::by_name(pin).is_some() {
             continue;
         }
-        if let Some(name) = crate::data::world_cities::name_of_tz(pin) {
+        if let Some(name) = crate::world_search::name_of_tz(pin) {
             *pin = name.to_string();
         }
     }
@@ -446,6 +446,8 @@ mod tests {
         // 两域皆不收的值原样保留（显示回显/走时占位）
         let sandbox = SandboxDir::new("pinmigrate");
         let path = sandbox.path();
+        let _db =
+            crate::world_search::WorldSearch::with_path(path.with_file_name("world_cache.sqlite"));
         let legacy = serde_json::json!({
             "world_pins": ["Asia/Shanghai", "Asia/Tokyo", "Mars/Olympus"]
         });

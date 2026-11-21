@@ -10,7 +10,7 @@ use chrono::Local;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::alarm::{Alarm, AlarmManager, Clock, RealClock};
-use crate::data::{cities, timezones, world_cities};
+use crate::data::{cities, timezones};
 use crate::settings;
 use crate::static_config::Static;
 use crate::time_dilation::TimeDilation;
@@ -30,7 +30,7 @@ pub struct AppInterface {
     config_path: PathBuf,
     /// 天气在飞任务表（FIX006.9：同城去抖 + Quit 统一 abort；键 = 城市名）
     weather_inflight: Arc<Mutex<WeatherInflight>>,
-    /// 世界城市搜索缓存（PL028；SQLite + 50 城本地索引）
+    /// 世界城市搜索缓存（PL028；SQLite 城市主表 291 城 + geocoding 缓存）
     world_search: Arc<WorldSearch>,
 }
 
@@ -50,6 +50,8 @@ impl AppInterface {
     /// 注入配置路径构造（测试隔离；配置缺省时以 default_rate 初始化）
     /// 闹钟随构造自配置装载（Python 由 UI 显式 load_alarm_dicts，Rust 收敛为构造内聚）
     pub fn with_config_path(config_path: PathBuf) -> Self {
+        // 先加载城市主表（SQLite 快照），settings 的 IANA → 城市名迁移依赖它
+        let world_search = Arc::new(WorldSearch::new());
         // A005 #18：单次 load 复用（原实现对同一路径 load 两遍——重复磁盘 IO）
         let config = settings::load(&config_path);
         // PL020：旧配置可能存小数倍率，装载时四舍五入到整数档再校验
@@ -79,7 +81,7 @@ impl AppInterface {
             alarms: Arc::new(Mutex::new(manager)),
             config_path,
             weather_inflight: Arc::new(Mutex::new(std::collections::HashMap::new())),
-            world_search: Arc::new(WorldSearch::new()),
+            world_search,
         }
     }
 
@@ -172,7 +174,7 @@ impl AppInterface {
 
     /// 城市名有序列表（Python sorted(CITIES.keys()) 对等：排序返回）
     /// 天气城市候选（FIX006.23：天气域城市表 = data::cities（17 城坐标表），
-    /// 与世界时钟域的 world_cities（50 城）职责分离）
+    /// 与世界时钟域的 world_cities（291 城）职责分离）
     pub fn get_city_names() -> Vec<String> {
         let mut names: Vec<String> = cities::names().into_iter().map(String::from).collect();
         names.sort();
@@ -283,7 +285,7 @@ impl AppInterface {
     /// 身份，走时经 tz_of 映射 IANA；未知城市拒绝）
     /// FIX006.22：幂等规则统一——已存在 = true（补日志非静默）；非法入参 = false
     pub fn add_world_city(&self, name: &str) -> bool {
-        if world_cities::by_name(name).is_none() {
+        if world_search::by_name(name).is_none() {
             tracing::warn!("未知城市，拒绝添加常驻: {name}");
             return false;
         }
@@ -356,7 +358,7 @@ impl AppInterface {
         settings::save(&self.config_path, &config)
     }
 
-    /// 世界时钟城市条目（内置 50 城 + 用户自定义；按当前 pins 顺序）
+    /// 世界时钟城市条目（SQLite 城市主表 291 城 + 用户自定义；按当前 pins 顺序）
     pub fn get_world_city_entries(&self) -> Vec<WorldCityEntry> {
         self.get_world_pins()
             .iter()
@@ -369,28 +371,68 @@ impl AppInterface {
         self.world_search.custom_cities()
     }
 
-    /// 世界时钟搜索：本地 50 城 → SQLite 缓存 → Open-Meteo geocoding
+    /// 世界时钟搜索：本地 291 城 → SQLite 缓存 → Open-Meteo geocoding
     pub async fn search_world_cities(&self, query: &str) -> Result<Vec<WorldCityEntry>, String> {
         let query = query.trim();
         if query.is_empty() {
             return Ok(Vec::new());
         }
+        let min_population =
+            crate::static_config::Static::get().base_i64("world_search_min_population");
         let local = self.world_search.local_matches(query);
         if !local.is_empty() {
             return Ok(local);
         }
-        if let Some(cached) = self.world_search.cached(query) {
-            return Ok(cached);
+        let cached = self.world_search.cached(query);
+        if let Some(list) = &cached {
+            // 旧缓存（缺国家代码/地点类型/人口/英文名，或英文名仍是拼音）不直接用，重新走网络刷新
+            let stale = list.iter().any(|e| {
+                e.country_code.is_empty()
+                    || e.feature_code.is_empty()
+                    || e.population <= 0
+                    || e.name_en.is_empty()
+                    || (!e.name_en.is_empty() && e.name_en == e.pinyin)
+            });
+            if !stale {
+                let mut list = list.clone();
+                list.retain(|e| {
+                    matches!(e.country_code.as_str(), "CN" | "HK" | "TW" | "MO")
+                        && world_search::passes_city_filter(e, min_population)
+                });
+                if !list.is_empty() {
+                    return Ok(list);
+                }
+            }
         }
-        let url = world_search::geocode_url(query);
-        let value = self
-            .weather
-            .fetch_json_url(&url)
-            .await
-            .map_err(|e| e.to_string())?;
-        let results = world_search::parse_geocode(&value);
+        // 国内城市才走 Open-Meteo；境外城市只用本地 241 城表
+        let zh_url = world_search::geocode_url(query, "zh");
+        let value = match self.weather.fetch_json_url(&zh_url).await {
+            Ok(v) => v,
+            Err(e) => {
+                // 网络失败时回退旧缓存（仍按同规则过滤），至少离线可用
+                if let Some(list) = cached {
+                    let list: Vec<WorldCityEntry> = list
+                        .into_iter()
+                        .filter(|c| {
+                            matches!(c.country_code.as_str(), "CN" | "HK" | "TW" | "MO")
+                                && world_search::passes_city_filter(c, min_population)
+                        })
+                        .collect();
+                    if !list.is_empty() {
+                        return Ok(list);
+                    }
+                }
+                return Err(e.to_string());
+            }
+        };
+        let mut results = world_search::parse_geocode(&value);
+        results.retain(|e| matches!(e.country_code.as_str(), "CN" | "HK" | "TW" | "MO"));
         if results.is_empty() {
-            return Err("未找到匹配城市".to_string());
+            return Err("未找到匹配城市（境外城市仅支持本地城市表）".to_string());
+        }
+        results.retain(|e| world_search::passes_city_filter(e, min_population));
+        if results.is_empty() {
+            return Err(format!("没有符合人口条件的城市（{min_population} 以上）"));
         }
         self.world_search.store_candidates(query, &results);
         Ok(results)
@@ -745,7 +787,7 @@ impl AppInterface {
                             Some(FrontendCommand::AddWorldCity(name)) => {
                                 // FIX011.01（A011 #1）：拒绝不发 ConfigSaved（同 AddAlarm
                                 // 口径）——前置校验后 false 只剩 IO 失败一种语义
-                                if world_cities::by_name(&name).is_some() {
+                                if world_search::by_name(&name).is_some() {
                                     let ok = self.add_world_city(&name);
                                     let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
                                 } else {
@@ -1408,7 +1450,7 @@ mod tests {
 
     #[tokio::test]
     async fn bus_world_search_local_hits_builtin() {
-        // PL028：本地 50 城搜索不触发 geocoding（无需网络桩）
+        // PL028：本地 291 城搜索不触发 geocoding（无需网络桩）
         let sandbox = SandboxDir::new("worldsearch");
         let path = sandbox.path();
         let itf = Arc::new(iface(&path));
@@ -1445,7 +1487,10 @@ mod tests {
             pinyin: "ceshicheng".to_string(),
             initials: "csc".to_string(),
             country: "测试国".to_string(),
+            country_code: "TT".to_string(),
             admin1: String::new(),
+            feature_code: "PPLC".to_string(),
+            population: 1_000_000,
             tz: "Asia/Shanghai".to_string(),
             lat: 31.0,
             lon: 121.0,
@@ -1651,9 +1696,16 @@ mod tests {
     #[test]
     fn world_cities_domain_query() {
         // .10 验收：世界时钟城市表经 data 直取（A009 #9：interface 转发已删——
-        // A005 #12 只读直取定案；50 城 + 锚点 + 上限 token 锚点）
-        let names = crate::data::world_cities::all_names();
-        assert_eq!(names.len(), 50, "世界时钟城市表 50 城（PL012.09 落位实测）");
+        // A005 #12 只读直取定案；291 城 SQLite 快照 + 锚点 + 上限 token 锚点）
+        let dir = std::env::temp_dir().join(format!("accel_world_domain_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = crate::world_search::WorldSearch::with_path(dir.join("world_cache.sqlite"));
+        let names = crate::world_search::all_names();
+        assert!(
+            names.len() >= 200,
+            "世界时钟城市表应扩到 200+（PL028 实测 {}）",
+            names.len()
+        );
         assert!(names.contains(&"纽约"));
         assert_eq!(
             Static::get().base_i64("max_alarms"),

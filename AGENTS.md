@@ -31,7 +31,7 @@ Rust 桌面应用：基于加速倍率的时间膨胀时钟（egui + eframe/glow
 - **视觉走查门**：UI 观感改动经 `ACCELWORLD_UI_SHOT` 截图探针（真窗逐页 PNG）自检再进用户桌面走查——功能探针抓不住纯视觉缺陷（UIR 前的玻璃时代为 render_probe 离屏断言，管线已废）
 - **平台集成降级纪律**：托盘 / 全局热键 / 通知等系统能力构造失败一律降级日志不崩（行为无损），非 Windows 平台编译期桩化
 - **天气网络策略**：用户设置优先（设置 → 网络：代理开关 + 地址；关=仅直连，开+空=系统探测，开+地址=指定代理）；直连（显式 `no_proxy`）优先，直连网络失败且允许代理时改走代理；每次拉取前重读策略，开关/改地址无需重启；两通道都网络失败由 `interface` 排 `weather_fail_retry_delay_s`（默认 600s）自动重试。冷启动先读磁盘缓存上屏，首帧后才发起网络首拉（不得阻塞启动）。相关 token 全在 `base.json`（`weather_timeout_s` / `weather_connect_timeout_s` / `weather_retries` / `weather_fail_retry_delay_s` / `default_weather_use_proxy` / `default_weather_proxy`），不得在代码写死
-- **世界时钟**：单 hero（城市名 + 大号 24h + 日期周几 + 时区偏移）+ 下方滚动列表；hero 城市不在列表重复，hero 不能直接删，先 pin 新城市；50 城本地中文/英文/拼音/首字母索引，任意城市走 Open-Meteo geocoding，结果与自定义城市落 exe 同目录 `world_cache.sqlite`；`SetBaseTimezone`/`last_timezone`/`default_timezone` 已退役，不再新增“基准”状态
+- **世界时钟**：单 hero（城市名 + 大号 24h + 日期周几 + 时区偏移）+ 下方滚动列表；hero 城市不在列表重复，hero 不能直接删，先 pin 新城市；291 城 SQLite 主表（预置 world_cache.sqlite）中文/英文/拼音/首字母索引（12 中国 + 279 境外）；国内表外城市走 Open-Meteo geocoding（英文名用拼音），境外只用本地城市表；城市主表、搜索结果与自定义城市均落 exe 同目录 `world_cache.sqlite`；`SetBaseTimezone`/`last_timezone`/`default_timezone` 已退役，不再新增“基准”状态
 - **视觉设计不得向测试环境妥协**：offscreen / 无头探针仅作功能与结构参考；视觉与材质的最终实测以用户桌面走查为准
 - 提交信息规范见下文「Commit 提交规范」节；功能开发先走 OpenSpec 提案流程
 - 工作流文档：`w.study.md` 项目分析 / `x.progress.md` 任务清单（PL011–PL018 + UIR/FIX，已完成在前、未完成在后）/ `y.problems.md` 已知问题 / `z.plan.md` 方案记录与审计附录（豁免定案清单 `A{NNN}` 递增）/ `m.milestone.md` 版本里程碑 / `t.hint.md` 经验复盘

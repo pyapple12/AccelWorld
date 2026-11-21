@@ -1,5 +1,5 @@
 {
-  "version": "0.6.6.3",
+  "version": "0.6.6.4",
   "rate_min": 1.0,
   "rate_max": 365.0,
   "rate_step": 1.0,
@@ -26,6 +26,7 @@
     "首尔"
   ],
   "max_alarms": 10,
+  "world_search_min_population": 50000,
   "quick_alarm_minutes": [15, 30, 60, 240],
   "window_x": 100,
   "window_y": 100,
