@@ -1,5 +1,5 @@
 {
-  "version": "0.6.6.4",
+  "version": "0.6.6.5",
   "rate_min": 1.0,
   "rate_max": 365.0,
   "rate_step": 1.0,
@@ -12,7 +12,7 @@
     "quit": "Ctrl+Q"
   },
   "default_theme": "auto",
-  "default_city": "北京",
+  "default_city": "上海",
   "default_weather_use_proxy": 1,
   "default_weather_proxy": "",
   "default_world_pins": [
@@ -43,6 +43,7 @@
   "weather_retries": 3,
   "weather_retry_delay": 1.0,
   "weather_fail_retry_delay_s": 600,
+  "weather_auto_refresh_s": 1800,
   "weather_forecast_days": 7,
   "weather_forecast_hours": 24,
   "log_level": "INFO",

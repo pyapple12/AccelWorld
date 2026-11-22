@@ -72,11 +72,13 @@ pub struct HourlyPoint {
     pub precip_prob: f64,
 }
 
-/// 七日概要点（PL014.11）
+/// 七日概要点（PL014.11；PL029 增加每日天气码供七日图标）
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DailyPoint {
     /// "YYYY-MM-DD"
     pub date: String,
+    /// 当日 WMO 天气代码（PL029：七日行天气图标）
+    pub weather_code: i64,
     /// 最高温（℃）
     pub t_max: f64,
     /// 最低温（℃）
@@ -119,7 +121,7 @@ pub struct WeatherData {
 pub struct UiPreferences {
     /// 主题偏好三态（auto=跟随系统/light/dark；非法值由接口归一化回退默认）
     pub theme: String,
-    /// 上次选择的城市（缺省回退 default_city）
+    /// 天气城市持久化镜像（PL029：跟随世界页 hero；缺省回退 default_city）
     pub last_city: String,
     /// 上次设置的倒计时目标文本（未设置为空串）
     pub countdown_target: String,
@@ -176,8 +178,6 @@ pub enum FrontendCommand {
         city: String,
         force: bool,
     },
-    /// 切换天气城市（A005 #4：单城市模型下的城市选择——持久化 last_city）
-    SetWeatherCity(String),
     /// 世界时钟城市搜索（PL028；本地命中/缓存/geocoding 异步回推）
     SearchWorldCity(String),
     /// 添加世界城市（内置 50 城）
@@ -249,9 +249,12 @@ pub enum BackendEvent {
 // A005 #4 修订（2026-10-18）：删除从未接线的 AddWeatherCity/RemoveWeatherCity，
 //   新增 SetWeatherCity（单城市模型的换城入口）；命令分发 match 已穷尽——新增
 //   变体不接线即编译失败（协议演进由编译器强制）
+// PL029（2026-11-22）：SetWeatherCity 退役——天气城市跟随世界页 hero，换城入口
+//   由 SetWorldHero 承担；last_city 只作持久化镜像
 // 协议 v1.1（2026-10-23，UIR.7）：FrontendCommand 扩 SetWindowGeometry（窗口
 //   几何记忆契约，17 变体——「协议 v1 定死」自本条起为「演进须登记」口径）
 // 协议 v1.2（2026-11-20，PL027）：FrontendCommand 扩 SetWeatherProxy（18 变体）
+// 协议 v1.3（2026-11-22，PL029）：退役 SetWeatherCity（19 变体——PL028 已扩三变体）
 // 关联依赖：serde/chrono/alarm（数据形状）；消费方：interface（分发）/ app bus
 #[cfg(test)]
 mod tests {

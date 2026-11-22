@@ -10,7 +10,7 @@ use chrono::Local;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::alarm::{Alarm, AlarmManager, Clock, RealClock};
-use crate::data::{cities, timezones};
+use crate::data::timezones;
 use crate::settings;
 use crate::static_config::Static;
 use crate::time_dilation::TimeDilation;
@@ -53,7 +53,15 @@ impl AppInterface {
         // 先加载城市主表（SQLite 快照），settings 的 IANA → 城市名迁移依赖它
         let world_search = Arc::new(WorldSearch::new());
         // A005 #18：单次 load 复用（原实现对同一路径 load 两遍——重复磁盘 IO）
-        let config = settings::load(&config_path);
+        let mut config = settings::load(&config_path);
+        // PL029：天气城市跟随世界页 hero；启动时把持久化镜像 last_city 对齐 hero
+        // （base default_city=上海只作无 hero 时的兜底；有 hero 立即被替换）
+        if !config.world_hero_city.is_empty() && config.last_city != config.world_hero_city {
+            config.last_city = config.world_hero_city.clone();
+            if !settings::save(&config_path, &config) {
+                tracing::warn!("启动同步天气城市落盘失败: {}", config.last_city);
+            }
+        }
         // PL020：旧配置可能存小数倍率，装载时四舍五入到整数档再校验
         let stored_rate = config.time_dilation_rate;
         let rate = stored_rate.round();
@@ -172,33 +180,10 @@ impl AppInterface {
 
     // ===== 天气域 =====
 
-    /// 城市名有序列表（Python sorted(CITIES.keys()) 对等：排序返回）
-    /// 天气城市候选（FIX006.23：天气域城市表 = data::cities（17 城坐标表），
-    /// 与世界时钟域的 world_cities（291 城）职责分离）
-    pub fn get_city_names() -> Vec<String> {
-        let mut names: Vec<String> = cities::names().into_iter().map(String::from).collect();
-        names.sort();
-        names
-    }
-
     // A009 #9：get_weather_refresh_interval_ms 已删（app 零调用，缓存 TTL 单源
     // weather_cache_ttl token 由 WeatherClient::new 直读）
-
-    /// 切换天气城市（A005 #4 单城模型的城市选择）：城市须在天气城市表内，持久化 last_city
-    /// 输入：城市名；输出：是否落盘成功（未知城市拒 false；同名视为已达成 true）
-    /// FIX006.22：幂等规则统一为「已存在 = true（不重复落盘）；非法入参 = false」
-    pub fn set_weather_city(&self, city: &str) -> bool {
-        if cities::get(city).is_none() {
-            tracing::warn!("未知天气城市，拒绝设置: {city}");
-            return false;
-        }
-        let mut config = settings::load(&self.config_path);
-        if config.last_city == city {
-            return true;
-        }
-        config.last_city = city.to_string();
-        settings::save(&self.config_path, &config)
-    }
+    // PL029：get_city_names / set_weather_city 已删——天气城市不再独立选择，
+    // 完全跟随世界页 hero（last_city 只作持久化镜像，启动与 hero 变更时同步）
 
     // ===== 时区域 =====
 
@@ -291,13 +276,14 @@ impl AppInterface {
         }
         let mut config = settings::load(&self.config_path);
         if config.world_pins.iter().any(|p| p == name) {
-            // FIX006.22：已存在 = 幂等达成（true，不重复落盘）——与 set_weather_city 同语义
+            // FIX006.22：已存在 = 幂等达成（true，不重复落盘）——与 add_world_city 同语义
             tracing::info!("常驻城市已存在，跳过重复添加: {name}");
             return true;
         }
         config.world_pins.push(name.to_string());
         if config.world_hero_city.is_empty() {
             config.world_hero_city = name.to_string();
+            config.last_city = name.to_string();
         }
         settings::save(&self.config_path, &config)
     }
@@ -322,6 +308,7 @@ impl AppInterface {
     }
 
     /// 设置世界时钟 hero（PL028）：必须是已 pin 的城市；同值幂等
+    /// PL029：hero 同时是天气城市——last_city 镜像同步落盘
     pub fn set_world_hero(&self, name: &str) -> bool {
         let mut config = settings::load(&self.config_path);
         if !config.world_pins.iter().any(|p| p == name) {
@@ -332,10 +319,11 @@ impl AppInterface {
             tracing::warn!("hero 城市无法解析时区，拒绝设置: {name}");
             return false;
         }
-        if config.world_hero_city == name {
+        if config.world_hero_city == name && config.last_city == name {
             return true;
         }
         config.world_hero_city = name.to_string();
+        config.last_city = name.to_string();
         settings::save(&self.config_path, &config)
     }
 
@@ -354,6 +342,7 @@ impl AppInterface {
         }
         if config.world_hero_city.is_empty() {
             config.world_hero_city = entry.name.clone();
+            config.last_city = entry.name.clone();
         }
         settings::save(&self.config_path, &config)
     }
@@ -604,6 +593,25 @@ impl AppInterface {
                                 }
                             }
                             Some(FrontendCommand::RefreshWeather { city, force }) => {
+                                // PL029：天气城市跟随 hero；坐标从 SQLite 城市主表/自定义
+                                // 城市条目解析（旧 17 城坐标表已退役）
+                                let (lat, lon) = match self
+                                    .world_search
+                                    .entry_by_name(&city)
+                                    .map(|e| (e.lat, e.lon))
+                                {
+                                    Some(c) => c,
+                                    None => {
+                                        tracing::warn!("未知天气城市，拒绝拉取: {city}");
+                                        let _ = evt_tx
+                                            .send(BackendEvent::WeatherFailed {
+                                                city,
+                                                reason: "未知城市".to_string(),
+                                            })
+                                            .await;
+                                        continue;
+                                    }
+                                };
                                 // FIX006.9：同城在飞去抖（force 强制刷新则取消旧任务重发）；
                                 // FIX007.5：替换旧条目时置 superseded 标记——abort 不生效
                                 // （旧任务已越过最后 await）时任务尾依标记跳过自摘，不再
@@ -631,7 +639,9 @@ impl AppInterface {
                                     // FIX006.4/.9 配套可观测性：拉取开始即留痕（冷启动首拉可见）
                                     tracing::info!("天气拉取开始: {city}（force={force}）");
                                     let handle = tokio::spawn(async move {
-                                        let result = weather.fetch_by_city(&city_task, force).await;
+                                        let result = weather
+                                            .fetch_by_city(&city_task, lat, lon, force)
+                                            .await;
                                         // 仅网络类失败（含磁盘缓存回退包裹的网络失败）值得
                                         // 10 分钟后自动重试；解析类错误换时间也不会自愈
                                         let retryable = match &result {
@@ -754,16 +764,6 @@ impl AppInterface {
                                 if ok {
                                     let saved = self.save_config_now();
                                     let _ = evt_tx.send(BackendEvent::ConfigSaved(saved)).await;
-                                }
-                            }
-                            Some(FrontendCommand::SetWeatherCity(city)) => {
-                                // FIX010.1：未知城市拒绝不发 ConfigSaved（对照 RateRejected
-                                // 口径）；此处 ok=false 只剩 IO 失败一种语义，仍回推不静默
-                                if cities::get(&city).is_some() {
-                                    let ok = self.set_weather_city(&city);
-                                    let _ = evt_tx.send(BackendEvent::ConfigSaved(ok)).await;
-                                } else {
-                                    tracing::warn!("未知天气城市，拒绝设置: {city}");
                                 }
                             }
                             Some(FrontendCommand::SearchWorldCity(query)) => {
@@ -989,12 +989,12 @@ fn inflight_abort_all(map: &mut WeatherInflight) {
 
 // ===== src/interface.rs 说明区 =====
 // 输入：FrontendCommand 流（UI 写意图）；输出：同步查询 DTO 快照 + BackendEvent 流
-// 逻辑步骤：spawn 主循环 select——命令分支（18 变体逐一接线，match 穷尽无兜底——
+// 逻辑步骤：spawn 主循环 select——命令分支（19 变体逐一接线，match 穷尽无兜底——
 //   A005 #4 起新增变体不接线即编译失败；UIR.7 扩 SetWindowGeometry 为协议 v1.1；
-//   PL027 扩 SetWeatherProxy 为 v1.2）
+//   PL027 扩 SetWeatherProxy 为 v1.2；PL029 退役 SetWeatherCity 为 v1.3）
 //   与 tick 分支（绝对截止时间，倍率变化比较后 reset 重排）并发
 // 设计理由：对齐 Python AppInterface 七域契约方法名（get_time_info/get_rate/
-//   set_rate/apply_rate/get_city_names/get_ui_preferences/...；fetch_weather
+//   set_rate/apply_rate/get_ui_preferences/...；fetch_weather
 //   拉取式残留已删——A008 #7，总线 RefreshWeather 为唯一天气入口；A009 #9 再删
 //   get_weather_refresh_interval_ms/get_alarm/get_max_alarms/get_world_cities
 //   四转发——app 只读直取/全量回推重建；get_timezone_options 登记保留：timezones
@@ -1013,8 +1013,8 @@ fn inflight_abort_all(map: &mut WeatherInflight) {
 //   Quit 统一 abort——不留 evt_tx 克隆，接收端即时闭合）；FIX007.5：自摘按替换标记
 //   判定任务身份，旧任务完成不再误删 force 换上的新条目
 // FIX006.22：写操作幂等规则统一——「已存在 = true（不重复落盘）」/「非法入参 = false」/
-//   「移除类不存在 = false」；FIX006.23：天气城市候选 = data::cities（与世界时钟
-//   world_cities 两表职责分离）
+//   「移除类不存在 = false」；PL029：天气城市跟随世界页 hero，17 城天气表退役，
+//   坐标从 SQLite city 表/自定义城市条目解析
 // 已知偏移：①总线天气任务的 force 清该城缓存键（Python 清全表；z.plan 修订二
 //   per-city 定案，多城市语义更正确）；②配置读经每调用 load（Python 有模块级
 //   缓存；Rust 由调用频率低 + 原子写保证一致性，缓存层 PL013 视性能引入）
@@ -1098,20 +1098,19 @@ mod tests {
     }
 
     #[test]
-    fn city_names_sorted_and_preferences() {
-        // get_city_names 排序返回；偏好组装与主题归一化
+    fn preferences_and_theme_normalization() {
+        // 偏好组装与主题归一化（PL029：城市下拉/17 城表退役，不再断言 get_city_names）
         let sandbox = SandboxDir::new("prefs");
         let path = sandbox.path();
-        let names = AppInterface::get_city_names();
-        assert_eq!(names.len(), 17);
-        let mut sorted_check = names.clone();
-        sorted_check.sort();
-        assert_eq!(names, sorted_check, "城市名应排序返回（Python parity）");
-        assert!(names.contains(&"北京".to_string()));
-
         let config = UserConfig {
             theme: "purple".into(),
             last_city: "上海".into(),
+            world_pins: {
+                let mut pins = UserConfig::default().world_pins;
+                pins.insert(0, "上海".into());
+                pins
+            },
+            world_hero_city: "上海".into(),
             ..UserConfig::default()
         };
         settings::save(&path, &config);
@@ -1119,7 +1118,7 @@ mod tests {
         let prefs = itf.get_ui_preferences();
         assert_eq!(prefs.theme, "auto", "非法主题应归一化回退默认");
         assert_eq!(prefs.last_city, "上海");
-        assert_eq!(itf.get_world_pins().len(), 8);
+        assert_eq!(itf.get_world_pins().len(), 9);
     }
 
     #[test]
@@ -1569,30 +1568,34 @@ mod tests {
         assert!(!itf.set_world_hero("Mars/Olympus"));
     }
 
-    #[tokio::test]
-    async fn set_weather_city_persists_and_rejects_unknown() {
-        // A005 #4 验收：SetWeatherCity 持久化 last_city 并回推 ConfigSaved(true)；未知城市拒
-        let sandbox = SandboxDir::new("wcity");
+    #[test]
+    fn startup_syncs_weather_city_to_world_hero() {
+        // PL029 验收：天气城市跟随 hero——旧档 last_city=上海、hero=东京时，
+        // 构造期立即把 last_city 镜像同步为东京并落盘
+        let sandbox = SandboxDir::new("wcitysync");
         let path = sandbox.path();
-        let itf = Arc::new(iface(&path));
-        let (cmd_tx, mut evt_rx) = AppInterface::spawn(Arc::clone(&itf));
-        cmd_tx
-            .send(FrontendCommand::SetWeatherCity("上海".into()))
-            .await
-            .expect("发送失败");
-        let mut saved = false;
-        let deadline = std::time::Instant::now() + Duration::from_secs(2);
-        while std::time::Instant::now() < deadline {
-            if let Some(BackendEvent::ConfigSaved(ok)) = evt_rx.recv().await {
-                saved = ok;
-                break;
-            }
-        }
-        assert!(saved, "应回推 ConfigSaved(true)");
-        assert_eq!(settings::load(&path).last_city, "上海", "last_city 应落盘");
+        let config = UserConfig {
+            last_city: "上海".into(),
+            world_hero_city: "东京".into(),
+            world_pins: vec!["北京".into(), "东京".into()],
+            ..UserConfig::default()
+        };
+        settings::save(&path, &config);
+        let itf = iface(&path);
+        assert_eq!(itf.get_ui_preferences().last_city, "东京");
+        assert_eq!(settings::load(&path).last_city, "东京");
+    }
+
+    #[test]
+    fn set_world_hero_syncs_weather_city() {
+        // PL029 验收：hero 变更即天气城市变更（last_city 镜像同步落盘）
+        let sandbox = SandboxDir::new("wherosync");
+        let path = sandbox.path();
+        let itf = iface(&path);
+        assert!(itf.add_world_city("上海"));
+        assert!(itf.set_world_hero("上海"));
+        assert_eq!(settings::load(&path).last_city, "上海");
         assert_eq!(itf.get_ui_preferences().last_city, "上海");
-        // 未知城市（不在天气城市表）拒绝
-        assert!(!itf.set_weather_city("不存在城"));
     }
 
     #[test]

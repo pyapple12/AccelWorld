@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ACCELWORLD Clock UI 标注指南 · V0.6.6.2</title>
+    <title>ACCELWORLD Clock UI 标注指南 · V0.6.6.5</title>
     <style>
       :root {
         --bg: #0b0f19;
@@ -956,21 +956,6 @@
       }
 
       /* ===== 天气 ===== */
-      .wx-head {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        position: relative;
-      }
-      .wx-refresh {
-        width: 24px;
-        height: 24px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 5px;
-        color: var(--muted);
-      }
       .wx-error {
         display: flex;
         align-items: center;
@@ -983,31 +968,51 @@
       .wx-error .old {
         color: var(--meta);
       }
-      .wx-error .retry {
-        font-size: 9px;
-        color: var(--body);
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        padding: 1px 5px;
-      }
       .wx-hero {
-        display: flex;
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
         align-items: center;
-        gap: 12px;
         position: relative;
         padding: 2px 0;
       }
-      .wx-icon {
+      .wx-row1,
+      .wx-row2 {
+        display: flex;
+        flex-direction: column;
+      }
+      .wx-hero .wx-col1 {
+        align-items: center;
+      }
+      .wx-hero .wx-col2 {
+        align-items: center;
+      }
+      .wx-hero .wx-col3 {
+        align-items: center;
+      }
+      .wx-city {
         font-size: 30px;
+        line-height: 1;
+        color: var(--ink);
+        font-weight: 500;
+      }
+      .wx-en {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--meta);
+        margin-top: 3px;
+      }
+      .wx-icon {
+        font-size: 24px;
         color: var(--muted);
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 38px;
+        width: 28px;
+        height: 28px;
       }
       .wx-temp {
         font-family: var(--font-mono);
-        font-size: 32px;
+        font-size: 30px;
         line-height: 1;
         color: var(--ink);
         font-variant-numeric: tabular-nums;
@@ -1026,6 +1031,15 @@
       .metric {
         flex: 1;
         min-width: 0;
+      }
+      .metric.m-left {
+        text-align: center;
+      }
+      .metric.m-center {
+        text-align: center;
+      }
+      .metric.m-right {
+        text-align: center;
       }
       .metric .mlabel {
         font-size: 9px;
@@ -1083,16 +1097,32 @@
         position: relative;
       }
       .week-row .wdate {
-        flex: 0 0 34px;
+        flex: 0 0 44px;
         font-size: 9.5px;
+        margin-right: 10px;
+      }
+      .week-row .wicon {
+        width: 12px;
+        height: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--muted);
+      }
+      .week-row .wicon svg {
+        width: 12px;
+        height: 12px;
+      }
+      .week-row .wgap {
+        flex: 1;
       }
       .week-row .wtrack {
         position: relative;
-        flex: 1;
+        flex: 8;
         height: 6px;
         border-radius: 3px;
         background: var(--track);
-        margin: 0 8px;
+        margin: 0;
       }
       .week-row .wfill {
         position: absolute;
@@ -1102,7 +1132,7 @@
         background: var(--gold);
       }
       .week-row .wvalue {
-        flex: 0 0 54px;
+        flex: 0 0 68px;
         text-align: right;
         color: var(--ink);
         font-family: var(--font-mono);
@@ -1814,8 +1844,8 @@
         token。目标只有一个：你指着屏幕说“这里”，我们指的是同一个东西。
       </p>
       <div class="meta-row">
-        <span class="badge gold">基线 V0.6.6.2</span>
-        <span class="badge">V0.6.6.2</span>
+        <span class="badge gold">基线 V0.6.6.5</span>
+        <span class="badge">V0.6.6.5</span>
         <span class="badge">窗口 960×720 · min 560×420 · 无上限</span>
         <span>配套：<code>u.UI_GLOSSARY.md</code></span>
       </div>
@@ -2676,9 +2706,9 @@
           <div>
             <h2>天气页</h2>
             <p>
-              抽屉页。整页 ScrollArea，没有固定页脚。头行是城市 +
-              刷新；下面是错误/旧值、Hero
-              聚簇、三列指标、逐小时曲线、七日范围条、数据源。
+              抽屉页。整页 ScrollArea，没有固定页脚，也没有城市下拉/刷新按钮。
+              天气城市跟随世界页 hero；下面是错误、三列首块、三列指标、 24
+              小时折线（3 小时温度标注）、七日范围条。
             </p>
           </div>
         </div>
@@ -2702,81 +2732,60 @@
                       ></span>
                     </div>
                     <div class="drawer-body">
-                      <div class="wx-head">
-                        <span class="tag" style="left: 8px; top: -8px">G2</span>
-                        <span class="tag" style="left: 0; top: -8px">G3</span>
-                        <div class="select" style="flex: 1; max-width: 150px">
-                          北京<svg class="ico">
-                            <use href="#i-chevron-down" />
-                          </svg>
-                        </div>
-                        <span class="tag" style="left: 160px; top: -8px"
-                          >G4</span
-                        >
-                        <span class="wx-refresh"
-                          ><svg class="ico"><use href="#i-refresh" /></svg
-                        ></span>
-                      </div>
-
                       <div class="wx-error">
-                        <span class="tag" style="left: 8px; top: -8px">G6</span>
+                        <span class="tag" style="left: 8px; top: -8px">G9</span>
                         更新失败：网络超时
                         <span class="old">· 显示上次数据 18.2°</span>
-                        <span
-                          class="tag"
-                          style="left: calc(100% - 40px); top: -8px"
-                          >G7</span
-                        >
-                        <span class="retry">重试</span>
                       </div>
 
                       <div class="wx-hero">
-                        <span class="tag" style="left: 8px; top: -8px">G9</span>
-                        <span class="wx-icon"
-                          ><svg class="ico"><use href="#i-cloud" /></svg
-                        ></span>
-                        <div>
-                          <div class="wx-temp">18.2°</div>
-                          <div class="wx-desc">多云 · 体感偏凉</div>
+                        <span class="tag" style="left: 8px; top: -8px">G3</span>
+                        <div class="wx-col1">
+                          <div class="wx-city">上海</div>
+                          <div class="wx-en">Shanghai</div>
                         </div>
-                        <span class="tag" style="left: 44px; top: -8px"
-                          >G10</span
-                        >
-                        <span class="tag" style="left: 95px; top: -8px"
-                          >G11</span
-                        >
+                        <div class="wx-col2">
+                          <div class="wx-temp">15.0°</div>
+                          <div class="wx-desc">晴朗无云</div>
+                        </div>
+                        <div class="wx-col3">
+                          <span class="wx-icon"
+                            ><svg class="ico"><use href="#i-cloud" /></svg
+                          ></span>
+                        </div>
+                        <span class="tag" style="left: 34%; top: -8px">G6</span>
+                        <span class="tag" style="left: 68%; top: -8px">G8</span>
                       </div>
 
                       <div class="metrics">
                         <span class="tag" style="left: 8px; top: -8px"
-                          >G13</span
+                          >G11</span
                         >
-                        <div class="metric">
+                        <div class="metric m-left">
                           <div class="mlabel">体感</div>
-                          <div class="mvalue">17.1°C</div>
+                          <div class="mvalue">9.5°C</div>
                         </div>
-                        <div class="metric">
+                        <div class="metric m-center">
                           <div class="mlabel">湿度</div>
-                          <div class="mvalue">62%</div>
+                          <div class="mvalue">42%</div>
                         </div>
-                        <div class="metric">
+                        <div class="metric m-right">
                           <div class="mlabel">风力</div>
-                          <div class="mvalue">12.4km/h</div>
+                          <div class="mvalue">5.0km/h</div>
                         </div>
                       </div>
 
-                      <div class="wx-section-title" style="margin-top: 2px">
-                        <span class="tag" style="left: 8px; top: -8px">G15</span
-                        >逐小时
-                      </div>
                       <div class="chart">
                         <span class="tag" style="left: 8px; top: -8px"
-                          >G16</span
+                          >G14</span
+                        >
+                        <span class="tag" style="left: 50%; top: -8px"
+                          >G15</span
                         >
                         <svg
                           viewBox="0 0 600 132"
                           preserveAspectRatio="none"
-                          aria-label="逐小时温度曲线"
+                          aria-label="24 小时温度折线"
                         >
                           <g
                             stroke="#9A978A"
@@ -2788,15 +2797,6 @@
                             <line x1="0" y1="86" x2="600" y2="86" />
                             <line x1="0" y1="114" x2="600" y2="114" />
                           </g>
-                          <line
-                            x1="313"
-                            y1="8"
-                            x2="313"
-                            y2="122"
-                            stroke="#9A978A"
-                            stroke-opacity=".45"
-                            stroke-width="1"
-                          />
                           <polyline
                             fill="none"
                             stroke="#E8B544"
@@ -2805,51 +2805,58 @@
                             stroke-linecap="round"
                             points="0,75 26,82 52,90 78,97 104,105 130,112 156,120 182,120 208,112 234,97 260,82 287,67 313,52 339,45 365,37 391,37 417,45 443,52 469,60 495,67 521,75 547,82 573,90 600,90"
                           />
-                          <circle cx="156" cy="120" r="2.4" fill="#E8B544" />
-                          <circle cx="365" cy="37" r="2.4" fill="#E8B544" />
-                          <circle cx="313" cy="52" r="3" fill="#CFCBBD" />
-                          <text
-                            x="156"
-                            y="128"
-                            fill="#9A978A"
+                          <g fill="#E8B544">
+                            <circle cx="0" cy="75" r="2.2" />
+                            <circle cx="26" cy="82" r="2.2" />
+                            <circle cx="52" cy="90" r="2.2" />
+                            <circle cx="78" cy="97" r="2.2" />
+                            <circle cx="104" cy="105" r="2.2" />
+                            <circle cx="130" cy="112" r="2.2" />
+                            <circle cx="156" cy="120" r="2.2" />
+                            <circle cx="182" cy="120" r="2.2" />
+                            <circle cx="208" cy="112" r="2.2" />
+                            <circle cx="234" cy="97" r="2.2" />
+                            <circle cx="260" cy="82" r="2.2" />
+                            <circle cx="287" cy="67" r="2.2" />
+                            <circle cx="313" cy="52" r="2.2" />
+                            <circle cx="339" cy="45" r="2.2" />
+                            <circle cx="365" cy="37" r="2.2" />
+                            <circle cx="391" cy="37" r="2.2" />
+                            <circle cx="417" cy="45" r="2.2" />
+                            <circle cx="443" cy="52" r="2.2" />
+                            <circle cx="469" cy="60" r="2.2" />
+                            <circle cx="495" cy="67" r="2.2" />
+                            <circle cx="521" cy="75" r="2.2" />
+                            <circle cx="547" cy="82" r="2.2" />
+                            <circle cx="573" cy="90" r="2.2" />
+                            <circle cx="600" cy="90" r="2.2" />
+                          </g>
+                          <g
+                            fill="#CFCBBD"
                             font-size="9"
                             text-anchor="middle"
                             font-family="system-ui,sans-serif"
                           >
-                            12°
-                          </text>
-                          <text
-                            x="365"
-                            y="30"
-                            fill="#9A978A"
-                            font-size="9"
-                            text-anchor="middle"
-                            font-family="system-ui,sans-serif"
-                          >
-                            23°
-                          </text>
-                          <text
-                            x="313"
-                            y="10"
-                            fill="#8A8774"
-                            font-size="9"
-                            text-anchor="middle"
-                            font-family="system-ui,sans-serif"
-                          >
-                            现在
-                          </text>
+                            <text x="78" y="91">13°</text>
+                            <text x="156" y="114">10°</text>
+                            <text x="234" y="91">11°</text>
+                            <text x="313" y="46">18°</text>
+                            <text x="391" y="31">18°</text>
+                            <text x="469" y="54">11°</text>
+                            <text x="547" y="76">9°</text>
+                          </g>
                         </svg>
                       </div>
                       <div class="chart-axis">
-                        <span>10:00</span><span>14:00</span><span>18:00</span
-                        ><span>22:00</span>
+                        <span>12:00</span><span>20:00</span><span>04:00</span
+                        ><span>11:00</span>
                       </div>
 
                       <div class="week-head">
                         <span class="tag" style="left: 8px; top: -8px"
                           >G19</span
                         >
-                        <span class="wx-section-title">七日</span>
+                        <span class="wx-section-title">七日天气预测</span>
                         <span class="week-range"
                           ><span class="tag" style="left: -34px; top: -8px"
                             >G20</span
@@ -2858,70 +2865,94 @@
                       </div>
                       <div class="week-row">
                         <span class="wdate">10-29</span
+                        ><span class="wicon"
+                          ><svg><use href="#i-cloud" /></svg></span
+                        ><span class="wgap"></span
                         ><span class="wtrack"
                           ><span
                             class="wfill"
                             style="left: 18%; width: 42%"
                           ></span></span
+                        ><span class="wgap"></span
                         ><span class="wvalue">12°/21°</span>
                       </div>
                       <div class="week-row">
                         <span class="wdate">10-30</span
+                        ><span class="wicon"
+                          ><svg><use href="#i-cloud" /></svg></span
+                        ><span class="wgap"></span
                         ><span class="wtrack"
                           ><span
                             class="wfill"
                             style="left: 12%; width: 38%"
                           ></span></span
+                        ><span class="wgap"></span
                         ><span class="wvalue">11°/20°</span>
                       </div>
                       <div class="week-row">
                         <span class="wdate">10-31</span
+                        ><span class="wicon"
+                          ><svg><use href="#i-cloud" /></svg></span
+                        ><span class="wgap"></span
                         ><span class="wtrack"
                           ><span
                             class="wfill"
                             style="left: 22%; width: 48%"
                           ></span></span
+                        ><span class="wgap"></span
                         ><span class="wvalue">13°/23°</span>
                       </div>
                       <div class="week-row">
                         <span class="wdate">11-01</span
+                        ><span class="wicon"
+                          ><svg><use href="#i-cloud" /></svg></span
+                        ><span class="wgap"></span
                         ><span class="wtrack"
                           ><span
                             class="wfill"
                             style="left: 8%; width: 35%"
                           ></span></span
+                        ><span class="wgap"></span
                         ><span class="wvalue">10°/19°</span>
                       </div>
                       <div class="week-row">
                         <span class="wdate">11-02</span
+                        ><span class="wicon"
+                          ><svg><use href="#i-cloud" /></svg></span
+                        ><span class="wgap"></span
                         ><span class="wtrack"
                           ><span
                             class="wfill"
                             style="left: 5%; width: 30%"
                           ></span></span
+                        ><span class="wgap"></span
                         ><span class="wvalue">9°/18°</span>
                       </div>
                       <div class="week-row">
                         <span class="wdate">11-03</span
+                        ><span class="wicon"
+                          ><svg><use href="#i-cloud" /></svg></span
+                        ><span class="wgap"></span
                         ><span class="wtrack"
                           ><span
                             class="wfill"
                             style="left: 14%; width: 44%"
                           ></span></span
+                        ><span class="wgap"></span
                         ><span class="wvalue">11°/22°</span>
                       </div>
                       <div class="week-row">
                         <span class="wdate">11-04</span
+                        ><span class="wicon"
+                          ><svg><use href="#i-cloud" /></svg></span
+                        ><span class="wgap"></span
                         ><span class="wtrack"
                           ><span
                             class="wfill"
                             style="left: 20%; width: 40%"
                           ></span></span
+                        ><span class="wgap"></span
                         ><span class="wvalue">12°/21°</span>
-                      </div>
-                      <div class="wx-source">
-                        <span class="tag" style="left: 8px; top: -9px">G26</span
-                        >数据来源 Open-Meteo · 免费接口
                       </div>
                     </div>
                   </div>
@@ -2953,8 +2984,11 @@
               </div>
             </div>
             <figcaption>
-              天气页。错误态与旧值并存；七日值固定在右侧 68px
-              列，不压金色范围条。
+              天气页。首块三列：城市/英文名、温度/描述、36px
+              图标盒全部在本列水平居中；七日标题“七日天气预测”，日期后 10px
+              接图标盒（边长=行高），剩余宽度按 1:8:1
+              分给空隙与横线；折线每小时圆点，温度只标
+              3/6/9/12/15/18/21；七日值右缘不裁。
             </figcaption>
           </figure>
           <aside class="legend-panel">
@@ -2962,96 +2996,116 @@
             <table class="legend-table">
               <tr>
                 <td class="id">G2</td>
-                <td class="nm">天气头行</td>
-                <td class="ds">城市 + 刷新/加载</td>
+                <td class="nm">天气城市</td>
+                <td class="ds">跟随世界页 hero；无下拉</td>
               </tr>
               <tr>
                 <td class="id">G3</td>
-                <td class="nm">城市下拉</td>
-                <td class="ds">150px；切换即刷新</td>
+                <td class="nm">天气首块</td>
+                <td class="ds">三列均分；块高 = 行1 + 5 + 行2</td>
               </tr>
               <tr>
                 <td class="id">G4</td>
-                <td class="nm">刷新按钮</td>
-                <td class="ds">Refresh 16px；加载时换 Spinner</td>
+                <td class="nm">城市名</td>
+                <td class="ds">title 28（MiSans）；左列</td>
               </tr>
               <tr>
                 <td class="id">G5</td>
-                <td class="nm">加载弧</td>
-                <td class="ds">16px、270°、600ms/圈；替换 G4</td>
+                <td class="nm">城市英文名</td>
+                <td class="ds">body 16（Barlow）；与描述同字号</td>
               </tr>
               <tr>
                 <td class="id">G6</td>
-                <td class="nm">错误行</td>
-                <td class="ds">danger 12px；说明原因</td>
+                <td class="nm">温度</td>
+                <td class="ds">title 28（Barlow）；中列居中</td>
               </tr>
               <tr>
                 <td class="id">G7</td>
-                <td class="nm">重试</td>
-                <td class="ds">小按钮；强制刷新</td>
+                <td class="nm">天气描述</td>
+                <td class="ds">body 16（MiSans）；中列居中</td>
               </tr>
               <tr>
                 <td class="id">G8</td>
-                <td class="nm">旧值提示</td>
-                <td class="ds">“显示上次数据 X°”</td>
+                <td class="nm">天气图标</td>
+                <td class="ds">36px 图标盒；墨迹中心对齐盒中心；右列</td>
               </tr>
               <tr>
                 <td class="id">G9</td>
-                <td class="nm">Hero 聚簇</td>
-                <td class="ds">图标 + 温度 + 描述</td>
-              </tr>
-              <tr>
-                <td class="id">G10</td>
-                <td class="nm">天气图标</td>
-                <td class="ds">34px；按 WMO code</td>
+                <td class="nm">错误行</td>
+                <td class="ds">danger meta；无重试按钮</td>
               </tr>
               <tr>
                 <td class="id">G11</td>
-                <td class="nm">温度</td>
-                <td class="ds">40px digits</td>
+                <td class="nm">三列指标</td>
+                <td class="ds">体感 / 湿度 / 风力；全部本列居中</td>
               </tr>
               <tr>
                 <td class="id">G13</td>
-                <td class="nm">三列指标</td>
-                <td class="ds">体感 / 湿度 / 风力</td>
+                <td class="nm">指标值</td>
+                <td class="ds">body 16（Barlow）；数字/单位同字体；居中</td>
+              </tr>
+              <tr>
+                <td class="id">G14</td>
+                <td class="nm">温度折线</td>
+                <td class="ds">24 点直线；无标题/无“现在”线</td>
               </tr>
               <tr>
                 <td class="id">G15</td>
-                <td class="nm">逐小时区</td>
-                <td class="ds">标题 + 曲线 + 图外时间轴</td>
+                <td class="nm">折线节点</td>
+                <td class="ds">每小时圆点；半径 token</td>
               </tr>
               <tr>
                 <td class="id">G16</td>
-                <td class="nm">温度曲线</td>
-                <td class="ds">132px；无背景/轴；4 条淡线</td>
+                <td class="nm">温度标注</td>
+                <td class="ds">3/6/9/12/15/18/21；圆点上 5px</td>
               </tr>
               <tr>
-                <td class="id">G19</td>
+                <td class="id">G17</td>
+                <td class="nm">时间轴</td>
+                <td class="ds">图外 4 个 HH:MM；按点对齐</td>
+              </tr>
+              <tr>
+                <td class="id">G18</td>
                 <td class="nm">七日区</td>
-                <td class="ds">周范围 + 7 行</td>
+                <td class="ds">“七日天气预测” + 周范围 + 7 行；标题下 10px</td>
               </tr>
               <tr>
-                <td class="id">G21</td>
+                <td class="id">G20</td>
                 <td class="nm">七日行</td>
-                <td class="ds">23.5px；日期 / 条 / 低高</td>
+                <td class="ds">
+                  日期定宽 / 10px / 图标盒(边长=行高) / 1:8:1 / 温度定宽
+                </td>
+              </tr>
+              <tr>
+                <td class="id">G24</td>
+                <td class="nm">低/高值</td>
+                <td class="ds">
+                  负号/十位槽按本周是否出现负数/两位数动态；°/ 固定；右对齐
+                </td>
               </tr>
               <tr>
                 <td class="id">G25</td>
-                <td class="nm">低/高值</td>
-                <td class="ds">68px 右对齐；在 card_bg 上</td>
-              </tr>
-              <tr>
-                <td class="id">G26</td>
-                <td class="nm">数据源行</td>
-                <td class="ds">Open-Meteo · 免费接口</td>
+                <td class="nm">七日天气图标</td>
+                <td class="ds">图标盒边长=行高；日期后 10px；盒中线=行中线</td>
               </tr>
             </table>
             <h3>目测检查点</h3>
             <ul class="checklist">
-              <li>七日温度绝不在金色条上；值列固定 68px，右缘不裁。</li>
-              <li>曲线没有矩形背景/边框；只有 4 条横向淡线。</li>
-              <li>失败时旧值仍显示，错误行有“重试”。</li>
-              <li>整页可滚；没有固定页脚，不要找“页脚”。</li>
+              <li>
+                首块三列等宽；城市/英文名、温度/描述、图标盒全部在本列水平居中；图标盒垂直居中整块。
+              </li>
+              <li>
+                折线每小时都有圆点；温度只标 3/6/9/12/15/18/21，圆点上方
+                5px；没有“现在”竖线。
+              </li>
+              <li>
+                七日行：日期固定左对齐、10px
+                图标盒（边长=行高）、左右空隙:横线=1:8:1；温度负号/十位槽按本周数据动态、右对齐。
+              </li>
+              <li>七日温度绝不在金色条上；右缘不裁。</li>
+              <li>
+                整页可滚；没有固定页脚，不要找“页脚”；没有城市下拉/刷新按钮/数据源行。
+              </li>
             </ul>
           </aside>
         </div>
@@ -4031,8 +4085,23 @@
                 <td><code>world.rs</code> / <code>alarm.rs</code></td>
               </tr>
               <tr>
-                <td>天气曲线 / 七日行</td>
-                <td>132 / 22.5</td>
+                <td>天气首块 / 指标块</td>
+                <td>
+                  首块 2×hero_pad_y + 第一列城市 CJK 盒 + 5 + 第二列描述 CJK
+                  盒；指标 meta_h + 5 + body_h；36
+                  图标盒垂直居中整块，不参与定高
+                </td>
+                <td><code>weather.rs</code></td>
+              </tr>
+              <tr>
+                <td>天气折线 / 七日行</td>
+                <td>
+                  折线高度 = 剩余可用空间；下限 `weather_plot_min_h` 132 +
+                  时间轴 meta_h；七日标题下 10px；七日行高 = max(文字盒 11.5,
+                  图标 token 12) = 12，行距 8；日期固定 4
+                  数字+连字符槽；温度负号/十位槽按本周数据动态，°/ 固定；
+                  剩余宽按 1:8:1
+                </td>
                 <td><code>weather.rs</code></td>
               </tr>
               <tr>
@@ -4075,12 +4144,15 @@
               <tr>
                 <td>display</td>
                 <td>40</td>
-                <td>天气温度 40；display 语义档</td>
+                <td>世界页 hero 当地时间 40；display 语义档</td>
               </tr>
               <tr>
                 <td>title</td>
                 <td>28</td>
-                <td>抽屉页头 28/600；闹钟/城市走时 28；倒计时主数字 28</td>
+                <td>
+                  抽屉页头 28/600；闹钟/城市走时 28；倒计时主数字
+                  28；天气城市/温度 28
+                </td>
               </tr>
               <tr>
                 <td>section</td>
@@ -4276,8 +4348,8 @@
               </tr>
               <tr>
                 <td>图表 / plot</td>
-                <td>逐小时温度曲线</td>
-                <td>UI 文案是“逐小时”；plot 是实现库名</td>
+                <td>温度折线</td>
+                <td>PL029 起无“逐小时”标题；plot 是实现库名</td>
               </tr>
               <tr>
                 <td>通知（指右上角）</td>
@@ -4329,6 +4401,9 @@
 
 时钟页 &gt; 星盘 &gt; 现实针 [常态]：长度只有金针的 62%，看起来像短线
 倒计时页 &gt; 抽屉页脚 &gt; 添加失败 [错误]：在「目标时刻」标签行右端显示「输入错误！」，按钮位置不变
+天气页 &gt; 第一块 &gt; 三列 [常态]：城市/英文名、温度/描述、36px 图标盒全部在本列水平居中；图标盒垂直居中整块
+天气页 &gt; 七日 [常态]：标题“七日天气预测”；标题下 10px；日期后 10px 接图标盒（边长=行高），剩余宽按 1:8:1
+天气页 &gt; 温度折线 [常态]：每小时圆点，温度只标 3/6/9/12/15/18/21，圆点上方 5px
 天气页 &gt; 七日 &gt; 低/高值 [常态]：值在 card_bg 上，不压金条
 闹钟页 &gt; 闹钟行 &gt; 开关 [开]：绿色 + 旋钮在右；位置是主信号
 设置页 &gt; 动效 &gt; 减少动效 [开]：hover/列表脉冲/toast 直取终态</pre>
@@ -4374,7 +4449,7 @@
     </main>
 
     <footer class="wrap footer">
-      <span>ACCELWORLD Clock UI 标注指南 · 基线 V0.6.6.2</span>
+      <span>ACCELWORLD Clock UI 标注指南 · 基线 V0.6.6.5</span>
       <span
         >配套：<code>u.UI_GLOSSARY.md</code> · 窗口图按 820px
         宽绘制，仅示意结构，不替代真机截图</span

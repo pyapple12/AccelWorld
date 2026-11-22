@@ -1,7 +1,7 @@
 # AccelWorld 重构方案与进度（z.plan.md）
 
 > 依据：2026-08-08 项目审计（对照 AGENTS.md 规范，参考 DeepTransHub 分层结构）
-> 状态：**Rust 重构进行中**——Python 时代 S1-S10（ver 0.46）与 UI 2.0/3.0（0.5.x–0.6.0.0）已定版留档；Rust 重构 PL011–PL017 已完成（core 全量 parity + egui 外壳 + 五页 + 系统集成 + UI 精修 + UI 结构重排），PL018 已实施（退出自愈/落点校准/首帧门控/N9 裁决），PL019 已收口（图标/自适应/反馈动效），PL020–PL023 已实施，**PL024 已实施（表盘 320 母版等比 + 窗口尺寸 + GLOW/INK 探针）**，**PL025 已实施（天气直连/系统代理双通道 + 10 分钟自动重试）**，**PL026 已实施（数字族 Barlow Medium 内嵌平替）**，**PL027 已实施（天气代理开关/地址 + 冷启动缓存首屏）**，**PL028 已实施（世界时钟 hero/共享滚动/291 城 SQLite/搜索弹层）**，当前版本 **V0.6.6.4**
+> 状态：**Rust 重构进行中**——Python 时代 S1-S10（ver 0.46）与 UI 2.0/3.0（0.5.x–0.6.0.0）已定版留档；Rust 重构 PL011–PL017 已完成（core 全量 parity + egui 外壳 + 五页 + 系统集成 + UI 精修 + UI 结构重排），PL018 已实施（退出自愈/落点校准/首帧门控/N9 裁决），PL019 已收口（图标/自适应/反馈动效），PL020–PL023 已实施，**PL024 已实施（表盘 320 母版等比 + 窗口尺寸 + GLOW/INK 探针）**，**PL025 已实施（天气直连/系统代理双通道 + 10 分钟自动重试）**，**PL026 已实施（数字族 Barlow Medium 内嵌平替）**，**PL027 已实施（天气代理开关/地址 + 冷启动缓存首屏）**，**PL028 已实施（世界时钟 hero/共享滚动/291 城 SQLite/搜索弹层）**，**PL029 已实施（天气城市跟随世界 hero/三列首块/30 分钟自动刷新）**，当前版本 **V0.6.6.5**
 > 历史 UI 审核报告已于 2026-10-29 移除，原文见 git 历史；下文相关引用按历史记录理解。
 > 更新（2026-09-10）：接入 DeepTransHub 工作流体系；本文件新增「审计观察项豁免定案清单」与「附录（审计报告归档区）」，旧内容原样保留
 > 更新（2026-10-16）：新增「Rust 重构总纲：AccelWorld RS」节（见下文），Python 版全量归档 `.archived/`
@@ -3555,3 +3555,83 @@ Cargo.toml            rusqlite(bundled) / pinyin
 - 城市主表改为预置 SQLite：新增 `rs/assets/world_cache.sqlite`（291 城，空缓存/自定义），删除 `world_cities.json` 与 `english_of`；启动文件不存在写出预置库、旧库 `city` 行数不符则重建 `city` 表；`Interface` 先加载城市快照再读配置，IANA 迁移走 SQLite 快照。
 - 弹层条目改整行盒：Frame 内边距 0，`row_h = item_h + 2×pad_y`，hover 覆盖整条（左右到卡片边、上下含 `pad_y`）；第一行右端显示当地时间（Barlow body 16，右对齐），英文名不得压时间；弹窗高度 = 行高（含 `pad_y`）。
 - 当地时间左侧 5px 增加昨天/今天/明天（`search_popup_day_gap=5`，meta 12）；第一行右组 `日期标签 + 5px + 时间` 整体右对齐。
+
+## 附录 PL029：天气联动世界 hero、三列首块与自动刷新（2026-11-22 立项/实施）
+
+#### 目标
+
+1. 删除天气页城市选择与手动刷新；天气城市 = 世界页 hero。
+2. 默认天气城市上海，但启动读到 hero 后立即替换并强制拉取；hero 变更即切城拉取。
+3. 程序打开期间每 30 分钟自动刷新；失败仍按 10 分钟自动重试。
+4. 首块三列、指标三列、24 小时折线（每小时圆点，3 小时温度标注）、七日范围条；删除数据来源行。
+5. 全部尺寸 token 化、盒高按字体盒公式计算，删除 44/68/12 等硬编码列宽。
+
+#### 数据流
+
+```text
+world_hero_city → 天气城市（last_city 为持久化镜像，默认上海）
+        ↓
+world_cache.sqlite city 表 / custom_city → (lat, lon)
+        ↓
+WeatherClient::fetch_by_city(city, lat, lon, force)
+        ↓
+weather_cache/<城市>.json + UiState.weather
+```
+
+- `Interface::with_config_path`：启动期把 `last_city` 对齐 hero（无 hero 时保留上海兜底）。
+- `set_world_hero` / `add_world_city_entry` / `add_world_city`：hero 变化时同步 `last_city` 落盘。
+- `window::weather_tick`：首帧后绑定 hero；首次 force=true；hero 变化重置 30 分钟节拍；每 `weather_auto_refresh_s=1800` 秒 force=true。
+- 删除 `SetWeatherCity` / `get_city_names` / `data::cities` / `rs/data/cities.json`；天气层只接收坐标。
+
+#### 首块（三列均分，无列内边距）
+
+```text
+左列（水平居中）        中列（水平居中）        右列（水平居中）
+上海                  15.0°                   [36px 图标盒，垂直居中整块]
+Shanghai              晴朗无云
+```
+
+- 第一行：城市 title 28（MiSans Medium）、温度 title 28（Barlow）；第二行：英文名 body 16（Barlow）、描述 body 16（MiSans）。
+- 三列等宽、无列内边距；三列内容全部在本列水平居中，不再左/右贴边。
+- 行间距 `weather_row_gap=5`；第一行高 = 第一列城市 CJK 盒 27.5，第二行高 = 第二列描述 CJK 盒 15.5；块高 = 2×`hero_pad_y` + 27.5 + 5 + 15.5 = 68；图标与数字盒不参与定高。
+- 温度数字盒高 19.5，盒底对齐第一行盒底；英文名盒高 12.5，盒底对齐第二行盒底。
+- 顶部距页头 20px（`drawer_content_pad_top` 10 + 补 10），块间距 `page_box_gap=20`；图标盒 36，图标墨迹中心 = 右列中线 + 块中线。
+- 长城市名/英文名按列宽省略，不压相邻列。
+
+#### 指标块
+
+- 体感 / 湿度 / 风力三列均分；标签与数值全部在本列水平居中（不再左/中/右贴边）。
+- 标签 meta 12（MiSans）；数值 body 16（Barlow，含 `°C` / `%` / `km/h` 单位）。
+- 块高 = 标签行 + 5 + 数值行。
+
+#### 温度折线
+
+- 删除“逐小时”标题与“现在”竖线/文字；24 点直线折线，每小时圆点（`weather_point_radius`）。
+- 温度标注仅 3/6/9/12/15/18/21（首尾不标），圆点上方 `weather_point_label_gap=5px`，meta 12（Barlow）。
+- 图外时间轴保留：按数据点坐标对齐的 4 个 HH:MM，首尾夹在轴内。
+- 块高自适应：先算其余块与块间距占用，剩余高度给图表；下限 `weather_plot_min_h` 132 + 时间轴 meta_h，窗口不足时页面滚动。与世界页/倒计时页列表视口同一“填满剩余高度”逻辑。
+
+#### 七日
+
+- 折线块下方 20px；标题“七日天气预测”（与周范围同为 meta 档）+ 周范围 + 7 行。
+- 标题文字盒底到第一行 10px（`weather_week_title_gap=10`）。
+- 每行：日期定宽盒 → 10px → 图标盒（边长=行高）→ 左空隙 → 范围条 → 右空隙 → 温度定宽盒。
+- 日期盒固定 4 数字槽 + 连字符槽，盒内左对齐；温度盒按本周情况动态：负号槽仅本周出现负数才占宽，十位槽仅本周出现两位数才占宽；数字仍按 0–9 最大 cell 定宽；°/ 固定；盒内右对齐。
+- 扣掉日期/10px/图标盒/温度盒后，剩余宽度按 `1:8:1` 分给左空隙、范围条、右空隙（`weather_week_bar_gap_ratio` / `weather_week_bar_ratio`）。
+- 行高 = max(body 数字文字盒 11.5, 图标 token 12) = 12；行间距 8，行距 20；日期/温度/图标/横线盒中线全部对齐行中线。
+- 日期与温度宽度由固定槽位计算，不由 7 天数据最宽值决定；删除 44/68/12 硬编码。
+- 范围条高 `weather_week_bar_h=6`、圆角 `weather_week_bar_radius=3`、最小填充 `weather_week_bar_min_fill=4`。
+- 每日图标码来自 Open-Meteo daily `weather_code`（`DailyPoint.weather_code`）；旧缓存缺字段自动失效重拉。
+- 指标值单位 `°C` / `%` / `km/h` 不再被 0.45 窄槽压字：`digits::slot_w` 对字母与 `°` `%` `/` 按 Barlow 实际 advance 补槽；数字/冒号/句点/空格/连字符规则不变。
+- 删除“数据来源 Open-Meteo · 免费接口”行。
+
+#### 刷新节拍
+
+- 删除页头城市下拉、刷新按钮与错误行重试按钮。
+- 打开程序：首帧后 force=true 拉取 hero 天气（先上磁盘缓存）。
+- 运行期：每 30 分钟 force=true；失败按 `weather_fail_retry_delay_s=600` 自动重试。
+- 设置 → 网络仍控制直连/代理；每次拉取前重读。
+
+#### 状态
+
+- 2026-11-22：已实施；app 97 + bin 1 + core 124 通过；960×720 天气页截图（上海/东京）通过；版本 0.6.6.5。

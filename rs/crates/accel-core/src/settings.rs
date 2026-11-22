@@ -52,6 +52,7 @@ pub fn format_date_text(dt: NaiveDateTime) -> String {
 pub struct UserConfig {
     pub time_dilation_rate: f64,
     pub theme: String,
+    /// 天气城市持久化镜像（PL029：默认上海；启动/hero 变更时同步为 world_hero_city）
     pub last_city: String,
     pub world_pins: Vec<String>,
     pub countdown_target: String,
@@ -366,12 +367,12 @@ mod tests {
 
     #[test]
     fn defaults_match_python_snapshot_shape() {
-        // 默认值锚点：rate 2.0 / theme auto / 北京 / hero=首个默认常驻城市 /
-        // 8 pins（FIX007.2：常驻集权威域 = 城市名）/ 空 target
+        // 默认值锚点：rate 2.0 / theme auto / 上海（PL029 天气默认城市）/
+        // hero=首个默认常驻城市 / 8 pins（FIX007.2：常驻集权威域 = 城市名）/ 空 target
         let d = UserConfig::default();
         assert_eq!(d.time_dilation_rate, 2.0);
         assert_eq!(d.theme, "auto");
-        assert_eq!(d.last_city, "北京");
+        assert_eq!(d.last_city, "上海");
         assert_eq!(d.world_hero_city, "北京");
         assert_eq!(d.world_pins.len(), 8);
         assert_eq!(d.world_pins[0], "北京");

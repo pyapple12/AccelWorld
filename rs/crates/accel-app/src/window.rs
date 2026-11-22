@@ -77,8 +77,10 @@ pub struct AppHandle {
     /// PL018.06 首帧门控：隐藏创建，完成 1 帧（或 250ms 看门狗）后再显示
     first_show_done: bool,
     frames_seen: u32,
-    /// PL027：首帧后只发一次天气首拉（不阻塞启动）
-    startup_weather_sent: bool,
+    /// PL029：天气城市跟随 hero——记录已绑定的城市、首次强制刷新标记与半小时节拍
+    weather_city_seen: String,
+    weather_first_fetch_done: bool,
+    weather_auto_next: std::time::Instant,
     /// 托盘句柄（构造失败降级 None——无托盘环境行为无损）
     tray: Option<crate::platform::tray::TrayHandles>,
     /// 全局热键句柄（注册失败降级 None）
@@ -107,6 +109,8 @@ impl eframe::App for AppHandle {
         self.bus.drain(&mut self.state);
         // 节日快照：启动/跨日从后端拉取，前端只读
         refresh_festivals(&self.iface, &mut self.state);
+        // PL029：天气城市跟随 hero + 启动/半小时刷新
+        self.weather_tick();
         // 托盘/热键事件轮询（命令可能触发 viewport 命令，经 ctx 队列）
         self.poll_platform(ctx);
         // 探针时序（隐藏/显示/退出）+ 退出序列/关闭驻留 + 托盘状态推送
@@ -248,14 +252,6 @@ impl eframe::App for AppHandle {
         }
         ctx.request_repaint_after(interval);
         self.frames_seen = self.frames_seen.saturating_add(1);
-        // PL027：首帧已出（缓存天气已上屏）后再发起网络首拉，避开启动关键路径
-        if !self.startup_weather_sent && self.first_show_done {
-            self.startup_weather_sent = true;
-            self.bus.send(FrontendCommand::RefreshWeather {
-                city: self.state.prefs.last_city.clone(),
-                force: false,
-            });
-        }
         // PL018.06：首帧完成后立刻再跑一帧，把“显示”压到 ~1 帧内（不等 tick 间隔）
         if !self.first_show_done {
             ctx.request_repaint();
@@ -286,6 +282,52 @@ fn sidebar_label(page: PageId) -> &'static str {
 }
 
 impl AppHandle {
+    /// PL029：天气城市跟随世界 hero——首帧后绑定 hero、启动强制首拉；
+    /// 运行期 hero 变更即切城并拉取；打开程序期间每 weather_auto_refresh_s 秒自动刷新
+    fn weather_tick(&mut self) {
+        if !self.first_show_done {
+            return;
+        }
+        let city = if self.state.world_hero_city.is_empty() {
+            self.state.prefs.last_city.clone()
+        } else {
+            self.state.world_hero_city.clone()
+        };
+        if city.is_empty() {
+            return;
+        }
+        let auto_secs = accel_core::static_config::Static::get()
+            .base_i64("weather_auto_refresh_s")
+            .max(0) as u64;
+        let now = std::time::Instant::now();
+        if city != self.weather_city_seen {
+            self.weather_city_seen = city.clone();
+            self.weather_auto_next = now + std::time::Duration::from_secs(auto_secs.max(1));
+            // hero 切城：清掉该城旧错误，先把磁盘缓存上屏，再发网络请求
+            self.state.weather_errors.remove(&city);
+            if let Some((age, data)) = self.iface.get_cached_weather(&city) {
+                tracing::info!("天气城市切到 hero: {city}（磁盘缓存 {age}s 前）");
+                self.state.weather.insert(city.clone(), data);
+            }
+            let force = !self.weather_first_fetch_done;
+            self.weather_first_fetch_done = true;
+            self.send_weather_refresh(city, force);
+        } else if auto_secs > 0 && now >= self.weather_auto_next {
+            self.weather_auto_next = now + std::time::Duration::from_secs(auto_secs);
+            tracing::info!("天气半小时自动刷新: {city}");
+            self.send_weather_refresh(city, true);
+        }
+    }
+
+    /// 发天气拉取命令并标记加载态（失败事件由 bus 统一出集）
+    fn send_weather_refresh(&mut self, city: String, force: bool) {
+        self.bus.send(FrontendCommand::RefreshWeather {
+            city: city.clone(),
+            force,
+        });
+        self.state.weather_loading.insert(city);
+    }
+
     /// 首帧窗口几何（PL024）：启动尺寸任一方向超出屏幕可用值 → 直接用最小尺寸；
     /// 否则保持启动尺寸；位置夹到可见区。只做一次，之后尊重用户手动调整。
     fn clamp_window_once(&mut self, ctx: &Context) {
@@ -747,9 +789,15 @@ fn fill_startup_snapshot(iface: &AppInterface, state: &mut UiState) {
         .map(|e| (e.name.clone(), e))
         .collect();
     // PL027：冷启动先上磁盘缓存天气，首帧不空白；网络更新在首帧后异步发起
-    if let Some((age, data)) = iface.get_cached_weather(&state.prefs.last_city) {
-        tracing::info!("天气首屏缓存: {}（{}s 前）", state.prefs.last_city, age);
-        state.weather.insert(state.prefs.last_city.clone(), data);
+    // PL029：天气城市 = 世界 hero（last_city 只是持久化镜像）
+    let weather_city = if state.world_hero_city.is_empty() {
+        state.prefs.last_city.clone()
+    } else {
+        state.world_hero_city.clone()
+    };
+    if let Some((age, data)) = iface.get_cached_weather(&weather_city) {
+        tracing::info!("天气首屏缓存: {weather_city}（{age}s 前）");
+        state.weather.insert(weather_city, data);
     }
     refresh_festivals(iface, state);
 }
@@ -1090,7 +1138,9 @@ pub fn run_with_counter(
                 early_shot_done: false,
                 first_show_done: false,
                 frames_seen: 0,
-                startup_weather_sent: false,
+                weather_city_seen: String::new(),
+                weather_first_fetch_done: false,
+                weather_auto_next: std::time::Instant::now(),
                 tray,
                 hotkeys,
                 quit_requested: false,

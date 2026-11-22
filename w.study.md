@@ -19,7 +19,7 @@ cargo workspace 双 crate 桌面应用：基于加速倍率的时间膨胀时钟
 
 - **时间膨胀**：`TimeDilation { rate, day_hours }`，标准一天总秒数 × rate = 加速一天总秒数，整数运算拆分时分秒；`now` 全参数化（无内部时钟，测试可注入）
 - **中华元素**：lunar-rust 农历/干支/生肖/节气 + holidays.json 法定节假日 + 财神方位本地表
-- **天气**：Open-Meteo 免费 API，17 城市统一表驱动，WMO 天气代码映射，TTL 缓存 + 直连/代理双通道（设置可关代理/指定地址）+ 冷启动缓存首屏 + 10 分钟自动重试
+- **天气**：Open-Meteo 免费 API，天气城市跟随世界页 hero（291 城 SQLite/自定义城市坐标），WMO 天气代码映射，TTL 缓存 + 直连/代理双通道（设置可关代理/指定地址）+ 冷启动缓存首屏 + 打开程序强制刷新 + 每 30 分钟自动刷新 + 10 分钟自动重试
 - **闹钟**：多闹钟（上限 max_alarms）、预设/自定义铃声、系统通知、去重键触发 + `Clock` 抽象（VirtualClock 可拨钟测试）
 - **系统集成**：tray-icon 托盘菜单树、global-hotkey 全局热键、WinRT toast 通知（失败一律降级不崩）
 
@@ -33,7 +33,7 @@ rs/                              # cargo workspace 根
     base.json                    # 应用参数 + version（版本单一来源）
     ui.json                      # 字体/布局 tokens/颜色
     holidays.json                # 法定节假日（历年导出）
-  assets/world_cache.sqlite      # 世界时钟城市主表（预置 SQLite，291 城；天气候选另用 rs/data/cities.json）
+  assets/world_cache.sqlite      # 世界时钟城市主表（预置 SQLite，291 城；天气跟随 hero 取坐标）
   crates/accel-core/             # 纯业务 crate（零 GUI 依赖，CI 机器强制）
     src/interface.rs             # AppInterface（七域契约）+ FrontendCommand/BackendEvent 总线 + spawn
     src/types.rs                 # 协议类型转出（TimeInfo/WeatherData/Alarm/DTO/ThemePref）
@@ -106,17 +106,20 @@ pub fn time_info(&self, now: DateTime<Local>) -> TimeInfo {
 - `AlarmManager`：add（上限+去重）/remove/replace/toggle/from_dict_list（截断+过期禁用）；`should_trigger_on` 状态机逐行对齐 Python（一次性顺延/星期命中/过期不触发）
 - `trait Clock`：`RealClock`（chrono::Local）/ `VirtualClock`（可拨）——调度循环经 `spawn_with_clock` 注入，拨钟即测触发
 
-### 3.5 天气服务 — TTL 缓存 + 直连/系统代理双通道 + 10 分钟自动重试
+### 3.5 天气服务 — 跟随世界 hero + TTL 缓存 + 直连/系统代理双通道 + 30 分钟自动刷新
 
 ```rust
-// 城市名 → 坐标表 → 拼 URL（host 常量白名单）→ 直连（失败→系统代理）→ parse → 写缓存
-pub async fn fetch_by_city(&self, city: &str, force: bool) -> Result<WeatherData, FetchErr>
+// hero 城市 → 主表坐标（SQLite city/自定义城市）→ 拼 URL → 直连（失败→系统代理）→ parse → 写缓存
+pub async fn fetch_by_city(&self, city: &str, lat: f64, lon: f64, force: bool)
+    -> Result<WeatherData, FetchErr>
 ```
 
+- PL029：天气页无独立城市下拉/刷新——天气城市 = 世界页 hero；`default_city`（上海）只作无 hero 时兜底，启动读到 hero 后立即替换并强制拉取；hero 变更即切城；程序打开期间每 `weather_auto_refresh_s`（1800s）自动刷新；旧 17 城天气坐标表与 `SetWeatherCity` 退役
+- PL029：daily 新增 `weather_code` 供七日行图标；标题“七日天气预测”，标题下 10px，日期后 10px 接图标盒（边长=行高），剩余宽度按 1:8:1 分给空隙与横线；温度负号槽/十位槽按本周是否出现负数/两位数动态生效；首块/指标三列内容水平居中
 - `WeatherClient`：reqwest(rustls，禁重定向) + 按城缓存（仅存成功）+ `force` 清该城键 + 失败不缓存
 - 解析层逐字段校验（存在→非 null→类型对→范围对），对 null/缺字段/错型整包 `Err`；hourly/daily 键缺失向后兼容空序列
 - 网络策略（PL025/PL027）：用户设置优先（设置 → 网络：关=仅直连；开+空=系统探测；开+地址=指定代理）；直连通道显式 `no_proxy()` 先试，有代理时直连只做一次 15s 探针，失败立即换代理并按 `weather_retries` 重试；每次拉取前重读策略（URL 变化重建 client），开关/改地址无需重启；两通道都网络失败 → `interface` 排 `weather_fail_retry_delay_s`（600s）后的 `RefreshWeather { force: false }`，失败继续排、成功即停
-- 冷启动（PL027）：`fill_startup_snapshot` 先读 `weather_cache/` 磁盘快照上屏；首帧 `ui` 末尾才发首拉，天气不占启动关键路径；缓存缺失时首帧空白，等异步首拉
+- 冷启动（PL027/PL029）：`fill_startup_snapshot` 先按 hero 读 `weather_cache/` 磁盘快照上屏；`window::weather_tick` 在首帧后发强制首拉，天气不占启动关键路径；缓存缺失时首帧空白，等异步首拉
 - 超时：`weather_timeout_s=15` + `weather_connect_timeout_s=5`；失败日志展开 `Error::source` 链，区分超时/连接重置
 - `trait IsRetryable` 区分网络类（可重试）与解析类（立即返回）；httpmock 五路径 + 代理回退/双通道失败集成断言
 

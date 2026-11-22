@@ -1,6 +1,7 @@
 //! 等宽数字位渲染（UIR 重塑新增，消化 y.problems#12）：逐字符固定槽宽绘制
 //! 历史根因：Bahnschrift 为可变字体、数字 advance 不等；现数字族为 Barlow Medium，
-//! 槽宽制保留——不依赖字体等宽性，槽宽取 0–9 最大 advance，冒号/点占窄槽，逐字符居中绘制
+//! 槽宽制保留——不依赖字体等宽性，槽宽取 0–9 最大 advance，冒号/点占窄槽，
+//! 字母与 ° % / 等符号按实际 advance 补槽，逐字符居中绘制
 
 use egui::{Align2, Color32, FontId, Painter, Rect, Vec2};
 
@@ -9,23 +10,21 @@ pub fn digit_font(size: f32) -> FontId {
     FontId::new(size, egui::FontFamily::Monospace)
 }
 
-/// 字符槽宽系数：数字/字母占满槽，冒号/句点/空白占窄槽（表盘排版惯例）
-fn slot_ratio(c: char) -> f32 {
-    if c.is_ascii_digit() || c.is_alphabetic() {
-        1.0
-    } else {
-        0.45
+/// 单字符槽宽：数字满槽；冒号/句点/空格窄槽；连字符保留 2px 间隙；
+/// 字母与单位符号（° % / 等）按 Barlow 实际 advance 补槽，避免被窄槽压到相邻字符
+fn slot_w(painter: &Painter, font: &FontId, cell: f32, c: char) -> f32 {
+    if c.is_ascii_digit() {
+        return cell;
     }
-}
-
-/// 连字符左右各留 1px，避免和相邻数字粘连
-fn slot_extra(c: char) -> f32 {
-    if c == '-' { 2.0 } else { 0.0 }
-}
-
-/// 单字符槽宽：槽宽系数 × cell + 额外间隙
-fn slot_w(cell: f32, c: char) -> f32 {
-    cell * slot_ratio(c) + slot_extra(c)
+    match c {
+        ':' | '.' | ' ' => cell * 0.45,
+        '-' => cell * 0.45 + 2.0,
+        _ => painter
+            .layout_no_wrap(c.to_string(), font.clone(), Color32::WHITE)
+            .rect
+            .width()
+            .max(cell * 0.45),
+    }
 }
 
 /// 槽宽基准：查启动指标表（0–9 最大字形宽），不随当前数字变化；
@@ -34,10 +33,10 @@ pub fn cell_width(painter: &Painter, font: &FontId) -> f32 {
     super::text_metrics::digit_cell(painter.ctx(), font)
 }
 
-/// 总占用宽度（纯函数）：Σ(槽宽×系数 + 连字符间隙)——页面布局据此预留
+/// 总占用宽度（纯函数）：Σ 单字符槽宽——页面布局据此预留
 pub fn text_width(painter: &Painter, text: &str, font: &FontId) -> f32 {
     let cell = cell_width(painter, font);
-    text.chars().map(|c| slot_w(cell, c)).sum()
+    text.chars().map(|c| slot_w(painter, font, cell, c)).sum()
 }
 
 /// 盒子底对齐绘制等宽数字串；返回盒子矩形
@@ -103,10 +102,10 @@ fn draw_slots(
     y: f32,
 ) -> f32 {
     let cell = cell_width(painter, font);
-    let total: f32 = text.chars().map(|c| slot_w(cell, c)).sum();
+    let total: f32 = text.chars().map(|c| slot_w(painter, font, cell, c)).sum();
     let mut cursor = center_x - total / 2.0;
     for c in text.chars() {
-        let w = slot_w(cell, c);
+        let w = slot_w(painter, font, cell, c);
         painter.text(
             egui::pos2(cursor + w / 2.0, y),
             Align2::CENTER_TOP,
@@ -125,6 +124,8 @@ fn draw_slots(
 //   冒号点窄槽 0.45）→ draw_bottom 以盒底−0.2 为基线；draw_center 以字墨中线对盒中线
 // 设计理由（PL023）：数字也是文字盒；默认盒底对齐，明确居中才用字墨中线；
 //   槽宽制与字体解耦（字体缺失回退仍有表盘节奏）；不再用 0.62/0.86/1.24 估算盒子
+// PL029：字母与 ° % / 等非时间标点按实际 advance 补槽——原统一 0.45 窄槽会把
+//   单位符号压到相邻数字/字母上（指标块 12.5°C / 43% / 11.0km/h）
 // 异常处理：无 panic 面；空串返回零宽盒子
 // 关联依赖：text_ink::metrics_from_galley / center_from_galley；消费方：五页所有
 //   时间类大字（时钟 hero/标准时/世界走时/倒计时剩余/闹钟时刻）
@@ -136,14 +137,18 @@ mod tests {
     const TEST_SIZE: f32 = 20.0;
 
     #[test]
-    fn slot_ratio_matrix() {
-        // 数字满槽；冒号/句点/空格窄槽（表盘节奏的可证锚点）
-        assert_eq!(slot_ratio('0'), 1.0);
-        assert_eq!(slot_ratio('9'), 1.0);
-        assert_eq!(slot_ratio('A'), 1.0);
-        assert_eq!(slot_ratio(':'), 0.45);
-        assert_eq!(slot_ratio('.'), 0.45);
-        assert_eq!(slot_ratio(' '), 0.45);
+    fn symbol_slots_cover_natural_advance() {
+        // 数字满槽；冒号/句点/空格窄槽；° % / 与字母按实际 advance 补槽，
+        // 不再被 0.45 窄槽压到相邻字符（PL029）
+        let painter = test_painter();
+        let font = digit_font(TEST_SIZE);
+        let cell = cell_width(&painter, &font);
+        let w = |s: &str| text_width(&painter, s, &font);
+        assert!((w(":") - cell * 0.45).abs() < 1e-4);
+        assert!(w("°") > cell * 0.45, "° 应补宽: {}", w("°"));
+        assert!(w("%") > cell, "% 应补宽: {}", w("%"));
+        assert!(w("/") > cell * 0.45, "/ 应补宽: {}", w("/"));
+        assert!(w("m") > cell, "m 应按实际 advance: {}", w("m"));
     }
 
     #[test]

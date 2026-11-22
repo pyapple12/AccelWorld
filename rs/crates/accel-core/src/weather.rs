@@ -110,11 +110,13 @@ fn extract_daily(
     daily: &serde_json::Map<String, Value>,
 ) -> Result<Vec<crate::types::DailyPoint>, WeatherErr> {
     let d_dates = series_strings(daily, "time")?;
+    let d_codes = series_numbers(daily, "weather_code", SeriesKind::Daily)?;
     let d_max = series_numbers(daily, "temperature_2m_max", SeriesKind::Daily)?;
     let d_min = series_numbers(daily, "temperature_2m_min", SeriesKind::Daily)?;
     let d_sunrise = series_strings(daily, "sunrise")?;
     let d_sunset = series_strings(daily, "sunset")?;
-    if d_dates.len() != d_max.len()
+    if d_dates.len() != d_codes.len()
+        || d_dates.len() != d_max.len()
         || d_dates.len() != d_min.len()
         || d_dates.len() != d_sunrise.len()
         || d_dates.len() != d_sunset.len()
@@ -126,6 +128,7 @@ fn extract_daily(
         .enumerate()
         .map(|(i, d)| crate::types::DailyPoint {
             date: d.clone(),
+            weather_code: d_codes[i].round() as i64,
             t_max: d_max[i],
             t_min: d_min[i],
             sunrise: d_sunrise[i].clone(),
@@ -282,15 +285,12 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::data::cities;
 use crate::static_config::Static;
 use crate::util::retry::{IsRetryable, RetrySpec, retry};
 
 /// 传输层错误（Python None 降级前的结构化原因）
 #[derive(Debug, Error)]
 pub enum FetchErr {
-    #[error("未知城市: {0}")]
-    UnknownCity(String),
     #[error("经纬度越界: lat={lat}, lon={lon}")]
     CoordsOutOfRange { lat: f64, lon: f64 },
     #[error("网络请求失败: {0}")]
@@ -687,17 +687,22 @@ impl WeatherClient {
     }
 
     /// 城市查询：缓存命中直返（Python get_weather_by_city 对等）；
-    /// 未知城市 UnknownCity；force 先清该城缓存穿透
+    /// 坐标由调用方从城市主表解析（PL029：世界页 hero 可任意 291 城/自定义城市）；
+    /// force 先清该城缓存穿透
     /// PL016.03（审核 #2）：成功同步落盘缓存；失败回退磁盘陈旧值
     /// （StaleServed 携带数据与年龄上抛——UI 保留旧值 + 角标，重启可恢复）
-    pub async fn fetch_by_city(&self, city: &str, force: bool) -> Result<WeatherData, FetchErr> {
+    pub async fn fetch_by_city(
+        &self,
+        city: &str,
+        lat: f64,
+        lon: f64,
+        force: bool,
+    ) -> Result<WeatherData, FetchErr> {
         if force {
             self.cache.lock().expect("天气缓存锁中毒").remove(city);
         } else if let Some(w) = self.cached(city) {
             return Ok(w);
         }
-        let (lat, lon) =
-            cities::get(city).ok_or_else(|| FetchErr::UnknownCity(city.to_string()))?;
         match self.fetch_by_coords(lat, lon).await {
             Ok(data) => {
                 // 仅缓存成功（失败可立即重试，Python 语义）
@@ -799,7 +804,7 @@ impl WeatherClient {
         let url = format!(
             "{}/v1/forecast?latitude={lat}&longitude={lon}&current={}&timezone=auto\
              &hourly=temperature_2m,precipitation_probability\
-             &daily=temperature_2m_max,temperature_2m_min,sunrise,sunset\
+             &daily=temperature_2m_max,temperature_2m_min,weather_code,sunrise,sunset\
              &forecast_days={}&forecast_hours={}",
             self.base,
             REQUIRED_FIELDS.join(","),
@@ -935,9 +940,11 @@ fn error_chain(err: &(dyn std::error::Error + 'static)) -> String {
 // 解析层（PL011.11）：输入 Open-Meteo JSON 响应（&Value）；输出 WeatherData 或
 //   结构化 WeatherErr；判定顺序（根对象 → current → 字段缺失/null → 数值类型 →
 //   码表回退）与 Python 逐分支对齐，61 条夹具样本断言决策一致
-// 传输层（PL011.12 / PL025）：WeatherClient 输入城市名/坐标 + force；输出 WeatherData 或
-//   FetchErr（UnknownCity/CoordsOutOfRange/Network/Parse/StaleServed——A011 订正补记
-//   PL016.03 变体：拉取失败但磁盘缓存有历史时携旧值与年龄上抛，UI 保留旧值 + 角标）；
+// 传输层（PL011.12 / PL025 / PL029）：WeatherClient 输入城市名 + 坐标 + force；
+//   输出 WeatherData 或 FetchErr（CoordsOutOfRange/Network/Parse/StaleServed——
+//   A011 订正补记 PL016.03 变体：拉取失败但磁盘缓存有历史时携旧值与年龄上抛，
+//   UI 保留旧值 + 角标）；PL029 起坐标由 interface 从 SQLite 城市主表/自定义城市
+//   条目解析，weather 层不再持有 17 城表；
 //   内存缓存仅存成功、命中未过 TTL 直返、force 清键穿透、失败可立即重试；磁盘缓存
 //   （exe 旁 weather_cache/，30 天上限）成功落盘、失败尽力回退静默降级——
 //   Python 缓存语义逐条对齐
@@ -956,7 +963,7 @@ fn error_chain(err: &(dyn std::error::Error + 'static)) -> String {
 //   该威胁在构造期即消除（偏移登记 z.plan）；重定向禁跟随（Policy::none 对等）
 // 异常处理：网络/非 2xx/超时 → Network（唯一可重试变体，对应 Python 白名单）；
 //   体解码失败 → Parse 直通（Python JSONDecodeError 不重试对等）；解析结构错 →
-//   Parse 直通；坐标越界/未知城市 → 立即拒绝不上抛 panic；错误日志逐层展开
+//   Parse 直通；坐标越界 → 立即拒绝不上抛 panic；错误日志逐层展开
 //   source 链（reqwest Display 只有「error sending request for url」，底层超时/
 //   连接重置须取 source 才可见）
 // 已知偏移：①weather_code 归一 i64（Python 可持 "0"/True 原样）——展示 parity
@@ -967,11 +974,15 @@ fn error_chain(err: &(dyn std::error::Error + 'static)) -> String {
 // 关联配置：weather_cache_ttl/weather_disk_cache_max_age_s（FIX012.02 token 化）/
 //   weather_timeout_s/weather_connect_timeout_s/weather_retries/weather_retry_delay/
 //   weather_fail_retry_delay_s/weather_forecast_days/weather_forecast_hours
-//   （base.json）；城市表 data::cities；重试 util::retry；消费方：interface（.13）
+//   （base.json）；城市坐标由 interface 从 SQLite city 表解析；重试 util::retry；
+//   消费方：interface（.13）
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// 测试用北京坐标（与 SQLite city 表一致；PL029 起坐标由调用方传入）
+    const BEIJING: (f64, f64) = (39.9042, 116.4074);
 
     #[test]
     fn normal_response_parses() {
@@ -1099,6 +1110,7 @@ mod tests {
                 "precipitation_probability": [10, 20] },
             "daily": {
                 "time": ["2026-10-17", "2026-10-18"],
+                "weather_code": [0, 61],
                 "temperature_2m_max": [24.0, 23.0],
                 "temperature_2m_min": [15.0, 14.5],
                 "sunrise": ["2026-10-17T06:20", "2026-10-18T06:21"],
@@ -1138,11 +1150,11 @@ mod tests {
         let mock = stub(&server);
         let client = fast_client(server.base_url()).with_ttl(Duration::from_secs(3600));
         let w1 = client
-            .fetch_by_city("北京", false)
+            .fetch_by_city("北京", BEIJING.0, BEIJING.1, false)
             .await
             .expect("首次应成功");
         let w2 = client
-            .fetch_by_city("北京", false)
+            .fetch_by_city("北京", BEIJING.0, BEIJING.1, false)
             .await
             .expect("缓存命中应成功");
         assert_eq!(
@@ -1159,11 +1171,11 @@ mod tests {
         let mock = stub(&server);
         let client = fast_client(server.base_url()).with_ttl(Duration::ZERO);
         client
-            .fetch_by_city("北京", false)
+            .fetch_by_city("北京", BEIJING.0, BEIJING.1, false)
             .await
             .expect("首次应成功");
         client
-            .fetch_by_city("北京", false)
+            .fetch_by_city("北京", BEIJING.0, BEIJING.1, false)
             .await
             .expect("过期后应重新拉取");
         assert_eq!(mock.calls(), 2);
@@ -1189,7 +1201,7 @@ mod tests {
             24,
         );
         let err = client
-            .fetch_by_city("北京", false)
+            .fetch_by_city("北京", BEIJING.0, BEIJING.1, false)
             .await
             .expect_err("应耗尽失败");
         assert!(matches!(err, FetchErr::Network(_)), "应为网络错: {err}");
@@ -1203,11 +1215,11 @@ mod tests {
         let mock = stub(&server);
         let client = fast_client(server.base_url()).with_ttl(Duration::from_secs(3600));
         client
-            .fetch_by_city("北京", false)
+            .fetch_by_city("北京", BEIJING.0, BEIJING.1, false)
             .await
             .expect("首次应成功");
         client
-            .fetch_by_city("北京", true)
+            .fetch_by_city("北京", BEIJING.0, BEIJING.1, true)
             .await
             .expect("force 应穿透成功");
         assert_eq!(mock.calls(), 2);
@@ -1215,21 +1227,20 @@ mod tests {
 
     #[tokio::test]
     async fn input_rejection_without_request() {
-        // 路径 5 白名单拒绝（输入侧）：未知城市/坐标越界立即拒绝，零网络请求；
-        //   且 URL 派生断言——host 全来自构造期 base，坐标经定义域校验（SSRF 结构性证明）
+        // 路径 5 输入拒绝：坐标越界立即拒绝，零网络请求；PL029 起城市坐标由调用方
+        //   从城市主表解析，未知城市在 interface 层拒绝，weather 层只做坐标校验
         let server = MockServer::start();
         let mock = stub(&server);
         let client = fast_client(server.base_url());
-        assert!(matches!(
-            client.fetch_by_city("不存在城", false).await,
-            Err(FetchErr::UnknownCity(_))
-        ));
         assert!(matches!(
             client.fetch_by_coords(200.0, 0.0).await,
             Err(FetchErr::CoordsOutOfRange { .. })
         ));
         // 成功路径的 URL 形态：query 恰为派生参数（stub 的 query_param 匹配即证明）
-        client.fetch_by_city("北京", false).await.expect("应成功");
+        client
+            .fetch_by_city("北京", BEIJING.0, BEIJING.1, false)
+            .await
+            .expect("应成功");
         mock.assert();
         assert_eq!(mock.calls(), 1, "拒绝路径零请求 + 成功路径恰一次");
     }
@@ -1244,7 +1255,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&sandbox);
         let client = fast_client(server.base_url()).with_disk_cache(sandbox.clone());
         let fresh = client
-            .fetch_by_city("北京", false)
+            .fetch_by_city("北京", BEIJING.0, BEIJING.1, false)
             .await
             .expect("首拉应成功");
         // PL027：冷启动首屏只读磁盘快照
@@ -1260,7 +1271,10 @@ mod tests {
                 .query_param("timezone", "auto");
             then.status(500).body("boom");
         });
-        match client.fetch_by_city("北京", true).await {
+        match client
+            .fetch_by_city("北京", BEIJING.0, BEIJING.1, true)
+            .await
+        {
             Err(FetchErr::StaleServed { data, .. }) => {
                 assert_eq!(
                     data.temperature, fresh.temperature,
@@ -1272,7 +1286,9 @@ mod tests {
         // 重启等价：新 client 同目录（内存缓存为空 + force）仍可回退
         let client2 = fast_client(server.base_url()).with_disk_cache(sandbox.clone());
         assert!(matches!(
-            client2.fetch_by_city("北京", true).await,
+            client2
+                .fetch_by_city("北京", BEIJING.0, BEIJING.1, true)
+                .await,
             Err(FetchErr::StaleServed { .. })
         ));
         let _ = std::fs::remove_dir_all(&sandbox);
@@ -1295,14 +1311,22 @@ mod tests {
         let server = MockServer::start();
         let mock = stub(&server);
         let client = fast_client(server.base_url()).with_ttl(Duration::from_secs(3600));
-        let w = client.fetch_by_city("北京", false).await.expect("应成功");
+        let w = client
+            .fetch_by_city("北京", BEIJING.0, BEIJING.1, false)
+            .await
+            .expect("应成功");
         assert_eq!(w.hourly.len(), 2);
         assert_eq!(w.hourly[0].time, "2026-10-17T00:00");
         assert_eq!(w.hourly[0].precip_prob, 10.0);
         assert_eq!(w.daily.len(), 2);
+        assert_eq!(w.daily[0].weather_code, 0);
+        assert_eq!(w.daily[1].weather_code, 61);
         assert_eq!(w.daily[0].t_max, 24.0);
         assert_eq!(w.daily[0].sunrise, "2026-10-17T06:20");
-        client.fetch_by_city("北京", false).await.expect("缓存命中");
+        client
+            .fetch_by_city("北京", BEIJING.0, BEIJING.1, false)
+            .await
+            .expect("缓存命中");
         assert_eq!(mock.calls(), 1, "缓存命中不重发");
     }
 
@@ -1318,7 +1342,7 @@ mod tests {
         });
         let client = fast_client(server.base_url());
         let err = client
-            .fetch_by_city("北京", false)
+            .fetch_by_city("北京", BEIJING.0, BEIJING.1, false)
             .await
             .expect_err("null 应整包拒绝");
         assert!(err.to_string().contains("逐小时数据含 null"), "{err}");
@@ -1339,7 +1363,7 @@ mod tests {
         });
         let client = fast_client(server.base_url());
         let err = client
-            .fetch_by_city("北京", false)
+            .fetch_by_city("北京", BEIJING.0, BEIJING.1, false)
             .await
             .expect_err("缺 sunset 应拒绝");
         assert!(

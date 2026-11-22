@@ -171,11 +171,12 @@ impl Pages {
                             }
                         }
                         let content_pad_x = crate::theme::layout_f32("drawer_content_pad_x");
+                        let content_pad_top = crate::theme::layout_f32("drawer_content_pad_top");
                         let content_min_w = crate::theme::layout_f32("drawer_content_min_w");
                         let content = egui::Frame::new().inner_margin(egui::Margin {
                             left: content_pad_x as i8,
                             right: content_pad_x as i8,
-                            top: 10,
+                            top: content_pad_top as i8,
                             bottom: 0,
                         });
                         // 抽屉开合动画早期宽度不足：内容不画，避免负宽度触发 egui panic

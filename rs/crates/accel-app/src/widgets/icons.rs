@@ -140,7 +140,7 @@ pub fn glyph(icon: Icon) -> char {
     }
 }
 
-/// 绘制图标：Tabler 字形在 24 网格内留 2px 边距，字号 ×1.2 让视觉框≈size；
+/// 绘制图标：Tabler 字形在 24 网格内留 2px 边距，字号 ×1.3 让视觉框≈size；
 /// 颜色由调用方给语义色（不在此处做状态判断）
 pub fn draw(painter: &Painter, center: Pos2, size: f32, icon: Icon, color: Color32) {
     let font = FontId::new(size * 1.3, FontFamily::Name("icons".into()));
@@ -153,9 +153,36 @@ pub fn draw(painter: &Painter, center: Pos2, size: f32, icon: Icon, color: Color
     );
 }
 
+/// 以字形墨迹中心对齐目标中心绘制（图标盒内定位用；水平和垂直都对齐）
+pub fn draw_ink_centered(ui: &egui::Ui, center: Pos2, size: f32, icon: Icon, color: Color32) {
+    let font = FontId::new(size * 1.3, FontFamily::Name("icons".into()));
+    let text = glyph(icon).to_string();
+    let galley = ui
+        .painter()
+        .layout_no_wrap(text.clone(), font.clone(), color);
+    let Some((left, right, top, bottom)) =
+        crate::widgets::text_ink::solid_ink_bounds(ui, &text, &font)
+    else {
+        ui.painter()
+            .text(center, egui::Align2::CENTER_CENTER, text, font, color);
+        return;
+    };
+    let ink_cx = (left + right) * 0.5;
+    let ink_cy = (top + bottom) * 0.5;
+    let dx = ink_cx - galley.rect.width() * 0.5;
+    let dy = ink_cy - galley.rect.height() * 0.5;
+    ui.painter().text(
+        egui::pos2(center.x - dx, center.y - dy),
+        egui::Align2::CENTER_CENTER,
+        text,
+        font,
+        color,
+    );
+}
+
 // ===== src/widgets/icons.rs 说明区 =====
 // 输入：Painter + 中心 + 视觉尺寸 + Icon + 颜色；输出：单字形绘制
-// 逻辑步骤：glyph(icon) 查码点 → FontId(size×1.2, "icons") → CENTER_CENTER 绘制
+// 逻辑步骤：glyph(icon) 查码点 → FontId(size×1.3, "icons") → CENTER_CENTER 绘制
 // 设计理由（PL019）：手绘 567 行只覆盖 20 个图标且扩编成本高；Tabler 子集
 //   9KB 提供 29 个 24 网格字形，调用点零改动，线宽/圆角由字体保证一致
 // 异常处理：字体未注册时 egui 回退默认族（表现为缺字），由启动期注册 + 测试兜底

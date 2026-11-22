@@ -488,7 +488,7 @@ impl Bus {
                 .into_iter()
                 .map(|e| (e.name.clone(), e))
                 .collect();
-            // A005 #4：单城模型下 last_city 由 SetWeatherCity 持久化，重拉同步
+            // PL029：last_city 是 hero 的持久化镜像，ConfigSaved 后重拉同步
             state.prefs.last_city = prefs.last_city;
         }
         if need_rate_resync {

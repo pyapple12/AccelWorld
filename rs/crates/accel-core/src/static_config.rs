@@ -163,7 +163,7 @@ mod tests {
         assert_eq!(s.base_i64("weather_retries"), 3);
         assert_eq!(s.base_f64("weather_retry_delay"), 1.0);
         assert_eq!(s.base_str("default_theme"), "auto");
-        assert_eq!(s.base_str("default_city"), "北京");
+        assert_eq!(s.base_str("default_city"), "上海");
         assert_eq!(s.base_i64("max_alarms"), 10);
     }
 
