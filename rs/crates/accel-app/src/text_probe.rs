@@ -26,13 +26,13 @@ const THRESHOLDS: [u8; 3] = [ALPHA_FAINT, ALPHA_VISIBLE, ALPHA_SOLID];
 /// 逐行文字探针是否开启（缓存一次）
 pub fn on() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();
-    *ON.get_or_init(|| std::env::var("ACCELWORLD_TEXT_PROBE").is_ok())
+    *ON.get_or_init(|| std::env::var("ACCELWORLD_TEXT_PROBE").is_ok_and(|v| v == "1"))
 }
 
 /// 字体下探矩阵是否开启（缓存一次）
 pub fn matrix_on() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();
-    *ON.get_or_init(|| std::env::var("ACCELWORLD_TEXT_MATRIX").is_ok())
+    *ON.get_or_init(|| std::env::var("ACCELWORLD_TEXT_MATRIX").is_ok_and(|v| v == "1"))
 }
 
 /// 每个 tag 每 0.5s 最多打一次，避免每帧刷屏
@@ -85,7 +85,7 @@ pub fn line(
     tag: &'static str,
     text: &str,
     font: &FontId,
-    _kind: InkKind,
+    kind: InkKind,
     pos: Pos2,
     align: Align2,
     box_rect: Rect,
@@ -96,7 +96,7 @@ pub fn line(
     let galley = ui
         .painter()
         .layout_no_wrap(text.to_owned(), font.clone(), Color32::WHITE);
-    let ink = text_ink::measure(ui, text, font, InkKind::Cjk);
+    let ink = text_ink::measure(ui, text, font, kind);
     let baseline = pos.y + ink.baseline;
     let (face_ascent, face_height) = galley
         .rows

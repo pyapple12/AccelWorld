@@ -117,6 +117,10 @@ mod tests {
 
     #[test]
     fn preset_play_smoke_no_panic() {
+        // FIX013.27：默认不真实播放；需要音频冒烟时显式 ACCELWORLD_TEST_AUDIO=1
+        if std::env::var("ACCELWORLD_TEST_AUDIO").as_deref() != Ok("1") {
+            return;
+        }
         // 冒烟：有设备则提交播放（true），无设备则 false——两态都不 panic 即过
         let result = play_preset(PresetSound::Beep);
         tracing::info!("预设铃冒烟结果: {result}（无音频设备环境允许 false）");

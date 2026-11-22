@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ACCELWORLD Clock UI 标注指南 · V0.6.6.5</title>
+    <title>ACCELWORLD Clock UI 标注指南 · V0.6.6.6</title>
     <style>
       :root {
         --bg: #0b0f19;
@@ -936,25 +936,6 @@
         color: var(--muted);
         white-space: nowrap;
       }
-      .select {
-        height: 28px;
-        border: 1px solid var(--strong);
-        border-radius: 6px;
-        background: var(--caption);
-        display: flex;
-        align-items: center;
-        padding: 0 8px;
-        gap: 8px;
-        font-size: 10px;
-        color: var(--body);
-        min-width: 120px;
-      }
-      .select .ico {
-        margin-left: auto;
-        color: var(--muted);
-        font-size: 11px;
-      }
-
       /* ===== 天气 ===== */
       .wx-error {
         display: flex;
@@ -1583,19 +1564,6 @@
         font-size: 9px;
         color: var(--muted);
       }
-      .demo-spinner {
-        width: 22px;
-        height: 22px;
-        border-radius: 50%;
-        border: 2px solid var(--track);
-        border-top-color: var(--muted);
-        animation: spin 1.1s linear infinite;
-      }
-      @keyframes spin {
-        to {
-          transform: rotate(360deg);
-        }
-      }
       .demo-toast {
         border: 1px solid var(--border);
         border-radius: 8px;
@@ -1844,8 +1812,8 @@
         token。目标只有一个：你指着屏幕说“这里”，我们指的是同一个东西。
       </p>
       <div class="meta-row">
-        <span class="badge gold">基线 V0.6.6.5</span>
-        <span class="badge">V0.6.6.5</span>
+        <span class="badge gold">基线 V0.6.6.6</span>
+        <span class="badge">V0.6.6.6</span>
         <span class="badge">窗口 960×720 · min 560×420 · 无上限</span>
         <span>配套：<code>u.UI_GLOSSARY.md</code></span>
       </div>
@@ -2080,7 +2048,7 @@
             <p>
               唯一恒驻的页面。星盘是产品签名且任何高度都保留（最小
               120）；读数在盘下，倍率条是 6px
-              短条，农历在页头右栏。窗口变矮时先压星盘，再按 560 界缩页头。
+              短条，农历在页头右栏。窗口变矮时先压星盘，再按实测宽度缩页头。
             </p>
           </div>
         </div>
@@ -2136,7 +2104,8 @@
                 <td class="nm">舞台页头</td>
                 <td class="ds">
                   左日期盒 15.5 + 右农历盒 26.0（11.5×2+3），中线对齐；盒底 +5
-                  +1 横线；高 560 分两行/一行，宽 560 分完整/精简
+                  +1 横线；高 560 +
+                  右栏实测宽决定两行/一行，日期盒与右栏实测宽决定完整/精简
                 </td>
               </tr>
               <tr>
@@ -2213,7 +2182,7 @@
               </li>
               <li>
                 页头左是日期（16/600 白色），右是农历/月相/财神；窗口高 ≥560
-                两行（第二行宜忌），&lt;560 一行。
+                且右栏实测宽放得下时两行（第二行宜忌），否则一行；完整行放不下退化为短农历。
               </li>
               <li>
                 hover 日期弹周数/节日/节气；hover 右侧农历弹全部宜忌（每 5
@@ -3574,8 +3543,8 @@
             <h2>窄窗变体：抽屉全宽 / 时钟盒断点</h2>
             <p>
               全宽抽屉按“页宽 &lt; 760”；时钟页不再有数字版，星盘常驻（最小
-              120）。页头行数按窗口高 560 两级，文案按页头可用宽 560 两级；C2
-              坞高 56/44 两级。
+              120）。页头行数按窗口高 560 + 右栏实测宽两级，文案按日期盒与右栏
+              实测宽跌落；C2 坞高 56/44 两级。
             </p>
           </div>
         </div>
@@ -3709,7 +3678,7 @@
               </div>
             </div>
             <p class="note" style="font-size: 0.75rem">
-              星盘始终保留（最小 120，图中省略）；页头按高 560 / 宽 560
+              星盘始终保留（最小 120，图中省略）；页头按高 560 + 实测宽
               跌落，坞高 56/44 两级。这是“短窗”，不是“全宽抽屉”。
             </p>
           </div>
@@ -3738,43 +3707,6 @@
             <div class="demo-field focus">
               <span class="flabel">城市名</span>
               <div class="fbox">上海</div>
-            </div>
-          </div>
-          <div class="component-card">
-            <h4>K2 · 下拉 Select</h4>
-            <p class="cdesc">32px 触发器 + 锚定菜单；键盘可达</p>
-            <div class="select" style="width: 100%">
-              北京<svg class="ico"><use href="#i-chevron-down" /></svg>
-            </div>
-            <div
-              style="
-                margin-top: 6px;
-                border: 1px solid var(--border);
-                border-radius: 6px;
-                background: var(--card);
-                overflow: hidden;
-              "
-            >
-              <div
-                style="
-                  padding: 5px 8px;
-                  font-size: 10px;
-                  background: var(--hover);
-                  color: var(--ink);
-                "
-              >
-                北京
-              </div>
-              <div
-                style="padding: 5px 8px; font-size: 10px; color: var(--muted)"
-              >
-                上海
-              </div>
-              <div
-                style="padding: 5px 8px; font-size: 10px; color: var(--muted)"
-              >
-                广州
-              </div>
             </div>
           </div>
           <div class="component-card">
@@ -3808,28 +3740,11 @@
             </div>
           </div>
           <div class="component-card">
-            <h4>K6 · 加载弧 Spinner</h4>
-            <p class="cdesc">16px、270°、600ms/圈；只在加载态</p>
-            <div
-              style="
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                height: 70px;
-              "
-            >
-              <span class="demo-spinner"></span>
-              <span style="font-size: 10px; color: var(--muted)"
-                >天气获取中…</span
-              >
-            </div>
-          </div>
-          <div class="component-card">
             <h4>J1 · 应用内 toast</h4>
             <p class="cdesc">右上堆叠；左侧色条 + 标题 + 正文</p>
             <div class="demo-toast" style="margin-bottom: 6px">
-              <div class="tt">天气城市</div>
-              <div class="tb">已切换至上海</div>
+              <div class="tt">天气拉取失败</div>
+              <div class="tb">正在显示 5 分钟前的缓存</div>
             </div>
             <div class="demo-toast error">
               <div class="tt">北京 天气拉取失败</div>
@@ -4034,13 +3949,15 @@
               </tr>
               <tr>
                 <td>抽屉宽</td>
-                <td>token 320–400；中央至少 420，实际最低 280</td>
-                <td><code>pages/mod.rs</code> / <code>drawer_width</code></td>
+                <td>
+                  固定 350；&lt;760 全宽；≥760 舞台 = 页宽 − 350（最小 410）
+                </td>
+                <td><code>drawer_width_fixed</code></td>
               </tr>
               <tr>
                 <td>抽屉页头 / 页脚</td>
                 <td>
-                  页头 57.5（20+27.5+10）；页脚倒计时/闹钟 101.5，世界 select+8
+                  页头 57.5（20+27.5+10）；页脚倒计时/闹钟 101.5，世界搜索字段+8
                 </td>
                 <td><code>page_header::show / footer_height</code></td>
               </tr>
@@ -4449,7 +4366,7 @@
     </main>
 
     <footer class="wrap footer">
-      <span>ACCELWORLD Clock UI 标注指南 · 基线 V0.6.6.5</span>
+      <span>ACCELWORLD Clock UI 标注指南 · 基线 V0.6.6.6</span>
       <span
         >配套：<code>u.UI_GLOSSARY.md</code> · 窗口图按 820px
         宽绘制，仅示意结构，不替代真机截图</span

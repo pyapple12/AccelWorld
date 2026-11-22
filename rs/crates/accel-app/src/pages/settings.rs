@@ -111,8 +111,9 @@ pub fn ui(ui: &mut egui::Ui, state: &mut UiState, bus: &Bus) {
                     )
                 })
                 .inner;
-            let enter = proxy_resp.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if proxy_resp.lost_focus() || enter {
+            // 单行 TextEdit 回车先 surrender_focus，同帧 has_focus 已 false；
+            // 用 lost_focus 才能收到回车提交（与倒计时/世界页同款）
+            if proxy_resp.lost_focus() {
                 bus.send(FrontendCommand::SetWeatherProxy {
                     enabled: state.prefs.weather_use_proxy,
                     server: state.prefs.weather_proxy.clone(),

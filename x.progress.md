@@ -1,7 +1,7 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告 + Rust 重构总纲）
-> 当前版本：0.6.6.5（PL024 表盘等比 + 窗口尺寸 + 光晕探针；PL025 天气双通道；PL026 Barlow Medium 数字族；PL027 天气代理/冷启动缓存；PL028 世界时钟 hero/291 城 SQLite/搜索弹层；PL029 天气联动 hero/三列首块/自动刷新）
+> 当前版本：0.6.6.6（PL024 表盘等比 + 窗口尺寸 + 光晕探针；PL025 天气双通道；PL026 Barlow Medium 数字族；PL027 天气代理/冷启动缓存；PL028 世界时钟 hero/291 城 SQLite/搜索弹层；PL029 天气联动 hero/三列首块/自动刷新；FIX013.01–36 审计修复收口）
 > 历史 UI 审核报告已于 2026-10-29 移除，原文见 git 历史；下文相关引用按历史记录理解。
 > 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；PL016 已收口提交（0e2252f）；PL017 已实施（0.6.3.1；G4/G8 按用户定案不做，勾选完成）；**PL018 已实施（0.6.3.2：N9 裁决 + #9 退出自愈 + #10 落点校准 + #11 首帧门控）**；**PL019 已收口（0.6.4.0：图标系统 + 读数成组 + 反馈动效）**；**PL020 已收口（0.6.5.1：12h 双半日四针 + 金圈 + 365 倍率）**；**PL021 已收口（0.6.5.3：五页盒模型 + 倒计时输入）**；**PL022 已实施（0.6.5.4：倒计时列表独立滚动）**；**PL023 已收口（0.6.5.5：文字盒统一 + 五页盒子对齐）**；**PL024 已实施（0.6.6.0：表盘 320 母版等比 + 窗口尺寸 + GLOW/INK 探针）**；**PL025 已实施（天气直连/系统代理双通道 + 10 分钟自动重试）**；**PL026 已实施（数字族 Barlow Medium 内嵌平替）**；**PL027 已实施（天气代理开关/地址 + 冷启动缓存首屏）**；**PL028 已实施（世界时钟 hero/共享滚动/城市搜索缓存）**；**PL029 已实施（天气城市跟随世界 hero/三列首块/30 分钟自动刷新）**
 > 更新（2026-10-17）：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow——UIR 定案 wgpu 废弃）；Python 版全量归档 `.archived/`（git 忽略），本文件自 PL011 起记录 RS 任务
@@ -53,7 +53,7 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 
 ## 任务记录（2026-09-10 起按 DeepTransHub 工作流新规则记录）
 
-> 当前状态：688 项全部完成，无未勾选项。
+> 当前状态：705 项已完成；A013/FIX013 余 20 项待修复（P3×19 + 收尾；见文末 FIX013）。
 
 > 结构规则：已完成任务在上方历史区（S1-S10 重构期记录，原样保留）；任务组用 `### 编号: 标题 [来源]`，子任务格式 `- [ ]`（待办）或 `- [x]`（完成），均带 [P级]、做法与验证
 > 编号规则：功能/修复任务组 `T{NNN}` 递增；审计修复任务组 `FIX{NNN}`（与 z.plan.md 附录 `A{NNN}` 一一对应），由 `.agents/skills/audit-report` 归档时生成
@@ -1044,3 +1044,48 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] PL029.15 [P1] 动态温度槽与首块图标 —— 负号槽仅本周出现负数才占宽，十位槽仅本周出现两位数才占宽（低/高独立）；温度槽按本周实际出现情况计算；首块天气图标最终 36px（PL029.16 收口）。
 - [x] PL029.16 [P1] 首块定高收口 —— 第一行高 = 第一列城市 CJK 盒 27.5，第二行高 = 第二列描述 CJK 盒 15.5，块高 = 2×hero_pad_y + 27.5 + 5 + 15.5 = 68；温度数字盒 19.5 底对齐第一行，英文盒 12.5 底对齐第二行；36 图标墨迹中心对齐块中线；删除蓝/红/黄临时染色。
 - [x] PL029.17 [P1] 布局定位染色规则 —— AGENTS.md 新增：同一布局连续几轮调不对时，先临时给排版盒染色 + 描边（蓝=块、黄=文字盒、红=图标盒/关键盒），定位后删除，不留在正式构建。
+
+### FIX013: 第13轮审计修复 [audit#A013]
+
+> 来源：`z.plan.md` 附录 A013（Rust 侧第 9 轮全量审计，2026-11-22）；范围 37 条（P1×1 / P2×16 / P3×19 + 收尾 1）。
+> 观察项 29 条经用户复核全部维持观察级，不进入本组；A013 报告仍保留回落理由。
+> 执行顺序：P1 → P2 → P3；每项先复现/写失败测试，再修，最后跑四关卡。
+> 2026-11-22 本轮完成 01–17（P1×1 + P2×16，含 10/13 最低成本防御；D 类残余登记 A013 永久豁免）；18–36 P3 与 37 收尾留待后续。
+
+- [x] FIX013.01 [P1] 最小化 logic 停摆 —— `logic` 末尾仅在 `viewport.visible()==Some(false)`（最小化/完全遮挡）补 `request_repaint_after(200ms)`，正常空闲仍走原 1s 节奏；`ShowWindow`、探针恢复与 `escalate_close` 补 `ViewportCommand::Minimized(false)`；验证：`logic_heartbeat_only_when_invisible` + 全量测试绿（2026-11-22）。
+- [x] FIX013.02 [P2] `year_chips` 农历年锚点 —— 轮次改 `[now.year()-1, now.year(), now.year()+1]`；除夕按每个农历年正月初一回退一天计算后由 horizon 过滤；验证：`year_chips(2026-01-04)` 含 2026-01-26 腊八与 2026-02-16 除夕，`year_chips_january_keeps_laba_and_eve` 通过（2026-11-22）。
+- [x] FIX013.03 [P2] `upcoming_festivals` 假期跨度去重 —— holidays 中已有农历/节气规则的名称不再入 chips（春节取传统规则日而非跨度首日）；连续同名日期折叠为首日；验证：`today=2026-09-28` 仅一个国庆节且含 2027-01-01，`year_chips_collapse_holiday_spans` 通过（2026-11-22）。
+- [x] FIX013.04 [P2] 2027 节假日覆盖与告警 —— 装载期同时检查当年与次年并各 warn 一次；缺失年份 `year_chips` 只补元旦/劳动/国庆三个固定日；`holidays.json` 按国办发明电〔2026〕10 号补 2027 年 29 个休假日；验证：2027 元旦/春节/清明/劳动/端午/中秋/国庆锚点 + `year_chips_december_contains_next_new_year` 通过（2026-11-22）。
+- [x] FIX013.05 [P2] 旧格式倒计时目标复活 —— 程序从未发布，按用户定案彻底删除旧格式：`UserConfig.countdown_target`、`UiPreferences.countdown_target`、迁移函数与相关测试全部移除；旧键按未知键忽略，不再复活；验证：`countdown_targets_list_only_no_legacy_migration` 通过（2026-11-22）。
+- [x] FIX013.06 [P2] 旧天气磁盘缓存反序列化 —— 不存在历史版本，不做 `serde(default)`/schema 版本等升级兼容；`disk_cache_read` 的读文件/JSON/结构失败补 debug 留痕，不再完全静默；验证：代码零升级分支 + 全量测试绿（2026-11-22）。
+- [x] FIX013.07 [P2] geocoding 缓存永不命中 —— 抽出 `geocode_cache_is_stale` 并删除 `name_en == pinyin` 判定，国内条目拼音英文名不再被判旧缓存；验证：`geocode_cache_cn_pinyin_is_not_stale` 通过（2026-11-22）。
+- [x] FIX013.08 [P2] 世界城市库失败静默/不可恢复 —— 初始化/读取失败记 error；损坏库走临时文件+rename 整体重建（自定义城市丢失有 warn）；行数不符时 ATTACH 在事务外、DELETE/INSERT 包事务；`CITIES` 仅非空 set；验证：`corrupt_db_is_rebuilt_from_seed`、`empty_city_table_is_resynced_from_seed` 通过（2026-11-22）。
+- [x] FIX013.09 [P2] 天气失败重试链跨 hero 泄漏 —— 重试任务发送前用 `current_weather_city()` 复核 hero，已切走即丢弃；`bus` 只对当前 hero 弹失败 toast，旧城只记日志；验证：`weather_city_filter_uses_hero_then_last_city` + hero 同步测试通过（2026-11-22）。
+- [x] FIX013.10 [P2] 关闭/退出退化路径 —— 进入 Quit 序列先发 `CancelClose`；`HotkeyHandles::has_quit()` 落地；`close_action` 改为只有托盘可隐藏，无托盘（即使有退出热键）关闭即保存退出；验证：`close_action_avoids_dead_end` + 全量测试绿；完整状态机残余登记 A013 永久豁免（2026-11-22）。
+- [x] FIX013.11 [P2] 最大化重启重置尺寸 —— 退出存档新增 `maximized` 判定，最小化/最大化/探针/无外框四态均跳过几何写入，保留上一次普通尺寸；验证：`maximized_and_minimized_skip_geometry_save` 通过（2026-11-22）。
+- [x] FIX013.12 [P2] 多显示器夹取原点 —— 新增 Win32 `MonitorFromPoint`+`GetMonitorInfoW` 取存档落点所在显示器 `rcWork`（含原点/负坐标），按工作区夹取；非 Windows 回退原尺寸基准；验证：`secondary_monitor_origin_is_respected` 覆盖 x=2000 与负坐标（2026-11-22）。
+- [x] FIX013.13 [P2] 热键测试非 hermetic —— `ids.is_empty()` 时 warn 并跳过非空断言，manager 可创建但两键被占用不再误红；验证：空注册分支可安全通过 + 本机无运行实例时 `cargo test --workspace` 全绿（2026-11-22）。
+- [x] FIX013.14 [P2] 时钟页头日期/宜忌重叠 —— 新增 `header_mode(page_w, viewport_h, b1_w, full_w, short_w, line2_w)`，用实测日期盒与右栏行宽共同门控完整文本/两行；放不下时退化短农历单行（极端长闰月再退为「农历…」），不再绘制宜忌压字；验证：`header_mode_degrades_before_overlap` 覆盖 410/560/590/900 宽（2026-11-22）。
+- [x] FIX013.15 [P2] 光晕 quad 越界 —— 新增 `clipped_callback_rect` + `callback_center_norm`，`paint`/`paint_dot`/`paint_pill`/`paint_ticks` 统一对 UI clip ∩ `content_rect` 求交并重算归一化圆心/尺寸；验证：`callback_rect_clamps_negative_top_and_keeps_center_mapping` 通过（2026-11-22）。
+- [x] FIX013.16 [P2] 世界搜索回车失效 —— 改 `field_resp.lost_focus() && Enter`（与倒计时页同款）；验证：编译 + 全量测试绿，真窗待 Tab/回车走查（2026-11-22）。
+- [x] FIX013.17 [P2] 闹钟添加静默/清空草稿 —— 新增 `alarm_add_error` 预检格式/上限/同时间同标签重复；页脚错误行恒占位并画红字，失败保留草稿，成功才清空；验证：`alarm_add_error_covers_format_limit_and_duplicate` 通过（2026-11-22）。
+- [x] FIX013.18 [P3] 配置死键/版本族 —— `rate_step` 接线到倍率条键盘步长；geocode `count` 入 `base.world_geocode_count`；删除 `scale.hero`/`font_profile.sizes.hero`/`card_pad`/`slider_track`/`field_pad_y`/`select_pad_y`/`spacing.xxl`/`lume_dim`/`hover_ms`/`press_ms`/`card_press_ms`/`alarm_pulse_ms`；`on_accent` 因 y.problems#16 保留，`cjk_ink_grids` 保留并加推导测试；Cargo 三段版本与 base.json 前三段测试锚定（2026-11-23）。
+- [x] FIX013.19 [P3] 死代码/未接线 API 清理 —— 删除 select/chip/icon_button/spinner 四模块、slider 绘制交互、`BoxStack::inset`、`Toast::info`+`ToastKind`、`TimeInfo::standard_time/custom_hour`、`weather_codes::unknown`、`get_lunar_extras/get_lunar_info/get_lunar_bundle`、`PresetSound`/`AlarmManager` 测试方法、`get_world_city_entries`/`format_weather_info`/`get_timezone_options` 与无用 serde derive；`format_sound_button_name` 按用户定案随铃声项本轮不动（2026-11-23）。
+- [x] FIX013.20 [P3] 项目文档同步 —— AGENTS `data::world_cities/continents`、w.study 无侧栏/365/按日缓存/固定 350/数据表/widgets 列表、UI 术语表与标注图抽屉 350、m.milestone 去 wgpu/已完成项、y.problems 状态表 #13–#18、README 图标字体/continents/控件列表（2026-11-23）。
+- [x] FIX013.21 [P3] 源码注释/说明区/import 规范 —— 订正侧栏/设置浮窗/CentralPanel/200ms/50 城/24:00=1/标准秒缓存/前端仅经 interface/30 天/10 分钟/半小时/chrono-tz 仅 dev/3.5Hz 等失实文案；`pinyin_of` 函数内 use 上提、day_cache import 分组（2026-11-23）。
+- [x] FIX013.22 [P3] 闹钟装载/状态防御 —— `toggle_alarm` 加 `now` 参数，过期一次性重开刷新 `created_at` 重新排期；A012 #3 夹具改 `repeat_days=[]`；补 `reenable_expired_one_time_rearms`；非法 created_at/空或重复 id 按用户定案永久豁免（2026-11-23）。
+- [x] FIX013.23 [P3] 日缓存/时辰/SetRate —— 日缓存 v2 存 `{时辰}` 模板 + `TimeInfo.lunar_shichen`；`shichen_name` 单源；`lunar_cache` token + 路径注入 + pid tmp + 序列化 warn；`set_rate` 原地保留缓存；补跨小时/跨日/roundtrip/只读目录/缓存保留测试（2026-11-23）。
+- [x] FIX013.24 [P3] 代理链路收口 —— `normalize_proxy` URL 优先/Windows 列表识别（含 `=` 密码）；非法地址在 `set_proxy_policy` 脱敏告警；设置 Enter 改 lost_focus，抽屉关闭统一提交；`set_weather_proxy` 先保存后应用；天气/geocoding 共用 `fetch_json_with_fallback`（Network/Parse 均可换代理）（2026-11-23）。
+- [x] FIX013.25 [P3] IO/路径/基础校验 —— 按用户定案永久豁免，登记 z.plan 2026-11-23（2026-11-23）。
+- [x] FIX013.26 [P3] 事件/生命周期语义 —— 搜索任务入 `search_task` 取消句柄，新搜索/Quit/通道关闭 abort；删除 `Toast::info`；hero 拒绝永久豁免、SQLite 失败条件豁免（2026-11-23）。
+- [x] FIX013.27 [P3] 探针/测试卫生 —— `text_probe` 使用传入 InkKind；layout/text probe env 统一 `== "1"`；UI_SHOT 自动 no-save；`AppInterface` 注入 WorldSearch，interface/world_search 测试落 `.temp/` RAII；audio 播放仅 `ACCELWORLD_TEST_AUDIO=1`；`from_value_list` 注入 now；补倒计时 trim/倍率键盘/BoxStack 间距/标题版本测试（2026-11-23）。
+- [x] FIX013.28 [P3] 性能/隐藏绘制 —— 新增 `window_hidden` 停绘 + logic 200ms 心跳；DDL 改 `PRAGMA user_version` 一次迁移；FPS 探针按存档倍率取 `tick_interval_ms`；365× CPU 按用户定案条件豁免（2026-11-23）。
+- [x] FIX013.29 [P3] 防御性 panic —— 按用户定案永久豁免，登记 z.plan 2026-11-23（2026-11-23）。
+- [x] FIX013.30 [P3] 功能/文档口径 —— 窗口标题改 `天宫时计 · V{version}`；保存失败通知读 `logs_dir`；panic hook 写 Backtrace；motion 注释 4.2Hz/ζ1.0；天气双“前”修正；铃声 UI/README 按用户定案本轮不动（PresetSound 展示方法随 19 删除，`format_sound_button_name` 保留）（2026-11-23）。
+- [x] FIX013.31 [P3] 倒计时 UI 窄窗/长名/天数/空白 —— 名称按剩余时间块左缘 fit+省略+hover；前后端 trim 后校验空名，settings 装载过滤空白；560×420 条件豁免、9999 年永久豁免（2026-11-23）。
+- [x] FIX013.32 [P3] 世界页长文本/行焦点 —— 城市行改 `Sense::hover()` 去焦点环；hero 名称截断时 hover 全文；弹层/结果行按宽省略，admin1 优先单独截断且不 hover（2026-11-23）。
+- [x] FIX013.33 [P3] GPU 颜色 alpha —— `paint_dot`/`paint_pill` 增 alpha 参数，`u_alpha` 使用直通 alpha；数字底光/AM-PM 胶囊改传原色+t（2026-11-23）。
+- [x] FIX013.34 [P3] 倍率条键盘落盘 —— 方向键即时 SetRate + 400ms 去抖 ApplyRate；拖动/点击清 pending；`rate_step` token 接线；补 `keyboard_commit_waits_400ms`（2026-11-23）。
+- [x] FIX013.35 [P3] 间距 token 双源 —— 新增 `layout.drawer_box_gap`，BoxStack/countdown/world 单源；闹钟 footer 位置改 `footer_gap`；补抽屉间距 token 测试（2026-11-23）。
+- [x] FIX013.36 [P3] 焦点可见性 —— 按用户定案条件豁免，登记 z.plan 2026-11-23（2026-11-23）。
+- [x] FIX013.37 收尾 —— `pwsh rs/ci.ps1` ALL_GREEN（fmt/clippy/test/依赖树）；app 105 + bin 1 + core 137 = 243 全绿；`ACCELWORLD_UI_SHOT` 560×420 与 1100×560 各六帧全 `ok`、哈希全异；token 死键对账零命中（`lume_dim/scale.hero/card_pad/slider_track/field_pad_y/select_pad_y/xxl/hover_ms/press_ms/card_press_ms/alarm_pulse_ms/card_focus_inset`）；版本 0.6.6.5 → 0.6.6.6（HEAD 基准仅 +1）；反向验收 `.temp/verify_fix013_accept.md`；文档连带完成（2026-11-23）。

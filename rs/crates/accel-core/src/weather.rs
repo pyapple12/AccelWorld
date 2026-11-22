@@ -257,27 +257,6 @@ fn scalar_code_key(v: &Value) -> i64 {
     }
 }
 
-/// 空数据失败文案（Python format_weather_info(None) 对等）
-pub const WEATHER_FAIL_TEXT: &str = "天气信息获取失败";
-
-/// 展示文本拼装（Python format_weather_info 对等，格式逐字符对齐）
-/// A009 #9 登记：生产零调用——parity 契约消费（夹具快照的 Python 文本格式对齐锁），
-/// 非死代码
-pub fn format_weather_info(weather: Option<&WeatherData>, city_name: &str) -> String {
-    let Some(w) = weather else {
-        return WEATHER_FAIL_TEXT.to_string();
-    };
-    let city = if city_name.is_empty() {
-        String::new()
-    } else {
-        format!("{city_name} ")
-    };
-    format!(
-        "{city}{} {} | {:.1}°C | 体感 {:.1}°C | 湿度 {:.0}% | 风力 {:.1}km/h",
-        w.icon, w.weather, w.temperature, w.apparent_temperature, w.humidity, w.wind_speed
-    )
-}
-
 // ===== 传输层（PL011.12）：WeatherClient =====
 
 use std::collections::HashMap;
@@ -300,7 +279,7 @@ pub enum FetchErr {
     /// PL016.03（审核 #2）：拉取失败但磁盘缓存有历史数据——陈旧数据随错误
     /// 一并上抛，UI 保留旧值 +「N 前缓存」角标（不再整页空白，重启亦可恢复）
     /// data 装箱：FetchErr 体积受 clippy result_large_err 纪律约束
-    #[error("拉取失败，显示 {} 前缓存", humanize_age(*age_secs))]
+    #[error("拉取失败，显示{}缓存", humanize_age(*age_secs))]
     StaleServed {
         data: Box<WeatherData>,
         age_secs: u64,
@@ -326,7 +305,7 @@ impl IsRetryable for FetchErr {
 const LAT_RANGE: (f64, f64) = (-90.0, 90.0);
 const LON_RANGE: (f64, f64) = (-180.0, 180.0);
 
-/// 磁盘缓存年龄上限秒（FIX012.02：token 单源——原 30 天字面量游离于同域
+/// 磁盘缓存年龄上限秒（FIX012.02：token `weather_disk_cache_max_age_s` 单源
 /// weather_* token 体系外；下钳 1 防零/负配置损坏致缓存永不失效）
 fn disk_cache_max_age_secs() -> u64 {
     Static::get()
@@ -418,32 +397,48 @@ fn env_proxy() -> Option<String> {
         .and_then(|raw| normalize_proxy(&raw))
 }
 
-/// 代理串归一：Windows 可能是 `host:port` 或 `http=host:port;https=host:port`；
+/// 代理串归一：URL 优先；仅当全是 `http=`/`https=` 分片时才按 Windows 串拆；
+/// 其余按 host:port（允许 `user:pa=ss@host` 这类密码含等号的形态）。
 /// 只接受 http/https（socks 需额外特性，本客户端不启用）
 fn normalize_proxy(raw: &str) -> Option<String> {
     let raw = raw.trim();
     if raw.is_empty() {
         return None;
     }
-    let candidate = if raw.contains('=') {
-        let pick = |want: &str| {
-            raw.split(';')
-                .filter_map(|part| part.split_once('='))
-                .find_map(|(key, value)| {
-                    (key.trim().eq_ignore_ascii_case(want)).then(|| value.trim())
-                })
-        };
-        pick("https").or_else(|| pick("http"))?
-    } else {
+    let candidate = if let Some((scheme, _)) = raw.split_once("://") {
+        if !matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https") {
+            return None;
+        }
         raw
+    } else {
+        // Windows 代理列表（http=host;https=host 或 socks=...）才按 key-value 拆；
+        // 单段 `user:pa=ss@host` 属 host:port 形态，不能因含 `=` 误判
+        let lower = raw.to_ascii_lowercase();
+        let is_proxy_list = raw.contains(';')
+            || ["http=", "https=", "socks="]
+                .iter()
+                .any(|p| lower.starts_with(p));
+        if is_proxy_list {
+            let pick = |want: &str| {
+                raw.split(';')
+                    .filter_map(|part| part.split_once('='))
+                    .find_map(|(key, value)| {
+                        (key.trim().eq_ignore_ascii_case(want)).then(|| value.trim())
+                    })
+            };
+            let candidate = pick("https").or_else(|| pick("http"))?;
+            if candidate.is_empty() {
+                return None;
+            }
+            candidate
+        } else {
+            raw
+        }
     };
     if candidate.is_empty() {
         return None;
     }
-    if let Some((scheme, _)) = candidate.split_once("://") {
-        if !matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https") {
-            return None;
-        }
+    if candidate.contains("://") {
         Some(candidate.to_string())
     } else {
         Some(format!("http://{candidate}"))
@@ -503,7 +498,7 @@ impl WeatherClient {
     /// （FIX007.9：TTL 单源于 token——原 DEFAULT_CACHE_TTL 字面量双源已删；
     /// A009 #10：采样参数同 token 化）
     /// 网络策略：先直连（no_proxy），直连网络失败且探测到系统代理时改走代理；
-    /// 两通道都失败由 interface 层排 10 分钟后的自动重试
+    /// 两通道都失败由 interface 层按 weather_fail_retry_delay_s 排自动重试
     pub fn new() -> Self {
         let base = Static::get();
         let mut client = WeatherClient::from_config(WeatherClientConfig {
@@ -617,10 +612,14 @@ impl WeatherClient {
     /// 更新代理策略（设置页）：false=仅直连；server 空=跟随系统代理。
     /// 立即重建代理通道，下一次拉取生效（无需重启）
     pub fn set_proxy_policy(&self, enabled: bool, server: &str) {
+        let server = server.trim().to_string();
+        if enabled && !server.is_empty() && normalize_proxy(&server).is_none() {
+            tracing::warn!("天气代理地址非法，已回退仅直连: {}", proxy_label(&server));
+        }
         {
             let mut policy = self.proxy_policy.lock().expect("天气代理策略锁中毒");
             policy.enabled = enabled;
-            policy.server = server.trim().to_string();
+            policy.server = server;
         }
         self.refresh_proxy();
     }
@@ -636,19 +635,12 @@ impl WeatherClient {
             .lock()
             .expect("天气代理策略锁中毒")
             .clone();
-        let mut invalid = false;
         let target = if !policy.enabled {
             None
         } else if policy.server.trim().is_empty() {
             detect_system_proxy()
         } else {
-            match normalize_proxy(&policy.server) {
-                Some(url) => Some(url),
-                None => {
-                    invalid = true;
-                    None
-                }
-            }
+            normalize_proxy(&policy.server)
         };
         let mut channel = self.proxy.lock().expect("天气代理锁中毒");
         if channel.url == target {
@@ -673,9 +665,6 @@ impl WeatherClient {
                 }
                 channel.url = None;
                 channel.client = None;
-                if invalid {
-                    tracing::warn!("天气代理地址非法，仅直连: {}", policy.server);
-                }
             }
         }
     }
@@ -773,13 +762,37 @@ impl WeatherClient {
     }
 
     /// 磁盘缓存读取（PL016.03）：返回 (年龄秒, 数据)；缺失/损坏/超龄上限返 None。
-    /// 无 TTL 限制（断网回退语义），但 30 天上限防陈旧数据永久兜底
+    /// 无 TTL 限制（断网回退语义），但 token 年龄上限防陈旧数据永久兜底
     fn disk_cache_read(&self, city: &str) -> Option<(u64, WeatherData)> {
         let dir = self.disk_cache_dir.as_ref()?;
-        let text = std::fs::read_to_string(dir.join(format!("{city}.json"))).ok()?;
-        let v: Value = serde_json::from_str(&text).ok()?;
+        let path = dir.join(format!("{city}.json"));
+        let text = match std::fs::read_to_string(&path) {
+            Ok(t) => t,
+            Err(e) => {
+                // 首次启动无缓存属正常路径，debug 级即可（不掩盖权限/IO 异常）
+                tracing::debug!("天气磁盘缓存读取失败: {}（{e}）", path.display());
+                return None;
+            }
+        };
+        let v: Value = match serde_json::from_str(&text) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::debug!("天气磁盘缓存 JSON 损坏，忽略: {}（{e}）", path.display());
+                return None;
+            }
+        };
         let fetched_at = v.get("fetched_at")?.as_u64()?;
-        let data = serde_json::from_value::<WeatherData>(v.get("data")?.clone()).ok()?;
+        let data = match serde_json::from_value::<WeatherData>(v.get("data")?.clone()) {
+            Ok(d) => d,
+            Err(e) => {
+                // 不做旧版本兼容（程序未发布过历史版本）；仅把反序列化失败留痕
+                tracing::debug!(
+                    "天气磁盘缓存数据结构不匹配，忽略: {}（{e}）",
+                    path.display()
+                );
+                return None;
+            }
+        };
         let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
         if now < fetched_at {
             return None; // 时钟回拨防御
@@ -792,9 +805,8 @@ impl WeatherClient {
         Some((age, data))
     }
 
-    /// 经纬度查询：定义域校验 → URL 派生 → 直连 → 直连失败走系统代理 → 解析
-    /// 有代理回退时直连只探一次（15s 级）后立即换代理；无代理时直连跑满重试次数
-    /// 两通道网络失败合并为短错误，由 interface 层安排 10 分钟后的自动重试
+    /// 经纬度查询：定义域校验 → URL 派生 → 统一双通道 JSON → 解析
+    /// 两通道 Network/Parse 均允许换代理一次；网络失败合并为短错误交给 interface 重试
     pub async fn fetch_by_coords(&self, lat: f64, lon: f64) -> Result<WeatherData, FetchErr> {
         if !(LAT_RANGE.0..=LAT_RANGE.1).contains(&lat)
             || !(LON_RANGE.0..=LON_RANGE.1).contains(&lon)
@@ -811,53 +823,7 @@ impl WeatherClient {
             self.forecast_days,
             self.forecast_hours,
         );
-        // 每次拉取前重读系统代理：10 分钟自动重试期间开关代理也能生效（无需重启）
-        self.refresh_proxy();
-        let proxy_client = self.proxy.lock().expect("天气代理锁中毒").client.clone();
-        // 有代理回退时直连只做一次探针（15s 级），失败立即换代理，不把时间耗在
-        // 同一条拥塞链路上；无代理时按配置重试次数跑满直连
-        let direct_spec = if proxy_client.is_some() {
-            RetrySpec {
-                retries: 1,
-                delay: self.retry_spec.delay,
-            }
-        } else {
-            self.retry_spec
-        };
-        let direct_err =
-            match retry(direct_spec, || Self::fetch_once(&self.direct, &url, "直连")).await {
-                Ok(data) => return Ok(data),
-                Err(e) => e,
-            };
-        // 解析类错误也换代理一次机会（被劫持/门户页可能只在直连出现）；代理侧
-        // 解析错同样直通，不做 10 分钟自动重试
-        let Some(proxy) = proxy_client.as_ref() else {
-            return Err(direct_err);
-        };
-        tracing::warn!("天气直连失败，改走系统代理重试: {direct_err}");
-        match retry(self.retry_spec, || {
-            Self::fetch_once(proxy, &url, "系统代理")
-        })
-        .await
-        {
-            Ok(data) => Ok(data),
-            Err(FetchErr::Network(proxy_err)) => {
-                tracing::warn!("天气直连与系统代理均失败: 直连={direct_err}; 代理={proxy_err}");
-                Err(FetchErr::Network("直连与系统代理均失败".to_string()))
-            }
-            Err(e) => Err(e),
-        }
-    }
-
-    /// 单次请求（供 retry 闭包）：非 2xx/网络错 → Network（可重试）；体解析 → Parse
-    /// 日志带 source 链（reqwest Display 只给「error sending request for url」，
-    /// 底层超时/连接重置需逐层取 source 才可见）
-    async fn fetch_once(
-        client: &reqwest::Client,
-        url: &str,
-        via: &str,
-    ) -> Result<WeatherData, FetchErr> {
-        let body = Self::fetch_json_once(client, url, "天气", via).await?;
+        let body = self.fetch_json_with_fallback(&url, "天气").await?;
         parse_open_meteo(&body).map_err(FetchErr::from)
     }
 
@@ -882,8 +848,9 @@ impl WeatherClient {
         })
     }
 
-    /// 外部 JSON GET（PL028 geocoding）：复用天气直连/代理双通道与代理策略
-    pub async fn fetch_json_url(&self, url: &str) -> Result<Value, FetchErr> {
+    /// 双通道 JSON 拉取（天气/geocoding 单源）：直连优先，Network/Parse 均允许
+    /// 换代理一次；两通道都失败时，任一侧是 Network 则合并为 Network（保留重试语义）
+    async fn fetch_json_with_fallback(&self, url: &str, label: &str) -> Result<Value, FetchErr> {
         self.refresh_proxy();
         let proxy_client = self.proxy.lock().expect("天气代理锁中毒").client.clone();
         let direct_spec = if proxy_client.is_some() {
@@ -895,7 +862,7 @@ impl WeatherClient {
             self.retry_spec
         };
         let direct_err = match retry(direct_spec, || {
-            Self::fetch_json_once(&self.direct, url, "城市", "直连")
+            Self::fetch_json_once(&self.direct, url, label, "直连")
         })
         .await
         {
@@ -905,22 +872,29 @@ impl WeatherClient {
         let Some(proxy) = proxy_client.as_ref() else {
             return Err(direct_err);
         };
-        if !matches!(direct_err, FetchErr::Network(_)) {
-            return Err(direct_err);
-        }
-        tracing::warn!("城市搜索直连失败，改走系统代理重试: {direct_err}");
+        tracing::warn!("{label}直连失败，改走系统代理重试: {direct_err}");
         match retry(self.retry_spec, || {
-            Self::fetch_json_once(proxy, url, "城市", "系统代理")
+            Self::fetch_json_once(proxy, url, label, "系统代理")
         })
         .await
         {
             Ok(v) => Ok(v),
-            Err(FetchErr::Network(proxy_err)) => {
-                tracing::warn!("城市搜索直连与系统代理均失败: 直连={direct_err}; 代理={proxy_err}");
-                Err(FetchErr::Network("直连与系统代理均失败".to_string()))
+            Err(proxy_err) => {
+                tracing::warn!("{label}直连与系统代理均失败: 直连={direct_err}; 代理={proxy_err}");
+                if matches!(direct_err, FetchErr::Network(_))
+                    || matches!(proxy_err, FetchErr::Network(_))
+                {
+                    Err(FetchErr::Network("直连与系统代理均失败".to_string()))
+                } else {
+                    Err(direct_err)
+                }
             }
-            Err(e) => Err(e),
         }
+    }
+
+    /// 外部 JSON GET（PL028 geocoding）：复用天气直连/代理双通道与代理策略
+    pub async fn fetch_json_url(&self, url: &str) -> Result<Value, FetchErr> {
+        self.fetch_json_with_fallback(url, "城市").await
     }
 }
 
@@ -946,7 +920,7 @@ fn error_chain(err: &(dyn std::error::Error + 'static)) -> String {
 //   UI 保留旧值 + 角标）；PL029 起坐标由 interface 从 SQLite 城市主表/自定义城市
 //   条目解析，weather 层不再持有 17 城表；
 //   内存缓存仅存成功、命中未过 TTL 直返、force 清键穿透、失败可立即重试；磁盘缓存
-//   （exe 旁 weather_cache/，30 天上限）成功落盘、失败尽力回退静默降级——
+//   （exe 旁 weather_cache/，年龄上限读 token）成功落盘、失败尽力回退静默降级——
 //   Python 缓存语义逐条对齐
 // 网络策略（PL025/PL027）：用户设置优先（WeatherProxyPolicy：关=仅直连；
 //   开+空=系统探测；开+地址=指定代理）；直连通道显式 no_proxy 先尝试；
@@ -1072,25 +1046,6 @@ mod tests {
         assert_eq!(mk(json!("0")).unwrap().weather, "未知");
         assert_eq!(mk(json!(42)).unwrap().description, "未知天气");
         assert_eq!(mk(json!(2.5)).unwrap().icon, "🌡️");
-    }
-
-    #[test]
-    fn format_text_matches_python_shape() {
-        // 展示文本形态：城市前缀/一位小数/湿度整数（逐字符对齐交由夹具 parity 测试）
-        let raw = json!({"current": {
-            "temperature_2m": 23.5, "relative_humidity_2m": 62, "weather_code": 2,
-            "wind_speed_10m": 10.8, "apparent_temperature": 25.1 }});
-        let w = parse_open_meteo(&raw).unwrap();
-        let text = format_weather_info(Some(&w), "北京");
-        assert_eq!(
-            text,
-            "北京 ⛅ 多云 | 23.5°C | 体感 25.1°C | 湿度 62% | 风力 10.8km/h"
-        );
-        assert_eq!(
-            format_weather_info(Some(&w), ""),
-            "⛅ 多云 | 23.5°C | 体感 25.1°C | 湿度 62% | 风力 10.8km/h"
-        );
-        assert_eq!(format_weather_info(None, "北京"), "天气信息获取失败");
     }
 
     // ===== 传输层五路径（PL011.12，httpmock 桩服务）=====
@@ -1407,6 +1362,15 @@ mod tests {
             Some("http://10.0.0.2:443")
         );
         assert_eq!(normalize_proxy("socks=127.0.0.1:1080"), None);
+        // 密码含等号：有 scheme / 无 scheme 都不能被 Windows 串误拆
+        assert_eq!(
+            normalize_proxy("http://user:pa=ss@127.0.0.1:1080").as_deref(),
+            Some("http://user:pa=ss@127.0.0.1:1080")
+        );
+        assert_eq!(
+            normalize_proxy("user:pa=ss@127.0.0.1:1080").as_deref(),
+            Some("http://user:pa=ss@127.0.0.1:1080")
+        );
         assert_eq!(normalize_proxy("  "), None);
     }
 
@@ -1449,7 +1413,7 @@ mod tests {
 
     #[tokio::test]
     async fn both_channels_fail_returns_compact_network_error() {
-        // 两通道都 500 → 合并为短 Network（interface 层据此排 10 分钟重试）
+        // 两通道都 500 → 合并为短 Network（interface 层据此排 token 间隔重试）
         let direct = MockServer::start();
         let proxy = MockServer::start();
         for server in [&direct, &proxy] {

@@ -47,7 +47,7 @@ pub fn accelerated_hand_fraction(custom_time: &str) -> f32 {
     ((h % 12.0 + m / 60.0 + s / 3600.0) / 12.0).clamp(0.0, 1.0)
 }
 
-/// 加速时刻 → 当日进度比例（纯函数）：时对 24 取模，0:00=0、24:00=1。
+/// 加速时刻 → 当日进度比例（纯函数）：时对 24 取模，0:00=0、23:59:59≈1。
 /// 金圈厚度与色谱都按这个比例走，与倍率无关。
 pub fn day_progress(custom_time: &str) -> f32 {
     let (h, m, s) = parse_hms(custom_time);
@@ -270,6 +270,33 @@ impl HeaderLayout {
     }
 }
 
+/// 页头行数/文本档位（FIX013.14 纯函数）：日期盒 + 右栏实测宽共同门控，
+/// 不再只看 page_w 是否 ≥560；放不下就退化为短农历单行（宁少一行不叠字）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct HeaderMode {
+    two_line: bool,
+    full_text: bool,
+}
+
+fn header_mode(
+    page_w: f32,
+    viewport_h: f32,
+    b1_w: f32,
+    full_w: f32,
+    short_w: f32,
+    line2_w: f32,
+) -> HeaderMode {
+    // 左日期盒起点 18，日期右缘到右栏之间留 16；右栏自身右缩进 6
+    let avail = (page_w - 18.0 - b1_w - 16.0 - 6.0).max(0.0);
+    let full_text = full_w <= avail;
+    let line1_w = if full_text { full_w } else { short_w };
+    let two_line = viewport_h >= 560.0 && line2_w <= avail && line1_w.max(line2_w) <= avail;
+    HeaderMode {
+        two_line,
+        full_text,
+    }
+}
+
 /// 量页头两个子盒（B1 日期 / B2 农历）的盒高与宽度跌落档位
 fn header_layout(ui: &egui::Ui, info: &accel_core::types::TimeInfo, page_w: f32) -> HeaderLayout {
     let label_size = crate::theme::font_size("body");
@@ -302,19 +329,50 @@ fn header_layout(ui: &egui::Ui, info: &accel_core::types::TimeInfo, page_w: f32)
             .inner_rect
             .map_or(f32::INFINITY, |r| r.height())
     });
-    // 行数按高度两级（与 C2 同界 560）；文本长度按页头可用宽两级
-    let two_line = viewport_h >= 560.0;
-    let full_text = page_w >= 560.0;
-    let line1 = if full_text {
-        format!("农历 {lunar_short} · 月相 {phase} · 财神 {god_short}")
+    let measure_w = |text: &str| {
+        ui.painter()
+            .layout_no_wrap(
+                text.to_string(),
+                meta_font.clone(),
+                crate::theme::ink().muted,
+            )
+            .rect
+            .width()
+    };
+    let line1_full = format!("农历 {lunar_short} · 月相 {phase} · 财神 {god_short}");
+    let line1_short = format!("农历 {lunar_short}");
+    let full_w = measure_w(&line1_full);
+    // 极端长闰月等仍可能让短农历超出日期盒右侧可用宽；再退一档为“农历…”防叠字
+    let short_avail = (page_w - 18.0 - b1_w - 16.0 - 6.0).max(0.0);
+    let line1_short = if measure_w(&line1_short) > short_avail {
+        "农历…".to_string()
     } else {
-        format!("农历 {lunar_short}")
+        line1_short
+    };
+    let short_w = measure_w(&line1_short);
+    let yi_text = short_list(&info.lunar_yi);
+    let ji_text = short_list(&info.lunar_ji);
+    let line2_w = if yi_text.is_empty() && ji_text.is_empty() {
+        0.0
+    } else {
+        measure_w("宜 ") + measure_w(&yi_text) + 16.0 + measure_w("忌 ") + measure_w(&ji_text)
+    };
+    let mode = header_mode(page_w, viewport_h, b1_w, full_w, short_w, line2_w);
+    let line1 = if mode.full_text {
+        line1_full
+    } else {
+        line1_short
     };
     let meta = text_ink::measure(ui, &line1, &meta_font, InkKind::Cjk);
     let b1_h = crate::widgets::text_metrics::height(ui.ctx(), &label_font, InkKind::Cjk);
     let meta_h = crate::widgets::text_metrics::height(ui.ctx(), &meta_font, InkKind::Cjk);
     let line_gap = crate::theme::layout_f32("clock_header_line_gap");
-    let b2_h = meta_h + if two_line { line_gap + meta_h } else { 0.0 };
+    let b2_h = meta_h
+        + if mode.two_line {
+            line_gap + meta_h
+        } else {
+            0.0
+        };
     HeaderLayout {
         label_size,
         meta_font,
@@ -324,7 +382,7 @@ fn header_layout(ui: &egui::Ui, info: &accel_core::types::TimeInfo, page_w: f32)
         meta_h,
         b2_h,
         line_gap,
-        two_line,
+        two_line: mode.two_line,
         b1_w,
         line1,
     }
@@ -653,6 +711,21 @@ fn draw_lunar_tooltip(
         });
 }
 
+/// 宜/忌短串（最多三项 + “等”）：页头测宽与绘制共用同一文本
+fn short_list(items: &[String]) -> String {
+    let take = items
+        .iter()
+        .take(3)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(" · ");
+    if items.len() > 3 {
+        format!("{take} 等")
+    } else {
+        take
+    }
+}
+
 /// 页头宜忌行（右对齐、盒底对齐；字底贴盒底，不越过盒底）：宜/忌前缀语义色，各取前 3 条，超出加「等」
 fn draw_yi_ji(
     ui: &egui::Ui,
@@ -665,21 +738,8 @@ fn draw_yi_ji(
         return;
     }
     let ink = crate::theme::ink();
-    let short = |items: &[String]| -> String {
-        let take = items
-            .iter()
-            .take(3)
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(" · ");
-        if items.len() > 3 {
-            format!("{take} 等")
-        } else {
-            take
-        }
-    };
-    let yi_text = short(yi);
-    let ji_text = short(ji);
+    let yi_text = short_list(yi);
+    let ji_text = short_list(ji);
     let measure = |text: &str, color| {
         ui.painter()
             .layout_no_wrap(text.to_string(), font.clone(), color)
@@ -875,13 +935,7 @@ fn draw_dial(
             egui::pos2(pos.x, text_top),
             egui::Align2::CENTER_TOP,
         );
-        crate::widgets::ring_glow::paint_dot(
-            ui,
-            pos,
-            0.0,
-            crate::theme::with_alpha(lume, alpha),
-            num_bloom,
-        );
+        crate::widgets::ring_glow::paint_dot(ui, pos, 0.0, lume, alpha as f32 / 255.0, num_bloom);
         ui.painter().text(
             egui::pos2(pos.x, text_top),
             egui::Align2::CENTER_TOP,
@@ -1088,7 +1142,8 @@ fn draw_half_pills(ui: &egui::Ui, center: egui::Pos2, rim_r: f32, ring: f32, pm:
                 rect.center(),
                 size * 0.5,
                 pill_radius,
-                crate::theme::with_alpha(color, (255.0 * t) as u8),
+                color,
+                t,
                 6.0,
             );
         }
@@ -1412,6 +1467,28 @@ fn draw_rate(ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::bu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn header_mode_degrades_before_overlap() {
+        // FIX013.14：410 宽（抽屉打开）放不下宜忌 → 单行短农历，绝不叠日期
+        let mode = header_mode(410.0, 720.0, 190.0, 320.0, 110.0, 226.0);
+        assert!(!mode.full_text);
+        assert!(!mode.two_line);
+        // 560/590 宽：完整行或宜忌至少能放下；590 放不下宜忌时退化单行
+        let mode = header_mode(560.0, 720.0, 190.0, 320.0, 110.0, 226.0);
+        assert!(mode.full_text && mode.two_line);
+        let mode = header_mode(590.0, 720.0, 190.0, 400.0, 110.0, 300.0);
+        assert!(!mode.full_text);
+        assert!(mode.two_line);
+        let mode = header_mode(590.0, 720.0, 190.0, 400.0, 110.0, 380.0);
+        assert!(!mode.two_line, "宜忌放不下时不得压日期");
+        // 高度不足 560：即使宽度够也只保留单行
+        let mode = header_mode(900.0, 500.0, 190.0, 400.0, 110.0, 380.0);
+        assert!(!mode.two_line);
+        // 900 宽足够：完整两行
+        let mode = header_mode(900.0, 720.0, 190.0, 400.0, 110.0, 380.0);
+        assert!(mode.full_text && mode.two_line);
+    }
 
     #[test]
     fn time_part_extraction() {

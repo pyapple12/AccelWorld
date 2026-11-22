@@ -1,10 +1,10 @@
 //! 应用内 toast 堆叠（PL016.07，审核 #8）：右上角滑入卡片——入场 0.3s
-//! ease-out 平移、驻留、末段 0.15s 滑出；错误红缘/信息金缘；主题 token 全源
+//! ease-out 平移、驻留、末段 0.15s 滑出；错误红缘；主题 token 全源
 //! PL017.19：<600 宽窗口用全宽 −32px，宽窗 260px；右上 × 可关闭
 //! 替代 egui-notify（其维护线未跟进 egui 0.37——手写零依赖，动画与
 //! 零忙转纪律自持）
 
-use crate::bus::{Toast, ToastKind};
+use crate::bus::Toast;
 use crate::widgets::icons::{self, Icon};
 use crate::widgets::text_ink::{self, InkKind};
 
@@ -65,10 +65,7 @@ pub fn paint(ctx: &egui::Context, toasts: &mut Vec<Toast>) {
         } else {
             0.0
         };
-        let edge = match toast.kind {
-            ToastKind::Error => ink.danger,
-            ToastKind::Info => crate::theme::accent_color(),
-        };
+        let edge = ink.danger;
         let mut close = false;
         // FIX011.08：Id 锚出生时刻（单条生命周期内稳定——原 elapsed().as_nanos()
         // 每帧变化，依赖 egui Memory GC 兜底的反模式；Instant 实现 Hash 可直作键）

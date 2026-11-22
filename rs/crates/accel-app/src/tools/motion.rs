@@ -42,7 +42,7 @@ pub fn ease_out_cubic(t: f32) -> f32 {
 // 输入：target/dt/弹簧参数；输出：推进后的状态与「是否仍在运动」
 // 逻辑步骤：半隐式欧拉（先速度后位移，能量稳定）→ 运动判定阈值 0.001
 // 设计理由（PL016.06）：egui 无 tween 引擎——手写阻尼谐振子承载 kinetics
-//   参数体系（bouncy 3.5Hz/ζ0.55 抽屉过冲）；dt 钳制防切帧爆炸；纯函数可测
+//   参数体系（bouncy 4.2Hz/ζ1.0 抽屉）；dt 钳制防切帧爆炸；纯函数可测
 // 异常处理：dt/频率/阻尼非法值全部钳制，无 panic 面
 // 关联配置：ui.json motion.drawer_bouncy_{hz,zeta}；消费方：pages/mod 抽屉、
 //   clock 闹钟脉冲（经 ease_out_cubic 或 Spring）

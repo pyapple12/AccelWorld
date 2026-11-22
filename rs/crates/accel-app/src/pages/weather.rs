@@ -94,7 +94,7 @@ impl crate::pages::Page for crate::pages::WeatherPage {
                     if let Some(w) = &data {
                         text.push_str(&format!(" · 显示上次数据 {:.1}°", w.temperature));
                     }
-                    let text = fit_text(ui, &text, &font, rect.width());
+                    let text = crate::widgets::text_fit::fit(ui, &text, &font, rect.width()).0;
                     let text_ink = text_ink::measure(ui, &text, &font, InkKind::Cjk);
                     let painter = ui.painter().with_clip_rect(rect);
                     painter.text(
@@ -224,34 +224,6 @@ fn equal_columns(rect: egui::Rect) -> [egui::Rect; 3] {
     ]
 }
 
-/// 按列宽截断并补省略号（长城市名/英文名/描述不得压到相邻列）
-fn fit_text(ui: &egui::Ui, text: &str, font: &egui::FontId, max_w: f32) -> String {
-    if text.is_empty() {
-        return String::new();
-    }
-    let width = |s: &str| {
-        ui.painter()
-            .layout_no_wrap(s.to_owned(), font.clone(), egui::Color32::WHITE)
-            .rect
-            .width()
-    };
-    if width(text) <= max_w {
-        return text.to_owned();
-    }
-    let ell_w = width("…");
-    let mut out = String::new();
-    for ch in text.chars() {
-        let mut probe = out.clone();
-        probe.push(ch);
-        if width(&probe) + ell_w > max_w {
-            break;
-        }
-        out.push(ch);
-    }
-    out.push('…');
-    out
-}
-
 /// 第一块：左列城市/英文名左对齐，中列温度/描述中线对齐，右列图标盒右对齐并垂直居中整块
 fn draw_weather_hero(
     ui: &egui::Ui,
@@ -276,7 +248,7 @@ fn draw_weather_hero(
     let row2_bottom = row1_bottom + gap + row2;
     let painter = ui.painter();
 
-    let city = fit_text(ui, city, &title_font, cols[0].width());
+    let city = crate::widgets::text_fit::fit(ui, city, &title_font, cols[0].width()).0;
     let city_ink = text_ink::measure(ui, &city, &title_font, InkKind::Cjk);
     painter.text(
         egui::pos2(cols[0].center().x, city_ink.top_for_bottom(row1_bottom)),
@@ -297,7 +269,7 @@ fn draw_weather_hero(
     );
 
     if !city_en.is_empty() {
-        let en = fit_text(ui, city_en, &body_digit, cols[0].width());
+        let en = crate::widgets::text_fit::fit(ui, city_en, &body_digit, cols[0].width()).0;
         let en_ink = text_ink::measure(ui, &en, &body_digit, InkKind::Latin);
         painter.text(
             egui::pos2(cols[0].center().x, en_ink.top_for_bottom(row2_bottom)),
@@ -308,7 +280,7 @@ fn draw_weather_hero(
         );
     }
 
-    let desc = fit_text(ui, &w.description, &body_font, cols[1].width());
+    let desc = crate::widgets::text_fit::fit(ui, &w.description, &body_font, cols[1].width()).0;
     let desc_ink = text_ink::measure(ui, &desc, &body_font, InkKind::Cjk);
     painter.text(
         egui::pos2(cols[1].center().x, desc_ink.top_for_bottom(row2_bottom)),

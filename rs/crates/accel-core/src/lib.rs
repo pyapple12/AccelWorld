@@ -1,6 +1,6 @@
 //! AccelWorld 核心业务库（accel-core）
 //! 镜像 Python 侧 modules/config/data/utils 四层，零 GUI 依赖；
-//! 前端仅经 interface 的命令/事件总线与本库通信（z.plan 修订一）
+//! 前端写操作经 interface 命令/事件总线；只读访问允许直取（A005 #12）
 
 pub mod alarm;
 pub mod audio;

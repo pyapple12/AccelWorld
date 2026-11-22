@@ -1,6 +1,7 @@
 //! 用户配置（config/settings.py 的 Rust 对等物）
-//! UserConfig serde 镜像（字段名与 user_config.json 同 schema）+ lenient 装载 +
-//! 原子保存 + 损坏转存；默认值单源于 base.json token（default_factory 对等）
+//! UserConfig serde 镜像（现役字段与 user_config.json 同 schema；Python 旧倒计时
+//! 字段已按 FIX013.05 删除）+ lenient 装载 + 原子保存 + 损坏转存；
+//! 默认值单源于 base.json token（default_factory 对等）
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -46,8 +47,8 @@ pub fn format_date_text(dt: NaiveDateTime) -> String {
     dt.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
-/// 用户配置聚合（Python UserConfig dataclass 镜像）
-/// serde 字段名与 Python to_dict 输出完全一致（持久化兼容硬约束）
+/// 用户配置聚合（Rust 现役配置；不再保留 Python 旧倒计时字段）
+/// serde 字段名与现役 user_config.json schema 一致（持久化硬约束）
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct UserConfig {
     pub time_dilation_rate: f64,
@@ -55,11 +56,10 @@ pub struct UserConfig {
     /// 天气城市持久化镜像（PL029：默认上海；启动/hero 变更时同步为 world_hero_city）
     pub last_city: String,
     pub world_pins: Vec<String>,
-    pub countdown_target: String,
     pub window_geometry: Option<String>,
     /// 闹钟列表（PL012 落地 Alarm 强类型；本期透传 JSON 形态，兼容既有存档）
     pub alarms: Vec<Value>,
-    /// 倒计时目标列表（PL014.06 新字段；旧 countdown_target 字段保留读兼容）
+    /// 倒计时目标列表（PL014.06；唯一存储形态，无旧格式兼容）
     #[serde(default)]
     pub countdown_targets: Vec<CountdownTarget>,
     /// 世界时钟 hero 城市（PL028；城市名，默认 world_pins 第一项）
@@ -87,7 +87,6 @@ impl Default for UserConfig {
                 .into_iter()
                 .map(String::from)
                 .collect(),
-            countdown_target: String::new(),
             countdown_targets: Vec::new(),
             window_geometry: None,
             alarms: Vec::new(),
@@ -116,8 +115,6 @@ struct UserConfigRaw {
     #[serde(default)]
     world_pins: Option<Value>,
     #[serde(default)]
-    countdown_target: Option<Value>,
-    #[serde(default)]
     window_geometry: Option<Value>,
     #[serde(default)]
     alarms: Option<Value>,
@@ -145,11 +142,6 @@ impl UserConfig {
         let raw: UserConfigRaw = serde_json::from_value(v.clone())
             .expect("UserConfigRaw 全 Option 字段 + 前置对象判定，不会失败");
         let d = UserConfig::default();
-        // Legacy 倒计时串先取（str_field 会 move 同字段）
-        let legacy_target = match &raw.countdown_target {
-            Some(Value::String(s)) => Some(s.clone()),
-            _ => None,
-        };
         UserConfig {
             time_dilation_rate: raw
                 .time_dilation_rate
@@ -165,7 +157,6 @@ impl UserConfig {
                     .collect(),
                 _ => d.world_pins,
             },
-            countdown_target: str_field(raw.countdown_target, d.countdown_target),
             window_geometry: opt_str_field(raw.window_geometry),
             alarms: match raw.alarms {
                 Some(Value::Array(arr)) => arr,
@@ -177,17 +168,20 @@ impl UserConfig {
                 .and_then(|v| v.as_bool())
                 .unwrap_or(d.weather_use_proxy),
             weather_proxy: str_field(raw.weather_proxy, d.weather_proxy),
-            // 倒计时目标迁移链（PL014.06）：新格式优先 → Legacy 串迁移 → 空
+            // 倒计时目标（PL014.06）：仅列表形态；旧 countdown_target 键按未知键忽略
             countdown_targets: match raw.countdown_targets {
                 Some(Value::Array(arr)) => {
                     // 新格式装载：name/at 逐项校验（at 解析失败剔除 + 日志）
                     let mut list = Vec::new();
                     for item in arr {
-                        let name = item.get("name").and_then(Value::as_str).unwrap_or("");
+                        let name = item
+                            .get("name")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .trim();
                         let at = item.get("at").and_then(Value::as_str).unwrap_or("");
                         if name.is_empty() {
-                            // FIX010.8：空名（含非对象条目取不到 name）剔除留痕——
-                            // 对齐闹钟装载口径，脏数据不再静默丢弃
+                            // FIX010.8 / FIX013.31：空名或纯空白（含非对象条目）剔除留痕
                             tracing::warn!("倒计时目标名称为空（或条目非对象），剔除");
                             continue;
                         }
@@ -204,33 +198,6 @@ impl UserConfig {
                 _ => Vec::new(),
             },
         }
-        .migrate_legacy_countdown(legacy_target)
-    }
-
-    /// Legacy 迁移（PL014.06）：新格式已有目标则不动；否则旧 countdown_target
-    /// 非空串 → 解析（19/16/10 位）→ 列表首项；解析失败丢弃 + 日志
-    fn migrate_legacy_countdown(mut self, legacy: Option<String>) -> Self {
-        if !self.countdown_targets.is_empty() {
-            // 新格式在：旧字段保留原值（幂等迁移语义），列表即权威
-            return self;
-        }
-        let Some(legacy_text) = legacy else {
-            return self;
-        };
-        if legacy_text.is_empty() {
-            return self;
-        }
-        match parse_date_text(&legacy_text) {
-            Some(dt) => {
-                tracing::info!("倒计时旧格式迁移: {legacy_text:?} → 列表首项");
-                self.countdown_targets = vec![CountdownTarget {
-                    name: "我的目标".to_string(),
-                    at: format_date_text(dt),
-                }];
-            }
-            None => tracing::warn!("倒计时旧格式解析失败，丢弃: {legacy_text:?}"),
-        }
-        self
     }
 
     /// 序列化为 JSON 值（Python to_dict/asdict 对等）
@@ -376,7 +343,6 @@ mod tests {
         assert_eq!(d.world_hero_city, "北京");
         assert_eq!(d.world_pins.len(), 8);
         assert_eq!(d.world_pins[0], "北京");
-        assert_eq!(d.countdown_target, "");
         assert_eq!(d.window_geometry, None);
         assert!(d.alarms.is_empty());
         assert!(d.weather_use_proxy);
@@ -408,7 +374,6 @@ mod tests {
             ("time_dilation_rate", json!([1.0])),
             ("theme", json!(123)),
             ("theme", json!(null)),
-            ("countdown_target", json!(42)),
             ("window_geometry", json!(std::f64::consts::PI)),
             ("alarms", json!("nope")),
             ("weather_use_proxy", json!("yes")),
@@ -419,7 +384,6 @@ mod tests {
             match field {
                 "time_dilation_rate" => assert_eq!(cfg.time_dilation_rate, d.time_dilation_rate),
                 "theme" => assert_eq!(cfg.theme, d.theme),
-                "countdown_target" => assert_eq!(cfg.countdown_target, ""),
                 "window_geometry" => assert_eq!(cfg.window_geometry, None),
                 "alarms" => assert!(cfg.alarms.is_empty()),
                 "weather_use_proxy" => assert_eq!(cfg.weather_use_proxy, d.weather_use_proxy),
@@ -498,7 +462,6 @@ mod tests {
             last_city: "上海".into(),
             world_pins: vec!["北京".into(), "纽约".into()],
             world_hero_city: "北京".into(),
-            countdown_target: "春节".into(),
             window_geometry: Some("SGVsbG8=".into()),
             alarms: vec![serde_json::json!({"label": "起床", "time": "07:30"})],
             countdown_targets: Vec::new(),
@@ -510,10 +473,10 @@ mod tests {
     }
 
     #[test]
-    fn countdown_legacy_migration_matrix() {
-        // PL014.06 验收：旧格式迁移矩阵（19/16/10 位/空/非法/新格式优先）
+    fn countdown_targets_list_only_no_legacy_migration() {
+        // FIX013.05：程序从未发布——旧 countdown_target 键按未知键忽略，不迁移、不复活
         let cfg_from = |payload: Value| {
-            let sandbox = SandboxDir::new("cdmatrix");
+            let sandbox = SandboxDir::new("cdlist");
             let path = sandbox.path();
             let mut base = UserConfig::default().to_json_value();
             for (k, v) in payload.as_object().expect("对象") {
@@ -522,26 +485,11 @@ mod tests {
             std::fs::write(&path, serde_json::to_string(&base).expect("序列化")).expect("写入");
             load(&path)
         };
-        // 19 位旧串 → 列表首项
         let cfg = cfg_from(serde_json::json!({"countdown_target": "2027-02-06 08:00:00"}));
-        assert_eq!(cfg.countdown_targets.len(), 1);
-        assert_eq!(cfg.countdown_targets[0].at, "2027-02-06 08:00:00");
-        // 10 位旧串 → 补 23:59:59
-        let cfg = cfg_from(serde_json::json!({"countdown_target": "2027-02-06"}));
-        assert_eq!(cfg.countdown_targets[0].at, "2027-02-06 23:59:59");
-        // 空串 → 空列表
-        let cfg = cfg_from(serde_json::json!({"countdown_target": ""}));
-        assert!(cfg.countdown_targets.is_empty());
-        // 非法串 → 丢弃 + 空列表
-        let cfg = cfg_from(serde_json::json!({"countdown_target": "不合法"}));
-        assert!(cfg.countdown_targets.is_empty());
-        // 新格式优先（已有 targets 时旧字段不动列表）
-        let cfg = cfg_from(serde_json::json!({
-            "countdown_target": "2020-01-01 00:00:00",
-            "countdown_targets": [{"name": "新年", "at": "2027-01-01 00:00:00"}]
-        }));
-        assert_eq!(cfg.countdown_targets.len(), 1);
-        assert_eq!(cfg.countdown_targets[0].name, "新年");
+        assert!(
+            cfg.countdown_targets.is_empty(),
+            "旧 countdown_target 不得再迁入列表"
+        );
         // 新格式脏项剔除：非法 at 剔除 + 空名剔除
         let cfg = cfg_from(serde_json::json!({
             "countdown_targets": [
@@ -556,14 +504,12 @@ mod tests {
             cfg.countdown_targets[0].at, "2027-05-01 10:00:00",
             "16 位补秒规范化"
         );
-        // 保存 → 重读 roundtrip 为新格式（列表持久化）
+        // 保存 → 重读 roundtrip（列表持久化）
         let sandbox = SandboxDir::new("cdroundtrip");
         let path = sandbox.path();
-        let mut write_back = cfg.clone();
-        write_back.countdown_target = String::new();
-        assert!(save(&path, &write_back));
+        assert!(save(&path, &cfg));
         let reloaded = load(&path);
-        assert_eq!(reloaded.countdown_targets, write_back.countdown_targets);
+        assert_eq!(reloaded.countdown_targets, cfg.countdown_targets);
     }
 
     #[test]

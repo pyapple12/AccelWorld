@@ -48,7 +48,10 @@ impl crate::pages::Page for crate::pages::AlarmPage {
         let body_h = (avail.height() - footer_h - crate::theme::layout_f32("footer_gap")).max(0.0);
         let body_rect = egui::Rect::from_min_size(avail.min, egui::vec2(avail.width(), body_h));
         let footer_rect = egui::Rect::from_min_size(
-            egui::pos2(avail.left(), body_rect.bottom() + 10.0),
+            egui::pos2(
+                avail.left(),
+                body_rect.bottom() + crate::theme::layout_f32("footer_gap"),
+            ),
             egui::vec2(avail.width(), footer_h),
         );
         let quick_h = {
@@ -408,10 +411,38 @@ fn truncate_to_width(ui: &egui::Ui, text: &str, font: &egui::FontId, width: f32)
     "…".to_string()
 }
 
-/// 页脚高度：字段固定盒 + footer_gap + 按钮 + footer_bottom
+/// 添加校验（FIX013.17）：格式 → 上限 → 同时间同标签重复；None=可发送
+pub fn alarm_add_error(
+    label: &str,
+    time: &str,
+    alarms: &[accel_core::alarm::Alarm],
+    max: usize,
+) -> Option<String> {
+    if !valid_hhmm(time) {
+        return Some("时间格式应为 HH:MM（00:00–23:59）".to_string());
+    }
+    if alarms.len() >= max {
+        return Some(format!("最多 {max} 个闹钟，请先删除"));
+    }
+    if alarms.iter().any(|a| a.time == time && a.label == label) {
+        return Some("已存在相同时间和标签的闹钟".to_string());
+    }
+    None
+}
+
+/// 页脚高度：字段固定盒 + footer_gap + 错误行（恒占位）+ footer_gap + 按钮 + footer_bottom
 fn footer_height(ui: &egui::Ui) -> f32 {
+    let meta_font = crate::theme::font_regular(crate::theme::font_size("meta"));
+    let meta_h = crate::widgets::text_metrics::height(
+        ui.ctx(),
+        &meta_font,
+        crate::widgets::text_ink::InkKind::Cjk,
+    );
+    let gap = crate::theme::layout_f32("footer_gap");
     crate::widgets::field::fixed_height(ui)
-        + crate::theme::layout_f32("footer_gap")
+        + gap
+        + meta_h
+        + gap
         + crate::widgets::primary_button::height(ui)
         + crate::theme::layout_f32("footer_bottom")
 }
@@ -425,39 +456,80 @@ fn draw_footer(ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::
     let time_w = ((avail - gap) * 0.6).max(80.0);
     ui.spacing_mut().item_spacing.y = 0.0;
     let mut do_add = false;
+    let mut edited = false;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 0.0;
-        field::show_fixed(
+        edited |= field::show_fixed(
             ui,
             "标签",
             "例如 起床",
             &mut state.alarm_draft_label,
             label_w,
-        );
+        )
+        .changed();
         ui.add_space(gap);
-        field::show_fixed(ui, "时间", "HH:MM", &mut state.alarm_draft_time, time_w);
+        edited |=
+            field::show_fixed(ui, "时间", "HH:MM", &mut state.alarm_draft_time, time_w).changed();
     });
+    if edited {
+        state.alarm_draft_error = None;
+    }
+    ui.add_space(gap);
+    // 错误行恒占位（说明区承诺）：有错误画红字，无错误留空——列表体高度不跳动
+    let err_font = crate::theme::font_regular(crate::theme::font_size("meta"));
+    let err_h = crate::widgets::text_metrics::height(
+        ui.ctx(),
+        &err_font,
+        crate::widgets::text_ink::InkKind::Cjk,
+    );
+    let (err_rect, _) = ui.allocate_exact_size(egui::vec2(avail, err_h), egui::Sense::hover());
+    if let Some(err) = &state.alarm_draft_error {
+        let ink = crate::widgets::text_ink::measure(
+            ui,
+            err,
+            &err_font,
+            crate::widgets::text_ink::InkKind::Cjk,
+        );
+        ui.painter().text(
+            egui::pos2(err_rect.right(), ink.top_for_bottom(err_rect.bottom())),
+            egui::Align2::RIGHT_TOP,
+            err,
+            err_font,
+            crate::theme::ink().danger,
+        );
+    }
     ui.add_space(gap);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 0.0;
         ui.add_space((avail - button_w).max(0.0));
         do_add = crate::widgets::primary_button::show(ui, "添加", button_w).clicked();
     });
-    if do_add && valid_hhmm(&state.alarm_draft_time) {
-        bus.send(FrontendCommand::AddAlarm(accel_core::alarm::AlarmDraft {
-            label: state.alarm_draft_label.clone(),
-            time: state.alarm_draft_time.clone(),
-            sound_type: default_sound_type(),
-            sound_value: default_sound_value(),
-            repeat_days: Vec::new(),
-            enabled: true,
-        }));
-        state.list_pulse = Some(("alarm".to_string(), std::time::Instant::now()));
-        state.alarm_draft_label.clear();
-        state.alarm_draft_time.clear();
-    }
-    if do_add && !valid_hhmm(&state.alarm_draft_time) {
-        tracing::warn!("闹钟添加失败（静默）: 时间格式应为 HH:MM");
+    if do_add {
+        let max = accel_core::static_config::Static::get()
+            .base_i64("max_alarms")
+            .max(1) as usize;
+        match alarm_add_error(
+            &state.alarm_draft_label,
+            &state.alarm_draft_time,
+            &state.alarms,
+            max,
+        ) {
+            Some(err) => state.alarm_draft_error = Some(err),
+            None => {
+                state.alarm_draft_error = None;
+                bus.send(FrontendCommand::AddAlarm(accel_core::alarm::AlarmDraft {
+                    label: state.alarm_draft_label.clone(),
+                    time: state.alarm_draft_time.clone(),
+                    sound_type: default_sound_type(),
+                    sound_value: default_sound_value(),
+                    repeat_days: Vec::new(),
+                    enabled: true,
+                }));
+                state.list_pulse = Some(("alarm".to_string(), std::time::Instant::now()));
+                state.alarm_draft_label.clear();
+                state.alarm_draft_time.clear();
+            }
+        }
     }
 }
 
@@ -473,7 +545,7 @@ fn draw_footer(ui: &mut egui::Ui, state: &mut crate::bus::UiState, bus: &crate::
 //   消费方：pages::Pages 抽屉
 #[cfg(test)]
 mod tests {
-    use super::{quick_label, truncate_chars, valid_hhmm};
+    use super::{alarm_add_error, quick_label, truncate_chars, valid_hhmm};
 
     #[test]
     fn quick_label_format() {
@@ -486,6 +558,30 @@ mod tests {
         assert_eq!(truncate_chars("早起", 5), "早起");
         assert_eq!(truncate_chars("早起上班", 3), "早起…");
         assert_eq!(truncate_chars("早起上班", 1), "…");
+    }
+
+    #[test]
+    fn alarm_add_error_covers_format_limit_and_duplicate() {
+        let alarm = accel_core::alarm::Alarm {
+            label: "起床".into(),
+            time: "07:30".into(),
+            sound_type: "preset".into(),
+            sound_value: "classic".into(),
+            repeat_days: Vec::new(),
+            enabled: true,
+            id: "a1".into(),
+            created_at: "2026-11-22T07:00:00".into(),
+        };
+        assert!(alarm_add_error("", "9:5", &[], 10).is_some(), "非法格式");
+        assert!(
+            alarm_add_error("", "07:30", std::slice::from_ref(&alarm), 1).is_some(),
+            "达到上限"
+        );
+        assert!(
+            alarm_add_error("起床", "07:30", &[alarm], 10).is_some(),
+            "同时间同标签重复"
+        );
+        assert!(alarm_add_error("", "07:30", &[], 10).is_none());
     }
 
     #[test]

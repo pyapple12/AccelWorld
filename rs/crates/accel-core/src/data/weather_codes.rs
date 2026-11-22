@@ -54,15 +54,9 @@ pub fn lookup(code: i64) -> WeatherCodeInfo {
         .unwrap_or(UNKNOWN_WEATHER)
 }
 
-/// 未知码兜底信息（FIX007.10 注明：生产零调用——`lookup` 已内含同一兜底；
-/// 保留供 parity 断言（tests/parity.rs）与单测对照 UNKNOWN_WEATHER 常量内容）
-pub fn unknown() -> WeatherCodeInfo {
-    UNKNOWN_WEATHER
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{all, lookup, unknown};
+    use super::{all, lookup};
 
     #[test]
     fn entry_count_and_anchor() {
@@ -84,13 +78,13 @@ mod tests {
         assert_eq!(lookup(99).description, "雷暴伴大冰雹");
         assert_eq!(lookup(42).name, "未知");
         assert_eq!(lookup(999).description, "未知天气");
-        assert_eq!(unknown().icon, "🌡️");
+        assert_eq!(lookup(-1).icon, "🌡️");
     }
 }
 
 // ===== src/data/weather_codes.rs 说明区 =====
 // 输入：rs/data/weather_codes.json（编译期嵌入，28 码升序与 Python WEATHER_CODE_INFO 一致）
-// 输出：lookup(code)（未知码回退 UNKNOWN_WEATHER 兜底）/all()/unknown()
+// 输出：lookup(code)（未知码回退 UNKNOWN_WEATHER 兜底）/all()
 //   （FIX007.10：unknown 生产零调用，仅 parity 断言与单测对照消费）
 // 逻辑步骤：OnceLock 惰性解析 → 码查找（CodeRow 平铺字段——serde flatten 与借用
 //   &str 不变性冲突的实证规避）→ WeatherCodeInfo 复制出

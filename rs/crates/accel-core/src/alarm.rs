@@ -22,21 +22,6 @@ pub enum PresetSound {
 }
 
 impl PresetSound {
-    /// 枚举值（持久化字符串，与 Python value 一致）
-    pub fn value(self) -> &'static str {
-        match self {
-            PresetSound::Classic => "classic",
-            PresetSound::Gentle => "gentle",
-            PresetSound::Beep => "beep",
-            PresetSound::Chime => "chime",
-        }
-    }
-
-    /// 下拉框显示名列表（Python value.title() 顺序生成）
-    pub fn display_names() -> Vec<&'static str> {
-        vec!["Classic", "Gentle", "Beep", "Chime"]
-    }
-
     /// 大小写不敏感匹配，未命中回退 CLASSIC（Python from_value 对等）
     pub fn from_value(value: &str) -> PresetSound {
         match value.to_lowercase().as_str() {
@@ -44,17 +29,6 @@ impl PresetSound {
             "beep" => PresetSound::Beep,
             "chime" => PresetSound::Chime,
             _ => PresetSound::Classic,
-        }
-    }
-
-    /// 枚举序（下拉框索引互转；A005 #15：display_name/from_index 生产零调用已删除，
-    /// 显示名统一经 `display_names()[index()]` 或 `from_value`）
-    pub fn index(self) -> usize {
-        match self {
-            PresetSound::Classic => 0,
-            PresetSound::Gentle => 1,
-            PresetSound::Beep => 2,
-            PresetSound::Chime => 3,
         }
     }
 }
@@ -404,7 +378,11 @@ fn gen_id_from(pid: u32, nanos: u128, counter: u32) -> String {
 
 /// 创建时刻（Python datetime.now().isoformat() 形态对等：微秒为 0 省略小数段）
 fn now_iso() -> String {
-    let now = Local::now().naive_local();
+    iso_of(Local::now().naive_local())
+}
+
+/// 指定时刻的 ISO 串（toggle 重排用注入 now，保证测试确定性）
+fn iso_of(now: chrono::NaiveDateTime) -> String {
     if now.nanosecond() == 0 {
         now.format("%Y-%m-%dT%H:%M:%S").to_string()
     } else {
@@ -435,11 +413,6 @@ impl AlarmManager {
         }
     }
 
-    /// 上限探针（单测锚定 new() 的 token 装载；生产上限由 AlarmManager 内部持有）
-    pub fn max_alarms(&self) -> usize {
-        self.max_alarms
-    }
-
     /// 添加：上限校验 + 同时间同标签去重（失败记日志返 false）
     pub fn add_alarm(&mut self, alarm: Alarm) -> bool {
         if self.alarms.len() >= self.max_alarms {
@@ -468,11 +441,6 @@ impl AlarmManager {
         false
     }
 
-    /// 按 ID 查找
-    pub fn get_alarm(&self, alarm_id: &str) -> Option<&Alarm> {
-        self.alarms.iter().find(|a| a.id == alarm_id)
-    }
-
     /// 编辑替换：保留原 ID 原位替换；去重检查排除自身（FIX003.7）
     /// FIX010.7：入参防线——时间非法拒绝 + 重复日规范化（A009 #2 同形态复发预防，
     /// ReplaceAlarm 接线前兜底，与 from_draft 同一防御口径）
@@ -498,10 +466,20 @@ impl AlarmManager {
         false
     }
 
-    /// 启用/禁用翻转
-    pub fn toggle_alarm(&mut self, alarm_id: &str) -> bool {
+    /// 启用/禁用翻转；过期一次性重新启用时刷新 created_at 重新排期（FIX013.22）
+    /// 注意 is_expired_at 对 disabled 条目首行返回 false，这里直接按计划时刻判定
+    pub fn toggle_alarm(&mut self, alarm_id: &str, now: DateTime<Local>) -> bool {
         if let Some(pos) = self.alarms.iter().position(|a| a.id == alarm_id) {
-            self.alarms[pos].enabled = !self.alarms[pos].enabled;
+            let alarm = &mut self.alarms[pos];
+            if !alarm.enabled
+                && alarm.is_one_time()
+                && alarm
+                    .scheduled_at()
+                    .is_some_and(|planned| planned < now.naive_local())
+            {
+                alarm.created_at = iso_of(now.naive_local());
+            }
+            alarm.enabled = !alarm.enabled;
             return true;
         }
         false
@@ -547,8 +525,8 @@ impl AlarmManager {
     }
 
     /// 装载（Python from_dict_list 对等）：空条目/解析失败过滤 + 超限截断 +
-    /// 过期一次性自动禁用（FIX004.14/FIX004.15）
-    pub fn from_value_list(&mut self, data: &[Value]) {
+    /// 过期一次性自动禁用（FIX004.14/FIX004.15）；now 注入保证测试确定性
+    pub fn from_value_list(&mut self, data: &[Value], now: DateTime<Local>) {
         let mut loaded: Vec<Alarm> = Vec::new();
         for item in data {
             // Python `if not item`：null 与空对象跳过（零告警）
@@ -575,7 +553,6 @@ impl AlarmManager {
         }
         // 过期一次性禁用：计划触发时刻已过（A005 #1 修正判据——原"创建日 < 今日"
         // 会误禁"昨日建、次日触发"的待触发条目，见 is_expired_at）
-        let now = Local::now();
         for alarm in &mut loaded {
             if alarm.is_expired_at(now) {
                 alarm.enabled = false;
@@ -649,6 +626,13 @@ mod tests {
         Local.from_local_datetime(&naive).single().expect("无歧义")
     }
 
+    fn find<'a>(m: &'a AlarmManager, id: &str) -> &'a Alarm {
+        m.alarms
+            .iter()
+            .find(|a| a.id == id)
+            .expect("测试条目应存在")
+    }
+
     fn alarm_json(id: &str, label: &str, time: &str, repeat: Value, created: &str) -> Value {
         serde_json::json!({
             "label": label, "time": time, "repeat_days": repeat,
@@ -685,19 +669,9 @@ mod tests {
 
     #[test]
     fn preset_sound_enum_contract() {
-        // 枚举值/显示名/大小写匹配/序号越界回退
-        assert_eq!(PresetSound::Classic.value(), "classic");
-        assert_eq!(
-            PresetSound::display_names(),
-            vec!["Classic", "Gentle", "Beep", "Chime"]
-        );
+        // 大小写匹配/未知回退；展示方法已随 FIX013.19 删除
         assert_eq!(PresetSound::from_value("GENTLE"), PresetSound::Gentle);
         assert_eq!(PresetSound::from_value("nope"), PresetSound::Classic);
-        // A005 #15：display_name/from_index 已删——显示名经 display_names()[index()] 取
-        assert_eq!(
-            PresetSound::display_names()[PresetSound::Chime.index()],
-            "Chime"
-        );
         // 常量表逐条对 Python 值
         assert_eq!(PRESET_SOUND_CONFIG[0], (PresetSound::Classic, 800, 3, 500));
         assert_eq!(PRESET_SOUND_CONFIG[1], (PresetSound::Gentle, 600, 2, 800));
@@ -910,7 +884,7 @@ mod tests {
     fn manager_crud_and_dedup() {
         // 上限/同时间同标签去重/编辑排除自身/删除清去重/翻转
         let mut m = AlarmManager::new();
-        assert_eq!(m.max_alarms(), 10);
+        assert_eq!(m.max_alarms, 10);
         let a1 = Alarm::from_json_value(&alarm_json(
             "id1",
             "a",
@@ -944,14 +918,14 @@ mod tests {
         .unwrap();
         assert!(m.add_alarm(other.clone()));
         // 重复编辑目标（改成与 other 同时间同标签）应拒绝
-        let mut clash = m.get_alarm(&a1.id).unwrap().clone();
+        let mut clash = find(&m, &a1.id).clone();
         clash.label = "c".into();
         clash.time = "09:00".into();
         assert!(!m.replace_alarm(clash), "编辑成重复条目应拒绝");
         assert_eq!(m.alarms.len(), 2);
         // toggle
-        assert!(m.toggle_alarm(&other.id));
-        assert!(!m.get_alarm(&other.id).unwrap().enabled);
+        assert!(m.toggle_alarm(&other.id, local(2026, 5, 2, 10, 0)));
+        assert!(!find(&m, &other.id).enabled);
         // remove 清去重键
         assert!(m.remove_alarm(&other.id));
         assert!(!m.remove_alarm(&other.id));
@@ -972,18 +946,14 @@ mod tests {
         ))
         .unwrap();
         assert!(m.add_alarm(base));
-        let mut bad = m.get_alarm("r1").unwrap().clone();
+        let mut bad = find(&m, "r1").clone();
         bad.time = "9:30".into();
         assert!(!m.replace_alarm(bad), "非法时间应拒绝");
-        assert_eq!(m.get_alarm("r1").unwrap().time, "08:00", "原条目不动");
-        let mut dirty = m.get_alarm("r1").unwrap().clone();
+        assert_eq!(find(&m, "r1").time, "08:00", "原条目不动");
+        let mut dirty = find(&m, "r1").clone();
         dirty.repeat_days = vec![9, 2, 2, -1];
         assert!(m.replace_alarm(dirty), "日域可规范化应放行");
-        assert_eq!(
-            m.get_alarm("r1").unwrap().repeat_days,
-            vec![2],
-            "越界剔除 + 去重保序"
-        );
+        assert_eq!(find(&m, "r1").repeat_days, vec![2], "越界剔除 + 去重保序");
     }
 
     #[test]
@@ -1000,29 +970,56 @@ mod tests {
                 "2025-01-01T08:00:00",
             ));
         }
-        m.from_value_list(&list);
+        m.from_value_list(&list, local(2026, 5, 2, 10, 0));
         assert_eq!(m.alarms.len(), 10, "超限应截断");
         // 计划日 2025-01-01/02 已过 → 全部禁用
         assert!(m.alarms.iter().all(|a| !a.enabled), "过期一次性应禁用");
         // 空条目/null/垃圾条目过滤
         let mut m2 = AlarmManager::new();
-        m2.from_value_list(&[
-            Value::Null,
-            serde_json::json!({}),
-            serde_json::json!("junk"),
-            alarm_json(
-                "ok1",
-                "ok",
-                "07:00",
-                serde_json::json!([1]),
-                // FIX012.03：远期固定值（原 2027-01-01 为时间炸弹——该时刻后过期
-                // 禁用生效致断言确定性转红）
-                "9999-12-31T00:00:00",
-            ),
-        ]);
+        m2.from_value_list(
+            &[
+                Value::Null,
+                serde_json::json!({}),
+                serde_json::json!("junk"),
+                alarm_json(
+                    "ok1",
+                    "ok",
+                    "07:00",
+                    // FIX013.22：一次性夹具 repeat_days=[]，9999 日期真正参与过期分支
+                    serde_json::json!([]),
+                    "9999-12-31T00:00:00",
+                ),
+            ],
+            local(2026, 5, 2, 10, 0),
+        );
         assert_eq!(m2.alarms.len(), 1);
         assert_eq!(m2.alarms[0].label, "ok");
         assert!(m2.alarms[0].enabled, "未过期保持启用");
+    }
+
+    #[test]
+    fn reenable_expired_one_time_rearms() {
+        // FIX013.22：过期一次性被自动禁用后，用户再打开必须刷新 created_at
+        let mut m = AlarmManager::new();
+        let mut value = alarm_json(
+            "once",
+            "起床",
+            "07:00",
+            serde_json::json!([]),
+            "2026-05-01T08:00:00",
+        );
+        value["enabled"] = serde_json::json!(false);
+        m.add_alarm(Alarm::from_json_value(&value).unwrap());
+        assert!(!find(&m, "once").enabled);
+        let now = local(2026, 5, 2, 10, 0);
+        assert!(m.toggle_alarm("once", now));
+        let alarm = find(&m, "once");
+        assert!(alarm.enabled);
+        assert!(
+            alarm.scheduled_at().unwrap() > now.naive_local(),
+            "重开后计划时刻应在未来"
+        );
+        assert!(alarm.created_at.starts_with("2026-05-02"));
     }
 
     #[test]

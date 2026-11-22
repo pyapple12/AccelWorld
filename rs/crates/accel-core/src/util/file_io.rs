@@ -18,6 +18,9 @@ pub fn allowed_roots() -> Vec<PathBuf> {
     }
     roots.push(super::paths::exe_dir());
     roots.push(std::env::temp_dir());
+    // 测试沙箱统一落项目根 .temp/（AGENTS 临时内容落点）；仅测试构建放行
+    #[cfg(test)]
+    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../.temp"));
     roots
 }
 

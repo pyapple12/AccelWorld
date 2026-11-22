@@ -4,6 +4,10 @@
 resolver = "3"
 members = ["crates/*"]
 
+# 包版本（Cargo 只收三段 semver；与 base.json 四段版本的前三段由测试锚定）
+[workspace.package]
+version = "0.6.6"
+
 # 统一依赖版本（2026-10-16 crates.io 核验最新稳定，PL011 只装 core 所需 + app 占位）
 [workspace.dependencies]
 serde = { version = "1.0.229", features = ["derive"] }

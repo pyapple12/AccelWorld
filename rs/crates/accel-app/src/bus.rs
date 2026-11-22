@@ -10,7 +10,7 @@ use tokio::sync::mpsc::{Receiver, Sender};
 
 use accel_core::types::FrontendCommand;
 
-/// 页面标识（导航五页 + 设置浮窗独立；默认时钟页）
+/// 页面标识（导航五页 + 设置抽屉独立；默认时钟页）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PageId {
     #[default]
@@ -48,9 +48,7 @@ pub struct UiState {
     pub weather_loading: std::collections::HashSet<String>,
     /// 应用内 toast 队列（PL016.07：保存失败/天气失败统一反馈层）
     pub toasts: Vec<Toast>,
-    /// 闹钟触发脉冲起点（PL016.06 large 动效：表盘金针脉冲 + accent 描边闪）
-    pub alarm_pulse_since: Option<std::time::Instant>,
-    /// 减少动效开关（PL016.06 会话级——设置浮窗切换；默认关）
+    /// 减少动效开关（PL016.06 会话级——设置抽屉切换；默认关）
     pub reduce_motion: bool,
     /// 抽屉开合弹簧（PL016.06 medium：过冲滑入状态跨帧持有）
     pub drawer_spring: crate::tools::motion::Spring,
@@ -60,7 +58,7 @@ pub struct UiState {
     pub alarms: Vec<accel_core::alarm::Alarm>,
     /// 会话偏好（启动时拉取；ThemePref 仅存档——A008 #2 定案仅深色，app 侧零消费）
     pub prefs: UiPreferences,
-    /// 设置浮窗开合（.10）
+    /// 设置抽屉开合（.10）
     pub settings_open: bool,
     /// 倒计时目标列表（ConfigSaved 后由 drain 重拉 iface 同步快照）
     pub countdown_targets: Vec<accel_core::settings::CountdownTarget>,
@@ -93,6 +91,8 @@ pub struct UiState {
     /// 闹钟自定义添加草稿
     pub alarm_draft_label: String,
     pub alarm_draft_time: String,
+    /// 添加失败内联提示（FIX013.17：格式/上限/重复；None=无错误）
+    pub alarm_draft_error: Option<String>,
     /// 保存回执（A005 #28：ConfigSaved 结果，退出序列据此放行 Close）
     pub save_ack: bool,
 }
@@ -101,6 +101,20 @@ impl UiState {
     /// 世界常驻城市视图（只读借用）
     pub fn world_pins_view(&self) -> &[String] {
         &self.world_pins
+    }
+
+    /// 当前天气城市（hero 优先，空 hero 回退 last_city）——FIX013.09 toast 过滤依据
+    pub fn current_weather_city(&self) -> &str {
+        if self.world_hero_city.is_empty() {
+            &self.prefs.last_city
+        } else {
+            &self.world_hero_city
+        }
+    }
+
+    /// 天气失败事件是否属于当前城市（旧 hero 重试链的失败不弹 toast）
+    pub fn is_current_weather_city(&self, city: &str) -> bool {
+        self.current_weather_city() == city
     }
 
     /// 两步删除武装超时解除（FIX011.03 单源：三页原复制粘贴块收拢；
@@ -127,7 +141,6 @@ impl Default for UiState {
             weather_errors: HashMap::new(),
             weather_loading: std::collections::HashSet::new(),
             toasts: Vec::new(),
-            alarm_pulse_since: None,
             reduce_motion: false,
             drawer_spring: crate::tools::motion::Spring::new(0.0),
             armed_delete: None,
@@ -135,7 +148,6 @@ impl Default for UiState {
             prefs: UiPreferences {
                 theme: base.base_str("default_theme").to_string(),
                 last_city: base.base_str("default_city").to_string(),
-                countdown_target: String::new(),
                 world_hero_city: base
                     .base_str_list("default_world_pins")
                     .first()
@@ -164,6 +176,7 @@ impl Default for UiState {
             world_search_seq: 0,
             alarm_draft_label: String::new(),
             alarm_draft_time: String::new(),
+            alarm_draft_error: None,
             save_ack: false,
         }
     }
@@ -241,19 +254,13 @@ pub enum SideEffect {
 }
 
 /// 应用内 toast（PL016.07，审核 #8）：出生时刻驱动出入场动画——
-/// 入场 0.3s 右侧滑入、驻留 TOAST_TTL、末 0.15s 淡出；错误红缘 / 信息金缘
+/// 入场 0.3s 右侧滑入、驻留 TOAST_TTL、末 0.15s 淡出；当前仅错误红缘
+/// （FIX013.19：Info toast 无生产者已删）
 #[derive(Debug, Clone)]
 pub struct Toast {
     pub title: String,
     pub body: String,
     pub born: std::time::Instant,
-    pub kind: ToastKind,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ToastKind {
-    Error,
-    Info,
 }
 
 impl Toast {
@@ -263,17 +270,6 @@ impl Toast {
             title: title.to_string(),
             body: body.to_string(),
             born: std::time::Instant::now(),
-            kind: ToastKind::Error,
-        }
-    }
-
-    /// 信息 toast 构造（FIX011.09 接线 Info 金边分支——轻量即时反馈）
-    pub fn info(title: &str, body: &str) -> Toast {
-        Toast {
-            title: title.to_string(),
-            body: body.to_string(),
-            born: std::time::Instant::now(),
-            kind: ToastKind::Info,
         }
     }
 }
@@ -448,7 +444,6 @@ impl Bus {
                         alarm.sound_type.clone(),
                         alarm.sound_value.clone(),
                     ));
-                    state.alarm_pulse_since = Some(std::time::Instant::now());
                 }
                 // FIX010.1 + FIX011.01：ConfigSaved(false) 已收敛为纯 IO 失败信号
                 // （core 侧全部命令的拒绝路径均不回推 false——A011 #1 补齐世界/
@@ -464,9 +459,14 @@ impl Bus {
                 // PL016.03/07（审核 #2/#8）：天气失败应用内 toast（页面另有角标与
                 // 旧值并存；不打系统通知防连刷骚扰）
                 BackendEvent::WeatherFailed { city, reason } => {
-                    state
-                        .toasts
-                        .push(Toast::error(&format!("{city} 天气拉取失败"), reason));
+                    // FIX013.09：只对当前 hero 弹 toast；旧城重试链失败仅留日志
+                    if state.is_current_weather_city(city) {
+                        state
+                            .toasts
+                            .push(Toast::error(&format!("{city} 天气拉取失败"), reason));
+                    } else {
+                        tracing::info!("非当前天气城市的失败事件，不弹 toast: {city}（{reason}）");
+                    }
                 }
                 // A005 #19：倍率被拒 → 回拉权威值（乐观更新回退）
                 BackendEvent::RateRejected(_) => need_rate_resync = true,
@@ -548,6 +548,7 @@ mod tests {
             custom_time: "1:00:00".into(),
             chinese_date: String::new(),
             lunar_info: String::new(),
+            lunar_shichen: String::new(),
             lunar_yi: Vec::new(),
             lunar_ji: Vec::new(),
             lunar_jieqi: String::new(),
@@ -558,6 +559,24 @@ mod tests {
             day_hours: 48,
             tick_ms,
         }
+    }
+
+    #[test]
+    fn weather_city_filter_uses_hero_then_last_city() {
+        // FIX013.09：hero 非空时只认 hero；空 hero 回退 last_city
+        let mut prefs = UiState::default().prefs;
+        prefs.last_city = "上海".into();
+        let mut state = UiState {
+            world_hero_city: "北京".into(),
+            prefs,
+            ..UiState::default()
+        };
+        assert_eq!(state.current_weather_city(), "北京");
+        assert!(state.is_current_weather_city("北京"));
+        assert!(!state.is_current_weather_city("上海"));
+        state.world_hero_city.clear();
+        assert_eq!(state.current_weather_city(), "上海");
+        assert!(state.is_current_weather_city("上海"));
     }
 
     #[test]

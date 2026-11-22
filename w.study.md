@@ -1,7 +1,7 @@
 # AccelWorld 项目分析报告
 
 > 2026-10-17 重做：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow），本报告按 Rust 现役实现改写；Python 版分析随 `.archived/` 归档留档。
-> 2026-10-23 UIR 更新：界面推倒重塑——玻璃管线/Acrylic 整体废弃，实心主题 + 侧栏导航（本文 3.7 已按实心界面装配重写为现役口径）。
+> 2026-10-23 UIR 更新：界面推倒重塑——玻璃管线/Acrylic 整体废弃，实心主题；UIR4 起为星盘主仪 + 悬浮仪器坞 + 抽屉页（本文 3.7 已按现役装配重写）。
 
 ---
 
@@ -10,9 +10,9 @@
 cargo workspace 双 crate 桌面应用：基于加速倍率的时间膨胀时钟（egui 中文界面为主）。
 
 ```
-[输入]   用户设定加速倍率（rate_min 1.0 - rate_max 20.0，来自 config/static/base.json）
+[输入]   用户设定加速倍率（rate_min 1.0 - rate_max 365.0，来自 config/static/base.json）
 [引擎]   accel-core::time_dilation 按倍率换算：加速时钟 1 秒 = 现实 1/rate 秒
-[展示]   accel-app（egui + eframe/glow）：单环双针星盘主仪恒驻 + 悬浮仪器坞 + 抽屉页（页头/滚动/页脚）+ 设置抽屉（单强调色）
+[展示]   accel-app（egui + eframe/glow）：单环四针星盘主仪恒驻 + 悬浮仪器坞 + 抽屉页（页头/滚动/页脚）+ 设置抽屉（单强调色）
 [周边]   农历干支节气 / 世界时钟 / 倒计时 / 天气（Open-Meteo）/ 闹钟 / 托盘 / 全局热键
 [持久化] 用户配置 config/user_config.json（exe 同目录，FIX007.15 基准；倍率/主题/城市/世界 hero/倒计时/窗口几何/闹钟）；世界城市缓存 world_cache.sqlite（同目录）
 ```
@@ -37,30 +37,30 @@ rs/                              # cargo workspace 根
   crates/accel-core/             # 纯业务 crate（零 GUI 依赖，CI 机器强制）
     src/interface.rs             # AppInterface（七域契约）+ FrontendCommand/BackendEvent 总线 + spawn
     src/types.rs                 # 协议类型转出（TimeInfo/WeatherData/Alarm/DTO/ThemePref）
-    src/time_dilation.rs         # 时间膨胀引擎（公式对齐 Python，秒级农历缓存）
+    src/time_dilation.rs         # 时间膨胀引擎（公式对齐 Python，按日农历缓存 + 时辰现算）
     src/chinese_calendar.rs      # 农历/干支/生肖/节气/节日（lunar-rust + 常量表 + holidays.json）
     src/weather.rs               # 天气解析层 + 传输层（reqwest rustls + 按城 TTL 缓存 + 直连/代理双通道 + 冷启动缓存 + 10 分钟自动重试）
     src/alarm.rs                 # Alarm 模型 + AlarmManager + 触发状态机 + Clock 抽象
     src/settings.rs              # 用户配置读写（serde + 字段白名单过滤 + 原子写）
     src/static_config.rs         # Static 单例（include_str 嵌入 + OnceLock + 域访问器）
     src/audio.rs                 # rodio 预设/自定义铃声播放
-    src/data/                    # 三数据表加载器（cities/timezones/weather_codes + world_cities）
+    src/data/                    # 数据表加载器（timezones/weather_codes/continents + 拼音工具；城市主表在 SQLite）
     src/util/                    # file_io（原子写/白名单）/ retry（泛型重试）
   crates/accel-app/              # egui 前端 crate
-    src/main.rs / lib.rs         # 入口 + 编译期版本（compiled_version）
+    src/main.rs / lib.rs         # 入口 + build.rs 注入版本（ACCELWORLD_VERSION）
     src/window.rs                # 主窗装配器（AppHandle：drain→窗口夹取→仪器坞→页总装→平台→节奏 + 截图/几何探针）
     src/bus.rs                   # 信号总线（UiState 快照 + drain/apply + 命令出口）
     src/theme.rs                 # 设计系统（ui.json colors 实心色板 → Visuals 深色单板，仅深色定案）
     src/logging.rs               # tracing 本地日期滚动 + 本地时间戳 + panic hook 崩溃栈
     src/pages/                   # 五页（clock/countdown/world/weather/alarm）+ 设置抽屉（外观/动效/网络/关于）
-    src/widgets/                 # 自绘控件（digits/icons/icon_button/dock/page_header/field/switch/empty/rate_strip/chip/slider/toast）
+    src/widgets/                 # 自绘控件（digits/icons/dock/page_header/field/switch/primary_button/empty/rate_strip/slider/toast/text_fit）
     src/tools/                   # 展示运算纯函数（clock/countdown/alarm_text）
     src/platform/                # 系统集成（tray/notify/hotkey，非 Windows 桩化）
   assets/                        # 托盘图标等内嵌资源
   .logs/                         # 运行日志（每日独立文件，gitignore）
 ```
 
-架构一句话：`accel-core（纯业务 + interface 契约 + 命令/事件总线）← accel-app（egui 前端）`，依赖单向；app 不直碰业务（一切经 interface 命令/事件），core 不感知 egui（CI 关卡 4 机器强制）；`main.rs` 只做装配与运行时挂载。
+架构一句话：`accel-core（纯业务 + interface 契约 + 命令/事件总线）← accel-app（egui 前端）`，依赖单向；app 写操作经总线、只读可直取（A005 #12），core 不感知 egui（CI 关卡 4 机器强制）；`main.rs` 只做装配与运行时挂载。
 
 ## 3. 核心设计模式
 
@@ -132,14 +132,14 @@ pub async fn fetch_by_city(&self, city: &str, lat: f64, lon: f64, force: bool)
 
 ### 3.7 界面装配 — 星盘主仪 + 悬浮仪器坞 + 抽屉页（PL017 现役，PL023 盒模型定案）
 
-- `window.rs`：`AppHandle`（logic：drain/探针/退出序列（Close 丢失自愈） + ui：首帧窗口几何夹取 → 首帧门控显示 → 悬浮仪器坞 → 页总装 → toast）；设置不再是浮窗，而是抽屉页；标题「天宫时计 · ACCELWORLD Clock」
-- `pages/mod.rs`：总装配——页面区/底部坞显式分带；舞台与抽屉按宽度定宽并排（<760 全宽抽屉；≥760 舞台 ≥420、抽屉 280..400）；抽屉弹簧开合；ESC 关设置/回时钟
-- `clock.rs`：单环 12h 四针表盘（60 刻度 + 12/3/6/9 内侧；时/分/秒走现实，黄针走加速 12h；AM/PM 胶囊当前半日文字金色、填充仍橙红/淡蓝；金圈=加速日进度色谱，2–10×scale，跨日 1s 平滑）；盘内以 320 为母版严格等比（scale = dial_d / 320；指针固定 60/90/110/100；刻度/字号/线宽/光晕/尾长全乘 scale；胶囊固定）；盘下 readout 铺满页面宽、竖线居中；整数 1–365 倍率条 + 量化行（365 档显示 1 年）；页头盒子模型（高 560 分行数 / 宽 560 分文本；日期盒 15.5 与农历块 26.0/11.5 按盒中线对齐）；星盘盒边长 = min(剩余高, 页宽 − 2×82)，下限 120、无上限；82 = 内容边→药丸 10 + 药丸 52 + 药丸→盘盒 20；可见盘 = 盒 − 20
+- `window.rs`：`AppHandle`（logic：drain/探针/退出序列（Close 丢失自愈） + ui：首帧窗口几何夹取 → 首帧门控显示 → 悬浮仪器坞 → 页总装 → toast）；设置不再是浮窗，而是抽屉页；标题「天宫时计 · V{version}」（版本读 base.json）
+- `pages/mod.rs`：总装配——页面区/底部坞显式分带；抽屉固定 350 宽，<760 全宽左扩（≥760 舞台 = 页宽 − 350，最小 410）；抽屉弹簧开合；ESC 关设置/回时钟
+- `clock.rs`：单环 12h 四针表盘（60 刻度 + 12/3/6/9 内侧；时/分/秒走现实，黄针走加速 12h；AM/PM 胶囊当前半日文字金色、填充仍橙红/淡蓝；金圈=加速日进度色谱，2–10×scale，跨日 1s 平滑）；盘内以 320 为母版严格等比（scale = dial_d / 320；指针固定 60/90/110/100；刻度/字号/线宽/光晕/尾长全乘 scale；胶囊固定）；盘下 readout 铺满页面宽、竖线居中；整数 1–365 倍率条 + 量化行（365 档显示 1 年）；页头盒子模型（高 560 + 右栏实测宽决定行数；日期盒与右栏实测宽决定完整/精简；日期盒 15.5 与农历块 26.0/11.5 按盒中线对齐）；星盘盒边长 = min(剩余高, 页宽 − 2×82)，下限 120、无上限；82 = 内容边→药丸 10 + 药丸 52 + 药丸→盘盒 20；可见盘 = 盒 − 20
 - 抽屉页统一盒模型（PL021/PL023）：页头 20 + 标题盒 27.5 + 10 = 57.5；内容上边距 10；区域用 `BoxStack` 固定盒高 + 10 间距；盒高与基线按 `ui.json font_profile` 查表：`trim_grids = size / grid − cjk_ink_grids`，`h_cjk = size − step × trim_grids`（`step = grid − top_ratio − bottom_ratio`），`top = top_ratio × trim_grids`，`bottom = bottom_ratio × trim_grids`，`B = 盒底 − bottom`，`P = B − dy`；默认盒底对盒底，混排不拿基线做外部对齐；盒子位置不由字墨反推；滚动行用 `next` 登记整行高度
 - 字体组合参数表（PL023.36–44）：`font_profile` 按“中文字体 + 数字字体”索引，每档存 `size / cjk_ink_grids / latin_ink_grids / digit_ink_grids / dy_cjk_grids / dy_latin_grids / dy_digit_grids / trim_grids`；三个写死常量 `grid 0.8 / top_ratio 0.2 / bottom_ratio 0.1`，四个实测值 `m_cjk`（中文上缘 + 下探）、`m_latin`（`a–z A–Z` 剔除 `g/j/p/q/y` 后的最大墨迹）、`m_digit`（`0–9` 最大墨迹）、`dy`（中文基线下最大下探）；`trim_grids = size / grid − cjk_ink_grids`，`h_cjk = size − (grid − top_ratio − bottom_ratio) × trim_grids`，`step = grid − top_ratio − bottom_ratio`；英文/数字按各自最大墨迹 `m_latin / m_digit` 走 `raw = m + 0.2 + 0.1`、`h = ceil(raw / step) × step`，`pad = h − raw` 按 0.1 单位分配（0.1 补下、0.2/0.4 均分、0.3 上 0.1 下 0.2），`bottom_latin / bottom_digit` 随之下移；英文/数字/混排 `dy = 0`，中文保留 `dy_cjk`，基线 = 盒底 − bottom；读数 10 档独立建档（hero 56/48/44/40/36，real 36/32/28/28/24），横向按表内档位跌落（≤基准、≥24，取最大可装档），不连续缩放；换字体只换表，不改公式；仅换数字字形且 `latin_ink` 仍由 MiSans 决定、`digit_ink` 仍按同一 `0–9` 口径、最大 advance 差 <0.5% 时可保留原表（PL026 Barlow Medium 已登记）；测量用 `ACCELWORLD_TEXT_MATRIX=1`，`t96` 为上缘、`a96` 为下探
 - 倒计时：E2 hero 与 E7 近期节日固定为页头，不参与滚动；只有 E9 目标卡列表独立滚动（卡片右缘 +8px 的 4px 金色浮钮 + 上下 16px 渐隐 + 滚动时呼吸的小三角），列表视口高不足一张卡 56.0 时整块隐藏；E9 目标卡 56.0（10 + 15.5 + 5 + 15.5 + 10）；E15 页脚 101.5（标签 11.5 + 5 + 输入 19.5 + 10 + 按钮 35.5 + 20）；空态两行盒 15.5 + 5 + 11.5 整体居中，最小 54.0；目标时刻支持 `YYYY` / `YYYY-M` / `YYYY-M-D` / `M-D` / 完整时分，回车与添加等价
 - `theme.rs`：ui.json `colors.*` 深色实心单板（仅深色定案）→ egui Visuals + 语义色（strong/body/muted/meta/success 五层，对比度全矩阵 ≥4.5:1 实测）/input_border/border_strong/字号/间距/圆角访问器；MiSans Regular/Medium/Semibold 三档字重 + Barlow Medium 数字族（内嵌）+ Tabler 图标族；选中底 `selection` #2A3552 + `ink.strong` 文字
-- `widgets/`：digits（等宽数字位）/ icons（Tabler 子集字体绘制）/ icon_button / dock（悬浮带标签）/ page_header / field（show_fixed）/ switch / empty / rate_strip / slider / chip / toast / select / primary_button / spinner / motion / box_stack / scroll_kit（列表浮杆/渐隐/三角）
+- `widgets/`：digits（等宽数字位）/ icons（Tabler 子集字体绘制）/ dock（悬浮带标签）/ page_header / field（show_fixed）/ switch / empty / rate_strip / slider（仅倍率映射）/ toast / primary_button / text_fit / motion / box_stack / scroll_kit（列表浮杆/渐隐/三角）
 - 高 DPI 纪律：面/文本坐标一律逻辑点；标题栏底色经 DWMWA_CAPTION_COLOR 恒钉深色；默认 960×720、最小 560×420、无上限；启动任一方向超屏 → 560×420；位置夹进可见区
 - 走查门：`ACCELWORLD_UI_SHOT` 截图探针（真窗逐页 PrintWindow PNG，`PW_CLIENTONLY` 已消除底部白带；固定 `ACCELWORLD_UI_SHOT_GEOMETRY` 测试几何）+ 用户桌面终审
 - 历史：玻璃渲染（WGSL + GlassScene + Acrylic）废弃（UIR）；UIR 初代灰石板金调（UIR2 子夜星图换装）；UIR2 侧栏五页模型（UIR4 改星盘主仪+仪器坞+抽屉）；PL017 结构重排（图标坞/盘下读数/抽屉三段式/字重/短倍率条）；PL019 图标字体/自适应分栏/自绘 Select/反馈动效；PL021 五页盒模型/倒计时输入与错误内联/滚动登记修复；PL023 文字盒统一（默认零 bbox）/五页盒子对齐/原生控件进盒
@@ -156,7 +156,7 @@ pub async fn fetch_by_city(&self, city: &str, lat: f64, lon: f64, force: bool)
 - 布局同倒计时：固定 hero（城市名 + 大号 24h 时间；日期周几 + `+8 时区` 偏移）→ `widgets/list_scroll` 可滚动列表 → 固定底部搜索；`footer_bottom = 20`。
 - 滚动套件与倒计时共用：`ListScrollState` + `show(id_salt, probe_tag, …)`；渐隐/金色三角/4px 浮钮/拖拽统一。
 - hero 城市不进入列表；hover 行出现 pin（删除左侧），点击替换 hero；hero 不能直接删，先 pin 新城市。
-- 291 城 SQLite 主表（预置 db；12 中国 + 279 境外；中文/英文/拼音/首字母，不跑 geocoding）；国内表外城市走 Open-Meteo geocoding（英文名用拼音），境外只用本地表；多结果用户选择；结果/自定义城市落 `world_cache.sqlite`（rusqlite bundled），下次命中缓存；候选第一行 `中文名 + 10px + 英文名 + 右对齐 [昨天/今天/明天 + 5px + 当地时间]`，第一/第二行盒间距 10px；第二行 `大陆 · 国家 · admin1 · 时区 · N 万`，大陆由 `continents.json`（ISO2）映射。搜索仅保留 `PPL*` 居民点且人口 ≥5 万，机场/县级乡级驻地/小地方不出现。
+- 291 城 SQLite 主表（预置 db；12 中国 + 279 境外；中文/英文/拼音/首字母，不跑 geocoding）；国内表外城市走 Open-Meteo geocoding（英文名用拼音），境外只用本地表；多结果用户选择；结果/自定义城市落 `world_cache.sqlite`（rusqlite bundled），再次搜索命中缓存；候选第一行 `中文名 + 10px + 英文名 + 右对齐 [昨天/今天/明天 + 5px + 当地时间]`，第一/第二行盒间距 10px；第二行 `大陆 · 国家 · admin1 · 时区 · N 万`，大陆由 `continents.json`（ISO2）映射。搜索仅保留 `PPL*` 居民点且人口 ≥5 万，机场/县级乡级驻地/小地方不出现。
 - `SetBaseTimezone` / `base_timezone` / `last_timezone` / `default_timezone` 已退役； persisted `world_hero_city`（城市名）。
 
 ## 4. 代码风格观察

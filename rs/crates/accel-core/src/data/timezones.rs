@@ -52,4 +52,4 @@ mod tests {
 // 逻辑步骤：OnceLock 惰性解析 → 线性查找（显示名含 DST 双档标注，E12 修正延续）
 // 设计理由：时区表外置复用（Python FIX002.15 同因）；巴黎双档显示名测试锚定
 // 异常处理：JSON 解析失败 expect 快速失败（嵌入产物损坏级）
-// 关联配置：rs/data/timezones.json；消费方：interface 时区域（get_timezone_options）
+// 关联配置：rs/data/timezones.json；消费方：单测/数据表校验（interface 转发已删）

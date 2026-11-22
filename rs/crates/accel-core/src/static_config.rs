@@ -152,6 +152,21 @@ mod tests {
     }
 
     #[test]
+    fn cargo_version_matches_base_json() {
+        // FIX013.18：Cargo 只收三段 semver；产品四段版本的前三段必须与包版本一致
+        let product = Static::get().version();
+        let prefix = product
+            .rsplit_once('.')
+            .map(|(head, _)| head)
+            .unwrap_or(product);
+        assert_eq!(
+            prefix,
+            env!("CARGO_PKG_VERSION"),
+            "Cargo 包版本与 base.json version 前三段漂移"
+        );
+    }
+
+    #[test]
     fn base_domain_tokens() {
         // 真实 token 抽样：倍率域/时钟 tick/天气参数/默认偏好
         let s = Static::get();
@@ -182,7 +197,7 @@ mod tests {
         let s = Static::get();
         assert_eq!(s.ui_str("font_family"), "MiSans");
         assert_eq!(s.ui_str("font_family_digits"), "Barlow Medium");
-        assert_eq!(s.ui_nested_i64("scale", "hero"), 72);
+        assert_eq!(s.ui_nested_i64("scale", "display"), 40);
         assert_eq!(s.ui_nested_i64("spacing", "lg"), 16);
         assert!((s.ui_nested_f64("layout", "clock_dial_tick_cap") - 0.6).abs() < 1e-9);
         let window_bg = s.ui.pointer("/colors/window_bg").and_then(|v| v.as_str());

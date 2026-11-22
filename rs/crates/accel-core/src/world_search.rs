@@ -5,13 +5,12 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use rusqlite::{Connection, params};
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::data::world_cities;
 
 /// 城市条目（内置 291 城 / geocoding 结果 / 用户自定义城市共用）
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WorldCityEntry {
     pub name: String,
     pub name_en: String,
@@ -154,43 +153,99 @@ impl WorldSearch {
             cities: Vec::new(),
         };
         search.cities = search.load_cities_or_seed();
-        let _ = CITIES.set(search.cities.clone());
+        // 空快照不写入全局缓存——否则一次失败会让 CITIES 永久为空
+        if !search.cities.is_empty() {
+            let _ = CITIES.set(search.cities.clone());
+        }
         search
     }
 
+    /// 初始化并读取城市表；任何失败都记 error（不再静默空列表）
     fn load_cities_or_seed(&self) -> Vec<WorldCityEntry> {
-        let _ = self.ensure_seed_db();
-        self.load_cities().unwrap_or_default()
+        if let Err(e) = self.ensure_seed_db() {
+            tracing::error!("世界城市库初始化失败: {}（{e}）", self.path.display());
+        }
+        match self.load_cities() {
+            Ok(list) if !list.is_empty() => list,
+            Ok(_) => {
+                tracing::error!("世界城市库为空: {}", self.path.display());
+                Vec::new()
+            }
+            Err(e) => {
+                tracing::error!("世界城市库读取失败: {}（{e}）", self.path.display());
+                Vec::new()
+            }
+        }
     }
 
-    /// 预置库：文件不存在则写出嵌入 db；旧库 city 行数不符则重建 city 表
+    /// 预置库：文件不存在则写出嵌入 db；旧库 city 行数不符则事务重建 city 表；
+    /// 文件损坏/无法打开则用「临时文件 + rename」整体重建（自定义城市会丢失，日志明示）
     fn ensure_seed_db(&self) -> rusqlite::Result<()> {
         if !self.path.exists() {
-            if let Some(parent) = self.path.parent() {
-                let _ = std::fs::create_dir_all(parent);
+            self.write_seed_file(&self.path)?;
+            return Ok(());
+        }
+        match self.sync_seed_table() {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                tracing::warn!(
+                    "世界城市库不可用，按预置库重建（自定义城市将丢失）: {}（{e}）",
+                    self.path.display()
+                );
+                self.rebuild_from_seed()
             }
-            std::fs::write(&self.path, SEED_DB)
+        }
+    }
+
+    /// 写预置库字节（父目录不存在时补建）
+    fn write_seed_file(&self, path: &std::path::Path) -> rusqlite::Result<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
                 .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
         }
-        let conn = self.open()?;
-        let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM city", [], |r| r.get(0))
-            .unwrap_or(0);
+        std::fs::write(path, SEED_DB)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
+    }
+
+    /// 行数不符时从嵌入 seed 重建 city 表：ATTACH 必须在事务外，DELETE/INSERT 包事务
+    fn sync_seed_table(&self) -> rusqlite::Result<()> {
+        let mut conn = self.open()?;
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM city", [], |r| r.get(0))?;
         if count == CITY_SEED_COUNT {
             return Ok(());
         }
         let tmp = self.path.with_extension("seed.tmp");
-        std::fs::write(&tmp, SEED_DB)
-            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-        conn.execute(
+        self.write_seed_file(&tmp)?;
+        if let Err(e) = conn.execute(
             "ATTACH DATABASE ?1 AS seed",
             params![tmp.to_string_lossy().to_string()],
-        )?;
-        conn.execute("DELETE FROM city", [])?;
-        conn.execute("INSERT INTO city SELECT * FROM seed.city", [])?;
-        conn.execute("DETACH DATABASE seed", [])?;
+        ) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e);
+        }
+        let result = (|| -> rusqlite::Result<()> {
+            let tx = conn.transaction()?;
+            tx.execute("DELETE FROM city", [])?;
+            tx.execute("INSERT INTO city SELECT * FROM seed.city", [])?;
+            tx.commit()
+        })();
+        let detach = conn.execute("DETACH DATABASE seed", []);
         let _ = std::fs::remove_file(&tmp);
+        result?;
+        detach?;
         Ok(())
+    }
+
+    /// 整体重建：先写同目录临时文件，再删除旧文件并 rename（Windows rename 不覆盖）
+    fn rebuild_from_seed(&self) -> rusqlite::Result<()> {
+        let tmp = self.path.with_extension("rebuild.tmp");
+        self.write_seed_file(&tmp)?;
+        if self.path.exists() {
+            std::fs::remove_file(&self.path)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        }
+        std::fs::rename(&tmp, &self.path)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
     }
 
     fn load_cities(&self) -> rusqlite::Result<Vec<WorldCityEntry>> {
@@ -399,6 +454,11 @@ impl WorldSearch {
 
     fn open(&self) -> rusqlite::Result<Connection> {
         let conn = Connection::open(&self.path)?;
+        // schema 迁移只跑一次：旧库 user_version=0 时补表/补列后写 1
+        let version: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+        if version >= 1 {
+            return Ok(conn);
+        }
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS city(
                 name TEXT PRIMARY KEY,
@@ -470,6 +530,7 @@ impl WorldSearch {
             "ALTER TABLE custom_city ADD COLUMN population INTEGER NOT NULL DEFAULT 0",
             [],
         );
+        conn.pragma_update(None, "user_version", 1)?;
         Ok(conn)
     }
 }
@@ -488,9 +549,12 @@ pub fn valid_timezone(tz: &str) -> bool {
 pub fn geocode_url(query: &str, language: &str) -> String {
     let mut url = reqwest::Url::parse("https://geocoding-api.open-meteo.com/v1/search")
         .expect("geocoding base URL 合法");
+    let count = crate::static_config::Static::get()
+        .base_i64("world_geocode_count")
+        .max(1);
     url.query_pairs_mut()
         .append_pair("name", query)
-        .append_pair("count", "8")
+        .append_pair("count", &count.to_string())
         .append_pair("language", language)
         .append_pair("format", "json");
     url.to_string()
@@ -649,12 +713,80 @@ fn epoch_secs() -> i64 {
 mod tests {
     use super::*;
 
-    fn temp_search(tag: &str) -> (WorldSearch, PathBuf) {
-        let dir =
-            std::env::temp_dir().join(format!("accel_world_search_{}_{}", tag, std::process::id()));
+    /// 测试临时目录（项目根 .temp/，Drop 自动清理；不写用户临时目录）
+    struct TempDir(PathBuf);
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn temp_dir(tag: &str) -> TempDir {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../.temp/world_search")
+            .join(format!("{tag}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("临时目录");
-        (WorldSearch::with_path(dir.join("world_cache.sqlite")), dir)
+        TempDir(dir)
+    }
+
+    fn temp_search(tag: &str) -> (WorldSearch, TempDir) {
+        let dir = temp_dir(tag);
+        (
+            WorldSearch::with_path(dir.0.join("world_cache.sqlite")),
+            dir,
+        )
+    }
+
+    #[test]
+    fn corrupt_db_is_rebuilt_from_seed() {
+        // FIX013.08：损坏文件不再永久空表——临时文件 + rename 整体重建
+        let dir = temp_dir("corrupt");
+        let path = dir.0.join("world_cache.sqlite");
+        std::fs::write(&path, b"this is not a sqlite database").expect("写坏库");
+        let search = WorldSearch::with_path(path.clone());
+        assert_eq!(
+            search.cities.len(),
+            CITY_SEED_COUNT as usize,
+            "损坏库应按预置库重建"
+        );
+        assert_eq!(
+            WorldSearch::with_path(path).cities.len(),
+            CITY_SEED_COUNT as usize,
+            "重建后的库应可再次正常打开"
+        );
+    }
+
+    #[test]
+    fn empty_city_table_is_resynced_from_seed() {
+        // FIX013.08：库可打开但 city 表为空/行数不符 → 事务内从 seed 重建
+        let dir = temp_dir("resync");
+        let path = dir.0.join("world_cache.sqlite");
+        let first = WorldSearch::with_path(path.clone());
+        assert_eq!(first.cities.len(), CITY_SEED_COUNT as usize);
+        let conn = rusqlite::Connection::open(&path).expect("打开城市库");
+        conn.execute("DELETE FROM city", []).expect("清空 city");
+        drop(conn);
+        let second = WorldSearch::with_path(path);
+        assert_eq!(
+            second.cities.len(),
+            CITY_SEED_COUNT as usize,
+            "空 city 表应从 seed 恢复"
+        );
+    }
+
+    #[test]
+    fn schema_migration_sets_user_version_once() {
+        // FIX013.28：DDL 只在 user_version<1 时执行，完成后写 1
+        let dir = temp_dir("migrate");
+        let path = dir.0.join("world_cache.sqlite");
+        let _ = WorldSearch::with_path(path.clone());
+        let conn = rusqlite::Connection::open(&path).expect("打开城市库");
+        let version: i64 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("读 user_version");
+        assert_eq!(version, 1);
     }
 
     #[test]
@@ -673,7 +805,7 @@ mod tests {
 
     #[test]
     fn local_search_supports_cn_en_pinyin_initials() {
-        let (search, dir) = temp_search("local");
+        let (search, _dir) = temp_search("local");
         for q in [
             "北京", "beijing", "Beijing", "bj", "tokyo", "dongjing", "dj",
         ] {
@@ -685,12 +817,11 @@ mod tests {
                 "query {q} should hit a built-in city"
             );
         }
-        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
     fn geocode_parse_and_cache_roundtrip() {
-        let (search, dir) = temp_search("cache");
+        let (search, _dir) = temp_search("cache");
         let body = serde_json::json!({"results": [{
             "name": "苏州", "latitude": 31.3, "longitude": 120.6,
             "timezone": "Asia/Shanghai", "country": "中国", "admin1": "江苏"
@@ -701,12 +832,11 @@ mod tests {
         search.store_candidates("suzhou", &results);
         let cached = search.cached("suzhou").expect("缓存应命中");
         assert_eq!(cached[0].name, "苏州");
-        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
     fn custom_city_add_and_remove() {
-        let (search, dir) = temp_search("custom");
+        let (search, _dir) = temp_search("custom");
         let entry = WorldCityEntry {
             name: "测试城".to_string(),
             name_en: "Test City".to_string(),
@@ -725,7 +855,6 @@ mod tests {
         assert_eq!(search.custom_by_name("测试城"), Some(entry));
         search.remove_custom("测试城");
         assert!(search.custom_by_name("测试城").is_none());
-        let _ = std::fs::remove_dir_all(dir);
     }
 }
 

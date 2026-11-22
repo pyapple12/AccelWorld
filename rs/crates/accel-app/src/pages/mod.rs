@@ -1,6 +1,8 @@
 //! 页面模块总装（UIR4：星盘主仪恒驻 home + 非时钟页右侧仪器抽屉）
 //! Pages 容器 + 五页实体（各页 impl Page 在各页文件，本文件只做容器与装配）
 
+use accel_core::types::FrontendCommand;
+
 use crate::bus::{Bus, PageId, UiState};
 
 // 页面子模块（各页 impl Page 在本文件内通过 include 的子模块实体落地）
@@ -26,6 +28,8 @@ pub struct Pages {
     pub drawer_page: PageId,
     /// 抽屉最后绘制的是否为设置页（同上，关闭动画期间保留）
     pub drawer_settings: bool,
+    /// 上帧设置抽屉是否打开（关闭时提交代理输入，覆盖 ESC/页头 X/坞再点）
+    settings_was_open: bool,
     pub clock: ClockPage,
     pub countdown: CountdownPage,
     pub world: WorldPage,
@@ -45,6 +49,7 @@ impl Pages {
             current: PageId::Clock,
             drawer_page: PageId::Clock,
             drawer_settings: false,
+            settings_was_open: false,
             clock: ClockPage,
             countdown: CountdownPage::default(),
             world: WorldPage::default(),
@@ -54,7 +59,7 @@ impl Pages {
     }
 
     /// 总装配（PL017）：非时钟页/设置占右侧抽屉（PageHeader + Scroll + Footer），
-    /// 星盘主仪恒驻中央 CentralPanel；抽屉固定 350 宽，<760 时全宽左扩，开合只缩让不遮挡。
+    /// 星盘主仪恒驻页面区；抽屉固定 350 宽，<760 时全宽左扩，开合只缩让不遮挡。
     pub fn ui(&mut self, ui: &mut egui::Ui, state: &mut UiState, bus: &Bus) {
         self.current = state.current_page;
         // ESC：优先关设置，否则回时钟（页头关闭的键盘等价）
@@ -65,6 +70,14 @@ impl Pages {
                 state.current_page = PageId::Clock;
             }
         }
+        // FIX013.24：设置抽屉任意路径关闭时提交代理输入（ESC/页头 X/坞再点）
+        if proxy_commit_on_close(self.settings_was_open, state.settings_open) {
+            bus.send(FrontendCommand::SetWeatherProxy {
+                enabled: state.prefs.weather_use_proxy,
+                server: state.prefs.weather_proxy.clone(),
+            });
+        }
+        self.settings_was_open = state.settings_open;
         let drawer_open = self.current != PageId::Clock || state.settings_open;
         // 关闭动画期间仍要画「最后打开的那个抽屉」，不能跟着 self.current 切回时钟
         if drawer_open {
@@ -261,11 +274,30 @@ pub struct WeatherPage;
 #[derive(Default)]
 pub struct AlarmPage;
 
+/// 设置抽屉 true→false 时提交代理输入（纯函数可测）
+pub fn proxy_commit_on_close(was_open: bool, open: bool) -> bool {
+    was_open && !open
+}
+
+#[cfg(test)]
+mod tests {
+    use super::proxy_commit_on_close;
+
+    #[test]
+    fn proxy_commits_only_on_close() {
+        // FIX013.24：关闭沿提交一次；保持打开/保持关闭都不提交
+        assert!(proxy_commit_on_close(true, false));
+        assert!(!proxy_commit_on_close(true, true));
+        assert!(!proxy_commit_on_close(false, false));
+        assert!(!proxy_commit_on_close(false, true));
+    }
+}
+
 // ===== src/pages/mod.rs 说明区 =====
 // 输入：UiState（current_page/settings_open 等）+ 各页自持临时输入态；输出：装配
-// 逻辑步骤：ESC 关设置/回时钟 → current 镜像 → 非 Clock/设置 Panel::right 抽屉
-//   （PageHeader 56 + ScrollArea + Footer；32% 宽钳 [320,400]；<760 全宽）→
-//   CentralPanel 星盘主仪恒驻
+// 逻辑步骤：ESC 关设置/回时钟 → 设置关闭沿提交代理 → current 镜像 →
+//   非 Clock/设置右抽屉（PageHeader + ScrollArea + Footer；固定 350；<760 全宽）→
+//   页面区星盘主仪恒驻
 // 设计理由（PL017）：时钟是「住在里面」的仪表——主仪永不下场，抽屉页是「查阅」
 //   用的临时面板；三段式让页脚添加控件永远可达；设置与四页同构，不再是三行浮窗
 // 异常处理：无 panic 面（页 id 固定五档，match 穷尽）

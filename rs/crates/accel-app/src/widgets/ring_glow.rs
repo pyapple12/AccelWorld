@@ -180,6 +180,27 @@ fn glow_painter(ui: &egui::Ui) -> egui::Painter {
     ui.painter().with_clip_rect(ui.ctx().content_rect())
 }
 
+/// 光晕可见区 = 当前 UI clip ∩ 窗口内容区（保留页面/抽屉自身的裁切）
+fn glow_clip(ui: &egui::Ui) -> egui::Rect {
+    ui.painter().clip_rect().intersect(ui.ctx().content_rect())
+}
+
+/// 回调 rect 与可见区求交（FIX013.15）：eframe/egui_glow 会把越界 viewport 的
+/// 负坐标夹到 0，若仍用原始 rect 归一化，shader 圆心会被向下挤——必须用夹取后的
+/// rect 重算 center_norm/size_px，与 paint_pill 的既有做法保持一致。
+fn clipped_callback_rect(full: egui::Rect, clip: egui::Rect) -> Option<egui::Rect> {
+    let rect = full.intersect(clip);
+    rect.is_positive().then_some(rect)
+}
+
+/// 圆心在回调 rect 内的归一化坐标（uv 原点左上、y 向下）
+fn callback_center_norm(center: egui::Pos2, rect: egui::Rect) -> egui::Pos2 {
+    egui::pos2(
+        (center.x - rect.left()) / rect.width(),
+        1.0 - (center.y - rect.top()) / rect.height(),
+    )
+}
+
 /// 在表盘位置排一次 GPU bloom（实环由调用方 CPU 绘制，GPU 只负责向外/向内的光晕）
 pub fn paint(
     ui: &egui::Ui,
@@ -192,11 +213,12 @@ pub fn paint(
     let ppp = ui.ctx().pixels_per_point();
     let pad = bloom * 3.0 + 8.0;
     let half = radius + thickness * 0.5 + pad;
-    let rect = egui::Rect::from_center_size(center, egui::vec2(half * 2.0, half * 2.0));
-    let center_norm = egui::pos2(
-        (center.x - rect.left()) / rect.width(),
-        1.0 - (center.y - rect.top()) / rect.height(),
-    );
+    let full = egui::Rect::from_center_size(center, egui::vec2(half * 2.0, half * 2.0));
+    let painter = glow_painter(ui);
+    let Some(rect) = clipped_callback_rect(full, glow_clip(ui)) else {
+        return;
+    };
+    let center_norm = callback_center_norm(center, rect);
     let size_px = egui::vec2(rect.width() * ppp, rect.height() * ppp);
     let radius_px = radius * ppp;
     let thickness_px = (thickness * ppp).max(1.0);
@@ -234,22 +256,30 @@ pub fn paint(
             }
         }
     });
-    glow_painter(ui).add(egui::PaintCallback {
+    painter.add(egui::PaintCallback {
         rect,
         callback: Arc::new(cb),
     });
 }
 
-/// 圆点底光（四正位数字）：一次 GPU 径向光斑
-pub fn paint_dot(ui: &egui::Ui, center: egui::Pos2, radius: f32, color: egui::Color32, bloom: f32) {
+/// 圆点底光（四正位数字）：一次 GPU 径向光斑；alpha 走 shader uniform（非预乘色）
+pub fn paint_dot(
+    ui: &egui::Ui,
+    center: egui::Pos2,
+    radius: f32,
+    color: egui::Color32,
+    alpha: f32,
+    bloom: f32,
+) {
     let ppp = ui.ctx().pixels_per_point();
     let pad = bloom * 4.6 + 2.0;
     let half = radius + pad;
-    let rect = egui::Rect::from_center_size(center, egui::vec2(half * 2.0, half * 2.0));
-    let center_norm = egui::pos2(
-        (center.x - rect.left()) / rect.width(),
-        1.0 - (center.y - rect.top()) / rect.height(),
-    );
+    let full = egui::Rect::from_center_size(center, egui::vec2(half * 2.0, half * 2.0));
+    let painter = glow_painter(ui);
+    let Some(rect) = clipped_callback_rect(full, glow_clip(ui)) else {
+        return;
+    };
+    let center_norm = callback_center_norm(center, rect);
     let size_px = egui::vec2(rect.width() * ppp, rect.height() * ppp);
     let radius_px = (radius * ppp).max(1.0);
     let bloom_px = (bloom * ppp).max(1.0);
@@ -278,7 +308,7 @@ pub fn paint_dot(ui: &egui::Ui, center: egui::Pos2, radius: f32, color: egui::Co
                 gl.uniform_1_f32(r.u_thickness.as_ref(), 1.0);
                 gl.uniform_3_f32(r.u_color.as_ref(), color_f[0], color_f[1], color_f[2]);
                 gl.uniform_1_f32(r.u_bloom.as_ref(), bloom_px);
-                gl.uniform_1_f32(r.u_alpha.as_ref(), 1.0);
+                gl.uniform_1_f32(r.u_alpha.as_ref(), alpha);
                 gl.uniform_1_f32(r.u_inset.as_ref(), 0.0);
                 gl.uniform_1_i32(r.u_mode.as_ref(), 2);
                 gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
@@ -286,7 +316,7 @@ pub fn paint_dot(ui: &egui::Ui, center: egui::Pos2, radius: f32, color: egui::Co
             }
         }
     });
-    glow_painter(ui).add(egui::PaintCallback {
+    painter.add(egui::PaintCallback {
         rect,
         callback: Arc::new(cb),
     });
@@ -297,6 +327,7 @@ pub fn paint_pill(
     half_size: egui::Vec2,
     radius: f32,
     color: egui::Color32,
+    alpha: f32,
     bloom: f32,
 ) {
     let ppp = ui.ctx().pixels_per_point();
@@ -304,15 +335,12 @@ pub fn paint_pill(
     let pad = bloom * 3.0 + 8.0;
     let half = half_size + egui::vec2(pad, pad);
     let full = egui::Rect::from_center_size(center, half * 2.0);
+    let painter = glow_painter(ui);
     // 回调 rect 夹到可见区：越界时 viewport 与 SDF 坐标错位会把透明内部写成黑胶囊
-    let rect = full.intersect(ui.painter().clip_rect());
-    if !rect.is_positive() {
+    let Some(rect) = clipped_callback_rect(full, glow_clip(ui)) else {
         return;
-    }
-    let center_norm = egui::pos2(
-        (center.x - rect.left()) / rect.width(),
-        1.0 - (center.y - rect.top()) / rect.height(),
-    );
+    };
+    let center_norm = callback_center_norm(center, rect);
     let size_px = egui::vec2(rect.width() * ppp, rect.height() * ppp);
     let half_px = egui::vec2(half_size.x * ppp, half_size.y * ppp);
     let radius_px = (radius * ppp).max(1.0);
@@ -342,7 +370,7 @@ pub fn paint_pill(
                 gl.uniform_1_f32(r.u_thickness.as_ref(), 1.0);
                 gl.uniform_3_f32(r.u_color.as_ref(), color_f[0], color_f[1], color_f[2]);
                 gl.uniform_1_f32(r.u_bloom.as_ref(), bloom_px);
-                gl.uniform_1_f32(r.u_alpha.as_ref(), 1.0);
+                gl.uniform_1_f32(r.u_alpha.as_ref(), alpha);
                 gl.uniform_1_f32(r.u_inset.as_ref(), 0.0);
                 gl.uniform_1_i32(r.u_mode.as_ref(), 1);
                 gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
@@ -350,7 +378,7 @@ pub fn paint_pill(
             }
         }
     });
-    glow_painter(ui).add(egui::PaintCallback {
+    painter.add(egui::PaintCallback {
         rect,
         callback: Arc::new(cb),
     });
@@ -588,7 +616,11 @@ pub fn paint_ticks(
     }
     let pad = 10.0_f32;
     let half = radius + pad;
-    let rect = egui::Rect::from_center_size(center, egui::vec2(half * 2.0, half * 2.0));
+    let full = egui::Rect::from_center_size(center, egui::vec2(half * 2.0, half * 2.0));
+    let painter = glow_painter(ui);
+    let Some(rect) = clipped_callback_rect(full, glow_clip(ui)) else {
+        return;
+    };
     let origin = [rect.min.x, rect.min.y];
     let size = [rect.width(), rect.height()];
     let mut verts: Vec<f32> = Vec::with_capacity(ticks.len() * 6 * 11);
@@ -644,10 +676,31 @@ pub fn paint_ticks(
             }
         }
     });
-    glow_painter(ui).add(egui::PaintCallback {
+    painter.add(egui::PaintCallback {
         rect,
         callback: Arc::new(cb),
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn callback_rect_clamps_negative_top_and_keeps_center_mapping() {
+        // FIX013.15：full 上沿为负时，夹取后的 rect 必须从 0 开始；
+        // center_norm 按夹取后 rect 计算，圆心不会被 viewport 夹取挤下去
+        let full = egui::Rect::from_min_max(egui::pos2(10.0, -30.0), egui::pos2(210.0, 170.0));
+        let clip = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(200.0, 150.0));
+        let rect = clipped_callback_rect(full, clip).expect("应有交集");
+        assert_eq!(rect.top(), 0.0);
+        assert_eq!(rect.bottom(), 150.0);
+        let center = egui::pos2(110.0, 70.0);
+        let norm = callback_center_norm(center, rect);
+        assert!((norm.x - 100.0 / 190.0).abs() < 1e-5);
+        assert!((norm.y - (1.0 - 70.0 / 150.0)).abs() < 1e-5);
+        assert!(clipped_callback_rect(full, egui::Rect::NOTHING).is_none());
+    }
 }
 
 // ===== src/widgets/ring_glow.rs 说明区 =====

@@ -77,7 +77,9 @@ pub struct AppHandle {
     /// PL018.06 首帧门控：隐藏创建，完成 1 帧（或 250ms 看门狗）后再显示
     first_show_done: bool,
     frames_seen: u32,
-    /// PL029：天气城市跟随 hero——记录已绑定的城市、首次强制刷新标记与半小时节拍
+    /// FIX013.28：自行发 Visible(false) 隐藏到托盘（ViewportInfo.visible 不反映该状态）
+    window_hidden: bool,
+    /// PL029：天气城市跟随 hero——记录已绑定城市、首次强制刷新标记与自动刷新节拍
     weather_city_seen: String,
     weather_first_fetch_done: bool,
     weather_auto_next: std::time::Instant,
@@ -109,7 +111,7 @@ impl eframe::App for AppHandle {
         self.bus.drain(&mut self.state);
         // 节日快照：启动/跨日从后端拉取，前端只读
         refresh_festivals(&self.iface, &mut self.state);
-        // PL029：天气城市跟随 hero + 启动/半小时刷新
+        // PL029：天气城市跟随 hero + 启动/自动刷新节拍
         self.weather_tick();
         // 托盘/热键事件轮询（命令可能触发 viewport 命令，经 ctx 队列）
         self.poll_platform(ctx);
@@ -119,11 +121,23 @@ impl eframe::App for AppHandle {
         self.push_tray_status();
         self.repaint_count
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        // FIX013.01：最小化/被完全遮挡时 eframe 只跑 logic、不跑 ui，ui 末尾的
+        // request_repaint_after 不再执行——必须由 logic 自预约下一帧，否则事件循环
+        // Wait，bus.drain/托盘/闹钟全部停摆。仅在“不可见”时补，正常空闲仍走 1s 节奏。
+        if let Some(interval) =
+            logic_heartbeat_interval(ctx.input(|i| i.viewport().visible()), self.window_hidden)
+        {
+            ctx.request_repaint_after(interval);
+        }
     }
 
     /// 帧绘制：悬浮仪器坞 → 页总装 → toast → 重绘节奏（PL017 装配）
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        // FIX013.28：隐藏到托盘时只保留 logic 心跳，不做全量绘制
+        if self.window_hidden {
+            return;
+        }
         crate::text_probe::maybe_run_matrix(&ctx);
         // PL018.06 首帧门控：隐藏创建；完成 1 帧（首帧已 present）或 250ms 兜底后再显示。
         // 看门狗线程负责“隐藏窗口不派发首帧”的死角（见 run_with_counter）。
@@ -139,6 +153,7 @@ impl eframe::App for AppHandle {
             );
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            self.window_hidden = false;
         }
         // PL017.01：首帧按当前显示器工作区夹取窗口（存档可能来自更大屏幕/旧 DPI）
         self.clamp_window_once(&ctx);
@@ -191,7 +206,7 @@ impl eframe::App for AppHandle {
             },
         ];
         // 页面区 / 底部坞显式分带（PL019）：页面先画、坞后画，互不覆盖
-        // 200ms 边距规范：整体内容距客户区上下左右 10px；先铺满窗底，避免边距露黑
+        // 内容内缩：整体距客户区四边 window_content_inset；先铺满窗底避免露黑
         let full = {
             let size = ui.ctx().input(|i| {
                 i.viewport()
@@ -259,6 +274,11 @@ impl eframe::App for AppHandle {
     }
 }
 
+/// 窗口标题（AGENTS：标题读 version 单一来源）
+fn window_title(version: &str) -> String {
+    format!("天宫时计 · V{version}")
+}
+
 /// 页 → 导航图标（纯函数可测）
 fn sidebar_icon(page: PageId) -> crate::widgets::icons::Icon {
     match page {
@@ -314,7 +334,7 @@ impl AppHandle {
             self.send_weather_refresh(city, force);
         } else if auto_secs > 0 && now >= self.weather_auto_next {
             self.weather_auto_next = now + std::time::Duration::from_secs(auto_secs);
-            tracing::info!("天气半小时自动刷新: {city}");
+            tracing::info!("天气自动刷新: {city}");
             self.send_weather_refresh(city, true);
         }
     }
@@ -334,7 +354,14 @@ impl AppHandle {
         if self.geometry_clamped {
             return;
         }
-        let Some(monitor) = ctx.input(|i| i.viewport().monitor_size) else {
+        // FIX013.12：按存档落点找所在显示器的 rcWork（含原点/负坐标）；
+        // 非 Windows 或查询失败时回退 egui 的当前显示器尺寸（原点 0,0）
+        let ppp = ctx.pixels_per_point();
+        let work = monitor_work_area(self.initial_geometry, ppp).or_else(|| {
+            ctx.input(|i| i.viewport().monitor_size)
+                .map(|m| (0.0, 0.0, m.x, m.y))
+        });
+        let Some(work) = work else {
             return;
         };
         let min = (
@@ -342,7 +369,7 @@ impl AppHandle {
             accel_core::static_config::Static::get().base_f64("window_min_height") as f32,
         );
         let (sx, sy, sw, sh) = self.initial_geometry;
-        let (x, y, w, h) = clamp_geometry_to_monitor(self.initial_geometry, monitor, min);
+        let (x, y, w, h) = clamp_geometry_to_monitor(self.initial_geometry, work, min);
         if (w - sw).abs() > 1.0 || (h - sh).abs() > 1.0 {
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(w, h)));
         }
@@ -411,6 +438,7 @@ impl AppHandle {
         {
             self.probe_hide_done = true;
             probe_note(&format!("[PROBE] hidden {}", self.probe_fingerprint()));
+            self.window_hidden = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
         if let Some(secs) = self.probe_show_secs
@@ -419,6 +447,8 @@ impl AppHandle {
         {
             self.probe_show_done = true;
             probe_note(&format!("[PROBE] shown {}", self.probe_fingerprint()));
+            self.window_hidden = false;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
         }
@@ -439,28 +469,43 @@ impl AppHandle {
             return;
         }
         let close_requested = ctx.input(|i| i.viewport().close_requested());
-        // A005 #7：托盘与热键同时缺失时"隐藏驻留"即无出口死路（唯一可置退出请求的
-        // 通道全部不存在）——此时关闭按钮直接升级为退出请求，走下方退出序列
-        if close_requested
-            && close_action(self.tray.is_some(), self.hotkeys.is_some()) == CloseAction::Quit
-        {
+        // A005 #7 / FIX013.10：只有托盘能恢复窗口；无托盘时关闭按钮直接升级为退出，
+        // 不再把“仅有 Ctrl+S”当成隐藏驻留的出口
+        let has_tray = self.tray.is_some();
+        if close_requested && close_action(has_tray) == CloseAction::Quit {
             self.quit_requested = true;
+        }
+        if close_requested && has_tray {
+            let has_quit_hotkey = self.hotkeys.as_ref().is_some_and(|h| h.has_quit());
+            if !has_quit_hotkey {
+                tracing::info!("退出热键未注册，可通过托盘菜单退出");
+            }
         }
         if self.quit_requested && !self.quit_sent {
             // A005 #28：先发 SaveNow，待回执或超时后再发 Quit+Close——原实现 SaveNow
             // 后立即 Close，runtime drop 可能取消尚未处理的命令（保存非确定性）
             match self.exit_save_started {
                 None => {
+                    // FIX013.10：先取消本次系统 Close，否则 eframe 同帧关窗，
+                    // SaveNow 300ms 回执/Quit 均来不及执行
+                    if close_requested {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                    }
                     self.exit_save_started = Some(std::time::Instant::now());
                     // UIR.7：退出前存档窗口几何（外框矩形 "x,y,w,h"；无外框信息跳过）
                     // FIX011.19：最小化态跳过——Windows 最小化窗口 OS 矩形惯例
                     // (-32000,-32000)，存档将被 parse_window_geometry 越域拒绝
-                    // （走「保存失败」误弹链且几何未被存档）
+                    // FIX013.11：最大化态同样跳过——inner=屏幕宽，重启会被误判超屏
                     let minimized = ctx.input(|i| i.viewport().minimized) == Some(true);
+                    let maximized = ctx.input(|i| i.viewport().maximized) == Some(true);
                     let inner = ctx.input(|i| i.viewport().inner_rect);
-                    if !minimized
-                        && !self.test_no_save
-                        && let Some(outer) = ctx.input(|i| i.viewport().outer_rect)
+                    let outer = ctx.input(|i| i.viewport().outer_rect);
+                    if should_save_geometry(
+                        minimized,
+                        maximized,
+                        self.test_no_save,
+                        outer.is_some(),
+                    ) && let Some(outer) = outer
                     {
                         // PL017.01：保存 inner 尺寸（含标题栏的 outer 会把窗口逐次撑大）
                         let (gw, gh) = inner
@@ -499,6 +544,7 @@ impl AppHandle {
         // 倍率等改动经 ApplyRate 内聚实时落盘）
         if !self.quit_sent && close_requested {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.window_hidden = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
     }
@@ -539,6 +585,8 @@ impl AppHandle {
                     self.close_attempt,
                     sent.elapsed()
                 );
+                self.window_hidden = false;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                 self.send_close(ctx);
@@ -676,10 +724,14 @@ impl AppHandle {
     fn apply_platform_action(&mut self, ctx: &Context, action: PlatformAction) {
         match action {
             PlatformAction::ShowWindow => {
+                // FIX013.01：最小化态只发 Visible 不会还原窗口，必须先取消最小化
+                self.window_hidden = false;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             }
             PlatformAction::HideWindow => {
+                self.window_hidden = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
             }
             PlatformAction::SaveNow => self.bus.send(FrontendCommand::SaveNow),
@@ -697,21 +749,41 @@ fn probe_note(msg: &str) {
 /// 退出前保存超时（A005 #28：回执未到时的放行上限——防后端失联导致永不退出）
 const EXIT_SAVE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(300);
 
+/// 不可见期 logic 心跳（FIX013.01）：最小化/完全遮挡时 ui 不跑，logic 必须自预约
+fn logic_heartbeat_interval(
+    visible: Option<bool>,
+    hidden_to_tray: bool,
+) -> Option<std::time::Duration> {
+    (hidden_to_tray || visible == Some(false)).then_some(std::time::Duration::from_millis(200))
+}
+
+/// 是否保存窗口几何（FIX013.11）：最小化矩形不可信；最大化 inner=屏幕宽，
+/// 重启会被误判超屏并回落最小尺寸——两态都跳过，保留上一次普通尺寸存档
+fn should_save_geometry(
+    minimized: bool,
+    maximized: bool,
+    test_no_save: bool,
+    has_outer: bool,
+) -> bool {
+    !minimized && !maximized && !test_no_save && has_outer
+}
+
 /// 退出保存放行判定（A005 #28 纯逻辑）：收到保存回执或等待超时即放行 Close
 fn exit_ready(save_ack: bool, waited: std::time::Duration, timeout: std::time::Duration) -> bool {
     save_ack || waited >= timeout
 }
 
-/// 关闭请求的处置（A005 #7 纯逻辑）：有托盘或热键 → 隐藏驻留；两者皆无 → 退出
+/// 关闭请求的处置（A005 #7 / FIX013.10）：只有托盘能恢复窗口；无托盘一律退出
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CloseAction {
     HideToTray,
     Quit,
 }
 
-/// 关闭按钮处置判定（A005 #7：无平台集成时不得隐藏驻留，否则无恢复/退出通道）
-pub fn close_action(has_tray: bool, has_hotkey: bool) -> CloseAction {
-    if has_tray || has_hotkey {
+/// 关闭按钮处置判定（FIX013.10：热键只能退出/保存，不能恢复隐藏窗口——
+/// 因此“有热键”不构成隐藏驻留的出口；无托盘时直接走退出序列）
+pub fn close_action(has_tray: bool) -> CloseAction {
+    if has_tray {
         CloseAction::HideToTray
     } else {
         CloseAction::Quit
@@ -747,25 +819,70 @@ pub fn parse_expect_pos(raw: &str) -> Option<(f32, f32)> {
     Some((x.trim().parse().ok()?, y.trim().parse().ok()?))
 }
 
-/// 启动几何（PL024）：尺寸任一方向超出屏幕可用值 → 直接用最小尺寸；否则保持
-/// 启动尺寸；位置夹到可见区；返回 (x,y,w,h)。显示器未知时调用方跳过。
+/// 启动几何（PL024 / FIX013.12）：尺寸任一方向超出工作区 → 直接用最小尺寸；
+/// 否则保持启动尺寸；位置夹到工作区（含原点，支持副屏负坐标）；返回 (x,y,w,h)。
+/// 显示器未知时调用方跳过。
 pub fn clamp_geometry_to_monitor(
     saved: (f32, f32, f32, f32),
-    monitor: Vec2,
+    work: (f32, f32, f32, f32),
     min: (f32, f32),
 ) -> (f32, f32, f32, f32) {
     let (sx, sy, sw, sh) = saved;
-    let avail_w = (monitor.x - 48.0).max(min.0);
-    let avail_h = (monitor.y - 110.0).max(min.1);
+    let (wx, wy, ww, wh) = work;
+    let avail_w = (ww - 48.0).max(min.0);
+    let avail_h = (wh - 110.0).max(min.1);
     let mut w = sw.max(min.0);
     let mut h = sh.max(min.1);
     if w > avail_w || h > avail_h {
         w = min.0;
         h = min.1;
     }
-    let x = sx.clamp(24.0, (monitor.x - w - 24.0).max(24.0));
-    let y = sy.clamp(24.0, (monitor.y - h - 48.0).max(24.0));
+    let min_x = wx + 24.0;
+    let max_x = (wx + ww - w - 24.0).max(min_x);
+    let min_y = wy + 24.0;
+    let max_y = (wy + wh - h - 48.0).max(min_y);
+    let x = sx.clamp(min_x, max_x);
+    let y = sy.clamp(min_y, max_y);
     (x, y, w, h)
+}
+
+/// 存档落点所在显示器的逻辑工作区 (x,y,w,h)（FIX013.12）
+/// Win32 rcWork 是物理像素；坐标与尺寸按当前 ppp 换回逻辑点
+#[cfg(windows)]
+fn monitor_work_area(saved: (f32, f32, f32, f32), ppp: f32) -> Option<(f32, f32, f32, f32)> {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint,
+    };
+    let ppp = ppp.max(0.01);
+    let point = POINT {
+        x: (saved.0 * ppp).round() as i32,
+        y: (saved.1 * ppp).round() as i32,
+    };
+    let monitor = unsafe { MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST) };
+    if monitor.is_invalid() {
+        return None;
+    }
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    if !unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
+        return None;
+    }
+    let rc = info.rcWork;
+    Some((
+        rc.left as f32 / ppp,
+        rc.top as f32 / ppp,
+        (rc.right - rc.left) as f32 / ppp,
+        (rc.bottom - rc.top) as f32 / ppp,
+    ))
+}
+
+/// 非 Windows：无工作区原点信息，回退调用方的 monitor_size
+#[cfg(not(windows))]
+fn monitor_work_area(_saved: (f32, f32, f32, f32), _ppp: f32) -> Option<(f32, f32, f32, f32)> {
+    None
 }
 
 /// 启动快照填充（A005 #2）：列表域显式拉取——core 的 spawn 首帧只推 Tick，
@@ -917,7 +1034,7 @@ fn capture_window_png(_hwnd: isize, _path: &std::path::Path) -> bool {
 }
 
 /// 标题栏底色钉制（UIR：系统「标题栏强调色」设置会盖掉深浅跟随——
-/// DWMWA_CAPTION_COLOR 显式设为侧栏底色，标题栏与界面同体）
+/// DWMWA_CAPTION_COLOR 显式设为页面底色，标题栏与界面同体）
 /// A008 #12：失败去抖留痕一次（Win10 <22000 不支持该属性恒失败——
 /// 原双 `let _ =` 完全静默，标题栏不同色时无从诊断）
 #[cfg(windows)]
@@ -987,10 +1104,17 @@ pub fn run_with_counter(
     let ui_shot_dir = std::env::var("ACCELWORLD_UI_SHOT")
         .ok()
         .map(std::path::PathBuf::from);
+    if let Some(dir) = &ui_shot_dir
+        && let Err(e) = std::fs::create_dir_all(dir)
+    {
+        tracing::warn!("UI 截图目录创建失败: {}（{e}）", dir.display());
+    }
     // PL018.01 探针卫生/观测开关：
     //   TEST_NO_SAVE=1 退出不写用户窗口存档；EXPECT_POS="x,y" 打印落点偏差；
     //   EARLY_SHOT_MS=n 到点抓一帧即退（需 UI_SHOT 目录，用于热启动黑窗采样）
-    let test_no_save = std::env::var("ACCELWORLD_TEST_NO_SAVE").is_ok_and(|v| v == "1");
+    // UI_SHOT 是开发期探针：自动豁免窗口几何存档，避免覆盖用户落点
+    let test_no_save =
+        std::env::var("ACCELWORLD_TEST_NO_SAVE").is_ok_and(|v| v == "1") || ui_shot_dir.is_some();
     let probe_expect_pos = std::env::var("ACCELWORLD_EXPECT_POS")
         .ok()
         .and_then(|v| parse_expect_pos(&v));
@@ -1051,7 +1175,9 @@ pub fn run_with_counter(
         ))
         // PL018.06：隐藏创建，首帧门控后再显示（防 GPU 热释放后的首帧黑窗）
         .with_visible(false)
-        .with_title("天宫时计 · ACCELWORLD Clock");
+        .with_title(window_title(
+            accel_core::static_config::Static::get().version(),
+        ));
     if let Ok(icon) =
         eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/accelworld-tray.png"))
     {
@@ -1138,6 +1264,7 @@ pub fn run_with_counter(
                 early_shot_done: false,
                 first_show_done: false,
                 frames_seen: 0,
+                window_hidden: false,
                 weather_city_seen: String::new(),
                 weather_first_fetch_done: false,
                 weather_auto_next: std::time::Instant::now(),
@@ -1327,7 +1454,7 @@ mod tests {
 
     #[test]
     fn sidebar_icon_label_matrix() {
-        // 五页导航图标/文字矩阵（导航语义锚点——替代原 dock 矩阵测试）
+        // 五页坞图标/文字矩阵（导航语义锚点——替代原 dock 矩阵测试）
         assert_eq!(
             sidebar_icon(PageId::Clock),
             crate::widgets::icons::Icon::Clock
@@ -1359,6 +1486,38 @@ mod tests {
         assert_eq!(parse_expect_pos("-12.5,3"), Some((-12.5, 3.0)));
         assert_eq!(parse_expect_pos("80"), None);
         assert_eq!(parse_expect_pos("a,b"), None);
+    }
+
+    #[test]
+    fn maximized_and_minimized_skip_geometry_save() {
+        // FIX013.11：最大化/最小化都不写几何；普通态、有外框、非探针才写
+        assert!(!should_save_geometry(false, true, false, true));
+        assert!(!should_save_geometry(true, false, false, true));
+        assert!(!should_save_geometry(false, false, true, true));
+        assert!(!should_save_geometry(false, false, false, false));
+        assert!(should_save_geometry(false, false, false, true));
+    }
+
+    #[test]
+    fn logic_heartbeat_only_when_invisible() {
+        // FIX013.01：只有最小化/完全遮挡才补心跳；正常可见空闲仍由 ui 的 1s 节奏兜底
+        assert_eq!(
+            logic_heartbeat_interval(Some(false), false),
+            Some(std::time::Duration::from_millis(200))
+        );
+        assert_eq!(logic_heartbeat_interval(Some(true), false), None);
+        assert_eq!(logic_heartbeat_interval(None, false), None);
+        // 隐藏到托盘时 ViewportInfo.visible 仍为 true，必须由自有标志补心跳
+        assert_eq!(
+            logic_heartbeat_interval(Some(true), true),
+            Some(std::time::Duration::from_millis(200))
+        );
+    }
+
+    #[test]
+    fn window_title_reads_version() {
+        // FIX013.30：标题版本单一来源，不再固定写死
+        assert_eq!(window_title("0.6.6.6"), "天宫时计 · V0.6.6.6");
     }
 
     #[test]
@@ -1406,49 +1565,53 @@ mod tests {
 
     #[test]
     fn startup_geometry_uses_min_when_oversized() {
-        // PL024：1550×1058 存档在 1536×816 逻辑屏上任一方向超出 → 560×420
-        let (x, y, w, h) = clamp_geometry_to_monitor(
-            (-7.0, -7.0, 1550.0, 1058.0),
-            Vec2::new(1536.0, 816.0),
-            (560.0, 420.0),
-        );
+        let primary = (0.0, 0.0, 1536.0, 816.0);
+        // PL024：1550×1058 存档在 1536×816 工作区上任一方向超出 → 560×420
+        let (x, y, w, h) =
+            clamp_geometry_to_monitor((-7.0, -7.0, 1550.0, 1058.0), primary, (560.0, 420.0));
         assert_eq!((x, y, w, h), (24.0, 24.0, 560.0, 420.0));
 
         // 正常存档不被改写
-        let (x, y, w, h) = clamp_geometry_to_monitor(
-            (100.0, 100.0, 900.0, 500.0),
-            Vec2::new(1536.0, 816.0),
-            (560.0, 420.0),
-        );
+        let (x, y, w, h) =
+            clamp_geometry_to_monitor((100.0, 100.0, 900.0, 500.0), primary, (560.0, 420.0));
         assert_eq!((x, y, w, h), (100.0, 100.0, 900.0, 500.0));
 
         // 仅宽度超出 → 最小尺寸
-        let (_, _, w, h) = clamp_geometry_to_monitor(
-            (100.0, 100.0, 1600.0, 500.0),
-            Vec2::new(1536.0, 816.0),
-            (560.0, 420.0),
-        );
+        let (_, _, w, h) =
+            clamp_geometry_to_monitor((100.0, 100.0, 1600.0, 500.0), primary, (560.0, 420.0));
         assert_eq!((w, h), (560.0, 420.0));
 
         // 仅高度超出 → 最小尺寸
-        let (_, _, w, h) = clamp_geometry_to_monitor(
-            (100.0, 100.0, 900.0, 800.0),
-            Vec2::new(1536.0, 816.0),
-            (560.0, 420.0),
-        );
+        let (_, _, w, h) =
+            clamp_geometry_to_monitor((100.0, 100.0, 900.0, 800.0), primary, (560.0, 420.0));
         assert_eq!((w, h), (560.0, 420.0));
     }
 
     #[test]
+    fn secondary_monitor_origin_is_respected() {
+        // FIX013.12：右副屏 x=2000、左副屏负坐标都不得被夹回主屏
+        let right = (2000.0, 0.0, 1920.0, 1080.0);
+        let (x, y, w, h) =
+            clamp_geometry_to_monitor((2400.0, 100.0, 900.0, 700.0), right, (560.0, 420.0));
+        assert_eq!((x, y, w, h), (2400.0, 100.0, 900.0, 700.0));
+        let left = (-1920.0, 0.0, 1920.0, 1080.0);
+        let (x, _, _, _) =
+            clamp_geometry_to_monitor((-1700.0, 100.0, 900.0, 700.0), left, (560.0, 420.0));
+        assert_eq!(x, -1700.0);
+        // 越出右副屏右缘 → 夹到该屏内，而不是主屏
+        let (x, _, _, _) =
+            clamp_geometry_to_monitor((3800.0, 100.0, 900.0, 700.0), right, (560.0, 420.0));
+        assert_eq!(x, 2996.0);
+    }
+
+    #[test]
     fn close_action_avoids_dead_end() {
-        // A005 #7 回归：有托盘/热键 → 隐藏驻留；两者皆无 → 直接退出（无出口死路防护）
-        assert_eq!(close_action(true, true), CloseAction::HideToTray);
-        assert_eq!(close_action(true, false), CloseAction::HideToTray);
-        assert_eq!(close_action(false, true), CloseAction::HideToTray);
+        // FIX013.10：只有托盘能恢复窗口；无托盘（即使有退出热键）关闭即退出
+        assert_eq!(close_action(true), CloseAction::HideToTray);
         assert_eq!(
-            close_action(false, false),
+            close_action(false),
             CloseAction::Quit,
-            "无平台集成应退出"
+            "无托盘时隐藏无恢复通道，必须退出"
         );
     }
 
@@ -1563,8 +1726,8 @@ mod tests {
 //   尺寸下限 + 存档几何优先恢复）→ run_native（create_app：主题 apply/fonts/state
 //   装配 + 托盘/热键挂接 → AppHandle）→ logic（drain → 平台事件 → 探针时序 →
 //   退出/驻留 → 托盘状态）→ ui（仪器坞 → 页总装（抽屉+主仪） → toast → 设置
-//   浮窗 → 截图探针 → 节奏）
-// 设计理由：drain→部件→节奏对齐 z.plan A 节主循环骨架（UIR 重塑后背板为 CentralPanel
+//   抽屉 → 截图探针 → 节奏）
+// 设计理由：drain→部件→节奏对齐 z.plan A 节主循环骨架（UIR4 页面区 + 星盘主仪 + 抽屉）
 //   实心 window_bg，玻璃面注册/acrylic/透明 viewport 整体废弃——A008 #6 说明区
 //   随实心现状重写）；**隐藏期不重绘但 logic 仍逐轮驱动**——视口命令（托盘恢复/
 //   退出/探针）与托盘状态推送一律落在 logic，落在 ui 会在隐藏驻留后失效（.01 真窗
@@ -1577,7 +1740,7 @@ mod tests {
 //   tray_action/hotkey_action 归一到 PlatformAction，再由 apply_platform_action 汇合
 //   应用（窗口/命令出口唯一入口——映射可单测，无须真实托盘/热键；A008 #2 起
 //   CycleTheme 退役，PlatformAction 仅 Show/Hide/SaveNow/Quit）
-// 标题栏钉色（UIR）：DWMWA_CAPTION_COLOR/BORDER_COLOR 显式设侧栏底色（系统
+// 标题栏钉色（UIR）：DWMWA_CAPTION_COLOR/BORDER_COLOR 显式设页面底色（系统
 //   「标题栏强调色」会盖深浅跟随）；A008 #2 定案仅深色恒钉深色；失败去抖留痕一次
 //   （A008 #12，Win10 <22000 不支持该属性）
 // 探针通路：ACCELWORLD_HIDE_AFTER / ACCELWORLD_SHOW_AFTER / ACCELWORLD_FPS_PROBE /

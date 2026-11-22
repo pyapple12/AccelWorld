@@ -149,7 +149,6 @@ mod tests {
             (20.0, 19.5),
             (28.0, 27.5),
             (40.0, 39.0),
-            (72.0, 70.0),
         ] {
             let p = get().for_size(size);
             assert_eq!(p.size, size);
@@ -171,7 +170,6 @@ mod tests {
             (20.0, 15.5),
             (28.0, 22.0),
             (40.0, 31.0),
-            (72.0, 55.0),
         ] {
             let p = get().for_size(size);
             assert!(
@@ -179,6 +177,67 @@ mod tests {
                 "{size} -> {} want {want}",
                 p.h_latin
             );
+        }
+    }
+
+    #[test]
+    fn scale_and_profile_sizes_agree() {
+        // FIX013.18：scale.* 字号与 font_profile.sizes.*.size 必须同源；
+        // profile 额外含 readout_* 档，按 scale 的键逐个核对
+        let static_cfg = Static::get();
+        let scale = static_cfg
+            .ui
+            .get("scale")
+            .and_then(Value::as_object)
+            .expect("ui.json scale");
+        let active = static_cfg
+            .ui
+            .pointer("/font_profile/active")
+            .and_then(Value::as_str)
+            .expect("font_profile.active");
+        let sizes = static_cfg
+            .ui
+            .pointer(&format!("/font_profile/profiles/{active}/sizes"))
+            .and_then(Value::as_object)
+            .expect("font_profile.sizes");
+        for (key, size) in scale {
+            let want = size.as_f64().expect("scale 数值");
+            let got = sizes
+                .get(key)
+                .and_then(|v| v.get("size"))
+                .and_then(Value::as_f64)
+                .unwrap_or(f64::NAN);
+            assert_eq!(got, want, "scale.{key} 与 profile.{key}.size 不一致");
+        }
+    }
+
+    #[test]
+    fn cjk_ink_grids_derives_trim() {
+        // FIX013.18：cjk_ink_grids 是 trim_grids 的实测来源，必须可反推
+        let grid = get().grid();
+        let static_cfg = Static::get();
+        let active = static_cfg
+            .ui
+            .pointer("/font_profile/active")
+            .and_then(Value::as_str)
+            .expect("font_profile.active");
+        let sizes = static_cfg
+            .ui
+            .pointer(&format!("/font_profile/profiles/{active}/sizes"))
+            .and_then(Value::as_object)
+            .expect("font_profile.sizes");
+        for (key, value) in sizes {
+            let size = value.get("size").and_then(Value::as_f64).expect("size");
+            let cjk = value
+                .get("cjk_ink_grids")
+                .and_then(Value::as_f64)
+                .expect("cjk_ink_grids");
+            let trim = value
+                .get("trim_grids")
+                .and_then(Value::as_f64)
+                .expect("trim_grids");
+            let derived = (size / grid as f64 - cjk).round();
+            assert_eq!(trim, derived, "{key}: trim_grids 与 cjk_ink_grids 不一致");
         }
     }
 
@@ -232,7 +291,7 @@ mod tests {
     #[test]
     fn dynamic_size_uses_nearest() {
         assert_eq!(get().for_size(56.3).size, 56.0);
-        assert_eq!(get().for_size(70.0).size, 72.0);
+        assert_eq!(get().for_size(70.0).size, 56.0);
     }
 }
 

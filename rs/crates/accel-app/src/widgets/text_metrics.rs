@@ -89,7 +89,7 @@ mod tests {
     #[test]
     fn box_height_matches_profile() {
         let ctx = Context::default();
-        for (size, want) in [(12.0, 11.5), (16.0, 15.5), (20.0, 19.5), (72.0, 70.0)] {
+        for (size, want) in [(12.0, 11.5), (16.0, 15.5), (20.0, 19.5), (40.0, 39.0)] {
             let font = FontId::proportional(size);
             let got = height(&ctx, &font, InkKind::Cjk);
             assert!((got - want).abs() < 1e-5, "{size} -> {got}, want {want}");

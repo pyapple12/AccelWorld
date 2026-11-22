@@ -9,29 +9,25 @@ use crate::world_search::WorldCityEntry;
 
 /// 时间信息快照（Python TimeInfo dataclass 镜像）
 /// 时间域字段随 PL011.10 落地；chinese_date/lunar_info 农历域字段随 PL012 扩入
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TimeInfo {
     /// 标准日期时间字符串（"YYYY-MM-DD HH:MM:SS"，本地墙钟）
     pub standard_datetime: String,
     /// 自定义（加速）时间字符串（"HH:MM:SS"，小时可超 24，整数日长回绕）
     pub custom_time: String,
-    /// 中文日期字符串（"YYYY年MM月DD日 星期X"，PL012 扩入，标准秒缓存）
-    #[serde(default)]
+    /// 中文日期字符串（"YYYY年MM月DD日 星期X"，PL012 扩入，按日缓存）
     pub chinese_date: String,
-    /// 农历展示文本（拼装契约见 chinese_calendar，PL012 扩入，标准秒缓存）
-    #[serde(default)]
+    /// 农历展示文本（拼装契约见 chinese_calendar，PL012 扩入，按日缓存 + 时辰现算）
     pub lunar_info: String,
-    /// 今日宜（黄历，PL020 扩入；旧夹具缺省为空表）
-    #[serde(default)]
+    /// 当前时辰（由墙钟小时现算，不受日缓存影响）
+    pub lunar_shichen: String,
+    /// 今日宜（黄历，PL020 扩入）
     pub lunar_yi: Vec<String>,
-    /// 今日忌（黄历，PL020 扩入；旧夹具缺省为空表）
-    #[serde(default)]
+    /// 今日忌（黄历，PL020 扩入）
     pub lunar_ji: Vec<String>,
     /// 今日节气（无则空串，页头日期 tooltip 用）
-    #[serde(default)]
     pub lunar_jieqi: String,
     /// 今日节日（无则空串，页头日期 tooltip 用）
-    #[serde(default)]
     pub lunar_festival: String,
     /// 时间膨胀倍率百分比（rate × 100）
     pub dilation_percentage: f64,
@@ -43,22 +39,6 @@ pub struct TimeInfo {
     pub day_hours: i64,
     /// 刷新周期毫秒（min(clock_tick_ms, 1000/rate)，下钳 1）
     pub tick_ms: i64,
-}
-
-impl TimeInfo {
-    /// 标准时间的 HH:MM:SS 部分（Python property 对等：显示用避免调用点 split）
-    pub fn standard_time(&self) -> &str {
-        self.standard_datetime.split(' ').nth(1).unwrap_or("")
-    }
-
-    /// 自定义时间小时数（Python property 对等：进度条用）
-    pub fn custom_hour(&self) -> i64 {
-        self.custom_time
-            .split(':')
-            .next()
-            .and_then(|h| h.parse().ok())
-            .unwrap_or(0)
-    }
 }
 
 /// 逐小时点（PL014.11）
@@ -116,15 +96,13 @@ pub struct WeatherData {
     pub daily: Vec<DailyPoint>,
 }
 
-/// UI 会话偏好快照（Python UiPreferences dataclass 镜像）
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+/// UI 会话偏好快照（现役字段；Python 旧倒计时字段已按 FIX013.05 删除）
+#[derive(Debug, Clone, PartialEq)]
 pub struct UiPreferences {
     /// 主题偏好三态（auto=跟随系统/light/dark；非法值由接口归一化回退默认）
     pub theme: String,
     /// 天气城市持久化镜像（PL029：跟随世界页 hero；缺省回退 default_city）
     pub last_city: String,
-    /// 上次设置的倒计时目标文本（未设置为空串）
-    pub countdown_target: String,
     /// 世界时钟 hero 城市（PL028）
     pub world_hero_city: String,
     /// 天气是否允许使用代理（PL027；false=仅直连）
@@ -180,7 +158,7 @@ pub enum FrontendCommand {
     },
     /// 世界时钟城市搜索（PL028；本地命中/缓存/geocoding 异步回推）
     SearchWorldCity(String),
-    /// 添加世界城市（内置 50 城）
+    /// 添加世界城市（291 城 SQLite 主表）
     AddWorldCity(String),
     /// 添加 geocoding 自定义城市（PL028；落 SQLite custom_city + world_pins）
     AddWorldCityEntry(WorldCityEntry),

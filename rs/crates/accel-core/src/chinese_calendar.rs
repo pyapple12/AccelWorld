@@ -122,10 +122,13 @@ fn holidays_table() -> &'static HashMap<String, HashMap<String, String>> {
                 .expect("holidays.json 解析失败（嵌入产物损坏）")
                 .0;
         let year = chrono::Local::now().year();
-        if !holidays_covers_year(&table, year) {
-            tracing::warn!(
-                "holidays 数据不含当年 {year}，法定节假日降级为空——年末安排公布后重跑导出脚本"
-            );
+        // 当年与次年都要检查：year_chips 的 365 天窗口必然跨年，只查当年会漏报
+        for missing in [year, year + 1] {
+            if !holidays_covers_year(&table, missing) {
+                tracing::warn!(
+                    "holidays 数据不含 {missing} 年，法定节假日降级为固定日兜底——请更新导出数据"
+                );
+            }
         }
         table
     })
@@ -191,45 +194,77 @@ fn qingming_of_gregorian_year(year: i32) -> Option<NaiveDate> {
     })
 }
 
+/// 法定固定日兜底（holidays 数据缺年时只补这三个；T3 表含情人节等非假日，不整表倒）
+const FIXED_STATUTORY_HOLIDAYS: [((u32, u32), &str); 3] =
+    [((1, 1), "元旦"), ((5, 1), "劳动节"), ((10, 1), "国庆节")];
+
+/// 名称是否已有农历/节气规则（有规则时 holidays 的假期跨度日不再参与 chips，
+/// 避免春节跨度首日 02-15 抢占真正春节 02-17）
+fn has_rule_based_date(name: &str) -> bool {
+    name == "除夕" || name == "清明节" || LUNAR_FESTIVAL_RULES.iter().any(|(_, _, n)| *n == name)
+}
+
+/// 连续同名日期折叠为一个节日项（国庆 10-01..07 → 仅 10-01）
+fn collapse_festival_spans(items: Vec<(NaiveDate, String)>) -> Vec<(NaiveDate, String)> {
+    let mut out: Vec<(NaiveDate, String)> = Vec::with_capacity(items.len());
+    // 追踪“上一条输入”而非 out.last：被折叠的日期也要推进游标，否则只会隔天折叠
+    let mut prev: Option<(NaiveDate, String)> = None;
+    for (date, name) in items {
+        let same_span = prev
+            .as_ref()
+            .is_some_and(|(pd, pn)| *pn == name && date == *pd + chrono::Duration::days(1));
+        if !same_span {
+            out.push((date, name.clone()));
+        }
+        prev = Some((date, name));
+    }
+    out
+}
+
 /// 全年节日 chips 派生（PL014.07）：法定（holidays 当年+次年）+ 传统（农历规则 +
-/// 清明节气 + 除夕回退）合并去重（传统覆盖同名法定日）→ 排序 → 截 [now, now+365]
+/// 清明节气 + 除夕回退）合并去重 → 连续假期跨度折叠 → 截 [now, now+365]
+/// 农历按 [去年, 当年, 次年] 三轮计算（腊八/除夕落在公历年初，属上一年农历）；
 /// 返回 (公历日, 名称) 升序列表；倒计时默认目标 = next_spring_festival（UI 派生不落盘）
 pub fn year_chips(now: NaiveDate) -> Vec<(NaiveDate, String)> {
     let mut merged: std::collections::BTreeMap<NaiveDate, String> =
         std::collections::BTreeMap::new();
-    for gregorian_year in [now.year(), now.year() + 1] {
-        // 法定（holidays.json：中文名内嵌；超范围年静默无条目）
-        if let Some(table) = holidays(gregorian_year) {
+    for year in [now.year() - 1, now.year(), now.year() + 1] {
+        // 法定（holidays.json：中文名内嵌）；缺年只补固定法定日，过年安排待数据更新
+        if let Some(table) = holidays(year) {
             for (md, name) in table {
-                if let Ok(d) =
-                    NaiveDate::parse_from_str(&format!("{gregorian_year}-{md}"), "%Y-%m-%d")
-                {
+                if has_rule_based_date(name) {
+                    continue;
+                }
+                if let Ok(d) = NaiveDate::parse_from_str(&format!("{year}-{md}"), "%Y-%m-%d") {
                     merged.entry(d).or_insert_with(|| name.clone());
                 }
             }
+        } else {
+            for ((m, d), name) in FIXED_STATUTORY_HOLIDAYS {
+                if let Some(date) = NaiveDate::from_ymd_opt(year, m, d) {
+                    merged.entry(date).or_insert_with(|| name.to_string());
+                }
+            }
         }
-        // 传统（农历年 = 公历年对齐：春节/腊八等跨年项由次年轮补齐）
+        // 传统（农历年 = 公历年对齐；腊八/除夕由上一轮与下一轮共同覆盖）
         for (m, d, name) in LUNAR_FESTIVAL_RULES {
-            merged.insert(
-                lunar_ymd_to_solar(gregorian_year as i64, m, d),
-                name.to_string(),
-            );
+            merged.insert(lunar_ymd_to_solar(year as i64, m, d), name.to_string());
         }
         // 清明（节气法，年际漂移随节气表）
-        if let Some(qm) = qingming_of_gregorian_year(gregorian_year) {
+        if let Some(qm) = qingming_of_gregorian_year(year) {
             merged.insert(qm, "清明节".to_string());
         }
-        // 除夕 = 次年正月初一 - 1 天（含腊月廿九/三十大小月差异）
-        let eve = spring_festival_of_lunar_year(gregorian_year + 1).pred_opt();
-        if let Some(eve) = eve {
+        // 除夕 = 该农历年正月初一 - 1 天（含腊月廿九/三十大小月差异）
+        if let Some(eve) = spring_festival_of_lunar_year(year).pred_opt() {
             merged.insert(eve, "除夕".to_string());
         }
     }
     let horizon = now + chrono::Duration::days(365);
-    merged
+    let items: Vec<(NaiveDate, String)> = merged
         .into_iter()
         .filter(|(d, _)| *d >= now && *d <= horizon)
-        .collect()
+        .collect();
+    collapse_festival_spans(items)
 }
 
 /// 近期节日快照（PL021 严格边界）：未来 count 个，剔除今天及以前
@@ -246,12 +281,7 @@ pub fn upcoming_festivals(today: NaiveDate, count: usize) -> Vec<(NaiveDate, Str
 pub fn get_chinese_lunar_calendar(year: i32, month: u32, day: u32, hour: u32) -> LunarInfo {
     let lunar = lunar_rust::solar::from_ymd(year as i64, month as i64, day as i64).get_lunar();
 
-    // 时辰：双档子时表匹配（Python 同序首中即取）
-    let shichen = SHI_CHEN
-        .iter()
-        .find(|(start, end, _)| *start <= hour && hour < *end)
-        .map(|(_, _, name)| *name)
-        .unwrap_or("子时");
+    let shichen = shichen_name(hour);
 
     // 节气（非节气日 lunar-rust 返空串，与 Python str(None→"") 语义一致）
     let jieqi = lunar.get_jie_qi();
@@ -297,10 +327,13 @@ pub fn get_chinese_lunar_calendar(year: i32, month: u32, day: u32, hour: u32) ->
     }
 }
 
-/// 今日宜忌（黄历，lunar-rust get_day_yi/get_day_ji 直取；无则空表）
-pub fn get_lunar_extras(now: DateTime<Local>) -> (Vec<String>, Vec<String>) {
-    let (_, yi, ji) = get_lunar_bundle(now);
-    (yi, ji)
+/// 时辰名（纯函数）：双档子时表匹配，越界回退「子时」
+pub fn shichen_name(hour: u32) -> &'static str {
+    SHI_CHEN
+        .iter()
+        .find(|(start, end, _)| *start <= hour && hour < *end)
+        .map(|(_, _, name)| *name)
+        .unwrap_or("子时")
 }
 
 /// 中文日期字符串（Python get_chinese_date 对等："YYYY年MM月DD日 星期X"）
@@ -309,20 +342,11 @@ pub fn get_chinese_date(now: DateTime<Local>) -> String {
     now.format("%Y年%m月%d日").to_string() + " " + weekday
 }
 
-/// 农历展示文本（Python get_lunar_info 对等，拼装契约逐字符对齐）
+/// 农历缓存中的时辰占位符：日缓存存模板，`time_info` 每次按墙钟小时替换
+pub const SHICHEN_PLACEHOLDER: &str = "{时辰}";
+
+/// 农历全量（文本 / 宜 / 忌 / 节气 / 节日）：日缓存 miss 与页头 tooltip 用
 /// `{年}（{生肖}年）{月}{日}{时辰} 月相：{X} 财神：{Y}方向（{Z}）`
-/// 节气/节日不入串（FIX003.5 定案延续）；值段不含拆分标记字样（FIX004.3）
-pub fn get_lunar_info(now: DateTime<Local>) -> String {
-    get_lunar_bundle(now).0
-}
-
-/// 农历展示文本 + 今日宜忌（一次构造 Lunar，供 tick 日/时缓存复用）
-pub fn get_lunar_bundle(now: DateTime<Local>) -> (String, Vec<String>, Vec<String>) {
-    let (text, yi, ji, _, _) = get_lunar_bundle_full(now);
-    (text, yi, ji)
-}
-
-/// 农历全量（文本 / 宜 / 忌 / 节气 / 节日）：日缓存与页头 tooltip 用
 pub fn get_lunar_bundle_full(
     now: DateTime<Local>,
 ) -> (String, Vec<String>, Vec<String>, String, String) {
@@ -399,7 +423,7 @@ mod tests {
     #[test]
     fn lunar_info_str_shape() {
         // 拼装契约（夹具真值逐字符）：无"拜"前缀混入月相段（FIX004.3），节气/节日不入串
-        let s = get_lunar_info(local(2026, 9, 23, 12));
+        let s = get_lunar_bundle_full(local(2026, 9, 23, 12)).0;
         assert_eq!(
             s,
             "丙午年（马年）八月十三午时 月相：渐盈凸月 财神：正北方向（坎位）"
@@ -425,7 +449,7 @@ mod tests {
         let info = get_chinese_lunar_calendar(2035, 1, 1, 12);
         assert!(!info.lunar_year.is_empty());
         assert_eq!(info.public_holiday, "元旦", "T3 元旦兜底应命中");
-        let s = get_lunar_info(local(2035, 6, 15, 8));
+        let s = get_lunar_bundle_full(local(2035, 6, 15, 8)).0;
         assert!(!s.is_empty(), "农历串应正常产出");
         assert!(holidays(2035).is_none(), "超范围年应返回 None");
     }
@@ -441,12 +465,75 @@ mod tests {
 
     #[test]
     fn holidays_covers_year_check() {
-        // FIX012.08（A012 #8）验收：数据覆盖判定纯函数——真实嵌入表含 2026 不含 2027
+        // FIX013.04：数据上界已推进到 2027；2028 起才应触发装载期 warn
         let table = holidays_table();
-        assert!(holidays_covers_year(table, 2026), "数据上界年份应覆盖");
+        assert!(holidays_covers_year(table, 2026), "当年应覆盖");
+        assert!(holidays_covers_year(table, 2027), "次年应覆盖");
         assert!(
-            !holidays_covers_year(table, 2027),
-            "上界外年份应判不覆盖（触发装载期 warn）"
+            !holidays_covers_year(table, 2028),
+            "数据上界外年份应判不覆盖（触发装载期 warn）"
+        );
+    }
+
+    #[test]
+    fn year_chips_january_keeps_laba_and_eve() {
+        // FIX013.02：腊八属上一农历年、除夕属当年——1 月初必须同时可见
+        let chips = year_chips(NaiveDate::from_ymd_opt(2026, 1, 4).expect("合法日期"));
+        assert!(
+            chips.iter().any(|(d, n)| *d
+                == NaiveDate::from_ymd_opt(2026, 1, 26).expect("合法日期")
+                && n == "腊八节"),
+            "2026-01-04 起算应含 2026-01-26 腊八"
+        );
+        assert!(
+            chips.iter().any(|(d, n)| *d
+                == NaiveDate::from_ymd_opt(2026, 2, 16).expect("合法日期")
+                && n == "除夕"),
+            "2026-01-04 起算应含 2026-02-16 除夕"
+        );
+    }
+
+    #[test]
+    fn year_chips_collapse_holiday_spans() {
+        // FIX013.03：国庆 7 天只留首日；春节用传统规则日而非假期跨度首日
+        let chips = year_chips(NaiveDate::from_ymd_opt(2026, 9, 28).expect("合法日期"));
+        assert!(
+            !chips.iter().any(|(d, n)| *d
+                == NaiveDate::from_ymd_opt(2026, 10, 2).expect("合法日期")
+                && n == "国庆节"),
+            "10-02 不应再作为独立国庆 chips"
+        );
+        assert!(
+            chips.iter().any(|(d, n)| *d
+                == NaiveDate::from_ymd_opt(2026, 10, 1).expect("合法日期")
+                && n == "国庆节"),
+            "10-01 国庆首日应保留"
+        );
+        let upcoming =
+            upcoming_festivals(NaiveDate::from_ymd_opt(2026, 9, 28).expect("合法日期"), 5);
+        assert_eq!(
+            upcoming.iter().filter(|(_, n)| n == "国庆节").count(),
+            1,
+            "近期节日只能有一个国庆节"
+        );
+        assert!(
+            upcoming.iter().any(|(d, n)| *d
+                == NaiveDate::from_ymd_opt(2027, 1, 1).expect("合法日期")
+                && n == "元旦"),
+            "2026-09-28 的 365 天窗口应含 2027-01-01"
+        );
+    }
+
+    #[test]
+    fn year_chips_december_contains_next_new_year() {
+        // FIX013.04：年末窗口必须跨到次年元旦
+        let chips = year_chips(NaiveDate::from_ymd_opt(2026, 12, 31).expect("合法日期"));
+        assert!(
+            chips.iter().any(
+                |(d, n)| *d == NaiveDate::from_ymd_opt(2027, 1, 1).expect("合法日期")
+                    && n == "元旦"
+            ),
+            "2026-12-31 起算应含 2027-01-01"
         );
     }
 
@@ -468,7 +555,7 @@ mod tests {
 
     #[test]
     fn holidays_table_known_entries() {
-        // 已知节日锚点（2026：元旦/春节/清明/劳动/端午/中秋/国庆）
+        // 已知节日锚点（2026/2027：元旦/春节/清明/劳动/端午/中秋/国庆）
         let t = holidays(2026).expect("2026 应有数据");
         assert_eq!(t.get("01-01"), Some(&"元旦".to_string()));
         assert_eq!(t.get("02-17"), Some(&"春节".to_string()));
@@ -478,6 +565,15 @@ mod tests {
         assert_eq!(t.get("09-25"), Some(&"中秋节".to_string()));
         assert_eq!(t.get("10-01"), Some(&"国庆节".to_string()));
         assert_eq!(t.len(), 33, "2026 年 33 个休假日");
+        let t27 = holidays(2027).expect("2027 应有数据");
+        assert_eq!(t27.get("01-01"), Some(&"元旦".to_string()));
+        assert_eq!(t27.get("02-05"), Some(&"春节".to_string()));
+        assert_eq!(t27.get("04-03"), Some(&"清明节".to_string()));
+        assert_eq!(t27.get("05-01"), Some(&"劳动节".to_string()));
+        assert_eq!(t27.get("06-09"), Some(&"端午节".to_string()));
+        assert_eq!(t27.get("09-15"), Some(&"中秋节".to_string()));
+        assert_eq!(t27.get("10-01"), Some(&"国庆节".to_string()));
+        assert_eq!(t27.len(), 29, "2027 年 29 个休假日");
         assert!(holidays(2023).is_none(), "2023 无数据应 None");
     }
 

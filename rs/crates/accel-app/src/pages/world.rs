@@ -123,7 +123,7 @@ impl crate::pages::Page for crate::pages::WorldPage {
             ui.scope_builder(egui::UiBuilder::new().max_rect(hero_rect), |ui| {
                 draw_hero(ui, hero_rect, entry, utc_now, &ink, state);
             });
-            let top = hero_rect.bottom() + box_stack::BOX_GAP;
+            let top = hero_rect.bottom() + box_stack::gap();
             list_rect = egui::Rect::from_min_max(
                 egui::pos2(body_rect.left(), top),
                 egui::pos2(body_rect.right(), body_rect.bottom()),
@@ -194,7 +194,7 @@ fn resolve_hero(pins: &[String], configured: &str) -> String {
     }
 }
 
-/// 城市名 → 条目（内置 50 城优先，其次 SQLite 自定义城市快照）
+/// 城市名 → 条目（291 城 SQLite 主表优先，其次自定义城市快照）
 fn entry_for(state: &UiState, name: &str) -> Option<WorldCityEntry> {
     world_search::builtin_entry(name).or_else(|| state.world_custom_cities.get(name).cloned())
 }
@@ -282,14 +282,24 @@ fn draw_hero(
                 name_h,
             ),
         );
-        let name_ink = text_ink::measure(ui, &entry.name, &name_font, InkKind::Cjk);
+        let (name_text, name_truncated) =
+            crate::widgets::text_fit::fit(ui, &entry.name, &name_font, name_box.width());
+        let name_ink = text_ink::measure(ui, &name_text, &name_font, InkKind::Cjk);
         ui.painter().text(
             egui::pos2(name_box.left(), name_ink.top_for_bottom(name_box.bottom())),
             egui::Align2::LEFT_TOP,
-            &entry.name,
+            &name_text,
             name_font,
             ink.strong,
         );
+        if name_truncated {
+            ui.interact(
+                name_box,
+                egui::Id::unique(("world_hero_name", &entry.name)),
+                egui::Sense::hover(),
+            )
+            .on_hover_text(&entry.name);
+        }
 
         let Ok(tz) = entry.tz.parse::<chrono_tz::Tz>() else {
             return;
@@ -355,7 +365,6 @@ struct CardMetrics {
     focus_size: f32,
     focus_radius: f32,
     focus_stroke: f32,
-    focus_inset: f32,
 }
 
 /// 世界卡片度量：字号取六档，盒高取 text_metrics，间距全走 token
@@ -392,7 +401,6 @@ fn card_metrics(ui: &egui::Ui) -> CardMetrics {
         focus_size,
         focus_radius: crate::theme::layout_f32("card_focus_radius"),
         focus_stroke: crate::theme::layout_f64("card_focus_stroke"),
-        focus_inset: crate::theme::layout_f32("card_focus_inset"),
     }
 }
 
@@ -415,10 +423,11 @@ fn draw_city_row(
     ink: &crate::theme::Ink,
 ) {
     let name = entry.name.as_str();
+    // 行本身无点击语义：只用 hover 驱动底色；pin/Trash 按钮各自可点/可聚焦
     let hit = ui.interact(
         rect,
         egui::Id::unique(("world_row", name)),
-        egui::Sense::click(),
+        egui::Sense::hover(),
     );
     let walk = now_in_tz(utc_now, &entry.tz)
         .map(|(t, _)| t)
@@ -426,7 +435,7 @@ fn draw_city_row(
     let hover_t = motion::hover_t(
         ui.ctx(),
         egui::Id::unique(("world_row", name)),
-        hit.hovered() || hit.has_focus(),
+        hit.hovered(),
         crate::theme::motion_ms("card_hover_ms"),
     );
     ui.painter().rect_filled(
@@ -649,15 +658,6 @@ fn draw_city_row(
             }
         }
     }
-
-    if hit.has_focus() {
-        ui.painter().rect_stroke(
-            rect.shrink(m.focus_inset),
-            egui::epaint::CornerRadius::same(crate::theme::radius_px("md") as u8),
-            egui::Stroke::new(m.focus_stroke, ink.knob),
-            egui::StrokeKind::Inside,
-        );
-    }
 }
 
 /// 弹层单行文字：固定盒高，按盒底画字（弹层同样不用原生 label）
@@ -672,17 +672,18 @@ fn popup_text_row(
         egui::vec2(ui.available_width(), height),
         egui::Sense::click(),
     );
-    let ink = text_ink::measure(ui, text, &font, InkKind::Cjk);
     let text_h = crate::widgets::text_metrics::height(ui.ctx(), &font, InkKind::Cjk);
     let pad_x = crate::theme::layout_f32("search_popup_pad_x");
     let text_box = egui::Rect::from_min_size(
         egui::pos2(rect.left() + pad_x, rect.center().y - text_h / 2.0),
         egui::vec2((rect.width() - 2.0 * pad_x).max(1.0), text_h),
     );
+    let (text, _) = crate::widgets::text_fit::fit(ui, text, &font, text_box.width());
+    let ink = text_ink::measure(ui, &text, &font, InkKind::Cjk);
     ui.painter().text(
         egui::pos2(text_box.left(), ink.top_for_bottom(text_box.bottom())),
         egui::Align2::LEFT_TOP,
-        text,
+        &text,
         font,
         color,
     );
@@ -732,7 +733,9 @@ fn draw_footer(
         })
         .inner;
     crate::layout_probe::rect(ui, "world.footer_button", button.rect);
-    let enter = field_resp.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+    // FIX013.16：单行 TextEdit 回车先 surrender_focus，同帧 has_focus 已 false；
+    // 用 lost_focus（与倒计时页同一写法）才能收到回车提交
+    let enter = field_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
     if button.clicked() || enter {
         start_search(state, bus);
     }
@@ -926,7 +929,8 @@ fn draw_search_results(
                                 );
                             }
                         }
-                        let parts: Vec<String> = {
+                        let mut admin1_idx = None;
+                        let mut parts: Vec<String> = {
                             let continent = accel_core::data::continents::continent_label(
                                 &entry.country_code,
                                 &entry.tz,
@@ -941,6 +945,7 @@ fn draw_search_results(
                                 parts.push(entry.country.clone());
                             }
                             if !entry.admin1.is_empty() {
+                                admin1_idx = Some(parts.len());
                                 parts.push(entry.admin1.clone());
                             }
                             if !offset.is_empty() {
@@ -954,18 +959,42 @@ fn draw_search_results(
                         if !parts.is_empty() {
                             let dot = "·";
                             let dot_w = galley_width(ui, dot, &sub_font);
-                            let widths: Vec<f32> = parts
+                            let mut widths: Vec<f32> = parts
                                 .iter()
                                 .map(|p| galley_width(ui, p, &sub_font))
                                 .collect();
                             let sep_gap = crate::theme::layout_f32("search_popup_sep_gap");
-                            let total_width = |gap: f32| {
-                                widths.iter().sum::<f32>()
-                                    + (parts.len().saturating_sub(1)) as f32 * (2.0 * gap + dot_w)
+                            let total_width = |gap: f32, ws: &[f32], n: usize| {
+                                ws.iter().sum::<f32>()
+                                    + (n.saturating_sub(1)) as f32 * (2.0 * gap + dot_w)
                             };
-                            // `·` 左右各 gap；整行放不下时从 5px 递减到 0
+                            // FIX013.32：超宽时优先只截 admin1，其余字段保持完整
+                            if let Some(idx) = admin1_idx
+                                && total_width(sep_gap, &widths, parts.len()) > sub_box.width()
+                            {
+                                let others = widths
+                                    .iter()
+                                    .enumerate()
+                                    .filter(|(i, _)| *i != idx)
+                                    .map(|(_, w)| *w)
+                                    .sum::<f32>();
+                                let seps = (parts.len().saturating_sub(1)) as f32
+                                    * (2.0 * sep_gap + dot_w);
+                                let avail = (sub_box.width() - others - seps).max(0.0);
+                                let (fitted, _) = crate::widgets::text_fit::fit(
+                                    ui,
+                                    &parts[idx],
+                                    &sub_font,
+                                    avail,
+                                );
+                                widths[idx] = galley_width(ui, &fitted, &sub_font);
+                                parts[idx] = fitted;
+                            }
+                            // `·` 左右各 gap；整行仍放不下时从 5px 递减到 0
                             let mut gap = sep_gap;
-                            while gap > 0.0 && total_width(gap) > sub_box.width() {
+                            while gap > 0.0
+                                && total_width(gap, &widths, parts.len()) > sub_box.width()
+                            {
                                 gap -= 1.0;
                             }
                             let mut x = sub_box.left();

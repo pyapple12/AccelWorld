@@ -11,7 +11,7 @@ use crate::widgets::text_ink::{self, InkKind};
 /// 布局盒探针是否开启（缓存一次，正常模式每帧零 env 查询）
 pub fn layout_on() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();
-    *ON.get_or_init(|| std::env::var("ACCELWORLD_LAYOUT_PROBE").is_ok())
+    *ON.get_or_init(|| std::env::var("ACCELWORLD_LAYOUT_PROBE").is_ok_and(|v| v == "1"))
 }
 
 /// 每个 tag 每 0.5s 最多打一次，避免每帧刷屏
@@ -131,3 +131,11 @@ pub fn ink(ui: &Ui, tag: &'static str, text: &str, font: &FontId, pos: Pos2, ali
         bottom - top
     );
 }
+
+// ===== src/layout_probe.rs 说明区 =====
+// 输入：ACCELWORLD_LAYOUT_PROBE=1（严格等于 1 才开启）；输出：[BOX]/[RECT]/[GLOW]/[INK]
+// 逻辑步骤：layout_on 缓存开关 → 各 tag 按 0.5s 节流 → 打印盒/形状/光晕/实体墨迹；
+//   盒高与下空白查 font_profile，墨迹取 alpha > 96
+// 设计理由：开发期真窗自检布局盒与基线；正常模式零 env 查询、零输出，不阻塞输入
+// 异常处理：无 panic 面；未开启时所有入口首行返回
+// 关联配置：font_profile；消费方：pages/clock、widgets/rate_strip 等探针调用点

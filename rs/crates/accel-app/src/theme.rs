@@ -111,11 +111,6 @@ pub fn lume_color() -> Color32 {
     color32_at("lume", 0x9D)
 }
 
-/// 夜光暗色（colors.lume_dim——分钟短刻度）
-pub fn lume_dim_color() -> Color32 {
-    color32_at("lume_dim", 0x4E)
-}
-
 /// 语义色等级（UIR2 五层：strong=主文 body=正文/卡文 muted=次级
 /// meta=刻度/元信息 danger=朱砂 knob=滑钮亮白——soft/card/dim 三层已并）
 #[derive(Debug, Clone, Copy)]
@@ -183,7 +178,7 @@ pub fn border_color() -> Color32 {
     color32_at("border", 35)
 }
 
-/// 侧栏底色（colors.sidebar_bg——比窗底更深一档）
+/// 页面/标题栏底色（colors.sidebar_bg 沿用历史键名——比窗底更深一档）
 pub fn sidebar_bg() -> Color32 {
     color32_at("sidebar_bg", 11)
 }
@@ -474,8 +469,8 @@ mod tests {
 
     #[test]
     fn spacing_scale_monotonic() {
-        // UIR2 验收：间距阶严格递增（xs<sm<md<lg<xl<xxl）
-        let names = ["xs", "sm", "md", "lg", "xl", "xxl"];
+        // UIR2 验收：间距阶严格递增（xs<sm<md<lg<xl）
+        let names = ["xs", "sm", "md", "lg", "xl"];
         for w in names.windows(2) {
             assert!(
                 spacing(w[0]) < spacing(w[1]),

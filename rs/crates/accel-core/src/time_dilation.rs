@@ -1,12 +1,15 @@
 //! 时间膨胀核心（modules/time_dilation.py 的 Rust 对等物）
 //! 倍率域校验/加速时间推进/整数日长口径/tick 联动/剩余小时——公式与 Python 逐行对齐
 
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use chrono::{DateTime, Datelike, Local, Timelike};
 use thiserror::Error;
 
-use crate::chinese_calendar::{get_chinese_date, get_lunar_bundle_full};
+use crate::chinese_calendar::{
+    SHICHEN_PLACEHOLDER, get_chinese_date, get_lunar_bundle_full, shichen_name,
+};
 use crate::static_config::Static;
 use crate::types::TimeInfo;
 
@@ -19,6 +22,27 @@ pub enum RateError {
     AboveMax { max: f64 },
     #[error("时间膨胀倍率必须是整数！")]
     NotInteger,
+}
+
+/// 倍率域校验 + 整数日长派生（new / set_rate 共用）
+fn validate_rate(rate: f64) -> Result<(f64, i64), RateError> {
+    let base = Static::get();
+    let min = base.base_f64("rate_min");
+    let max = base.base_f64("rate_max");
+    if !rate.is_finite() || rate < min {
+        return Err(RateError::BelowMin { min });
+    }
+    if rate > max {
+        return Err(RateError::AboveMax { max });
+    }
+    // PL020：倍率只接受整数档（1×..365×），小数视为非法；持久化旧值由装载侧四舍五入
+    if (rate - rate.round()).abs() > 1e-9 {
+        return Err(RateError::NotInteger);
+    }
+    // A005 #29：日长下钳 1——rem_euclid(day_hours) 在 day_hours=0 时会 panic
+    //（rate_min 被误配到 <1/24 的域外情形，属 token 表损坏的防御路径）
+    let day_hours = ((24.0 * rate) as i64).max(1);
+    Ok((rate, day_hours))
 }
 
 // 日期缓存键：展示数据按日复用，绝不进每秒 tick
@@ -37,14 +61,16 @@ type DayCacheEntry = (
 
 /// 时间膨胀核心（Python AcceleratedWorld 镜像）
 /// 时间全参数化注入（PL011 层面无 Clock 依赖，可测性优先）；
-/// 农历/中文日期按日/小时缓存（宜忌按日、农历串按小时；PL020 修正每秒重算导致 tick 冻结）
+/// 农历/中文日期按日缓存；时辰不入缓存，每次按调用时刻重建（FIX013.23）
 #[derive(Debug)]
 pub struct TimeDilation {
     rate: f64,
     /// 整数日长 int(24×rate)——钟面回绕模数与日长显示同口径（FIX003.4）
     day_hours: i64,
-    /// 当日缓存：(日期键, 中文日期, 农历串, 今日宜, 今日忌) —— 一天只算一次并落盘
+    /// 当日缓存：(日期键, 中文日期, 农历串模板, 今日宜, 今日忌) —— 一天只算一次并落盘
     day_cache: Mutex<Option<DayCacheEntry>>,
+    /// 日缓存文件路径（生产读 base.lunar_cache；测试可注入）
+    day_cache_path: PathBuf,
 }
 
 impl PartialEq for TimeDilation {
@@ -57,27 +83,32 @@ impl PartialEq for TimeDilation {
 impl TimeDilation {
     /// 构造并校验倍率域：[rate_min, rate_max]（默认值经 with_default_rate）
     pub fn new(rate: f64) -> Result<Self, RateError> {
-        let base = Static::get();
-        let min = base.base_f64("rate_min");
-        let max = base.base_f64("rate_max");
-        if !rate.is_finite() || rate < min {
-            return Err(RateError::BelowMin { min });
-        }
-        if rate > max {
-            return Err(RateError::AboveMax { max });
-        }
-        // PL020：倍率只接受整数档（1×..365×），小数视为非法；持久化旧值由装载侧四舍五入
-        if (rate - rate.round()).abs() > 1e-9 {
-            return Err(RateError::NotInteger);
-        }
-        // A005 #29：日长下钳 1——rem_euclid(day_hours) 在 day_hours=0 时会 panic
-        //（rate_min 被误配到 <1/24 的域外情形，属 token 表损坏的防御路径）
-        let day_hours = ((24.0 * rate) as i64).max(1);
+        let (rate, day_hours) = validate_rate(rate)?;
         Ok(TimeDilation {
             rate,
             day_hours,
             day_cache: Mutex::new(None),
+            day_cache_path: crate::day_cache::default_path(),
         })
+    }
+
+    /// 注入日缓存路径构造（测试隔离；生产用 new）
+    pub fn with_cache_path(rate: f64, path: PathBuf) -> Result<Self, RateError> {
+        let (rate, day_hours) = validate_rate(rate)?;
+        Ok(TimeDilation {
+            rate,
+            day_hours,
+            day_cache: Mutex::new(None),
+            day_cache_path: path,
+        })
+    }
+
+    /// 原地改倍率（滑杆拖动轻量路径）：保留日缓存，不整体替换对象
+    pub fn set_rate(&mut self, rate: f64) -> Result<(), RateError> {
+        let (rate, day_hours) = validate_rate(rate)?;
+        self.rate = rate;
+        self.day_hours = day_hours;
+        Ok(())
     }
 
     /// 默认倍率构造（base.default_rate 单源）
@@ -124,7 +155,12 @@ impl TimeDilation {
                     fe.clone(),
                 ),
                 _ => {
-                    let from_disk = crate::day_cache::load(day_key.0, day_key.1, day_key.2);
+                    let from_disk = crate::day_cache::load(
+                        &self.day_cache_path,
+                        day_key.0,
+                        day_key.1,
+                        day_key.2,
+                    );
                     let (cd, li, yi, ji, jq, fe) = match from_disk {
                         Some(r) => (
                             r.chinese_date,
@@ -137,17 +173,27 @@ impl TimeDilation {
                         None => {
                             let cd = get_chinese_date(now);
                             let (li, yi, ji, jq, fe) = get_lunar_bundle_full(now);
-                            crate::day_cache::save(&crate::day_cache::DayCache {
-                                version: crate::day_cache::CACHE_VERSION,
-                                date: format!("{:04}-{:02}-{:02}", day_key.0, day_key.1, day_key.2),
-                                chinese_date: cd.clone(),
-                                lunar_info: li.clone(),
-                                yi: yi.clone(),
-                                ji: ji.clone(),
-                                jieqi: jq.clone(),
-                                festival: fe.clone(),
-                            });
-                            (cd, li, yi, ji, jq, fe)
+                            // 日缓存只存日期稳定部分：把当前时辰替换为占位符，
+                            // 每次 time_info 再按墙钟小时替换（PL020 时辰冻结修复）
+                            let template =
+                                li.replacen(shichen_name(now.hour()), SHICHEN_PLACEHOLDER, 1);
+                            crate::day_cache::save(
+                                &self.day_cache_path,
+                                &crate::day_cache::DayCache {
+                                    version: crate::day_cache::CACHE_VERSION,
+                                    date: format!(
+                                        "{:04}-{:02}-{:02}",
+                                        day_key.0, day_key.1, day_key.2
+                                    ),
+                                    chinese_date: cd.clone(),
+                                    lunar_info: template.clone(),
+                                    yi: yi.clone(),
+                                    ji: ji.clone(),
+                                    jieqi: jq.clone(),
+                                    festival: fe.clone(),
+                                },
+                            );
+                            (cd, template, yi, ji, jq, fe)
                         }
                     };
                     *cache = Some((
@@ -175,11 +221,14 @@ impl TimeDilation {
         let custom_second = (custom_total_seconds % 60.0).floor() as i64;
         let custom_time = format!("{custom_hour:02}:{custom_minute:02}:{custom_second:02}");
         let remaining_seconds = ((self.day_hours * 3600) as f64 - custom_total_seconds).max(0.0);
+        let shichen = shichen_name(now.hour());
+        let lunar_info = lunar_info.replace(SHICHEN_PLACEHOLDER, shichen);
         TimeInfo {
             standard_datetime: now.format("%Y-%m-%d %H:%M:%S").to_string(),
             custom_time,
             chinese_date,
             lunar_info,
+            lunar_shichen: shichen.to_string(),
             lunar_yi,
             lunar_ji,
             lunar_jieqi,
@@ -204,9 +253,9 @@ impl TimeDilation {
 //   rem_euclid 与 Python % 在正模数下同语义（day_hours 恒正）
 // 异常处理：域外倍率返 RateError（Python ValueError 对等，不 panic）；
 //   default_rate 越界属 token 表损坏，expect 快速失败
-// 已知偏移：农历缓存自 TimeDilation 内部承接（Python _lunar_cache 同构，PL012 落地——
-//   原 PL011 注记「interface 层承接」改为模型内承接，与 Python 结构一致）
-// 关联配置：rate_min/rate_max/default_rate/clock_tick_ms（base.json）
+// 已知偏移：农历缓存自 TimeDilation 内部承接（Python _lunar_cache 同构，PL012 落地）；
+//   FIX013.23 起缓存存 `{时辰}` 模板，time_info 每次替换为当前时辰，set_rate 原地保留缓存
+// 关联配置：rate_min/rate_max/default_rate/clock_tick_ms（base.json）、lunar_cache
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,5 +344,63 @@ mod tests {
         let td = TimeDilation::with_default_rate();
         assert_eq!(td.rate(), 2.0);
         assert_eq!(td.day_hours(), 48);
+    }
+
+    fn temp_cache(tag: &str) -> PathBuf {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../.temp/time_dilation");
+        std::fs::create_dir_all(&dir).expect("创建 .temp 测试目录");
+        dir.join(format!("{tag}_{}.json", std::process::id()))
+    }
+
+    #[test]
+    fn shichen_updates_across_hours_same_day() {
+        // FIX013.23：日缓存只存日期稳定部分，时辰按调用时刻替换
+        let path = temp_cache("shichen");
+        let td = TimeDilation::with_cache_path(2.0, path.clone()).unwrap();
+        let morning = td.time_info(local_of(2026, 9, 23, 9, 0, 0, 0));
+        assert_eq!(morning.lunar_shichen, "巳时");
+        assert!(
+            morning.lunar_info.contains("巳时"),
+            "{}",
+            morning.lunar_info
+        );
+        // 新对象从磁盘读同一日模板，13 点必须得到未时而不是缓存里的巳时
+        let td2 = TimeDilation::with_cache_path(2.0, path.clone()).unwrap();
+        let afternoon = td2.time_info(local_of(2026, 9, 23, 13, 0, 0, 0));
+        assert_eq!(afternoon.lunar_shichen, "未时");
+        assert!(
+            afternoon.lunar_info.contains("未时"),
+            "{}",
+            afternoon.lunar_info
+        );
+        assert!(!afternoon.lunar_info.contains("巳时"), "时辰不得冻结在缓存");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn set_rate_keeps_day_cache() {
+        // FIX013.23：原地改倍率保留日缓存，不整体重建
+        let path = temp_cache("set_rate");
+        let mut td = TimeDilation::with_cache_path(2.0, path.clone()).unwrap();
+        let _ = td.time_info(local_of(2026, 9, 23, 9, 0, 0, 0));
+        assert!(td.day_cache.lock().unwrap().is_some());
+        assert!(td.set_rate(3.0).is_ok());
+        assert_eq!(td.rate(), 3.0);
+        assert_eq!(td.day_hours(), 72);
+        assert!(td.day_cache.lock().unwrap().is_some(), "缓存应保留");
+        assert!(td.set_rate(3.5).is_err(), "非整数仍拒绝");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn cache_write_failure_does_not_break_time_info() {
+        // 只读/异常路径：写失败只告警，时间信息仍可计算
+        let path = temp_cache("ro_parent");
+        std::fs::write(&path, b"not a dir").expect("写占位文件");
+        let bad = path.join("child.json");
+        let td = TimeDilation::with_cache_path(2.0, bad).unwrap();
+        let info = td.time_info(local_of(2026, 9, 23, 9, 0, 0, 0));
+        assert_eq!(info.lunar_shichen, "巳时");
+        let _ = std::fs::remove_file(path);
     }
 }

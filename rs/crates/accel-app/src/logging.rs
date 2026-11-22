@@ -114,7 +114,8 @@ pub fn install_panic_hook() {
             .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
             .unwrap_or_else(|| "<未知位置>".to_string());
         let message = payload_text(info);
-        write_crash_log(&location, &message);
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        write_crash_log(&location, &message, &backtrace.to_string());
         default_hook(info);
     }));
 }
@@ -138,8 +139,8 @@ fn crash_file_name() -> String {
     format!("crash-{}.log", chrono::Local::now().format("%Y-%m-%d"))
 }
 
-/// 追加一行 panic 记录（时间/位置/消息）
-fn write_crash_log(location: &str, message: &str) {
+/// 追加 panic 记录（时间/位置/消息/回溯）
+fn write_crash_log(location: &str, message: &str, backtrace: &str) {
     let path = crash_log_path();
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -151,7 +152,7 @@ fn write_crash_log(location: &str, message: &str) {
     {
         let _ = writeln!(
             f,
-            "[panic] {} | {} | {message}",
+            "[panic] {} | {} | {message}\n{backtrace}",
             chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f"),
             location
         );
@@ -235,7 +236,7 @@ mod tests {
             panic!("测试 panic 文本");
         });
         assert!(result.is_err(), "catch_unwind 应捕获 panic");
-        write_crash_log(file!(), "测试 panic 文本");
+        write_crash_log(file!(), "测试 panic 文本", "测试回溯");
 
         let text = std::fs::read_to_string(&path).expect("crash 文件应存在");
         assert!(text.contains("[panic]"), "应含标记：{text}");

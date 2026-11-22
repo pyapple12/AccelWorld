@@ -10,7 +10,6 @@ use chrono::Local;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::alarm::{Alarm, AlarmManager, Clock, RealClock};
-use crate::data::timezones;
 use crate::settings;
 use crate::static_config::Static;
 use crate::time_dilation::TimeDilation;
@@ -32,6 +31,8 @@ pub struct AppInterface {
     weather_inflight: Arc<Mutex<WeatherInflight>>,
     /// 世界城市搜索缓存（PL028；SQLite 城市主表 291 城 + geocoding 缓存）
     world_search: Arc<WorldSearch>,
+    /// 世界城市搜索在飞任务（FIX013.26：新搜索/Quit/通道关闭统一 abort）
+    search_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 impl Default for AppInterface {
@@ -50,8 +51,13 @@ impl AppInterface {
     /// 注入配置路径构造（测试隔离；配置缺省时以 default_rate 初始化）
     /// 闹钟随构造自配置装载（Python 由 UI 显式 load_alarm_dicts，Rust 收敛为构造内聚）
     pub fn with_config_path(config_path: PathBuf) -> Self {
+        Self::with_config_path_and_world(config_path, WorldSearch::new())
+    }
+
+    /// 注入城市库构造（测试沙箱：避免读写 exe 同目录 world_cache.sqlite）
+    pub fn with_config_path_and_world(config_path: PathBuf, world_search: WorldSearch) -> Self {
         // 先加载城市主表（SQLite 快照），settings 的 IANA → 城市名迁移依赖它
-        let world_search = Arc::new(WorldSearch::new());
+        let world_search = Arc::new(world_search);
         // A005 #18：单次 load 复用（原实现对同一路径 load 两遍——重复磁盘 IO）
         let mut config = settings::load(&config_path);
         // PL029：天气城市跟随世界页 hero；启动时把持久化镜像 last_city 对齐 hero
@@ -79,7 +85,7 @@ impl AppInterface {
             }
         };
         let mut manager = AlarmManager::new();
-        manager.from_value_list(&config.alarms);
+        manager.from_value_list(&config.alarms, Local::now());
         let weather = Arc::new(WeatherClient::new());
         // PL027：启动即应用用户配置的代理策略（false=仅直连；空地址=系统探测）
         weather.set_proxy_policy(config.weather_use_proxy, &config.weather_proxy);
@@ -90,6 +96,7 @@ impl AppInterface {
             config_path,
             weather_inflight: Arc::new(Mutex::new(std::collections::HashMap::new())),
             world_search,
+            search_task: Mutex::new(None),
         }
     }
 
@@ -159,13 +166,14 @@ impl AppInterface {
         (base.base_f64("rate_min"), base.base_f64("rate_max"))
     }
 
-    /// 轻量路径：范围校验 + 世界重建，不落盘（滑杆拖动实时生效，FIX001.23）
+    /// 轻量路径：范围校验 + 原地改倍率，不落盘（滑杆拖动实时生效，FIX001.23）
+    /// FIX013.23：保留 TimeDilation 内日缓存，避免拖动时整体重建触发重复读盘/重算
     pub fn set_rate(&self, rate: f64) -> bool {
-        let Ok(world) = TimeDilation::new(rate) else {
-            return false;
-        };
-        *self.world.lock().expect("world 锁中毒") = world;
-        true
+        self.world
+            .lock()
+            .expect("world 锁中毒")
+            .set_rate(rate)
+            .is_ok()
     }
 
     /// 内聚动作：校验 + 重建 + 持久化（越界返回 false 不重建不落盘）
@@ -187,19 +195,20 @@ impl AppInterface {
 
     // ===== 时区域 =====
 
-    /// 时区选项表（显示名, IANA 标识）
-    /// A009 #9 登记：生产零调用——保留为 Python 七域契约形态（timezones 表与
-    /// 夹具 n_tz 计数锚定；退役须连带夹具重生成，另立决策）
-    pub fn get_timezone_options() -> Vec<(&'static str, &'static str)> {
-        timezones::all()
-            .iter()
-            .map(|t| (t.display, t.iana))
-            .collect()
-    }
-
     /// 世界时钟常驻城市集（用户配置 world_pins）
     pub fn get_world_pins(&self) -> Vec<String> {
         settings::load(&self.config_path).world_pins
+    }
+
+    /// 当前天气城市（PL029：hero 优先，空 hero 回退 last_city）
+    /// FIX013.09：失败重试链发送前用它校验，hero 已切走则丢弃旧链
+    pub fn current_weather_city(&self) -> String {
+        let config = settings::load(&self.config_path);
+        if config.world_hero_city.is_empty() {
+            config.last_city
+        } else {
+            config.world_hero_city
+        }
     }
 
     // ===== 配置偏好域 =====
@@ -216,21 +225,23 @@ impl AppInterface {
         UiPreferences {
             theme,
             last_city: config.last_city,
-            countdown_target: config.countdown_target,
             world_hero_city: config.world_hero_city,
             weather_use_proxy: config.weather_use_proxy,
             weather_proxy: config.weather_proxy,
         }
     }
 
-    /// 天气代理设置（PL027）：写配置 + 立即更新客户端策略；返回落盘结果
+    /// 天气代理设置（PL027）：先落盘，成功后才更新客户端策略；失败保持旧策略
     pub fn set_weather_proxy(&self, enabled: bool, server: &str) -> bool {
         let server = server.trim().to_string();
         let mut config = settings::load(&self.config_path);
         config.weather_use_proxy = enabled;
         config.weather_proxy = server.clone();
-        self.weather.set_proxy_policy(enabled, &server);
-        settings::save(&self.config_path, &config)
+        let saved = settings::save(&self.config_path, &config);
+        if saved {
+            self.weather.set_proxy_policy(enabled, &server);
+        }
+        saved
     }
 
     /// 冷启动磁盘缓存快照（PL027）：只读磁盘，不触发网络
@@ -347,17 +358,20 @@ impl AppInterface {
         settings::save(&self.config_path, &config)
     }
 
-    /// 世界时钟城市条目（SQLite 城市主表 291 城 + 用户自定义；按当前 pins 顺序）
-    pub fn get_world_city_entries(&self) -> Vec<WorldCityEntry> {
-        self.get_world_pins()
-            .iter()
-            .filter_map(|name| self.world_search.entry_by_name(name))
-            .collect()
-    }
-
     /// 用户自定义城市快照（PL028；bus 启动/ConfigSaved 后同步）
     pub fn get_world_custom_cities(&self) -> Vec<WorldCityEntry> {
         self.world_search.custom_cities()
+    }
+
+    /// geocoding 缓存是否缺字段（需重拉）。FIX013.07：国内条目 name_en 本就等于
+    /// pinyin，不能把该等式当旧缓存标志——否则新写入的缓存永远被判 stale。
+    fn geocode_cache_is_stale(list: &[WorldCityEntry]) -> bool {
+        list.iter().any(|e| {
+            e.country_code.is_empty()
+                || e.feature_code.is_empty()
+                || e.population <= 0
+                || e.name_en.is_empty()
+        })
     }
 
     /// 世界时钟搜索：本地 291 城 → SQLite 缓存 → Open-Meteo geocoding
@@ -373,24 +387,16 @@ impl AppInterface {
             return Ok(local);
         }
         let cached = self.world_search.cached(query);
-        if let Some(list) = &cached {
-            // 旧缓存（缺国家代码/地点类型/人口/英文名，或英文名仍是拼音）不直接用，重新走网络刷新
-            let stale = list.iter().any(|e| {
-                e.country_code.is_empty()
-                    || e.feature_code.is_empty()
-                    || e.population <= 0
-                    || e.name_en.is_empty()
-                    || (!e.name_en.is_empty() && e.name_en == e.pinyin)
+        if let Some(list) = &cached
+            && !Self::geocode_cache_is_stale(list)
+        {
+            let mut list = list.clone();
+            list.retain(|e| {
+                matches!(e.country_code.as_str(), "CN" | "HK" | "TW" | "MO")
+                    && world_search::passes_city_filter(e, min_population)
             });
-            if !stale {
-                let mut list = list.clone();
-                list.retain(|e| {
-                    matches!(e.country_code.as_str(), "CN" | "HK" | "TW" | "MO")
-                        && world_search::passes_city_filter(e, min_population)
-                });
-                if !list.is_empty() {
-                    return Ok(list);
-                }
+            if !list.is_empty() {
+                return Ok(list);
             }
         }
         // 国内城市才走 Open-Meteo；境外城市只用本地 241 城表
@@ -453,14 +459,19 @@ impl AppInterface {
         settings::load(&self.config_path).countdown_targets
     }
 
-    /// 添加倒计时目标（同名拒/空名拒；at 转存储串落盘）
+    /// 添加倒计时目标（trim 后空名拒/同名拒；at 转存储串落盘）
     pub fn add_countdown_target(&self, name: &str, at: &chrono::DateTime<Local>) -> bool {
+        let name = name.trim();
         if name.is_empty() {
             tracing::warn!("倒计时目标名为空，拒绝添加");
             return false;
         }
         let mut config = settings::load(&self.config_path);
-        if config.countdown_targets.iter().any(|t| t.name == name) {
+        if config
+            .countdown_targets
+            .iter()
+            .any(|t| t.name.trim() == name)
+        {
             tracing::warn!("同名倒计时目标已存在，拒绝添加: {name}");
             return false;
         }
@@ -636,6 +647,8 @@ impl AppInterface {
                                         .base_i64("weather_fail_retry_delay_s")
                                         .max(1) as u64;
                                     let cmd_tx_retry = cmd_tx_main.clone();
+                                    // FIX013.09：重试任务需在发送前复核 hero，先克隆接口
+                                    let itf_retry = Arc::clone(&self);
                                     // FIX006.4/.9 配套可观测性：拉取开始即留痕（冷启动首拉可见）
                                     tracing::info!("天气拉取开始: {city}（force={force}）");
                                     let handle = tokio::spawn(async move {
@@ -643,7 +656,7 @@ impl AppInterface {
                                             .fetch_by_city(&city_task, lat, lon, force)
                                             .await;
                                         // 仅网络类失败（含磁盘缓存回退包裹的网络失败）值得
-                                        // 10 分钟后自动重试；解析类错误换时间也不会自愈
+                                        // 按 token 间隔自动重试；解析类错误换时间也不会自愈
                                         let retryable = match &result {
                                             Err(FetchErr::Network(_)) => true,
                                             Err(FetchErr::StaleServed { source, .. }) => {
@@ -673,7 +686,7 @@ impl AppInterface {
                                                 BackendEvent::WeatherFailed {
                                                     city: city_task.clone(),
                                                     reason: format!(
-                                                        "{source}；正在显示 {} 的缓存，点刷新重试",
+                                                        "{source}；正在显示{}的缓存，点刷新重试",
                                                         crate::weather::humanize_age(age_secs)
                                                     ),
                                                 }
@@ -694,7 +707,7 @@ impl AppInterface {
                                         }
                                         // UI 已关闭/事件通道断开时不再排自动重试
                                         let delivered = evt_tx.send(evt).await.is_ok();
-                                        // 两通道均网络失败：10 分钟后自动再拉（force=false，
+                                        // 两通道均网络失败：按 token 间隔自动再拉（force=false，
                                         // 命中内存/磁盘缓存时零网络；失败会再排下一轮）
                                         if retryable && delivered {
                                             let city_retry = city_task.clone();
@@ -706,6 +719,15 @@ impl AppInterface {
                                                     retry_delay_s,
                                                 ))
                                                 .await;
+                                                // FIX013.09：hero 已切走则丢弃旧链，避免离线时
+                                                // 每切一次城市多一条后台请求/旧城失败 toast
+                                                let current = itf_retry.current_weather_city();
+                                                if current != city_retry {
+                                                    tracing::info!(
+                                                        "天气重试跳过（hero 已切换）: {city_retry} → {current}"
+                                                    );
+                                                    return;
+                                                }
                                                 let _ = cmd_tx_retry
                                                     .send(FrontendCommand::RefreshWeather {
                                                         city: city_retry,
@@ -758,7 +780,11 @@ impl AppInterface {
                                 }
                             }
                             Some(FrontendCommand::ToggleAlarm(id)) => {
-                                let ok = self.alarms.lock().expect("闹钟锁中毒").toggle_alarm(&id);
+                                let ok = self
+                                    .alarms
+                                    .lock()
+                                    .expect("闹钟锁中毒")
+                                    .toggle_alarm(&id, Local::now());
                                 let _ = evt_tx.send(BackendEvent::AlarmsChanged(self.get_alarms())).await;
                                 // FIX010.1：拒绝不发 ConfigSaved（同 AddAlarm 口径）
                                 if ok {
@@ -767,9 +793,19 @@ impl AppInterface {
                                 }
                             }
                             Some(FrontendCommand::SearchWorldCity(query)) => {
+                                // FIX013.26：新搜索先取消上一条，避免旧结果/旧 evt_tx
+                                // 克隆在网络超时前残留
+                                if let Some(old) = self
+                                    .search_task
+                                    .lock()
+                                    .expect("搜索任务锁中毒")
+                                    .take()
+                                {
+                                    old.abort();
+                                }
                                 let itf = Arc::clone(&self);
                                 let evt = evt_tx.clone();
-                                tokio::spawn(async move {
+                                let handle = tokio::spawn(async move {
                                     let outcome = itf.search_world_cities(&query).await;
                                     let (results, error) = match outcome {
                                         Ok(v) => (v, None),
@@ -783,6 +819,7 @@ impl AppInterface {
                                         })
                                         .await;
                                 });
+                                *self.search_task.lock().expect("搜索任务锁中毒") = Some(handle);
                             }
                             Some(FrontendCommand::AddWorldCity(name)) => {
                                 // FIX011.01（A011 #1）：拒绝不发 ConfigSaved（同 AddAlarm
@@ -885,6 +922,7 @@ impl AppInterface {
                                     .lock()
                                     .expect("天气在飞表锁中毒");
                                 inflight_abort_all(&mut inflight);
+                                self.abort_search();
                                 let _ = sd_tx.send(true);
                                 break;
                             }
@@ -900,6 +938,7 @@ impl AppInterface {
                                 .lock()
                                 .expect("天气在飞表锁中毒");
                             inflight_abort_all(&mut inflight);
+                            self.abort_search();
                             let _ = sd_tx.send(true);
                             break;
                         }
@@ -981,6 +1020,15 @@ fn inflight_self_remove(
 }
 
 /// Quit 收尾：abort 全部在飞任务并清表（不留 evt_tx 克隆，接收端即时闭合）
+impl AppInterface {
+    /// 取消在飞世界城市搜索（Quit/通道关闭/新搜索共用）
+    fn abort_search(&self) {
+        if let Some(task) = self.search_task.lock().expect("搜索任务锁中毒").take() {
+            task.abort();
+        }
+    }
+}
+
 fn inflight_abort_all(map: &mut WeatherInflight) {
     for (_, (handle, _)) in map.drain() {
         handle.abort();
@@ -997,7 +1045,7 @@ fn inflight_abort_all(map: &mut WeatherInflight) {
 //   set_rate/apply_rate/get_ui_preferences/...；fetch_weather
 //   拉取式残留已删——A008 #7，总线 RefreshWeather 为唯一天气入口；A009 #9 再删
 //   get_weather_refresh_interval_ms/get_alarm/get_max_alarms/get_world_cities
-//   四转发——app 只读直取/全量回推重建；get_timezone_options 登记保留：timezones
+//   四转发——app 只读直取/全量回推重建；FIX013.19 已删 get_timezone_options
 //   表与夹具 n_tz 计数锚，退役须连带夹具另立决策），
 //   Python 拉取式 + Rust 推送式并存：同步查询供 UI 直拉（Python 习惯对等物），
 //   总线供帧循环 drain（z.plan 修订一信号接口）；tick 用绝对截止时间而非
@@ -1005,13 +1053,14 @@ fn inflight_abort_all(map: &mut WeatherInflight) {
 //   截止时间与命令节奏解耦，倍率变化经比较后 reset 即刻重排）；天气拉取独立
 //   tokio 任务（重试/超时最长秒级，不得阻塞命令通道）；两通道（直连/系统代理）
 //   均网络失败后按 weather_fail_retry_delay_s 再排一次 force=false 的 RefreshWeather，
-//   形成 10 分钟自动重试环（成功即停；解析类错误不排）
+//   形成 token 间隔自动重试环（成功即停；解析类错误不排）
 // 异常处理：倍率非法回退默认（构造期）/拒绝 false（set/apply）；天气失败降级
 //   None + 日志（Python 对等），总线事件则回推 WeatherFailed 供 UI 提示；
 //   事件通道关闭（UI 已死）时退出主循环
 // FIX006.9：天气拉取任务入「在飞表」（同城去抖，force 取消旧任务重发；任务完成自摘；
 //   Quit 统一 abort——不留 evt_tx 克隆，接收端即时闭合）；FIX007.5：自摘按替换标记
-//   判定任务身份，旧任务完成不再误删 force 换上的新条目
+//   判定任务身份，旧任务完成不再误删 force 换上的新条目；FIX013.26：城市搜索任务
+//   入 search_task，新搜索/Quit/通道关闭均 abort
 // FIX006.22：写操作幂等规则统一——「已存在 = true（不重复落盘）」/「非法入参 = false」/
 //   「移除类不存在 = false」；PL029：天气城市跟随世界页 hero，17 城天气表退役，
 //   坐标从 SQLite city 表/自定义城市条目解析
@@ -1033,8 +1082,9 @@ mod tests {
     impl SandboxDir {
         fn new(tag: &str) -> Self {
             // 每测试独立目录（并行测试同进程不得共用配置路径）；先清同 pid 上次残留
-            let dir =
-                std::env::temp_dir().join(format!("accel_iface_{tag}_{}", std::process::id()));
+            let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../.temp/interface")
+                .join(format!("{tag}_{}", std::process::id()));
             let _ = fs::remove_dir_all(&dir);
             fs::create_dir_all(&dir).expect("临时目录创建失败");
             Self(dir)
@@ -1052,7 +1102,9 @@ mod tests {
     }
 
     fn iface(path: &Path) -> AppInterface {
-        AppInterface::with_config_path(path.to_path_buf())
+        // FIX013.27：城市库跟随沙箱，不读写 exe 同目录 world_cache.sqlite
+        let world = WorldSearch::with_path(path.with_file_name("world_cache.sqlite"));
+        AppInterface::with_config_path_and_world(path.to_path_buf(), world)
     }
 
     #[test]
@@ -1321,20 +1373,19 @@ mod tests {
         assert_eq!(fired_rep, 1, "重复闹钟应恰触发一次");
         assert_eq!(fired_once, 1, "一次性闹钟应恰触发一次");
         assert!(disabled_push, "一次性触发后应回推禁用列表");
+        let alarms = itf.get_alarms();
         assert!(
-            !itf.alarms
-                .lock()
-                .expect("闹钟锁中毒")
-                .get_alarm("once1")
+            !alarms
+                .iter()
+                .find(|a| a.id == "once1")
                 .expect("在表")
                 .enabled,
             "一次性应已禁用"
         );
         assert!(
-            itf.alarms
-                .lock()
-                .expect("闹钟锁中毒")
-                .get_alarm("rep1")
+            alarms
+                .iter()
+                .find(|a| a.id == "rep1")
                 .expect("在表")
                 .enabled,
             "重复闹钟保持启用"
@@ -1445,6 +1496,33 @@ mod tests {
         assert!(!prefs.weather_use_proxy);
         assert_eq!(prefs.weather_proxy, "http://127.0.0.1:10808");
         cmd_tx.send(FrontendCommand::Quit).await.expect("退出失败");
+    }
+
+    #[test]
+    fn geocode_cache_cn_pinyin_is_not_stale() {
+        // FIX013.07：国内条目 name_en == pinyin 是正常形态，不得判 stale
+        let entry = WorldCityEntry {
+            name: "苏州".into(),
+            name_en: "suzhou".into(),
+            pinyin: "suzhou".into(),
+            initials: "sz".into(),
+            country: "中国".into(),
+            country_code: "CN".into(),
+            admin1: "江苏".into(),
+            tz: "Asia/Shanghai".into(),
+            lat: 31.3,
+            lon: 120.6,
+            feature_code: "PPLA2".into(),
+            population: 5_000_000,
+        };
+        assert!(!AppInterface::geocode_cache_is_stale(std::slice::from_ref(
+            &entry
+        )));
+        let mut missing = entry.clone();
+        missing.name_en.clear();
+        assert!(AppInterface::geocode_cache_is_stale(std::slice::from_ref(
+            &missing
+        )));
     }
 
     #[tokio::test]
@@ -1584,6 +1662,7 @@ mod tests {
         let itf = iface(&path);
         assert_eq!(itf.get_ui_preferences().last_city, "东京");
         assert_eq!(settings::load(&path).last_city, "东京");
+        assert_eq!(itf.current_weather_city(), "东京", "重试链以 hero 为准");
     }
 
     #[test]
@@ -1596,6 +1675,7 @@ mod tests {
         assert!(itf.set_world_hero("上海"));
         assert_eq!(settings::load(&path).last_city, "上海");
         assert_eq!(itf.get_ui_preferences().last_city, "上海");
+        assert_eq!(itf.current_weather_city(), "上海");
     }
 
     #[test]
@@ -1700,7 +1780,9 @@ mod tests {
     fn world_cities_domain_query() {
         // .10 验收：世界时钟城市表经 data 直取（A009 #9：interface 转发已删——
         // A005 #12 只读直取定案；291 城 SQLite 快照 + 锚点 + 上限 token 锚点）
-        let dir = std::env::temp_dir().join(format!("accel_world_domain_{}", std::process::id()));
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../.temp/interface")
+            .join(format!("world_domain_{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         let _ = crate::world_search::WorldSearch::with_path(dir.join("world_cache.sqlite"));
         let names = crate::world_search::all_names();
@@ -1847,7 +1929,7 @@ mod tests {
         let sandbox = SandboxDir::new("iofail");
         let blocked = sandbox.path().parent().expect("沙箱根").join("blocked");
         std::fs::create_dir_all(&blocked).expect("占位目录创建失败");
-        let itf = Arc::new(AppInterface::with_config_path(blocked));
+        let itf = Arc::new(iface(&blocked));
         let (cmd_tx, mut evt_rx) = AppInterface::spawn(Arc::clone(&itf));
         cmd_tx
             .send(FrontendCommand::AddAlarm(AlarmDraft {
@@ -1886,7 +1968,7 @@ mod tests {
         // ——与闹钟域 FIX010.1 同口径（false 收敛为纯 IO 失败信号，拒绝不再误弹
         // 「配置保存失败」toast）；success 侧保留回推（bus need_reload 依赖）
         let sandbox = SandboxDir::new("cfgreject");
-        let itf = Arc::new(AppInterface::with_config_path(sandbox.path()));
+        let itf = Arc::new(iface(&sandbox.path()));
         let (cmd_tx, mut evt_rx) = AppInterface::spawn(Arc::clone(&itf));
         let rejections = [
             FrontendCommand::AddWorldCity("不存在城".into()),

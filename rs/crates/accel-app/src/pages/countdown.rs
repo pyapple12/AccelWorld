@@ -50,10 +50,11 @@ pub fn validate_add(
     now: NaiveDateTime,
     existing: &[String],
 ) -> Result<(), AddErr> {
+    let name = name.trim();
     if name.is_empty() {
         return Err(AddErr::Empty);
     }
-    if existing.iter().any(|e| e == name) {
+    if existing.iter().any(|e| e.trim() == name) {
         return Err(AddErr::Dup);
     }
     if at <= now {
@@ -151,10 +152,10 @@ impl crate::pages::Page for crate::pages::CountdownPage {
         };
         let mut header_h = 0.0;
         if let Some(h) = hero_h {
-            header_h += h + crate::widgets::box_stack::BOX_GAP;
+            header_h += h + crate::widgets::box_stack::gap();
         }
         if let Some(h) = meta_h {
-            header_h += h + crate::widgets::box_stack::BOX_GAP;
+            header_h += h + crate::widgets::box_stack::gap();
         }
         let header_h = header_h.min(body_h);
         let header_rect =
@@ -193,7 +194,7 @@ impl crate::pages::Page for crate::pages::CountdownPage {
             use std::sync::atomic::{AtomicU64, Ordering};
             static FRAME: AtomicU64 = AtomicU64::new(0);
             if FRAME.fetch_add(1, Ordering::Relaxed).is_multiple_of(30) {
-                let gap = crate::widgets::box_stack::BOX_GAP;
+                let gap = crate::widgets::box_stack::gap();
                 let hero_name = hero_name_line_h(ui);
                 let hero_full = hero_height(ui);
                 let row_full = target_row_height(ui);
@@ -259,7 +260,7 @@ impl crate::pages::Page for crate::pages::CountdownPage {
                     let cta = stack.next(ui, cta_h);
                     draw_empty_cta(ui, cta, state, &ink);
                     // 虚线框吃掉 CTA 之后的剩余高度；不足最小内容高则整块消失
-                    let used = cta.bottom() - list_rect.top() + crate::widgets::box_stack::BOX_GAP;
+                    let used = cta.bottom() - list_rect.top() + crate::widgets::box_stack::gap();
                     let remain_h = list_rect.height() - used;
                     if remain_h >= crate::widgets::empty::min_height(ui) {
                         let card = stack.next(ui, remain_h);
@@ -742,7 +743,6 @@ fn draw_target_row(
 ) {
     let name_font = crate::theme::font_medium(crate::theme::font_size("body"));
     let date_font = digits::digit_font(crate::theme::font_size("meta"));
-    let name_ink = text_ink::measure(ui, name, &name_font, InkKind::Cjk);
     let date_text = at.format("%Y-%m-%d %H:%M").to_string();
     let date_w = digits::text_width(ui.painter(), &date_text, &date_font);
     let name_h = crate::widgets::text_metrics::height(ui.ctx(), &name_font, InkKind::Cjk);
@@ -758,6 +758,32 @@ fn draw_target_row(
     let focus_stroke = crate::theme::layout_f64("card_focus_stroke");
     let border = crate::theme::layout_f64("card_border");
     let trash_gap = crate::theme::layout_f32("card_trash_gap");
+    // 先算右侧剩余时间块宽度，名称盒只能用到它的左缘（FIX013.31）
+    let (text, ended) = format_remaining(at, now);
+    let gap = crate::theme::layout_f32("countdown_unit_gap");
+    let day_template_w = digits::text_width(ui.painter(), "000", &time_font);
+    let time_w = digits::text_width(ui.painter(), "00:00:00", &time_font);
+    let tian_w = ui
+        .painter()
+        .layout_no_wrap("天".to_string(), tian_font.clone(), ink.muted)
+        .rect
+        .width();
+    let ended_w = if ended {
+        ui.painter()
+            .layout_no_wrap(text.clone(), tian_font.clone(), ink.danger)
+            .rect
+            .width()
+    } else {
+        0.0
+    };
+    let value_w = if ended {
+        ended_w
+    } else {
+        day_template_w + gap + tian_w + gap + time_w
+    };
+    let value_left = rect.right() - pad_x - icon_size - trash_gap - value_w;
+    let name_max_w =
+        (value_left - crate::theme::spacing_f32("sm") - (rect.left() + pad_x)).max(0.0);
     let resp = ui.interact(
         rect,
         egui::Id::unique(("countdown_row", name)),
@@ -793,13 +819,16 @@ fn draw_target_row(
     );
     let name_box = egui::Rect::from_min_size(
         egui::pos2(rect.left() + pad_x, rect.top() + pad_y),
-        egui::vec2(rect.width() - 2.0 * pad_x, name_h),
+        egui::vec2(name_max_w, name_h),
     );
+    let (name_text, name_truncated) =
+        crate::widgets::text_fit::fit(ui, name, &name_font, name_box.width());
+    let name_ink = text_ink::measure(ui, &name_text, &name_font, InkKind::Cjk);
     crate::layout_probe::rect(ui, "cd.row", rect);
     crate::layout_probe::text(
         ui,
         "cd.row_name",
-        name,
+        &name_text,
         &name_font,
         InkKind::Cjk,
         egui::pos2(name_box.left(), name_ink.top_for_bottom(name_box.bottom())),
@@ -808,10 +837,18 @@ fn draw_target_row(
     ui.painter().text(
         egui::pos2(name_box.left(), name_ink.top_for_bottom(name_box.bottom())),
         egui::Align2::LEFT_TOP,
-        name,
+        &name_text,
         name_font,
         ink.body,
     );
+    if name_truncated {
+        ui.interact(
+            name_box,
+            egui::Id::unique(("countdown_row_name", name)),
+            egui::Sense::hover(),
+        )
+        .on_hover_text(name);
+    }
     let value_center = rect.center().y;
     let date_bottom = rect.bottom() - pad_y;
     digits::draw_bottom(
@@ -834,14 +871,8 @@ fn draw_target_row(
             egui::Align2::LEFT_TOP,
         );
     }
-    let (text, ended) = format_remaining(at, now);
     let value_right = rect.right() - pad_x - icon_size - trash_gap;
     if ended {
-        let ended_w = ui
-            .painter()
-            .layout_no_wrap(text.clone(), tian_font.clone(), ink.danger)
-            .rect
-            .width();
         let ended_box = egui::Rect::from_min_size(
             egui::pos2(value_right - ended_w, value_center - tian_h / 2.0),
             egui::vec2(ended_w, tian_h),
@@ -859,15 +890,7 @@ fn draw_target_row(
             .split_once('天')
             .map(|(d, t)| (d, t.trim()))
             .unwrap_or((text.as_str(), ""));
-        let gap = crate::theme::layout_f32("countdown_unit_gap");
-        let day_template_w = digits::text_width(ui.painter(), "000", &time_font);
         let day_actual_w = digits::text_width(ui.painter(), day_text, &time_font);
-        let time_w = digits::text_width(ui.painter(), "00:00:00", &time_font);
-        let tian_w = ui
-            .painter()
-            .layout_no_wrap("天".to_string(), tian_font.clone(), ink.muted)
-            .rect
-            .width();
         let time_box = egui::Rect::from_min_size(
             egui::pos2(value_right - time_w, value_center - time_h / 2.0),
             egui::vec2(time_w, time_h),
@@ -1037,8 +1060,8 @@ fn draw_footer(
     let name_w = (avail - gap) * 0.4;
     let at_w = (avail - gap) * 0.6;
     ui.spacing_mut().item_spacing.y = 0.0;
-    let draft_at_empty = state.countdown_draft_at.is_empty();
-    let draft_name_empty = state.countdown_draft_name.is_empty();
+    let draft_at_empty = state.countdown_draft_at.trim().is_empty();
+    let draft_name_empty = state.countdown_draft_name.trim().is_empty();
     let (err_msg, local_at) = {
         let name = state.countdown_draft_name.clone();
         match crate::tools::countdown::parse_target_text(&state.countdown_draft_at, *now) {
@@ -1121,7 +1144,7 @@ fn draw_footer(
     }
     if do_add && let Some(local) = local_at {
         bus.send(FrontendCommand::AddCountdownTarget {
-            name: state.countdown_draft_name.clone(),
+            name: state.countdown_draft_name.trim().to_string(),
             at: local,
         });
         state.list_pulse = Some(("countdown".to_string(), std::time::Instant::now()));
@@ -1147,7 +1170,7 @@ fn draw_footer(
 // 输入：UiState 的目标快照 + 草稿；输出：固定头（hero/节日）+ 目标列表 + 固定 Footer
 // 逻辑步骤：目标快照 → 固定头（hero 默认春节/选中节日 + 近期节日）→
 //   列表视口（仅目标行，剩余右对齐、Trash 两步确认；不足一张卡整块隐藏）→
-//   Footer（名称/时刻/添加；时刻解析失败或校验失败时在标签行右端显示「输入错误！」）
+//   Footer（名称/时刻/添加；名称按剩余块左缘 fit+省略+hover；空白名 trim 后拒绝）
 // 设计理由（PL017/PL022）：hero 与节日固定在上方，滚动只服务目标卡——抽屉窄，
 //   整页滚会把 hero 滚走；列表视口独立后滑杆/渐隐/三角只贴卡片区；空态不建 ScrollArea
 // 异常处理：空草稿不产红字；DST 不存在不提交；输入错误内联显示；hero 空有兜底
@@ -1163,6 +1186,19 @@ mod tests {
             .expect("合法日期")
             .and_hms_opt(hh, 0, 0)
             .expect("合法时刻")
+    }
+
+    #[test]
+    fn validate_add_trims_and_rejects_blank() {
+        // FIX013.31：纯空白名不得落盘；同名按 trim 后比较
+        let now = at(2026, 3, 1, 9);
+        let later = at(2026, 3, 2, 9);
+        assert_eq!(validate_add("   ", later, now, &[]), Err(AddErr::Empty));
+        assert_eq!(
+            validate_add(" 发布 ", later, now, &["发布".to_string()]),
+            Err(AddErr::Dup)
+        );
+        assert_eq!(validate_add(" 发布 ", later, now, &[]), Ok(()));
     }
 
     #[test]

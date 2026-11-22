@@ -15,9 +15,15 @@ pub fn notify_alarm(label: &str, time: &str) -> bool {
     show("闹钟", &format!("{time} · {body}"))
 }
 
-/// 配置保存失败通知
+/// 配置保存失败通知（日志目录读 base.logs_dir token）
 pub fn notify_save_failed() -> bool {
-    show("配置保存失败", "设置未能写入磁盘，请查阅 .logs/ 日志")
+    let logs = accel_core::static_config::Static::get()
+        .base_str("logs_dir")
+        .trim_end_matches(['/', '\\']);
+    show(
+        "配置保存失败",
+        &format!("设置未能写入磁盘，请查阅 {logs}/ 日志"),
+    )
 }
 
 /// WinRT toast 发送（静音——铃声由 rodio 独立负责，避免双声）

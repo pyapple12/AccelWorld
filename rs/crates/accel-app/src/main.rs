@@ -32,11 +32,19 @@ fn fps_probe(secs: u64) {
     let counter = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
     let result = accel_app::window::run_with_counter(counter.clone(), Some(secs));
     let n = counter.load(std::sync::atomic::Ordering::SeqCst);
-    let tick = accel_core::static_config::Static::get().base_i64("clock_tick_ms");
+    // FIX013.28：实际 tick 随存档倍率变化（min(clock_tick_ms, 1000/rate)），
+    // 不能再用 clock_tick_ms 当预期口径
+    let base = accel_core::static_config::Static::get();
+    let config_path = accel_core::util::paths::exe_dir().join(base.base_str("user_config"));
+    let rate = accel_core::settings::load(&config_path)
+        .time_dilation_rate
+        .round();
+    let tick = accel_core::time_dilation::TimeDilation::new(rate)
+        .map(|w| w.tick_interval_ms())
+        .unwrap_or_else(|_| base.base_i64("clock_tick_ms"));
     let line = format!(
-        "REPAINT_COUNT={n} in {secs}s（预期 ≈{}±{}）",
+        "REPAINT_COUNT={n} in {secs}s（rate={rate:.0}x tick={tick}ms；按 tick 请求上限 ≈{}，实际由 eframe 合并）",
         expected_frames(secs, tick),
-        secs.max(2)
     );
     println!("{line}");
     tracing::info!("{line}");
@@ -74,6 +82,6 @@ mod tests {
 //   坚持常规 drop 退出路径（eframe glow 生命周期管理），绝不 os._exit 等价物；
 //   runtime 在 window::run 内 Arc 持有（AppInterface::spawn 任务附着其上，drop 即收）
 // 模块对位（树单源在 lib.rs）：window ← ui/main_window.py；bus ← 信号总线；
-//   theme ← qss/token；pages ← panels（UIR：侧栏导航内联 window.rs，nav/glass 已删）；
+//   theme ← token；pages ← 星盘主仪 + 仪器坞 + 抽屉（UIR4；nav/glass 已删）；
 //   widgets ← 自绘控件；tools ← ui/tools；platform ← system_tray/notify/hotkey
 // 关联配置：log_level/logs_dir（base.json）；消费方：操作系统

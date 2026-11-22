@@ -1,9 +1,10 @@
 //! 城市名 → 拼音/首字母（PL028）；城市主表已迁 `world_cache.sqlite` 的 `city` 表。
 //! 本模块只保留纯文本工具，不持有任何城市数据。
 
+use pinyin::ToPinyin;
+
 /// 中文城市名 → (全拼, 首字母串)（本地搜索/缓存迁移用；不依赖网络）
 pub fn pinyin_of(name: &str) -> (String, String) {
-    use pinyin::ToPinyin;
     let mut full = String::new();
     let mut initials = String::new();
     for p in name.to_pinyin().flatten() {
