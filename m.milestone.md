@@ -7,7 +7,7 @@
 
 ---
 
-## 待发布（FIX013 审计修复收口，V0.6.6.6，2026-11-23）
+## 版本 0.6.6.6 的 MileStone（FIX013 审计修复收口，2026-11-23 发布）
 
 1. 最小化后 logic 心跳保活（200ms 仅限不可见态）+ 托盘恢复补 `Minimized(false)`；关闭/退出先 `CancelClose`，无托盘时关闭直接保存退出 ✅
 2. 最大化退出不再覆盖普通窗口尺寸；多显示器按 Win32 `rcWork` 原点/尺寸夹取（支持负坐标副屏）✅
@@ -21,6 +21,11 @@
 10. 生命周期/性能/探针：搜索任务可取消、`Toast::info` 删除、隐藏托盘停绘 + logic 心跳、DDL `user_version`、FPS 探针按存档倍率、UI_SHOT 自动 no-save ✅
 11. UI 收口：倒计时名称省略+hover、双侧 trim 空名、世界行改 hover、hero/admin1 省略、GPU alpha、键盘倍率 400ms 落盘、drawer_box_gap/footer_gap 单源 ✅
 12. 测试 243 通过（app 105 + bin 1 + core 137）；clippy `-D warnings`；`cargo fmt --check` ✅
+
+## 待发布（启动几何预留清理，V0.6.6.7，2026-11-23）
+
+1. 删除启动几何夹取的 48/110 尺寸预留与 24/48 位置预留，按 Win32 `rcWork` 直接夹取；默认 960×720 不再被误判超屏回落 560×420；补 960×720 直通测试 ✅
+2. 测试 243 通过（app 105 + bin 1 + core 137）；clippy `-D warnings`；`cargo fmt --check` ✅
 
 ## 版本 0.6.6.5 的 MileStone（PL029 天气联动世界 hero、三列首块与自动刷新，2026-11-22 发布）
 

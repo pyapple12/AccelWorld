@@ -1,7 +1,7 @@
 # 重构进度追踪（x.progress.md）
 
 > 依据：`z.plan.md`（AccelWorld 审计与重构方案报告 + Rust 重构总纲）
-> 当前版本：0.6.6.6（PL024 表盘等比 + 窗口尺寸 + 光晕探针；PL025 天气双通道；PL026 Barlow Medium 数字族；PL027 天气代理/冷启动缓存；PL028 世界时钟 hero/291 城 SQLite/搜索弹层；PL029 天气联动 hero/三列首块/自动刷新；FIX013.01–36 审计修复收口）
+> 当前版本：0.6.6.7（PL024 表盘等比 + 窗口尺寸 + 光晕探针；PL025 天气双通道；PL026 Barlow Medium 数字族；PL027 天气代理/冷启动缓存；PL028 世界时钟 hero/291 城 SQLite/搜索弹层；PL029 天气联动 hero/三列首块/自动刷新；FIX013.01–38 审计修复收口）
 > 历史 UI 审核报告已于 2026-10-29 移除，原文见 git 历史；下文相关引用按历史记录理解。
 > 状态：**Rust 重构进行中**——工程地基/核心域/egui 外壳/五页功能已落地，PL015 已收口（系统集成，不做人工测试与定版仪式）；PL016 已收口提交（0e2252f）；PL017 已实施（0.6.3.1；G4/G8 按用户定案不做，勾选完成）；**PL018 已实施（0.6.3.2：N9 裁决 + #9 退出自愈 + #10 落点校准 + #11 首帧门控）**；**PL019 已收口（0.6.4.0：图标系统 + 读数成组 + 反馈动效）**；**PL020 已收口（0.6.5.1：12h 双半日四针 + 金圈 + 365 倍率）**；**PL021 已收口（0.6.5.3：五页盒模型 + 倒计时输入）**；**PL022 已实施（0.6.5.4：倒计时列表独立滚动）**；**PL023 已收口（0.6.5.5：文字盒统一 + 五页盒子对齐）**；**PL024 已实施（0.6.6.0：表盘 320 母版等比 + 窗口尺寸 + GLOW/INK 探针）**；**PL025 已实施（天气直连/系统代理双通道 + 10 分钟自动重试）**；**PL026 已实施（数字族 Barlow Medium 内嵌平替）**；**PL027 已实施（天气代理开关/地址 + 冷启动缓存首屏）**；**PL028 已实施（世界时钟 hero/共享滚动/城市搜索缓存）**；**PL029 已实施（天气城市跟随世界 hero/三列首块/30 分钟自动刷新）**
 > 更新（2026-10-17）：项目已由 Python（PyQt6 + Fluent Widgets）重构为 Rust（egui + eframe/glow——UIR 定案 wgpu 废弃）；Python 版全量归档 `.archived/`（git 忽略），本文件自 PL011 起记录 RS 任务
@@ -1089,3 +1089,4 @@ $env:ACCELWORLD_UI_SHOT="<目录>"; cargo run -p accel-app
 - [x] FIX013.35 [P3] 间距 token 双源 —— 新增 `layout.drawer_box_gap`，BoxStack/countdown/world 单源；闹钟 footer 位置改 `footer_gap`；补抽屉间距 token 测试（2026-11-23）。
 - [x] FIX013.36 [P3] 焦点可见性 —— 按用户定案条件豁免，登记 z.plan 2026-11-23（2026-11-23）。
 - [x] FIX013.37 收尾 —— `pwsh rs/ci.ps1` ALL_GREEN（fmt/clippy/test/依赖树）；app 105 + bin 1 + core 137 = 243 全绿；`ACCELWORLD_UI_SHOT` 560×420 与 1100×560 各六帧全 `ok`、哈希全异；token 死键对账零命中（`lume_dim/scale.hero/card_pad/slider_track/field_pad_y/select_pad_y/xxl/hover_ms/press_ms/card_press_ms/alarm_pulse_ms/card_focus_inset`）；版本 0.6.6.5 → 0.6.6.6（HEAD 基准仅 +1）；反向验收 `.temp/verify_fix013_accept.md`；文档连带完成（2026-11-23）。
+- [x] FIX013.38 [P2] 启动尺寸预留误判 —— 删除 `clamp_geometry_to_monitor` 的 48/110 尺寸预留与 24/48 位置预留，按 Win32 `rcWork` 直接夹取；默认 960×720 不再被误判超屏回落 560×420；补 960×720 直通测试；四关卡 ALL_GREEN（2026-11-23）。

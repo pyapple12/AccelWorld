@@ -821,7 +821,7 @@ pub fn parse_expect_pos(raw: &str) -> Option<(f32, f32)> {
 
 /// 启动几何（PL024 / FIX013.12）：尺寸任一方向超出工作区 → 直接用最小尺寸；
 /// 否则保持启动尺寸；位置夹到工作区（含原点，支持副屏负坐标）；返回 (x,y,w,h)。
-/// 显示器未知时调用方跳过。
+/// 工作区本身已扣任务栏，不再额外扣水平/垂直预留；显示器未知时调用方跳过。
 pub fn clamp_geometry_to_monitor(
     saved: (f32, f32, f32, f32),
     work: (f32, f32, f32, f32),
@@ -829,20 +829,19 @@ pub fn clamp_geometry_to_monitor(
 ) -> (f32, f32, f32, f32) {
     let (sx, sy, sw, sh) = saved;
     let (wx, wy, ww, wh) = work;
-    let avail_w = (ww - 48.0).max(min.0);
-    let avail_h = (wh - 110.0).max(min.1);
+    // 工作区已是 Win32 rcWork（不含任务栏），不再额外扣 48/110 预留
+    let avail_w = ww.max(min.0);
+    let avail_h = wh.max(min.1);
     let mut w = sw.max(min.0);
     let mut h = sh.max(min.1);
     if w > avail_w || h > avail_h {
         w = min.0;
         h = min.1;
     }
-    let min_x = wx + 24.0;
-    let max_x = (wx + ww - w - 24.0).max(min_x);
-    let min_y = wy + 24.0;
-    let max_y = (wy + wh - h - 48.0).max(min_y);
-    let x = sx.clamp(min_x, max_x);
-    let y = sy.clamp(min_y, max_y);
+    let max_x = (wx + ww - w).max(wx);
+    let max_y = (wy + wh - h).max(wy);
+    let x = sx.clamp(wx, max_x);
+    let y = sy.clamp(wy, max_y);
     (x, y, w, h)
 }
 
@@ -1569,7 +1568,12 @@ mod tests {
         // PL024：1550×1058 存档在 1536×816 工作区上任一方向超出 → 560×420
         let (x, y, w, h) =
             clamp_geometry_to_monitor((-7.0, -7.0, 1550.0, 1058.0), primary, (560.0, 420.0));
-        assert_eq!((x, y, w, h), (24.0, 24.0, 560.0, 420.0));
+        assert_eq!((x, y, w, h), (0.0, 0.0, 560.0, 420.0));
+
+        // 默认 960×720 必须直接通过（不再被 48/110 预留误判超屏）
+        let (x, y, w, h) =
+            clamp_geometry_to_monitor((100.0, 80.0, 960.0, 720.0), primary, (560.0, 420.0));
+        assert_eq!((x, y, w, h), (100.0, 80.0, 960.0, 720.0));
 
         // 正常存档不被改写
         let (x, y, w, h) =
@@ -1583,7 +1587,7 @@ mod tests {
 
         // 仅高度超出 → 最小尺寸
         let (_, _, w, h) =
-            clamp_geometry_to_monitor((100.0, 100.0, 900.0, 800.0), primary, (560.0, 420.0));
+            clamp_geometry_to_monitor((100.0, 100.0, 900.0, 900.0), primary, (560.0, 420.0));
         assert_eq!((w, h), (560.0, 420.0));
     }
 
@@ -1601,7 +1605,7 @@ mod tests {
         // 越出右副屏右缘 → 夹到该屏内，而不是主屏
         let (x, _, _, _) =
             clamp_geometry_to_monitor((3800.0, 100.0, 900.0, 700.0), right, (560.0, 420.0));
-        assert_eq!(x, 2996.0);
+        assert_eq!(x, 3020.0);
     }
 
     #[test]
